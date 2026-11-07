@@ -184,3 +184,73 @@ describe('errores', () => {
     expect(fallo.estado).toBe(500)
   })
 })
+
+describe('renovar la sesion ante un 401', () => {
+  it('renueva y repite la llamada una vez, y devuelve lo que salio', async () => {
+    fetchFalso
+      .mockResolvedValueOnce(respuesta(401, { title: 'No autorizado' }))   // la llamada
+      .mockResolvedValueOnce(respuesta(200, { token: 'a' }))               // csrf
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))          // renovar
+      .mockResolvedValueOnce(respuesta(200, { nombre: 'Pablo' }))          // la repeticion
+
+    const cuenta = await obtener<{ nombre: string }>('/api/mi/cuenta')
+
+    expect(cuenta.nombre).toBe('Pablo')
+    const rutas = fetchFalso.mock.calls.map((c) => c[0])
+    expect(rutas).toEqual(['/api/mi/cuenta', '/api/auth/csrf', '/api/auth/sesion/renovar', '/api/mi/cuenta'])
+  })
+
+  it('si no se puede renovar, deja el 401 original y no repite', async () => {
+    fetchFalso
+      .mockResolvedValueOnce(respuesta(401, { title: 'No autorizado' }))
+      .mockResolvedValueOnce(respuesta(200, { token: 'a' }))
+      .mockResolvedValueOnce(respuesta(401, { title: 'Sin sesion' }))      // renovar falla
+
+    const e = await fallaDe(obtener('/api/mi/cuenta'))
+
+    expect(e.estado).toBe(401)
+    expect(fetchFalso).toHaveBeenCalledTimes(3)
+  })
+
+  it('no renueva en las rutas de autenticacion: un 401 al entrar es una clave mala', async () => {
+    fetchFalso
+      .mockResolvedValueOnce(respuesta(200, { token: 'a' }))
+      .mockResolvedValueOnce(respuesta(401, { title: 'Credenciales invalidas' }))
+
+    const e = await fallaDe(enviar('/api/auth/sesion', { correo: 'a', contrasena: 'b' }))
+
+    expect(e.estado).toBe(401)
+    expect(fetchFalso.mock.calls.map((c) => c[0])).not.toContain('/api/auth/sesion/renovar')
+  })
+
+  it('tres llamadas que reciben 401 a la vez renuevan UNA sola vez', async () => {
+    let renovaciones = 0
+    fetchFalso.mockImplementation(async (ruta: string) => {
+      if (ruta === '/api/auth/csrf') return respuesta(200, { token: 'a' })
+      if (ruta === '/api/auth/sesion/renovar') {
+        renovaciones++
+        return new Response(null, { status: 204 })
+      }
+      // La primera vez de cada ruta falla; despues de renovar, sale bien.
+      return renovaciones === 0 ? respuesta(401, {}) : respuesta(200, { ok: true })
+    })
+
+    await Promise.all([obtener('/api/mi/a'), obtener('/api/mi/b'), obtener('/api/mi/c')])
+
+    expect(renovaciones).toBe(1)
+  })
+
+  it('despues de renovar pide un token CSRF nuevo para el siguiente cambio', async () => {
+    fetchFalso
+      .mockResolvedValueOnce(respuesta(200, { token: 'viejo' }))   // csrf para el POST
+      .mockResolvedValueOnce(respuesta(401, {}))                   // el POST falla por 401
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))  // renovar (usa el csrf ya guardado)
+      .mockResolvedValueOnce(respuesta(200, { token: 'nuevo' }))   // csrf nuevo tras olvidarlo
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))  // el POST repetido
+
+    await enviar('/api/mi/perfil')
+
+    const repetido = fetchFalso.mock.calls[4][1]
+    expect(repetido.headers['X-CSRF-Token']).toBe('nuevo')
+  })
+})

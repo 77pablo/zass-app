@@ -10,11 +10,13 @@ const CONTRASENA_MAXIMA = 128
 const CORREO_MAXIMO = 254
 const NOMBRE_MAXIMO = 150
 
-export function Registrarse({ alRegistrarse }: { alRegistrarse: () => void }) {
+export function Registrarse({
+  alRegistrarse, rolInicial = 'buscador',
+}: { alRegistrarse: () => void; rolInicial?: RolPublico }) {
   const [nombre, setNombre] = useState('')
   const [correo, setCorreo] = useState('')
   const [contrasena, setContrasena] = useState('')
-  const [rol, setRol] = useState<RolPublico>('buscador')
+  const [rol, setRol] = useState<RolPublico>(rolInicial)
   const [campos, setCampos] = useState<Record<string, string>>({})
   const [aviso, setAviso] = useState<string>()
   const [listo, setListo] = useState(false)

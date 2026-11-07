@@ -95,13 +95,56 @@ async function llamar(ruta: string, opciones: RequestInit): Promise<Response> {
   }
 }
 
+const RUTA_RENOVAR = '/api/auth/sesion/renovar'
+
+// Una sola renovacion a la vez: si tres peticiones reciben 401 juntas, las tres esperan la
+// misma promesa. Renovar tres veces gastaria el token de refresco de las otras dos.
+let renovando: Promise<boolean> | null = null
+
+/**
+ * API-10. Pide un token de acceso nuevo con la cookie de refresco. Devuelve si se pudo.
+ * El token de acceso dura poco a proposito; sin esto, quien deja la pestana abierta un rato
+ * veria "no autorizado" en la primera accion, aunque su sesion siga siendo valida.
+ */
+function renovarSesion(): Promise<boolean> {
+  renovando ??= (async () => {
+    try {
+      let r = await unIntento(RUTA_RENOVAR, undefined, 'POST', await tokenCsrf())
+      if (r.status === 403) r = await unIntento(RUTA_RENOVAR, undefined, 'POST', await tokenCsrf(true))
+      // El token CSRF esta atado a la identidad, y la renovacion la cambia.
+      olvidarCsrf()
+      return r.ok
+    } catch {
+      return false
+    } finally {
+      renovando = null
+    }
+  })()
+  return renovando
+}
+
+/**
+ * Si la respuesta es 401 y la ruta no es la propia autenticacion, renueva la sesion y repite
+ * la llamada UNA vez. Las rutas de /api/auth/ quedan fuera: un 401 en el ingreso significa
+ * "contrasena incorrecta", no "token vencido", y renovar ahi enmascararia el error real.
+ */
+async function conRenovacion(
+  ruta: string, hacer: () => Promise<Response>,
+): Promise<Response> {
+  const r = await hacer()
+  if (r.status !== 401 || ruta.startsWith('/api/auth/')) return r
+  return (await renovarSesion()) ? hacer() : r
+}
+
 /** GET. No lleva token CSRF porque no cambia nada. */
 export async function obtener<T>(ruta: string): Promise<T> {
-  const r = await llamar(ruta, {
-    method: 'GET',
-    credentials: 'include',
-    headers: { Accept: 'application/json' },
-  })
+  const r = await conRenovacion(ruta, () =>
+    llamar(ruta, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    }),
+  )
   return leer<T>(r)
 }
 
@@ -119,11 +162,13 @@ export async function enviar<T>(
   cuerpo?: unknown,
   metodo: 'POST' | 'PUT' | 'DELETE' = 'POST',
 ): Promise<T> {
-  let r = await unIntento(ruta, cuerpo, metodo, await tokenCsrf())
-
-  if (r.status === 403) {
-    r = await unIntento(ruta, cuerpo, metodo, await tokenCsrf(true))
-  }
+  const r = await conRenovacion(ruta, async () => {
+    let intento = await unIntento(ruta, cuerpo, metodo, await tokenCsrf())
+    if (intento.status === 403) {
+      intento = await unIntento(ruta, cuerpo, metodo, await tokenCsrf(true))
+    }
+    return intento
+  })
 
   return leer<T>(r)
 }

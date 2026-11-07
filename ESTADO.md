@@ -213,6 +213,61 @@ nadie dice "atiendo en Condominio Nueva Milano". Quedaron los 16 sectores con lo
 gente de Temuco dice dónde está. Ninguna coordenada está inventada, y eso importa: un
 centroide mal puesto manda al prestador al barrio de al lado sin que nada falle.
 
+### El sitio multipágina (7-nov-2026, noche)
+
+Pablo pidió *"una página web llamativa, no todo en una sola página, que una abra otra"*. La interfaz
+se reconstruyó como **sitio de varias páginas con `react-router`** (una URL por página, se pueden
+compartir y el botón Atrás funciona):
+
+| Ruta | Qué es |
+|---|---|
+| `/` | Portada corta: titular, búsqueda en una frase («Busco *oficio* en *barrio*»), mazo de tarjetas con gente real (API-62), cinta de oficios, tres entradas a otras páginas, principios |
+| `/buscar` | Búsqueda guiada por la URL (`rubro`, `zona`, `radio`, `verificados`, `cal`): se comparte y se recarga sin perderla. **La ubicación exacta nunca va en la URL**: vive en memoria |
+| `/prestadores/:slug` | La ficha pública (API-05), pieza central: sobre la persona, servicios con precio, barrios, reseñas, y un lateral con el contacto que la persona eligió publicar |
+| `/barrios`, `/oficios` | Índices con cuánta gente hay en cada uno (API-62) |
+| `/profesionales` | La invitación a ofrecer un servicio: solo promete lo que la aplicación ya hace |
+| `/entrar`, `/crear-cuenta` | Con `?rol=prestador` la cuenta parte como profesional; entrar lleva a Mi ficha |
+| `/mi-ficha` | Editar el perfil es editar tu propia ficha: «Sobre ti», servicios y barrios se editan en su lugar, con una guía de lo que falta y publicar/pausar |
+| `*` | Página «no encontrada» con salida |
+
+**Decisiones mías (Pablo no las contestó, y quedan abiertas a cambio):** referencia visual = el
+prototipo `diseno/` llevado más lejos (cabecera flotante, titular enorme, cinta, tarjetas que se
+inclinan); **sin fotos por ahora** (las iniciales son la cara; la subida de archivos no existe);
+**el buscador no tiene perfil público**. El texto del sitio no promete sellos revisados, agenda ni
+reseñas escritas: no existen todavía.
+
+**Cómo verlo:** API (`ASPNETCORE_URLS=https://localhost:7277 ASPNETCORE_ENVIRONMENT=Development dotnet run
+--no-launch-profile` en `backend/src/Zass.Api`) y `npm run dev` en `frontend/` → https://localhost:5173.
+Datos de demostración: `frontend/pruebas-navegador/datos/sembrar-demo.sql` (21 personas inventadas; el
+promedio y el recuento de reseñas están escritos a mano, **no hay reseñas detrás**) y
+`limpiar-demo.sql` para quitarlos.
+
+**Se midió, no se supuso:**
+- API-62: 8 mutantes sobre «visible», orden, zona principal y sello; al principio **sobrevivieron 2**
+  (zona y sello) y se escribieron las pruebas que faltaban.
+- Renovación de sesión ante 401 (`cliente.ts`): 5 mutantes muertos; no renueva en `/api/auth/`.
+- Páginas: 8 mutantes, 6 muertos; 1 era una **redirección abierta** (`despues=//sitio-malo`), que ahora
+  tiene su prueba; el otro es equivalente en los flujos actuales.
+- `pruebas-navegador/mirar-sitio.mjs`: 11 páginas × escritorio y celular, sin desborde horizontal, sin
+  errores de consola, sin objetivos táctiles de menos de 44 px, Montserrat cargada. Encontró tres
+  fallos míos (desborde de 6–8 px en celular por `contenedor`+`seccion` en el mismo elemento, enlaces de
+  16–20 px, y un 401 en consola en cada visita anónima).
+- `pruebas-navegador/flujo-real.mjs`: cuenta → entrar → armar la ficha → publicar → aparece en la
+  búsqueda → ficha pública → recargar → salir, contra la API y PostgreSQL reales. **Destapó un fallo
+  real**: dos redirecciones competían tras entrar y un profesional caía en la portada.
+
+**Lo que NO está hecho, y no hay que dar por hecho:**
+
+| Falta | Por qué importa |
+|---|---|
+| **Página de verificar el correo** y de recuperar contraseña | El registro dice «revisa tu correo» pero no hay a dónde ir; el recorrido real lo verifica por SQL |
+| **Límite de la API pública: 100 peticiones por 15 min por IP** | Una portada hace ~3 (catálogo y comunidad se guardan en memoria). Detrás de una red compartida (café, datos móviles con NAT) varias personas comparten IP. **Hay que medir y decidir antes de salir a producción**; en desarrollo se sube con `Zass__Tasa__P` y `Zass__Tasa__G` |
+| `zass.cl` en línea | Solo Pablo: hosting, DNS y HTTPS. Falta decidir dónde corre la API, cookies `Secure`/`SameSite` para el dominio real y CORS |
+| Foto, títulos y dirección en Mi ficha | Dependen de subida de archivos y del geocodificador |
+| Montserrat desde Google Fonts | Conviene autoalojarla (privacidad y velocidad) |
+| Pruebas de Mi ficha en Vitest | Hoy la cubre el recorrido real en navegador; faltan pruebas de componente |
+| Pregunta 4 (ficha pública con suscripción vencida) | Sigue abierta y es de Pablo |
+
 ### MOD-05 Búsqueda — la frase entera, por fin
 
 Es el único módulo **sin tablas propias**: solo lee. Si alguna vez necesita una, está
@@ -509,7 +564,7 @@ Endpoints: **API-01 a API-05, 08-23**, más `GET /api/auth/csrf` y `GET /api/sal
 |---|---|---|
 | `Zass.Aplicacion.Pruebas` | **275** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02 a RN-S3-08, RN-S5-11, CC-02, y MOD-03, MOD-04 y MOD-05 completos |
 | `Zass.Integracion.Pruebas` | **231** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
-| `frontend` (Vitest) | **31** | Cliente HTTP y pantallas, con `fetch` simulado |
+| `frontend` (Vitest) | **96** | Cliente HTTP y pantallas, con `fetch` simulado |
 | `frontend/pruebas-navegador` | 2 guiones | Navegador real contra la API real: que la página monta, los colores de marca, y el registro e ingreso completos |
 
 Escritas con TDD: cada prueba se vio fallar antes de que existiera el código.

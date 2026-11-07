@@ -80,3 +80,29 @@ export function buscar(c: Criterios): Promise<PaginaDeBusqueda> {
 
   return obtener<PaginaDeBusqueda>(`/api/busqueda?${q.toString()}`)
 }
+
+/** API-05. La ficha publica completa. Lo que el prestador eligio mostrar y nada mas. */
+export interface FichaPublica {
+  id: string
+  slug: string
+  nombrePublico: string
+  descripcion: string | null
+  urlFoto: string | null
+  rubro: { id: number; codigo: string; nombre: string; icono: string | null } | null
+  zonas: { nombre: string; sector: string; esPrincipal: boolean }[]
+  servicios: { nombre: string; duracionMinutos: number; precioReferencia: number | null }[]
+  /** Nulo con menos de 3 resenas (RN-S5-11). */
+  promedioCalificacion: number | null
+  totalResenas: number
+  contacto: {
+    telefono: string | null
+    whatsapp: string | null
+    correo: string | null
+    sitioWeb: string | null
+  }
+  publicadoEn: string | null
+}
+
+export function fichaPublica(slug: string): Promise<FichaPublica> {
+  return obtener<FichaPublica>(`/api/prestadores/${encodeURIComponent(slug)}`)
+}
