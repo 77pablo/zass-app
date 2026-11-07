@@ -25,8 +25,8 @@ con las tablas `planes`, `suscripciones` y `pagos`; la pasarela no existe todav�
 ## 2. Resumen en una línea
 
 **MOD-01 Identidad, MOD-03 Catálogo, MOD-04 Geolocalización, MOD-05 Búsqueda y MOD-13 Suscripciones
-están construidos, con 457 pruebas en verde** (241 de aplicación sin base de datos, 185 de
-integración contra PostgreSQL real y la API por HTTPS, 31 de interfaz) más dos
+están construidos, con 537 pruebas en verde** (248 de aplicación sin base de datos, 210 de
+integración contra PostgreSQL real y la API por HTTPS, 79 de interfaz) más dos
 comprobaciones de navegador que crean una cuenta y entran contra la base de verdad.
 
 MOD-01 llega hasta la pantalla. MOD-03, MOD-04, MOD-05 y MOD-13 están completos de dominio a API y
@@ -77,6 +77,7 @@ fondo.
 | `PlanDePruebaSembrado` | El plan `prueba` como dato del esquema | `SELECT * FROM planes` |
 | `CatalogoSembrado` | 5 rubros y 39 servicios, la columna `nombre_normalizado`, el único `ux_servicio_rubro_nombre`, dos `CHECK` en `prestador_servicios` y la secuencia de `servicios` reiniciada en 1000 | `pg_indexes`, `pg_constraint`, y un `INSERT` real que devolvió el id **1000** |
 | `ZonasDeTemuco` | Las 16 zonas, el único `(comuna, nombre)` y la secuencia de `zonas` reiniciada en 100 | `pg_indexes` dice `CREATE UNIQUE INDEX`; un `INSERT` duplicado da **23505** y uno nuevo devuelve el id **100** |
+| `TramoDeDistancia` | La función `tramo_de_distancia(metros)`: el kilómetro entero que la búsqueda **muestra** y por el que **ordena** | Llamada con los bordes (1499, 1500, 2500, 3500) y comparada con `Geo.DistanciaPublica` por 13 casos de una prueba de integración. Con `round(double)` el 2,5 km da 2 y el dominio dice 3: la prueba cae justo ahí |
 
 ### Backend
 
@@ -249,11 +250,18 @@ Decisiones con prueba detrás:
   bytes de la respuesta**: ni latitud, ni longitud, ni dirección, ni metros, ni correo, ni
   teléfono pueden aparecer en el JSON, ni con otro nombre ni dentro de otro campo. Además hay
   una prueba estructural que falla si alguien agrega esos campos al DTO.
-- **Cursor keyset, nunca `OFFSET`**: `(metros, id)` por distancia y `(promedio, reseñas, id)`
-  por reputación. La consulta pide una fila más que la página para saber si hay siguiente sin
-  contar el total, y el cursor apunta a la última fila **servida**, no a la extra. Dos
-  prestadores a la misma distancia no se pisan gracias al desempate por id. Un cursor de una
-  búsqueda por distancia no sirve en una por zona.
+- **El orden: tramo de distancia, verificado, reputación pública, reseñas, id.** Por zona, lo
+  mismo sin el tramo. Ver "Cómo se arregló el orden" más abajo, que es la decisión con más
+  fondo de MOD-05.
+- **Cursor keyset, nunca `OFFSET`**, y **sobre la tupla entera por la que se ordena**:
+  `(tramo, verificado, reputación, reseñas, id)` por distancia y lo mismo sin el tramo por
+  zona. Si el cursor llevara menos columnas que el `ORDER BY`, un empate haría que la página
+  siguiente repitiera o se saltara a alguien. Una prueba pagina de a 2 una lista que mezcla
+  sello, reputación y reseñas, y exige que dé **exactamente** la lista pedida entera. La
+  consulta pide una fila más que la página para saber si hay siguiente sin contar el total, y
+  el cursor apunta a la última fila **servida**, no a la extra. Un cursor de una búsqueda por
+  distancia no sirve en una por zona, ni al revés, y uno fabricado a mano (un "verificado"
+  que no es 0 ni 1, un id que no es un guid) se rechaza antes de ir a la base.
 - **E-400 corrige, no rechaza:** un radio fuera de rango se lleva al valor válido más cercano y
   se informa. Por eso el validador de API-01 **no** mira el radio.
 - **Buscar desde fuera de toda zona conocida** devuelve una página vacía con el motivo, no un
@@ -268,6 +276,8 @@ Decisiones con prueba detrás:
 |---|---|
 | **`BuscarAgregadoPorZona`** y registrar la búsqueda de forma agregada (paso 13 de CU-08) | Es el dato que se le entrega al municipio, el segundo valor del producto para la postulación |
 | Flujos 4B (sugerencias sin resultados), 4D (reducir el radio si hay más de 200) y 4E (texto libre sin coincidencia) | Hoy sin resultados se devuelve una lista vacía y nada más |
+| **Desempate por completitud** (paso 7 de CU-08) | No existe ninguna medida de completitud del perfil. Hoy desempata verificado, reputación pública, reseñas e id |
+| **Control de radio en la pantalla**, y el flujo 4B ("ampliar el radio") | Ver el hallazgo 15: hoy quien busca con su ubicación nunca ve a alguien que cubre su zona pero se basa a más de 10 km |
 | La **caché de 60 s** (Redis, N-06) | No existe |
 | **La meta de rendimiento** (menos de 1 s en el percentil 95 con 1.000 perfiles) | **No está medida.** Las pruebas usan decenas de filas, y con el centroide de respaldo el GIST ni se usa. Hay que medir con `EXPLAIN` y con volumen antes de decir que cumple |
 
@@ -280,25 +290,48 @@ que es RN-S3-01 y RN-S3-09 funcionando de punta a punta. Lo demás:
 
 | # | Hallazgo | Estado |
 |---|---|---|
-| 10 | **El orden usa un promedio que la pantalla esconde.** "Estudio Nuevo Temuco" (2 reseñas, promedio guardado 5,0, **no público** por RN-S5-11) sale PRIMERO, por encima de "Corretaje Araucanía" (4,6 con 12 reseñas y verificado). La consulta ordena por el promedio guardado sin mirar si es público: el orden delata un número que se oculta, y a quien mira le parece arbitrario | **Sin arreglar. Es el siguiente paso** |
-| 11 | **El orden no desempata como dice CU-08** ("por credencial verificada, reputación y completitud"). Hoy todos los prestadores de una zona están a la **misma** distancia (la de su centroide), así que el desempate es lo único que ordena, y hoy sale por `id`, que es un UUID: orden arbitrario | Sin arreglar |
+| 10 | **El orden usa un promedio que la pantalla esconde.** "Estudio Nuevo Temuco" (2 reseñas, promedio guardado 5,0, **no público** por RN-S5-11) sale PRIMERO, por encima de "Corretaje Araucanía" (4,6 con 12 reseñas y verificado). La consulta ordena por el promedio guardado sin mirar si es público: el orden delata un número que se oculta, y a quien mira le parece arbitrario | **Arreglado**, con prueba que fallaba antes y una mutación por regla |
+| 11 | **El orden no desempata como dice CU-08** ("por credencial verificada, reputación y completitud"). Hoy todos los prestadores de una zona están a la **misma** distancia (la de su centroide), así que el desempate es lo único que ordena, y hoy sale por `id`, que es un UUID: orden arbitrario | **Arreglado** (ahora desempata verificado, reputación pública, reseñas e id) |
 | 12 | `salir()` dejaba escapar la promesa rechazada (un *Uncaught in promise*) cuando la API fallaba al cerrar sesión | Arreglado, con prueba |
 | 13 | Mi comprobación de la fuente decía OK sin saber nada: `document.fonts.check()` devuelve `true` para una fuente que **ni existe** | Corregida: ahora mira las fuentes que el navegador descargó (400, 600 y 800) |
+| 15 | **La pantalla no tiene control de radio.** Con la ubicación, el radio es 10 km y no se puede cambiar. Quien cubre tu zona pero se basa a más de 10 km (el centroide de su zona principal está a 14,5 km del Centro, en el caso de la prueba) **no aparece nunca**, y no hay cómo ampliar ni se le dice a la persona que hay alguien más lejos. El flujo 4B de CU-08 ("ampliar el radio") existe en el documento y no en el código | **Sin arreglar** |
 | 14 | Los guiones `flujo-real.mjs` y `humo.mjs` asumían que la app abría en "Entrar", y `humo.mjs` habría medido **el botón de la búsqueda escondida** en vez del de la pantalla, sin avisar | Corregidos; pasan |
 
-**Sobre el 10 y el 11, la decisión que hay que tomar** (y que el documento no cierra del todo):
-CU-08 pide desempatar por "credencial verificada, reputación y completitud", y el flujo 4C.4
-dice "reputación y credencial verificada" sin fijar cuál va primero. La propuesta es
-**verificado primero, luego reputación pública, luego número de reseñas, luego `id`**, porque
-el sello es la señal de confianza que ZASS! da y la reputación de un prestador nuevo todavía
-no existe. Es una decisión de producto: si Pablo prefiere reputación primero, es cambiar el
-orden de tres columnas en el SQL.
+### Cómo se arregló el orden
 
-Hay además una consideración de privacidad que conviene tener presente al tocar ese orden:
-ordenar por la distancia **exacta** filtra más que la distancia redondeada que se muestra.
-Dos prestadores a "a 3 km" que cambian de orden según desde dónde se busca delatan en qué
-lado de una línea están, y con muchas búsquedas esas líneas se cruzan. Ordenar por el tramo
-que se muestra y desempatar por calidad lo evitaría.
+El orden ahora es **tramo de distancia, verificado, reputación pública, número de reseñas, id**,
+y por zona lo mismo sin el tramo. Cada pieza tiene una razón y una prueba:
+
+- **La reputación que ordena es la pública.** La fila trae dos campos: el promedio tal como
+  está guardado (que el servicio muestra solo con 3 reseñas o más) y `ReputacionOrden`, que
+  vale -1 con menos de 3. Antes se ordenaba por el primero, y un 5,0 de 2 reseñas pasaba
+  delante de un 4,6 de 12 por un número que la pantalla no muestra.
+- **Se ordena por el TRAMO, no por los metros exactos.** El tramo es el kilómetro entero que
+  la pantalla muestra ("a 3 km"). Dos razones. (1) Hoy todos los prestadores de una zona
+  están a la **misma** distancia exacta —la de su centroide—, así que sin desempate el orden
+  era el de un UUID. (2) Ordenar por la distancia exacta **filtra más que la redondeada**: dos
+  prestadores de "a 3 km" que cambian de orden según desde dónde se busca delatan de qué lado
+  de una línea están, y con muchas búsquedas esas líneas se cruzan. Ordenar por lo que se
+  muestra no revela nada que no se muestre ya. Hay una prueba para cada lado: dentro del
+  mismo tramo manda la calidad, y en otro tramo manda la distancia aunque el lejano tenga sello.
+- **El redondeo vive una sola vez, en la base**, como la función `tramo_de_distancia`, y una
+  prueba la compara con `Geo.DistanciaPublica` en 13 valores de borde. Así el orden no puede
+  contradecir el texto que se ve ("a 3 km" delante de "a 2 km"). Y es `numeric`, no `double`:
+  `round(double)` redondea los empates al par, y la prueba demostró que con eso 2,5 km daba 2.
+- **El sello va antes que la reputación. Es una decisión de producto** que el documento no
+  fijaba: CU-08 lista "credencial verificada, reputación y completitud", y el flujo 4C.4
+  dice "reputación y credencial verificada" sin decir cuál primero. Se eligió el sello porque
+  es la señal de confianza que ZASS! da por sí misma y la reputación de un prestador nuevo
+  todavía no existe. Si Pablo prefiere lo contrario, es cambiar de lugar dos columnas en el
+  SQL y en una prueba.
+- **La completitud del perfil NO se usa**: no existe ninguna medida de ella.
+
+**Cómo se supo que estaba bien:** se mutaron cuatro reglas del SQL (el promedio oculto, el
+sello, el tramo y el cursor) y cayeron siete pruebas, cada mutación en la suya; y se mutó la
+función de la base y cayó la de los empates. Y se **volvió a mirar en un navegador real**: por
+zona sale Araucanía, Gestión Labranza, Nuevo Temuco, Asesoría y Propiedades del Sur, y con
+ubicación el orden por tramo. El guion de navegador ahora **mira el orden**, que antes no
+miraba y por eso el fallo solo se vio mirando una captura.
 
 **Pendiente de decidir, que no es código:** Montserrat se carga desde **Google Fonts por
 red**. Cada visitante le manda su dirección IP a Google antes de ver la página. Conviene
@@ -351,8 +384,8 @@ Endpoints: **API-01 a API-05, 08-23**, más `GET /api/auth/csrf` y `GET /api/sal
 
 | Proyecto | Cuántas | Qué cubre |
 |---|---|---|
-| `Zass.Aplicacion.Pruebas` | **241** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02 a RN-S3-08, RN-S5-11, CC-02, y MOD-03, MOD-04 y MOD-05 completos |
-| `Zass.Integracion.Pruebas` | **185** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
+| `Zass.Aplicacion.Pruebas` | **248** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02 a RN-S3-08, RN-S5-11, CC-02, y MOD-03, MOD-04 y MOD-05 completos |
+| `Zass.Integracion.Pruebas` | **210** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
 | `frontend` (Vitest) | **31** | Cliente HTTP y pantallas, con `fetch` simulado |
 | `frontend/pruebas-navegador` | 2 guiones | Navegador real contra la API real: que la página monta, los colores de marca, y el registro e ingreso completos |
 
@@ -545,10 +578,10 @@ HECHO   MOD-05 Busqueda          7-nov-2026, con 74 pruebas nuevas
 1. LAS PANTALLAS: perfil del prestador y busqueda                      <-- AQUI
    - Todo el backend que necesitan existe y esta probado: API-01 a API-05 y
      API-18 a API-23. Es lo que hace visible y tocable el producto
-   - ESTADO: HECHA la pantalla de BUSQUEDA, cableada como portada y vista en un
-     navegador real. FALTA: (a) EL ORDEN DE LOS RESULTADOS, que tiene un fallo y es
-     lo siguiente (ver "Lo que encontro verla en un navegador real"); (b) la
-     pantalla del perfil del prestador, que no existe todavia
+   - ESTADO: HECHA la pantalla de BUSQUEDA, cableada como portada, vista en un
+     navegador real, y con el orden de los resultados ya arreglado.
+     FALTA: (a) un control de radio en la busqueda con ubicacion (hallazgo 15);
+     (b) la pantalla del perfil del prestador, que no existe todavia
    - Perfil del prestador: rubro (API-02), servicios (API-03/20), zona
      (API-04/21), publicar (API-22) y ver su suscripcion de prueba
    - Busqueda: rubro, donde (zona, o ubicacion del navegador con el flujo 4A de
@@ -572,7 +605,7 @@ HECHO   MOD-05 Busqueda          7-nov-2026, con 74 pruebas nuevas
 **Por que las pantallas van ahora.** Con MOD-05 el camino completo del producto existe y
 esta probado por HTTP, pero **nadie puede verlo ni tocarlo**: un prestador no tiene como
 publicarse sin llamar a la API a mano, y un buscador no tiene donde buscar. Las pantallas son
-lo que convierte 457 pruebas en algo que se le puede ensenar a un municipio.
+lo que convierte 537 pruebas en algo que se le puede ensenar a un municipio.
 
 Despues siguen MOD-02 Credenciales (hoy el sello de verificado no lo puede dar nadie, aunque
 la busqueda ya lo lee) y MOD-06 Agenda. `BuscarAgregadoPorZona` conviene antes de la

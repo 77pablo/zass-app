@@ -25,6 +25,59 @@ namespace Zass.Infraestructura.Datos.Migraciones
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "postgis");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Zass.Aplicacion.Puertos.FilaDeBusqueda", b =>
+                {
+                    b.Property<string>("Descripcion")
+                        .HasColumnType("text")
+                        .HasColumnName("descripcion");
+
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<double?>("Metros")
+                        .HasColumnType("double precision")
+                        .HasColumnName("metros");
+
+                    b.Property<string>("NombrePublico")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("nombre_publico");
+
+                    b.Property<decimal?>("PromedioCalificacion")
+                        .HasColumnType("numeric")
+                        .HasColumnName("promedio_calificacion");
+
+                    b.Property<short>("RubroId")
+                        .HasColumnType("smallint")
+                        .HasColumnName("rubro_id");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("slug");
+
+                    b.Property<bool>("TieneVerificada")
+                        .HasColumnType("boolean")
+                        .HasColumnName("tiene_verificada");
+
+                    b.Property<int>("TotalResenas")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_resenas");
+
+                    b.Property<string>("UrlFoto")
+                        .HasColumnType("text")
+                        .HasColumnName("url_foto");
+
+                    b.Property<string>("ZonaPrincipal")
+                        .HasColumnType("text")
+                        .HasColumnName("zona_principal");
+
+                    b.ToTable((string)null);
+
+                    b.ToView(null, (string)null);
+                });
+
             modelBuilder.Entity("Zass.Dominio.Agenda.BloqueHorario", b =>
                 {
                     b.Property<Guid>("Id")

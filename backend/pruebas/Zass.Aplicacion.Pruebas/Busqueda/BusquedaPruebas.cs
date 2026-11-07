@@ -73,8 +73,12 @@ public class BusquedaPruebas
             RubroId = Corretaje,
             ZonaPrincipal = "Centro",
             Metros = metros,
+            // Lo que calcula la base: el kilometro entero que se muestra, y la reputacion
+            // PUBLICA, que vale -1 con menos de 3 resenas (RN-S5-11).
+            Tramo = metros is null ? null : metros < 1000 ? 0 : (int)Math.Round(metros.Value / 1000.0, MidpointRounding.AwayFromZero),
             TieneVerificada = verificada,
             PromedioCalificacion = promedio,
+            ReputacionOrden = resenas >= 3 && promedio is not null ? promedio.Value : -1m,
             TotalResenas = resenas,
         };
 
@@ -383,14 +387,17 @@ public class BusquedaPruebas
     {
         var ultimaServida = Guid.NewGuid();
         for (var i = 0; i < 19; i++) _repo.Filas.Add(UnaFila(metros: 1_000 + i));
-        _repo.Filas.Add(UnaFila(metros: 5_500, id: ultimaServida));   // la numero 20
+        _repo.Filas.Add(UnaFila(metros: 5_500, promedio: 4.2m, resenas: 7, verificada: true, id: ultimaServida));   // la numero 20
         _repo.Filas.Add(UnaFila(metros: 9_999));                      // la extra
 
         var primera = await _servicio.BuscarAsync(DesdeElPunto());
         await _servicio.BuscarAsync(DesdeElPunto(cursor: primera.Valor!.CursorSiguiente));
 
-        Assert.Equal(5_500, _repo.UltimoDesdeMetros);
-        Assert.Equal(ultimaServida, _repo.UltimoDesdeId);
+        // La posicion es la TUPLA entera por la que se ordena: con menos, un empate haria
+        // que la pagina siguiente repitiera o se saltara a alguien.
+        Assert.Equal(
+            new PosicionDeBusqueda(Tramo: 6, Verificada: true, Reputacion: 4.2m, Resenas: 7, Id: ultimaServida),
+            _repo.UltimaPosicion);
     }
 
     [Fact]
@@ -404,9 +411,29 @@ public class BusquedaPruebas
         var primera = await _servicio.BuscarAsync(DesdeLaZona());
         await _servicio.BuscarAsync(DesdeLaZona(cursor: primera.Valor!.CursorSiguiente));
 
-        Assert.Equal(4.2m, _repo.UltimoDesdePromedio);
-        Assert.Equal(7, _repo.UltimoDesdeResenas);
-        Assert.Equal(ultima, _repo.UltimoDesdeId);
+        Assert.Equal(
+            new PosicionDeBusqueda(Tramo: null, Verificada: false, Reputacion: 4.2m, Resenas: 7, Id: ultima),
+            _repo.UltimaPosicion);
+    }
+
+    /// <summary>
+    /// El cursor lleva lo que ORDENA, no lo que se muestra. Una fila con 2 resenas y un 5,0
+    /// guardado muestra "2 reseñas" y se ordena como -1: si el cursor llevara el 5,0, la
+    /// pagina siguiente se posicionaria donde la base no puso a esa fila y se saltaria a
+    /// gente.
+    /// </summary>
+    [Fact]
+    public async Task El_cursor_lleva_la_reputacion_que_ordena_y_no_el_promedio_oculto()
+    {
+        for (var i = 0; i < 20; i++) _repo.Filas.Add(UnaFila(promedio: 5m, resenas: 10));
+        _repo.Filas[19] = UnaFila(promedio: 5.0m, resenas: 2);     // la ultima servida
+        _repo.Filas.Add(UnaFila());                                // la extra
+
+        var primera = await _servicio.BuscarAsync(DesdeLaZona());
+        await _servicio.BuscarAsync(DesdeLaZona(cursor: primera.Valor!.CursorSiguiente));
+
+        Assert.Equal(-1m, _repo.UltimaPosicion!.Reputacion);
+        Assert.Equal(2, _repo.UltimaPosicion!.Resenas);
     }
 
     [Theory]
@@ -436,6 +463,42 @@ public class BusquedaPruebas
 
         Assert.False(r.Exito);
         Assert.Equal(Fallas.Validacion, r.Codigo);
+    }
+
+    /// <summary>Al reves: un cursor de zona no sirve para buscar por distancia.</summary>
+    [Fact]
+    public async Task Un_cursor_de_zona_no_sirve_para_buscar_por_distancia()
+    {
+        for (var i = 0; i < 21; i++) _repo.Filas.Add(UnaFila(promedio: 4m, resenas: 5));
+        var porZona = await _servicio.BuscarAsync(DesdeLaZona());
+
+        var r = await _servicio.BuscarAsync(DesdeElPunto(cursor: porZona.Valor!.CursorSiguiente));
+
+        Assert.False(r.Exito);
+        Assert.Equal(Fallas.Validacion, r.Codigo);
+    }
+
+    /// <summary>
+    /// El campo "verificado" del cursor solo puede ser 0 o 1. Un 7 es un cursor fabricado a
+    /// mano, y aceptarlo seria comparar la tupla del keyset contra un valor que ninguna
+    /// fila puede tener.
+    /// </summary>
+    [Theory]
+    [InlineData("r|7|4|3|{id}")]                      // verificado solo puede ser 0 o 1
+    [InlineData("r|1|no-es-un-numero|3|{id}")]
+    [InlineData("r|1|4|tres|{id}")]
+    [InlineData("r|1|4|3|no-es-un-guid")]
+    [InlineData("d|1|1|4|3|{id}")]                    // letra de distancia en una busqueda por zona
+    public async Task Un_cursor_fabricado_a_mano_se_rechaza(string plantilla)
+    {
+        var texto = plantilla.Replace("{id}", Guid.NewGuid().ToString());
+        var cursor = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(texto));
+
+        var r = await _servicio.BuscarAsync(DesdeLaZona(cursor: cursor));
+
+        Assert.False(r.Exito);
+        Assert.Equal(Fallas.Validacion, r.Codigo);
+        Assert.Equal(0, _repo.Llamadas);
     }
 
     // ------------------------------------------------------------- los filtros de CS-09

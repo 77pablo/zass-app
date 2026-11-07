@@ -100,25 +100,24 @@ public sealed class ServicioBusqueda : IServicioBusqueda
 
         if (criterios.TienePunto)
         {
-            var cursor = LeerCursorDeDistancia(criterios.Cursor);
+            var cursor = LeerCursor(criterios.Cursor, porDistancia: true);
             if (!cursor.Exito)
                 return Resultado.Falla<PaginaDeBusqueda>(cursor.Codigo!, cursor.Mensaje!);
 
             var filas = await _repo.PorDistanciaAsync(
                 consulta, criterios.Latitud!.Value, criterios.Longitud!.Value,
-                radioKm * 1000, cursor.Valor.Metros, cursor.Valor.Id, ct);
+                radioKm * 1000, cursor.Valor, ct);
 
             return Resultado.Ok(Armar(
                 filas, criterios, zona, ordenadoPorDistancia: true, avisos));
         }
         else
         {
-            var cursor = LeerCursorDeReputacion(criterios.Cursor);
+            var cursor = LeerCursor(criterios.Cursor, porDistancia: false);
             if (!cursor.Exito)
                 return Resultado.Falla<PaginaDeBusqueda>(cursor.Codigo!, cursor.Mensaje!);
 
-            var filas = await _repo.PorZonaAsync(
-                consulta, cursor.Valor.Promedio, cursor.Valor.Resenas, cursor.Valor.Id, ct);
+            var filas = await _repo.PorZonaAsync(consulta, cursor.Valor, ct);
 
             // RN-S3-07 y flujo 4C de CU-08: sin punto no hay orden por distancia, y la
             // respuesta tiene que decirlo. El cliente muestra "Mostramos por zona".
@@ -153,10 +152,10 @@ public sealed class ServicioBusqueda : IServicioBusqueda
                 ? Geo.DistanciaPublica(f.Metros.Value)
                 : null,
             f.TieneVerificada,
-            // RN-S5-11. Con menos de 3 resenas se muestra el recuento, no el promedio. La
-            // consulta por zona guarda -1 en vez de nulo para poder ordenar, asi que eso
-            // tambien se traduce aqui y no se escapa al cliente.
-            f.TotalResenas >= 3 && f.PromedioCalificacion is > 0 ? f.PromedioCalificacion : null,
+            // RN-S5-11. Con menos de 3 resenas se muestra el recuento, no el promedio. El
+            // promedio de la fila es el guardado, sin tocar: lo que ordena es OTRO campo
+            // (ReputacionOrden), y asi un -1 de ordenar nunca puede llegar al cliente.
+            f.TotalResenas >= 3 ? f.PromedioCalificacion : null,
             f.TotalResenas,
             criterios.QuienBuscaPerfilId is not null && f.Id == criterios.QuienBuscaPerfilId)).ToList();
 
@@ -175,52 +174,63 @@ public sealed class ServicioBusqueda : IServicioBusqueda
 
     // ------------------------------------------------------------- cursor
     //
-    // El cursor lleva la ultima fila servida, no un numero de pagina: con OFFSET, la
-    // pagina 50 obliga al motor a contar y descartar 1.000 filas en cada peticion
-    // (CU-08, seccion 7). Va en Base64 para que nadie lo lea como una invitacion a
-    // fabricarlo a mano, no por seguridad: lo que contiene es publico y de todas formas
-    // se valida.
+    // El cursor lleva la POSICION de la ultima fila servida —la misma tupla por la que se
+    // ordena—, no un numero de pagina: con OFFSET, la pagina 50 obliga al motor a contar
+    // y descartar 1.000 filas en cada peticion (CU-08, seccion 7). Si llevara menos que la
+    // tupla entera, un empate haria que la pagina siguiente repitiera o se saltara a
+    // alguien. Va en Base64 para que nadie lo lea como una invitacion a fabricarlo a mano,
+    // no por seguridad: lo que contiene es publico y de todas formas se valida.
+    //
+    //   por distancia:  d|tramo|verificado|reputacion|resenas|id
+    //   por zona:       r|verificado|reputacion|resenas|id
 
     private static string EscribirCursor(FilaDeBusqueda ultima, bool porDistancia)
     {
+        var verificada = ultima.TieneVerificada ? 1 : 0;
         var texto = porDistancia
             ? string.Create(CultureInfo.InvariantCulture,
-                $"d|{ultima.Metros ?? 0:0.###}|{ultima.Id}")
+                $"d|{ultima.Tramo ?? 0}|{verificada}|{ultima.ReputacionOrden:0.###}|{ultima.TotalResenas}|{ultima.Id}")
             : string.Create(CultureInfo.InvariantCulture,
-                $"r|{ultima.PromedioCalificacion ?? -1:0.###}|{ultima.TotalResenas}|{ultima.Id}");
+                $"r|{verificada}|{ultima.ReputacionOrden:0.###}|{ultima.TotalResenas}|{ultima.Id}");
 
         return Convert.ToBase64String(Encoding.UTF8.GetBytes(texto));
     }
 
-    private static Resultado<(double? Metros, Guid? Id)> LeerCursorDeDistancia(string? cursor)
+    /// <summary>Nulo (con exito) es "primera pagina". Un cursor roto es entrada invalida.</summary>
+    private static Resultado<PosicionDeBusqueda?> LeerCursor(string? cursor, bool porDistancia)
     {
-        if (string.IsNullOrWhiteSpace(cursor)) return Resultado.Ok<(double?, Guid?)>((null, null));
+        if (string.IsNullOrWhiteSpace(cursor)) return Resultado.Ok<PosicionDeBusqueda?>(null);
+
+        var invalido = Resultado.Falla<PosicionDeBusqueda?>(
+            Fallas.Validacion, "Ese cursor no es valido. Vuelve a buscar.");
 
         var partes = Partes(cursor);
-        if (partes is null || partes.Length != 3 || partes[0] != "d"
-            || !double.TryParse(partes[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var metros)
-            || !Guid.TryParse(partes[2], out var id))
-            return Resultado.Falla<(double?, Guid?)>(Fallas.Validacion,
-                "Ese cursor no es valido. Vuelve a buscar.");
+        var letra = porDistancia ? "d" : "r";
+        var esperadas = porDistancia ? 6 : 5;
 
-        return Resultado.Ok<(double?, Guid?)>((metros, id));
-    }
+        // Un cursor de una busqueda por distancia no sirve en una por zona, y al reves: el
+        // orden es otro y la fila a la que apunta no significa lo mismo. Aceptarlo
+        // devolveria una pagina que se salta resultados sin que nadie lo note.
+        if (partes is null || partes.Length != esperadas || partes[0] != letra) return invalido;
 
-    private static Resultado<(decimal? Promedio, int? Resenas, Guid? Id)> LeerCursorDeReputacion(
-        string? cursor)
-    {
-        if (string.IsNullOrWhiteSpace(cursor))
-            return Resultado.Ok<(decimal?, int?, Guid?)>((null, null, null));
+        var i = 1;
+        int? tramo = null;
+        if (porDistancia)
+        {
+            if (!int.TryParse(partes[i++], NumberStyles.Integer, CultureInfo.InvariantCulture, out var t))
+                return invalido;
+            tramo = t;
+        }
 
-        var partes = Partes(cursor);
-        if (partes is null || partes.Length != 4 || partes[0] != "r"
-            || !decimal.TryParse(partes[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var promedio)
-            || !int.TryParse(partes[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out var resenas)
-            || !Guid.TryParse(partes[3], out var id))
-            return Resultado.Falla<(decimal?, int?, Guid?)>(Fallas.Validacion,
-                "Ese cursor no es valido. Vuelve a buscar.");
+        if (!int.TryParse(partes[i++], NumberStyles.Integer, CultureInfo.InvariantCulture, out var verificada)
+            || verificada is not (0 or 1)
+            || !decimal.TryParse(partes[i++], NumberStyles.Float, CultureInfo.InvariantCulture, out var reputacion)
+            || !int.TryParse(partes[i++], NumberStyles.Integer, CultureInfo.InvariantCulture, out var resenas)
+            || !Guid.TryParse(partes[i], out var id))
+            return invalido;
 
-        return Resultado.Ok<(decimal?, int?, Guid?)>((promedio, resenas, id));
+        return Resultado.Ok<PosicionDeBusqueda?>(
+            new PosicionDeBusqueda(tramo, verificada == 1, reputacion, resenas, id));
     }
 
     private static string[]? Partes(string cursor)

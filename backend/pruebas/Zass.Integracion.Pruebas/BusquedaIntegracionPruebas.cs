@@ -155,11 +155,30 @@ public class BusquedaIntegracionPruebas : IDisposable
 
     private Task<IReadOnlyList<FilaDeBusqueda>> BuscarDesdeLaPlazaAsync(
         CriteriosDeConsulta? consulta = null, int radioMetros = 50_000,
-        double? desdeMetros = null, Guid? desdeId = null) =>
+        PosicionDeBusqueda? desde = null) =>
         _repo.PorDistanciaAsync(
             consulta ?? Consulta(_reloj.Ahora),
-            PlazaDeTemuco.Latitud, PlazaDeTemuco.Longitud, radioMetros,
-            desdeMetros, desdeId);
+            PlazaDeTemuco.Latitud, PlazaDeTemuco.Longitud, radioMetros, desde);
+
+    /// <summary>La posicion que el servicio pondria en el cursor despues de servir esta fila.</summary>
+    private static PosicionDeBusqueda Posicion(FilaDeBusqueda f) =>
+        new(f.Tramo, f.TieneVerificada, f.ReputacionOrden, f.TotalResenas, f.Id);
+
+    /// <summary>
+    /// Un punto al norte de la plaza, a esos kilometros. Un grado de latitud son unos
+    /// 111,2 km, asi que la cuenta es directa y las pruebas pueden decir "este esta a 2,6
+    /// km" sin inventarse coordenadas.
+    /// </summary>
+    private static (double Latitud, double Longitud) AlNorteDeLaPlaza(double km) =>
+        (PlazaDeTemuco.Latitud + km / 111.195, PlazaDeTemuco.Longitud);
+
+    private async Task<Guid[]> IdsEnOrdenAsync(bool porDistancia)
+    {
+        var filas = porDistancia
+            ? await BuscarDesdeLaPlazaAsync()
+            : await _repo.PorZonaAsync(Consulta(_reloj.Ahora), null);
+        return filas.Select(f => f.Id).ToArray();
+    }
 
     // ------------------------------------------------- RN-S3-09, las dos puntas
 
@@ -421,41 +440,43 @@ public class BusquedaIntegracionPruebas : IDisposable
     // ------------------------------------------------- el cursor, contra la base
 
     /// <summary>
-    /// La paginacion por cursor, de verdad: con limite 2 y tres prestadores a distintas
-    /// distancias, la segunda pagina tiene que empezar exactamente donde termino la
+    /// La paginacion por cursor, de verdad: con limite 2 y tres prestadores en tramos
+    /// distintos, la segunda pagina tiene que empezar exactamente donde termino la
     /// primera, sin repetir ni saltarse a nadie.
     /// </summary>
     [Fact]
     public async Task El_cursor_pagina_sin_repetir_ni_saltarse_a_nadie()
     {
-        var a = await UnPrestadorBuscableAsync(latitud: -38.7360, longitud: -72.5905);
-        var b = await UnPrestadorBuscableAsync(latitud: -38.7380, longitud: -72.5905);
-        var c = await UnPrestadorBuscableAsync(latitud: -38.7420, longitud: -72.5905);
+        var (laA, loA) = AlNorteDeLaPlaza(0.2);    // tramo 0
+        var (laB, loB) = AlNorteDeLaPlaza(1.1);    // tramo 1
+        var (laC, loC) = AlNorteDeLaPlaza(2.2);    // tramo 2
+        var a = await UnPrestadorBuscableAsync(latitud: laA, longitud: loA);
+        var b = await UnPrestadorBuscableAsync(latitud: laB, longitud: loB);
+        var c = await UnPrestadorBuscableAsync(latitud: laC, longitud: loC);
 
         var primera = await BuscarDesdeLaPlazaAsync(Consulta(_reloj.Ahora, limite: 2));
         var segunda = await BuscarDesdeLaPlazaAsync(
-            Consulta(_reloj.Ahora, limite: 2),
-            desdeMetros: primera[^1].Metros, desdeId: primera[^1].Id);
+            Consulta(_reloj.Ahora, limite: 2), desde: Posicion(primera[^1]));
 
         Assert.Equal(new[] { a.Id, b.Id }, primera.Select(f => f.Id).ToArray());
         Assert.Equal(c.Id, Assert.Single(segunda).Id);
     }
 
     /// <summary>
-    /// El caso que rompe un cursor hecho solo con la distancia: dos prestadores a la
-    /// MISMA distancia. Sin el desempate por identificador, uno de los dos se repetiria
-    /// en las dos paginas y el otro no aparecerian nunca.
+    /// El caso que rompe un cursor hecho con menos que la tupla entera: dos prestadores
+    /// EMPATADOS en todo. Sin el desempate por identificador, uno se repetiria en las dos
+    /// paginas y el otro no apareceria nunca.
     /// </summary>
     [Fact]
-    public async Task Dos_prestadores_a_la_misma_distancia_no_se_pisan_en_el_cursor()
+    public async Task Dos_prestadores_empatados_en_todo_no_se_pisan_en_el_cursor()
     {
-        var uno = await UnPrestadorBuscableAsync(latitud: -38.7370, longitud: -72.5905);
-        var otro = await UnPrestadorBuscableAsync(latitud: -38.7370, longitud: -72.5905);
+        var (la, lo) = AlNorteDeLaPlaza(0.4);
+        var uno = await UnPrestadorBuscableAsync(latitud: la, longitud: lo);
+        var otro = await UnPrestadorBuscableAsync(latitud: la, longitud: lo);
 
         var primera = await BuscarDesdeLaPlazaAsync(Consulta(_reloj.Ahora, limite: 1));
         var segunda = await BuscarDesdeLaPlazaAsync(
-            Consulta(_reloj.Ahora, limite: 1),
-            desdeMetros: primera[^1].Metros, desdeId: primera[^1].Id);
+            Consulta(_reloj.Ahora, limite: 1), desde: Posicion(primera[^1]));
 
         Assert.Single(primera);
         Assert.Single(segunda);
@@ -464,6 +485,218 @@ public class BusquedaIntegracionPruebas : IDisposable
             new[] { uno.Id, otro.Id }.OrderBy(x => x).ToArray(),
             new[] { primera[0].Id, segunda[0].Id }.OrderBy(x => x).ToArray());
     }
+
+    /// <summary>
+    /// El cursor sobre la tupla ENTERA, con un orden que mezcla verificado, reputacion y
+    /// resenas: paginar de a 2 tiene que dar exactamente la misma lista que pedirla
+    /// entera, en las dos busquedas. Es la prueba que habria cazado un cursor que
+    /// comparara menos columnas que el ORDER BY.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Paginar_de_a_dos_da_la_misma_lista_que_pedirla_entera(bool porDistancia)
+    {
+        await UnPrestadorBuscableAsync(conCredencialVerificada: true, promedio: 4.1m, resenas: 8);
+        await UnPrestadorBuscableAsync(conCredencialVerificada: true, promedio: 4.1m, resenas: 8);
+        await UnPrestadorBuscableAsync(conCredencialVerificada: true);
+        await UnPrestadorBuscableAsync(promedio: 4.9m, resenas: 30);
+        await UnPrestadorBuscableAsync(promedio: 4.9m, resenas: 12);
+        await UnPrestadorBuscableAsync(promedio: 3.0m, resenas: 4);
+        await UnPrestadorBuscableAsync(promedio: 5.0m, resenas: 2);   // oculto: cuenta como -1
+        await UnPrestadorBuscableAsync();
+
+        async Task<IReadOnlyList<FilaDeBusqueda>> Pagina(int limite, PosicionDeBusqueda? desde) =>
+            porDistancia
+                ? await BuscarDesdeLaPlazaAsync(Consulta(_reloj.Ahora, limite: limite), desde: desde)
+                : await _repo.PorZonaAsync(Consulta(_reloj.Ahora, limite: limite), desde);
+
+        var entera = (await Pagina(50, null)).Select(f => f.Id).ToArray();
+
+        var porPaginas = new List<Guid>();
+        PosicionDeBusqueda? posicion = null;
+        for (var vuelta = 0; vuelta < 10; vuelta++)
+        {
+            var pagina = await Pagina(2, posicion);
+            if (pagina.Count == 0) break;
+            porPaginas.AddRange(pagina.Select(f => f.Id));
+            posicion = Posicion(pagina[^1]);
+        }
+
+        Assert.Equal(8, entera.Length);
+        Assert.Equal(entera, porPaginas.ToArray());
+        Assert.Equal(porPaginas.Count, porPaginas.Distinct().Count());
+    }
+
+    // ------------------------------------------------- el orden (hallazgos 10 y 11)
+
+    /// <summary>
+    /// El fallo que se vio con los ojos en un navegador real. "Estudio Nuevo Temuco", con 2
+    /// resenas y un 5,0 guardado, salia PRIMERO por encima de uno con 4,6 y 12 resenas,
+    /// aunque la pantalla no muestra su promedio (RN-S5-11). Se ordenaba por un numero que
+    /// se esconde: el orden lo delataba y a quien miraba le parecia arbitrario.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Un_promedio_que_la_pantalla_esconde_no_adelanta_a_uno_publico(bool porDistancia)
+    {
+        var oculto = await UnPrestadorBuscableAsync(promedio: 5.0m, resenas: 2);
+        var publico = await UnPrestadorBuscableAsync(promedio: 4.6m, resenas: 12);
+
+        var ids = await IdsEnOrdenAsync(porDistancia);
+
+        Assert.Equal(new[] { publico.Id, oculto.Id }, ids);
+    }
+
+    /// <summary>
+    /// El sello va antes que la reputacion: es la senal de confianza que ZASS! da por si
+    /// misma, y un prestador nuevo todavia no tiene reputacion que mostrar. Es una decision
+    /// de producto —CU-08 lista "credencial verificada, reputacion y completitud", y el
+    /// flujo 4C.4 no fija cual va primero—; si se prefiere al reves, se cambian estas dos
+    /// columnas de lugar en el SQL y en esta prueba.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Un_prestador_verificado_va_antes_que_uno_con_mejor_reputacion(bool porDistancia)
+    {
+        var sinSello = await UnPrestadorBuscableAsync(promedio: 4.9m, resenas: 50);
+        var conSello = await UnPrestadorBuscableAsync(conCredencialVerificada: true);
+
+        var ids = await IdsEnOrdenAsync(porDistancia);
+
+        Assert.Equal(new[] { conSello.Id, sinSello.Id }, ids);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_igual_reputacion_gana_quien_tiene_mas_resenas(bool porDistancia)
+    {
+        var cinco = await UnPrestadorBuscableAsync(promedio: 4.0m, resenas: 5);
+        var nueve = await UnPrestadorBuscableAsync(promedio: 4.0m, resenas: 9);
+
+        var ids = await IdsEnOrdenAsync(porDistancia);
+
+        Assert.Equal(new[] { nueve.Id, cinco.Id }, ids);
+    }
+
+    /// <summary>
+    /// Dos prestadores en la misma zona estan a la MISMA distancia exacta: la de su
+    /// centroide. Antes el desempate salia por `id`, que es un UUID: orden arbitrario y
+    /// distinto en cada base. Ahora es determinista.
+    /// </summary>
+    [Fact]
+    public async Task Los_empatados_en_todo_salen_siempre_en_el_mismo_orden()
+    {
+        await UnPrestadorBuscableAsync();
+        await UnPrestadorBuscableAsync();
+        await UnPrestadorBuscableAsync();
+
+        var primera = await IdsEnOrdenAsync(porDistancia: true);
+        var segunda = await IdsEnOrdenAsync(porDistancia: true);
+
+        Assert.Equal(primera, segunda);
+        Assert.Equal(primera.OrderBy(x => x).ToArray(), primera);   // y por id, ascendente
+    }
+
+    /// <summary>
+    /// Dentro del MISMO tramo —los dos son "a 3 km"— manda la calidad y no los metros
+    /// exactos. Ordenar por la distancia exacta filtra mas de lo que la pantalla muestra:
+    /// si dos prestadores de "a 3 km" cambian de orden segun desde donde se busca, delatan
+    /// de que lado de una linea estan.
+    /// </summary>
+    [Fact]
+    public async Task Dentro_del_mismo_tramo_manda_la_calidad_y_no_la_distancia_exacta()
+    {
+        var (laCerca, loCerca) = AlNorteDeLaPlaza(2.61);    // "a 3 km"
+        var (laLejos, loLejos) = AlNorteDeLaPlaza(3.45);    // tambien "a 3 km"
+        var mas_cerca_sin_sello = await UnPrestadorBuscableAsync(latitud: laCerca, longitud: loCerca);
+        var mas_lejos_con_sello = await UnPrestadorBuscableAsync(
+            latitud: laLejos, longitud: loLejos, conCredencialVerificada: true);
+
+        var filas = await BuscarDesdeLaPlazaAsync();
+
+        Assert.Equal(3, filas[0].Tramo);
+        Assert.Equal(3, filas[1].Tramo);
+        Assert.True(filas[0].Metros < filas[1].Metros || filas[0].Id == mas_lejos_con_sello.Id);
+        Assert.Equal(
+            new[] { mas_lejos_con_sello.Id, mas_cerca_sin_sello.Id },
+            filas.Select(f => f.Id).ToArray());
+    }
+
+    /// <summary>En OTRO tramo, en cambio, manda la distancia aunque el mas lejano tenga sello.</summary>
+    [Fact]
+    public async Task En_otro_tramo_manda_la_distancia_aunque_el_lejano_este_verificado()
+    {
+        var (laCerca, loCerca) = AlNorteDeLaPlaza(0.45);    // "a menos de 1 km"
+        var (laLejos, loLejos) = AlNorteDeLaPlaza(3.45);    // "a 3 km"
+        var cerca = await UnPrestadorBuscableAsync(latitud: laCerca, longitud: loCerca);
+        var lejos = await UnPrestadorBuscableAsync(
+            latitud: laLejos, longitud: loLejos, conCredencialVerificada: true);
+
+        var filas = await BuscarDesdeLaPlazaAsync();
+
+        Assert.Equal(new[] { cerca.Id, lejos.Id }, filas.Select(f => f.Id).ToArray());
+    }
+
+    /// <summary>
+    /// El tramo por el que se ORDENA tiene que ser el que se MUESTRA. Si la base redondeara
+    /// distinto que Geo.DistanciaPublica, el orden contradiria lo que dice la pantalla:
+    /// "a 3 km" delante de "a 2 km". Aqui se compara fila por fila, sobre distancias que
+    /// calculo PostGIS de verdad.
+    /// </summary>
+    [Fact]
+    public async Task El_tramo_de_cada_fila_es_el_que_dice_su_texto_publico()
+    {
+        foreach (var km in new[] { 0.3, 0.9, 1.2, 1.8, 2.4, 3.3 })
+        {
+            var (la, lo) = AlNorteDeLaPlaza(km);
+            await UnPrestadorBuscableAsync(latitud: la, longitud: lo);
+        }
+
+        var filas = await BuscarDesdeLaPlazaAsync();
+
+        Assert.Equal(6, filas.Count);
+        foreach (var f in filas)
+            Assert.Equal(TramoDelTexto(Geo.DistanciaPublica(f.Metros!.Value)), f.Tramo);
+    }
+
+    /// <summary>
+    /// La funcion de la base contra la regla del dominio, en los bordes: justo debajo,
+    /// justo en y justo encima de cada corte. Incluye los empates (1,5 y 2,5 km), donde
+    /// round(double precision) de PostgreSQL redondea al par y Geo.DistanciaPublica se
+    /// aleja de cero: con `numeric` coinciden, y esto lo prueba.
+    /// </summary>
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(1.0)]
+    [InlineData(999.99)]
+    [InlineData(1000.0)]
+    [InlineData(1000.01)]
+    [InlineData(1499.99)]
+    [InlineData(1500.0)]
+    [InlineData(1500.01)]
+    [InlineData(2499.99)]
+    [InlineData(2500.0)]
+    [InlineData(3500.0)]
+    [InlineData(49_999.0)]
+    [InlineData(50_000.0)]
+    public async Task La_funcion_de_la_base_redondea_igual_que_el_dominio(double metros)
+    {
+        var enLaBase = await _prueba.Ctx.Database
+            .SqlQuery<int>($"SELECT tramo_de_distancia({metros}::float8) AS \"Value\"")
+            .SingleAsync();
+
+        Assert.Equal(TramoDelTexto(Geo.DistanciaPublica(metros)), enLaBase);
+    }
+
+    /// <summary>"a menos de 1 km" es el tramo 0; "a N km" es el tramo N.</summary>
+    private static int TramoDelTexto(string texto) =>
+        texto.Contains("menos de 1 km")
+            ? 0
+            : int.Parse(System.Text.RegularExpressions.Regex.Match(texto, @"\d+").Value);
 
     // ------------------------------------------------- la busqueda por zona
 
@@ -474,7 +707,7 @@ public class BusquedaIntegracionPruebas : IDisposable
         var peor = await UnPrestadorBuscableAsync(promedio: 3.2m, resenas: 10);
         var sinResenas = await UnPrestadorBuscableAsync();
 
-        var filas = await _repo.PorZonaAsync(Consulta(_reloj.Ahora), null, null, null);
+        var filas = await _repo.PorZonaAsync(Consulta(_reloj.Ahora), null);
 
         Assert.Equal(
             new[] { mejor.Id, peor.Id, sinResenas.Id },
@@ -490,7 +723,7 @@ public class BusquedaIntegracionPruebas : IDisposable
         await UnPrestadorBuscableAsync(zonaId: Labranza);
         var buscable = await UnPrestadorBuscableAsync();
 
-        var filas = await _repo.PorZonaAsync(Consulta(_reloj.Ahora), null, null, null);
+        var filas = await _repo.PorZonaAsync(Consulta(_reloj.Ahora), null);
 
         Assert.Equal(buscable.Id, Assert.Single(filas).Id);
     }

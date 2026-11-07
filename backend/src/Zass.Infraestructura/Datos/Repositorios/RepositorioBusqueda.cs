@@ -20,8 +20,15 @@ namespace Zass.Infraestructura.Datos.Repositorios;
 /// <b>La duplicacion que esto crea, y como se vigila.</b> La condicion de vigencia
 /// —estado en (Prueba, Activa) y fecha futura— vive en C# dentro de MOD-13 y otra vez
 /// aqui en SQL. No hay forma de evitarlo sin renunciar al filtro en la base. Hay una
-/// prueba de integracion que compara las dos puntas: lo que esta consulta deja pasar es
-/// exactamente lo que `IServicioSuscripciones.EstaVigenteAsync` llamaria vigente.
+/// prueba de integracion que compara las dos puntas.
+///
+/// <b>El orden.</b> Verificado primero, luego reputacion PUBLICA, luego numero de resenas,
+/// luego el identificador. Y por distancia, el TRAMO que se muestra y no los metros
+/// exactos (ver <see cref="IRepositorioBusqueda"/>). La reputacion que ordena es
+/// <c>reputacion_orden</c>, que vale -1 con menos de 3 resenas (RN-S5-11): ordenar por el
+/// promedio guardado hacia que un 5,0 de 2 resenas, que la pantalla no muestra, pasara
+/// delante de un 4,6 de 12. El mismo criterio esta en las dos consultas y, por la forma
+/// en que el cursor es una tupla, tiene que estar identico en el ORDER BY y en el cursor.
 /// </summary>
 public sealed class RepositorioBusquedaEfCore : IRepositorioBusqueda
 {
@@ -30,14 +37,16 @@ public sealed class RepositorioBusquedaEfCore : IRepositorioBusqueda
 
     public async Task<IReadOnlyList<FilaDeBusqueda>> PorDistanciaAsync(
         CriteriosDeConsulta c, double latitud, double longitud, int radioMetros,
-        double? desdeMetros, Guid? desdeId, CancellationToken ct = default)
+        PosicionDeBusqueda? desde, CancellationToken ct = default)
     {
-        // El cursor es keyset: (metros, id) mayores que los de la ultima fila servida.
-        // Con dos parametros nulos la condicion se vuelve verdadera y sirve de primera
-        // pagina, asi que hay una sola consulta y no dos textos que se desincronicen.
-        var cursorMetros = desdeMetros ?? -1;
-        var cursorId = desdeId ?? Guid.Empty;
-        var hayCursor = desdeMetros is not null;
+        // Con cursor nulo, las condiciones de abajo se vuelven verdaderas y sirven de
+        // primera pagina: hay una sola consulta y no dos textos que se desincronicen.
+        var hayCursor = desde is not null;
+        var cTramo = desde?.Tramo ?? -1;
+        var cVerificada = desde is { Verificada: true } ? 1 : 0;
+        var cReputacion = desde?.Reputacion ?? -1m;
+        var cResenas = desde?.Resenas ?? -1;
+        var cId = desde?.Id ?? Guid.Empty;
 
         return await _ctx.Set<FilaDeBusqueda>().FromSqlInterpolated($"""
             WITH punto AS (
@@ -53,22 +62,17 @@ public sealed class RepositorioBusquedaEfCore : IRepositorioBusqueda
                     p.rubro_id                                  AS rubro_id,
                     zp.nombre                                   AS zona_principal,
                     p.promedio_calificacion                     AS promedio_calificacion,
+                    CASE WHEN p.total_resenas >= 3
+                         THEN COALESCE(p.promedio_calificacion, -1)
+                         ELSE -1 END                            AS reputacion_orden,
                     p.total_resenas                             AS total_resenas,
                     EXISTS (
                         SELECT 1 FROM credenciales cr
                         WHERE cr.perfil_prestador_id = p.id
                           AND cr.estado = 'Verificada'
                     )                                           AS tiene_verificada,
-                    ST_Distance(
-                        -- Sin punto exacto se usa el centro de su zona principal, que es
-                        -- lo que manda el flujo 4B.4 de CU-03 para quien publico sin
-                        -- direccion geocodificada. Hoy son todos, porque N-08 no existe.
-                        COALESCE(
-                            p.ubicacion_exacta,
-                            ST_SetSRID(ST_MakePoint(zp.centro_longitud, zp.centro_latitud), 4326)::geography
-                        ),
-                        (SELECT g FROM punto)
-                    )                                           AS metros
+                    d.metros                                    AS metros,
+                    tramo_de_distancia(d.metros)                AS tramo
                 FROM perfiles_prestador p
                 -- RN-S3-09. Filtro duro, no penalizacion de orden: sin suscripcion
                 -- vigente el perfil DESAPARECE. Es un JOIN y no un EXISTS para que el
@@ -81,6 +85,18 @@ public sealed class RepositorioBusquedaEfCore : IRepositorioBusqueda
                 LEFT JOIN coberturas cpp
                      ON cpp.perfil_prestador_id = p.id AND cpp.es_principal
                 LEFT JOIN zonas zp ON zp.id = cpp.zona_id
+                -- Sin punto exacto se mide al centro de su zona principal, que es lo que
+                -- manda el flujo 4B.4 de CU-03 para quien publico sin direccion
+                -- geocodificada. Hoy son todos, porque N-08 no existe.
+                CROSS JOIN LATERAL (
+                    SELECT ST_Distance(
+                        COALESCE(
+                            p.ubicacion_exacta,
+                            ST_SetSRID(ST_MakePoint(zp.centro_longitud, zp.centro_latitud), 4326)::geography
+                        ),
+                        (SELECT g FROM punto)
+                    ) AS metros
+                ) d
                 WHERE p.estado = 'Publicado'
                   AND p.rubro_id = {c.RubroId}
                   -- Cobertura de la zona buscada, tambien del paso 5 de CU-08: el
@@ -100,32 +116,39 @@ public sealed class RepositorioBusquedaEfCore : IRepositorioBusqueda
             SELECT * FROM base
             WHERE metros IS NOT NULL
               AND metros <= {radioMetros}
-              AND (NOT {c.SoloVerificados} OR tiene_verificada)
+              AND ({c.SoloVerificados} IS NOT TRUE OR tiene_verificada)
               -- RN-S5-11: el promedio solo es publico con 3 resenas o mas, asi que
               -- filtrar por el fuera de ese caso ocultaria perfiles por un numero que
               -- nadie puede ver.
               AND ({c.CalificacionMinima}::numeric IS NULL
                    OR (total_resenas >= 3
                        AND promedio_calificacion >= {c.CalificacionMinima}))
+              -- Keyset sobre (tramo ASC, verificado DESC, reputacion DESC, resenas DESC,
+              -- id ASC). Lo que viene DESPUES de la ultima fila servida, comparando la
+              -- tupla entera: con las columnas DESC, "despues" significa "menor".
               AND (NOT {hayCursor}
-                   OR metros > {cursorMetros}
-                   OR (metros = {cursorMetros} AND id > {cursorId}))
-            ORDER BY metros, id
+                   OR tramo > {cTramo}
+                   OR (tramo = {cTramo} AND (
+                         tiene_verificada::int < {cVerificada}
+                      OR (tiene_verificada::int = {cVerificada} AND (
+                            reputacion_orden < {cReputacion}
+                         OR (reputacion_orden = {cReputacion} AND (
+                               total_resenas < {cResenas}
+                            OR (total_resenas = {cResenas} AND id > {cId}))))))))
+            ORDER BY tramo, tiene_verificada DESC, reputacion_orden DESC,
+                     total_resenas DESC, id
             LIMIT {c.Limite}
             """).AsNoTracking().ToListAsync(ct);
     }
 
     public async Task<IReadOnlyList<FilaDeBusqueda>> PorZonaAsync(
-        CriteriosDeConsulta c, decimal? desdePromedio, int? desdeResenas, Guid? desdeId,
-        CancellationToken ct = default)
+        CriteriosDeConsulta c, PosicionDeBusqueda? desde, CancellationToken ct = default)
     {
-        // Keyset sobre (promedio DESC, resenas DESC, id ASC). El promedio nulo —quien no
-        // tiene resenas todavia— se trata como -1 para que el orden sea total y el cursor
-        // no se quede dando vueltas sobre las mismas filas.
-        var cursorPromedio = desdePromedio ?? -1m;
-        var cursorResenas = desdeResenas ?? -1;
-        var cursorId = desdeId ?? Guid.Empty;
-        var hayCursor = desdePromedio is not null;
+        var hayCursor = desde is not null;
+        var cVerificada = desde is { Verificada: true } ? 1 : 0;
+        var cReputacion = desde?.Reputacion ?? -1m;
+        var cResenas = desde?.Resenas ?? -1;
+        var cId = desde?.Id ?? Guid.Empty;
 
         return await _ctx.Set<FilaDeBusqueda>().FromSqlInterpolated($"""
             WITH base AS (
@@ -137,14 +160,18 @@ public sealed class RepositorioBusquedaEfCore : IRepositorioBusqueda
                     p.url_foto                                  AS url_foto,
                     p.rubro_id                                  AS rubro_id,
                     zp.nombre                                   AS zona_principal,
-                    COALESCE(p.promedio_calificacion, -1)       AS promedio_calificacion,
+                    p.promedio_calificacion                     AS promedio_calificacion,
+                    CASE WHEN p.total_resenas >= 3
+                         THEN COALESCE(p.promedio_calificacion, -1)
+                         ELSE -1 END                            AS reputacion_orden,
                     p.total_resenas                             AS total_resenas,
                     EXISTS (
                         SELECT 1 FROM credenciales cr
                         WHERE cr.perfil_prestador_id = p.id
                           AND cr.estado = 'Verificada'
                     )                                           AS tiene_verificada,
-                    NULL::double precision                      AS metros
+                    NULL::double precision                      AS metros,
+                    NULL::integer                               AS tramo
                 FROM perfiles_prestador p
                 JOIN suscripciones s
                      ON s.perfil_prestador_id = p.id
@@ -168,18 +195,18 @@ public sealed class RepositorioBusquedaEfCore : IRepositorioBusqueda
                   ))
             )
             SELECT * FROM base
-            WHERE (NOT {c.SoloVerificados} OR tiene_verificada)
+            WHERE ({c.SoloVerificados} IS NOT TRUE OR tiene_verificada)
               AND ({c.CalificacionMinima}::numeric IS NULL
                    OR (total_resenas >= 3
                        AND promedio_calificacion >= {c.CalificacionMinima}))
               AND (NOT {hayCursor}
-                   OR promedio_calificacion < {cursorPromedio}
-                   OR (promedio_calificacion = {cursorPromedio}
-                       AND total_resenas < {cursorResenas})
-                   OR (promedio_calificacion = {cursorPromedio}
-                       AND total_resenas = {cursorResenas}
-                       AND id > {cursorId}))
-            ORDER BY promedio_calificacion DESC, total_resenas DESC, id
+                   OR tiene_verificada::int < {cVerificada}
+                   OR (tiene_verificada::int = {cVerificada} AND (
+                         reputacion_orden < {cReputacion}
+                      OR (reputacion_orden = {cReputacion} AND (
+                            total_resenas < {cResenas}
+                         OR (total_resenas = {cResenas} AND id > {cId}))))))
+            ORDER BY tiene_verificada DESC, reputacion_orden DESC, total_resenas DESC, id
             LIMIT {c.Limite}
             """).AsNoTracking().ToListAsync(ct);
     }

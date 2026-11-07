@@ -32,11 +32,12 @@ function comprobar(nombre, bien, detalle = '') {
   if (!bien) fallos++
 }
 
-async function nuevaPagina(ancho, alto) {
+async function nuevaPagina(ancho, alto, extras = {}) {
   const contexto = await navegador.newContext({
     viewport: { width: ancho, height: alto },
     deviceScaleFactor: 2,
     ignoreHTTPSErrors: true,
+    ...extras,
   })
   const pagina = await contexto.newPage()
   pagina.on('pageerror', (e) => errores.push(`[${ancho}] ${e.message}`))
@@ -71,6 +72,18 @@ await movil.screenshot({ path: resolve(carpeta, '02-resultados-movil.png'), full
 const nombres = await movil.locator('.resultado-nombre').allTextContents()
 console.log('     resultados:', nombres.join(' | '))
 comprobar('salen los 5 prestadores buscables', nombres.length === 5, `salieron ${nombres.length}`)
+
+// EL ORDEN. Este guion no lo miraba, y por eso un 5,0 de 2 resenas (que la pantalla no
+// muestra, RN-S5-11) paso DELANTE de un 4,6 de 12 sin que ninguna comprobacion se
+// quejara: solo se vio mirando la captura. Verificados primero, luego reputacion
+// publica, luego mas resenas.
+const ordenPorZona = [
+  'Corretaje Araucanía', 'Gestión Inmobiliaria Labranza',
+  'Estudio Nuevo Temuco', 'Asesoría Integral', 'Propiedades del Sur',
+]
+comprobar('por zona: verificados primero y despues por reseñas, sin que un promedio oculto adelante a nadie',
+  ordenPorZona.every((inicio, i) => nombres[i]?.startsWith(inicio)),
+  nombres.map((n) => n.slice(0, 18)).join(' > '))
 comprobar('no sale el de suscripcion vencida', !nombres.some((n) => /vencido/i.test(n)))
 comprobar('no sale el perfil en borrador', !nombres.some((n) => /borrador/i.test(n)))
 comprobar('no sale el de otro rubro', !nombres.some((n) => /abogados/i.test(n)))
@@ -173,6 +186,56 @@ await buscarCorretajeEnElCentro(escritorio)
 await escritorio.screenshot({ path: resolve(carpeta, '04-resultados-escritorio.png'), fullPage: true })
 const ancho = await escritorio.locator('.buscador').boundingBox()
 comprobar('en escritorio la columna no se estira de mas', ancho.width <= 641, `${Math.round(ancho.width)} px`)
+
+// ------------------------------------------------------------------ con ubicacion
+// Con punto se ordena por TRAMO de distancia (el kilometro entero que se muestra) y,
+// dentro del tramo, por calidad. Gestion Labranza cubre el Centro pero su zona principal
+// es Labranza, a ~14,5 km: con punto sale ULTIMO, y por zona salia segundo.
+const conPunto = await nuevaPagina(390, 844, {
+  geolocation: { latitude: -38.7359, longitude: -72.5904 },
+  permissions: ['geolocation'],
+})
+await conPunto.goto('https://localhost:5173/', { waitUntil: 'networkidle' })
+await conPunto.getByRole('option', { name: 'Corretaje de propiedades' }).waitFor({ state: 'attached' })
+await conPunto.getByLabel(/qué necesitas/i).selectOption('corretaje')
+await conPunto.getByRole('button', { name: /usar mi ubicación/i }).click()
+await conPunto.getByText(/usando tu ubicación/i).waitFor({ timeout: 10000 })
+await conPunto.getByRole('button', { name: /^busca/i }).click()
+await conPunto.locator('.resultado').first().waitFor({ timeout: 15000 })
+await conPunto.screenshot({ path: resolve(carpeta, '05-resultados-con-ubicacion.png'), fullPage: true })
+
+const nombresPunto = await conPunto.locator('.resultado-nombre').allTextContents()
+const metaPunto = await conPunto.locator('.resultado-meta').allTextContents()
+console.log('     con ubicacion:', nombresPunto.map((n) => n.slice(0, 16)).join(' > '))
+console.log('     distancias:   ', metaPunto.join(' | '))
+// Con el radio por omision (10 km) Gestion Labranza queda FUERA: cubre el Centro, pero su
+// zona principal esta a ~14,5 km. Es RN-S3-04 aplicada con coherencia, y trae una
+// consecuencia que conviene tener a la vista: la pantalla no tiene control de radio, asi
+// que quien busca con su ubicacion nunca lo vera ni puede ampliar.
+comprobar('con ubicacion y radio de 10 km salen 4: el que se basa a 14,5 km queda fuera',
+  nombresPunto.length === 4 && !nombresPunto.some((n) => /labranza/i.test(n)),
+  nombresPunto.length + ' resultados')
+comprobar('con ubicacion hay distancia redondeada y no hay aviso de "sin distancia"',
+  metaPunto.every((m) => /a (menos de 1|\d+) km/.test(m))
+  && (await conPunto.locator('.aviso--info').count()) === 0)
+
+// Ampliando el radio a 20 km (por la API, porque la pantalla no tiene el control), el que
+// se basa lejos SI aparece, y ultimo: el orden es por tramo de distancia.
+const ampliada = await (await conPunto.request.get(
+  'https://localhost:5173/api/busqueda?rubro=corretaje&lat=-38.7359&lon=-72.5904&radio=20')).json()
+const ordenAmpliado = ampliada.resultados.map((r) => r.nombrePublico)
+console.log('     radio 20 km:  ', ordenAmpliado.map((n) => n.slice(0, 16)).join(' > '),
+  '|', ampliada.resultados.at(-1)?.distancia)
+comprobar('con radio de 20 km aparece el lejano, y ultimo',
+  ordenAmpliado.length === 5 && ordenAmpliado.at(-1).startsWith('Gestión Inmobiliaria Labranza'))
+const kmLejano = Number(/a (\d+) km/.exec(ampliada.resultados.at(-1)?.distancia ?? '')?.[1])
+// Plaza -> centroide de Labranza son 14,5 km (haversine calculado aparte), o sea "a 15 km".
+// La primera version de esta comprobacion esperaba ~13: era mala aritmetica de memoria, y
+// fue el servidor quien tenia razon.
+comprobar('y dice 15 km, que es lo que da la cuenta hecha aparte', kmLejano === 15, `a ${kmLejano} km`)
+const htmlPunto = await conPunto.content()
+comprobar('con ubicacion tampoco se filtran coordenadas',
+  !/@zass\.local|latitud|longitud|-38\.7|-72\.5/i.test(htmlPunto.replace(/<option[^>]*>[^<]*<\/option>/g, '')))
 
 comprobar('sin errores de pagina ni de consola', errores.length === 0, errores.join(' || '))
 

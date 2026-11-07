@@ -239,26 +239,41 @@ public interface IGeocodificador
 public interface IRepositorioBusqueda
 {
     /// <summary>
-    /// Ordenada por distancia. El punto ya viene resuelto a zona por MOD-04, porque la
+    /// Por tramo de distancia. El punto ya viene resuelto a zona por MOD-04, porque la
     /// cobertura de la zona es un filtro duro del paso 5 de CU-08.
     ///
-    /// El cursor es keyset sobre (metros, id): nada de OFFSET.
+    /// <b>El orden es (tramo, verificado, reputacion publica, resenas, id).</b> Se ordena
+    /// por el TRAMO —el kilometro entero que la pantalla muestra— y no por los metros
+    /// exactos, por dos razones: (1) hoy todos los prestadores de una zona estan a la
+    /// misma distancia exacta, la de su centroide, asi que sin desempate el orden seria
+    /// el de un UUID; (2) ordenar por la distancia exacta filtra mas que la redondeada:
+    /// dos prestadores de "a 3 km" que cambian de orden segun desde donde se busca
+    /// delatan de que lado de una linea estan.
+    ///
+    /// El cursor es keyset sobre esa misma tupla: nada de OFFSET.
     /// </summary>
     Task<IReadOnlyList<FilaDeBusqueda>> PorDistanciaAsync(
         CriteriosDeConsulta criterios, double latitud, double longitud, int radioMetros,
-        double? desdeMetros, Guid? desdeId, CancellationToken ct = default);
+        PosicionDeBusqueda? desde, CancellationToken ct = default);
 
     /// <summary>
-    /// Sin punto: filtra por zona y ordena por reputacion y credencial verificada
-    /// (RN-S3-07 y flujo 4C.4 de CU-08). Es el camino normal mientras N-08 no exista.
-    ///
-    /// El cursor es keyset sobre (promedio, resenas, id).
+    /// Sin punto: filtra por zona y ordena por (verificado, reputacion publica, resenas,
+    /// id). Es el camino normal mientras N-08 no exista (RN-S3-07 y flujo 4C.4 de CU-08).
     /// </summary>
     Task<IReadOnlyList<FilaDeBusqueda>> PorZonaAsync(
-        CriteriosDeConsulta criterios,
-        decimal? desdePromedio, int? desdeResenas, Guid? desdeId,
+        CriteriosDeConsulta criterios, PosicionDeBusqueda? desde,
         CancellationToken ct = default);
 }
+
+/// <summary>
+/// Donde quedo la ultima fila servida. Es lo que viaja en el cursor, y es EXACTAMENTE la
+/// tupla por la que se ordena: si el cursor llevara menos, la pagina siguiente podria
+/// repetir o saltarse a alguien con un empate.
+///
+/// `Tramo` es nulo en la busqueda por zona, que no ordena por distancia.
+/// </summary>
+public sealed record PosicionDeBusqueda(
+    int? Tramo, bool Verificada, decimal Reputacion, int Resenas, Guid Id);
 
 /// <summary>Lo que los dos caminos de la consulta tienen en comun.</summary>
 public sealed record CriteriosDeConsulta(
@@ -291,7 +306,25 @@ public class FilaDeBusqueda
     public short RubroId { get; set; }
     public string? ZonaPrincipal { get; set; }
     public double? Metros { get; set; }
+
+    /// <summary>El kilometro entero que se muestra, calculado por la base. Nulo sin punto.</summary>
+    public int? Tramo { get; set; }
+
     public bool TieneVerificada { get; set; }
+
+    /// <summary>
+    /// El promedio TAL COMO ESTA GUARDADO. Con menos de 3 resenas no es publico (RN-S5-11):
+    /// el servicio decide si se muestra, y este campo nunca se usa para ordenar.
+    /// </summary>
     public decimal? PromedioCalificacion { get; set; }
+
+    /// <summary>
+    /// Lo que cuenta para ORDENAR: el promedio si es publico, y -1 si no. Es un campo
+    /// aparte del anterior a proposito: ordenar por el promedio guardado hacia que quien
+    /// tiene 2 resenas de 5 estrellas pasara delante de quien tiene 4,6 con 12, por un
+    /// numero que la pantalla ni siquiera muestra.
+    /// </summary>
+    public decimal ReputacionOrden { get; set; }
+
     public int TotalResenas { get; set; }
 }
