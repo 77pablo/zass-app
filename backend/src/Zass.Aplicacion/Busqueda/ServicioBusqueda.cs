@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using Zass.Aplicacion.Catalogo;
 using Zass.Aplicacion.Geografia;
+using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
 
@@ -19,15 +20,17 @@ public sealed class ServicioBusqueda : IServicioBusqueda
     private readonly IRepositorioBusqueda _repo;
     private readonly IServicioCatalogo _catalogo;
     private readonly IServicioGeografia _geografia;
+    private readonly IServicioIdentidad _identidad;
     private readonly IRelojSistema _reloj;
 
     public ServicioBusqueda(
         IRepositorioBusqueda repo, IServicioCatalogo catalogo,
-        IServicioGeografia geografia, IRelojSistema reloj)
+        IServicioGeografia geografia, IServicioIdentidad identidad, IRelojSistema reloj)
     {
         _repo = repo;
         _catalogo = catalogo;
         _geografia = geografia;
+        _identidad = identidad;
         _reloj = reloj;
     }
 
@@ -127,6 +130,41 @@ public sealed class ServicioBusqueda : IServicioBusqueda
             return Resultado.Ok(Armar(
                 filas, criterios, zona, ordenadoPorDistancia: false, avisos));
         }
+    }
+
+    // ------------------------------------------------------------- CU-09, la ficha
+
+    public async Task<FichaPublicaDto?> FichaPublicaAsync(string slug, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(slug)) return null;
+
+        // MOD-01 decide si existe y esta publicada, y devuelve nulo para las dos cosas.
+        var perfil = await _identidad.PerfilPublicoPorSlugAsync(slug.Trim(), ct);
+        if (perfil is null) return null;
+
+        // Una consulta tras otra, NO en paralelo: los tres modulos comparten el DbContext de la
+        // peticion, y un DbContext no admite dos operaciones a la vez.
+        var rubro = perfil.RubroId is > 0
+            ? await _catalogo.RubroPorIdAsync(perfil.RubroId.Value, ct)
+            : null;
+        var servicios = await _catalogo.ServiciosPublicosDePrestadorAsync(perfil.Id, ct);
+        var zonas = await _geografia.ZonasDeCoberturaAsync(perfil.Id, ct);
+
+        return new FichaPublicaDto(
+            perfil.Id,
+            perfil.Slug,
+            perfil.NombrePublico,
+            perfil.Descripcion,
+            perfil.UrlFoto,
+            rubro,
+            // MOD-04 ya las entrega con la principal primero (RN-S3-08).
+            zonas.Select(z => new ZonaPublicaDto(z.Nombre, z.Sector, z.EsPrincipal)).ToList(),
+            servicios,
+            perfil.PromedioCalificacion,      // MOD-01 ya aplico RN-S5-11
+            perfil.TotalResenas,
+            new ContactoPublicoDto(
+                perfil.TelefonoPublico, perfil.Whatsapp, perfil.CorreoPublico, perfil.SitioWeb),
+            perfil.PublicadoEn);
     }
 
     // ------------------------------------------------------------- armado

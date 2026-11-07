@@ -28,6 +28,20 @@ public interface IServicioCatalogo
     /// </summary>
     Task<RubroDto?> RubroPorCodigoAsync(string codigo, CancellationToken ct = default);
 
+    /// <summary>
+    /// El rubro por su identificador, activo o no: la ficha publica de alguien tiene que
+    /// poder decir su rubro aunque despues se apague del selector.
+    /// </summary>
+    Task<RubroDto?> RubroPorIdAsync(short rubroId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Lo que un prestador ofrece, como lo ve el publico: solo lo ACTIVO, y solo nombre,
+    /// duracion y precio de referencia. Sin el modo de agenda ni identificadores internos.
+    /// Ordenado por nombre, en espanol (la ene y las tildes no se van al final).
+    /// </summary>
+    Task<IReadOnlyList<ServicioPublicoDto>> ServiciosPublicosDePrestadorAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default);
+
     /// <summary>API-03. Los servicios sugeridos de un rubro (CU-03 paso 3).</summary>
     Task<Resultado<IReadOnlyList<ServicioDto>>> ServiciosDeRubroAsync(
         short rubroId, CancellationToken ct = default);
@@ -56,6 +70,9 @@ public interface IServicioCatalogo
 }
 
 public sealed record RubroDto(short Id, string Codigo, string Nombre, string? Icono);
+
+/// <summary>Un servicio en la ficha publica. Nada de lo interno: ni ids ni modo de agenda.</summary>
+public sealed record ServicioPublicoDto(string Nombre, short DuracionMinutos, int? PrecioReferencia);
 
 /// <summary>
 /// `EsCatalogo` viaja al cliente a proposito: la pantalla distingue entre lo que

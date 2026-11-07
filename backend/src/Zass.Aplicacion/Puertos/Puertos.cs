@@ -150,6 +150,12 @@ public interface IRepositorioCatalogo
     Task<Rubro?> RubroActivoPorIdAsync(short rubroId, CancellationToken ct = default);
 
     /// <summary>
+    /// Un rubro por identificador, ACTIVO O NO. Una ficha publicada tiene que poder decir en
+    /// que rubro esta aunque el equipo apague despues ese rubro del selector.
+    /// </summary>
+    Task<Rubro?> RubroPorIdAsync(short rubroId, CancellationToken ct = default);
+
+    /// <summary>
     /// Por codigo, que es como lo pide API-01: `?rubro=corretaje` y no `?rubro=1`. Un
     /// enlace a una busqueda se comparte y se lee, y el identificador numerico ademas
     /// ataria las URLs publicas al orden en que se sembro el catalogo.

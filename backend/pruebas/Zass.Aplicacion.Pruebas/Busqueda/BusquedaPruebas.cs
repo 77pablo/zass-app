@@ -1,6 +1,7 @@
 using Zass.Aplicacion.Busqueda;
 using Zass.Aplicacion.Catalogo;
 using Zass.Aplicacion.Geografia;
+using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Pruebas.Dobles;
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Catalogo;
@@ -57,7 +58,10 @@ public class BusquedaPruebas
             new RepositorioGeografiaEnMemoria(_base), new GeocodificadorApagado(),
             _base, _reloj, new AuditoriaEnMemoria());
 
-        _servicio = new ServicioBusqueda(_repo, catalogo, geografia, _reloj);
+        var identidad = new ServicioIdentidad(
+            new RepositorioUsuariosEnMemoria(_base), new RepositorioPerfilesEnMemoria(_base));
+
+        _servicio = new ServicioBusqueda(_repo, catalogo, geografia, identidad, _reloj);
     }
 
     private FilaDeBusqueda UnaFila(

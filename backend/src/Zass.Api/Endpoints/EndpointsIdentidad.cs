@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Zass.Api.Configuracion;
+using Zass.Aplicacion.Busqueda;
 using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Suscripciones;
 
@@ -319,10 +320,13 @@ public static class EndpointsIdentidad
     {
         // API-05 - Ficha publica. Ninguna respuesta de este grupo lleva direccion,
         // latitud, longitud, correo privado ni telefono no publico.
+        //
+        // La arma MOD-05 (CU-09), que consume MOD-01, MOD-03 y MOD-04: el perfil es de MOD-01,
+        // pero los servicios son de MOD-03 y las zonas de MOD-04, y ninguno puede armarla solo.
         grupo.MapGet("/prestadores/{slug}", async (
-                string slug, IServicioIdentidad identidad) =>
+                string slug, IServicioBusqueda busqueda) =>
             {
-                var ficha = await identidad.PerfilPublicoPorSlugAsync(slug);
+                var ficha = await busqueda.FichaPublicaAsync(slug);
                 return ficha is null ? Results.NotFound() : Results.Ok(ficha);
             })
             .RequireRateLimiting(Tasa.Publico)

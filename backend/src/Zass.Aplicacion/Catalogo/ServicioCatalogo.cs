@@ -63,6 +63,29 @@ public sealed class ServicioCatalogo : IServicioCatalogo
         return rubro is null ? null : new RubroDto(rubro.Id, rubro.Codigo, rubro.Nombre, rubro.Icono);
     }
 
+    public async Task<RubroDto?> RubroPorIdAsync(short rubroId, CancellationToken ct = default)
+    {
+        var rubro = await _repo.RubroPorIdAsync(rubroId, ct);
+        return rubro is null ? null : new RubroDto(rubro.Id, rubro.Codigo, rubro.Nombre, rubro.Icono);
+    }
+
+    public async Task<IReadOnlyList<ServicioPublicoDto>> ServiciosPublicosDePrestadorAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        var oferta = await _repo.OfertaDePrestadorAsync(perfilPrestadorId, ct);
+
+        // Lo desactivado se CONSERVA en la base (las citas y los horarios cuelgan de esas
+        // filas) pero no es publico: el prestador ya no lo ofrece.
+        return oferta
+            .Where(o => o.Activo && o.Servicio is not null)
+            .Select(o => new ServicioPublicoDto(o.Servicio!.Nombre, o.DuracionMinutos, o.PrecioReferencia))
+            .OrderBy(s => s.Nombre, EnEspanol)
+            .ToList();
+    }
+
+    private static readonly StringComparer EnEspanol =
+        StringComparer.Create(new System.Globalization.CultureInfo("es-CL"), ignoreCase: true);
+
     // ------------------------------------------------------------- API-03
 
     public async Task<Resultado<IReadOnlyList<ServicioDto>>> ServiciosDeRubroAsync(

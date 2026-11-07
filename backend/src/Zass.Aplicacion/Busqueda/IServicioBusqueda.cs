@@ -1,3 +1,4 @@
+using Zass.Aplicacion.Catalogo;
 using Zass.Dominio.Comun;
 
 namespace Zass.Aplicacion.Busqueda;
@@ -22,6 +23,19 @@ public interface IServicioBusqueda
     /// </summary>
     Task<Resultado<PaginaDeBusqueda>> BuscarAsync(
         CriteriosDeBusqueda criterios, CancellationToken ct = default);
+
+    /// <summary>
+    /// CU-09 · API-05. La ficha publica de un prestador, ya compuesta: quien es, que ofrece,
+    /// donde atiende y como contactarlo.
+    ///
+    /// Es de MOD-05 porque la tabla de modulos lo pone ahi (consume MOD-01, MOD-03 y
+    /// MOD-04) y porque ninguno de los tres puede armarla solo: MOD-01 es dueno del perfil
+    /// pero no de los servicios, y MOD-03 es dueno de los servicios pero no del perfil.
+    ///
+    /// Nulo si no existe o no esta publicada, y es el MISMO nulo para los dos casos:
+    /// distinguirlos permitiria sondear quien se dio de alta sin publicar.
+    /// </summary>
+    Task<FichaPublicaDto?> FichaPublicaAsync(string slug, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -106,3 +120,31 @@ public sealed record ResultadoDeBusqueda(
     int TotalResenas,
     /// <summary>Flujo 4F de CU-08: un prestador que busca su rubro se ve, y sabe que es el.</summary>
     bool EsTuPerfil);
+
+/// <summary>
+/// La ficha publica completa. Igual que <see cref="ResultadoDeBusqueda"/>, lo que NO tiene
+/// es la mitad de su razon de existir (RN-S3-02): ni direccion, ni latitud, ni longitud,
+/// ni el correo de la cuenta, ni el identificador del usuario. El contacto que trae es el
+/// que el prestador marco como publico, y nada mas.
+/// </summary>
+public sealed record FichaPublicaDto(
+    Guid Id,
+    string Slug,
+    string NombrePublico,
+    string? Descripcion,
+    string? UrlFoto,
+    RubroDto? Rubro,
+    IReadOnlyList<ZonaPublicaDto> Zonas,
+    IReadOnlyList<ServicioPublicoDto> Servicios,
+    /// <summary>Nulo con menos de 3 resenas (RN-S5-11): entonces solo se muestra el recuento.</summary>
+    decimal? PromedioCalificacion,
+    int TotalResenas,
+    ContactoPublicoDto Contacto,
+    DateTime? PublicadoEn);
+
+/// <summary>Una zona que cubre. La principal es la que se muestra primero (RN-S3-08).</summary>
+public sealed record ZonaPublicaDto(string Nombre, string Sector, bool EsPrincipal);
+
+/// <summary>Lo que el prestador eligio mostrar. Cualquiera puede ser nulo.</summary>
+public sealed record ContactoPublicoDto(
+    string? Telefono, string? Whatsapp, string? Correo, string? SitioWeb);

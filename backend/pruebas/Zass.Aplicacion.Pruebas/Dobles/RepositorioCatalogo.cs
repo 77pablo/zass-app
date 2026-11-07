@@ -36,6 +36,9 @@ public sealed class RepositorioCatalogoEnMemoria : IRepositorioCatalogo
     public Task<Rubro?> RubroActivoPorIdAsync(short rubroId, CancellationToken ct = default) =>
         Task.FromResult(_base.Rubros.FirstOrDefault(x => x.Id == rubroId && x.Activo));
 
+    public Task<Rubro?> RubroPorIdAsync(short rubroId, CancellationToken ct = default) =>
+        Task.FromResult(_base.Rubros.FirstOrDefault(x => x.Id == rubroId));
+
     public Task<Rubro?> RubroActivoPorCodigoAsync(string codigo, CancellationToken ct = default) =>
         Task.FromResult(_base.Rubros.FirstOrDefault(
             x => x.Activo && string.Equals(x.Codigo, codigo.Trim(), StringComparison.OrdinalIgnoreCase)));

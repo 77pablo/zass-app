@@ -36,6 +36,9 @@ public sealed class RepositorioCatalogoEfCore : IRepositorioCatalogo
     public Task<Rubro?> RubroActivoPorIdAsync(short rubroId, CancellationToken ct = default) =>
         _ctx.Rubros.FirstOrDefaultAsync(r => r.Id == rubroId && r.Activo, ct);
 
+    public Task<Rubro?> RubroPorIdAsync(short rubroId, CancellationToken ct = default) =>
+        _ctx.Rubros.FirstOrDefaultAsync(r => r.Id == rubroId, ct);
+
     public Task<Rubro?> RubroActivoPorCodigoAsync(
         string codigo, CancellationToken ct = default)
     {

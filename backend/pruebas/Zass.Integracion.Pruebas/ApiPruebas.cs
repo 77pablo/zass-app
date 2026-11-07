@@ -1039,6 +1039,165 @@ public class ApiPruebas : IAsyncLifetime
             r => r.GetProperty("perfilId").GetGuid() == perfilId);
     }
 
+    // ------------------------------------------------- CU-09 · API-05, la ficha publica
+
+    /// <summary>
+    /// Deja a un prestador publicado con TODO lo que muestra una ficha: datos de contacto,
+    /// varios servicios y dos zonas. Devuelve su slug.
+    /// </summary>
+    private async Task<string> UnaFichaCompletaAsync()
+    {
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo, rol: "prestador");
+        await VerificarAsync(correo);
+        await IniciarSesionAsync(correo);
+
+        var perfil = await _cliente.GetFromJsonAsync<JsonDocument>("/api/mi/perfil-prestador");
+        var version = perfil!.RootElement.GetProperty("version").GetInt32();
+        var slug = perfil.RootElement.GetProperty("slug").GetString()!;
+
+        var datos = new HttpRequestMessage(HttpMethod.Put, "/api/mi/perfil-prestador")
+        {
+            Content = JsonContent.Create(new
+            {
+                nombrePublico = "Marcela Soto",
+                descripcion = "Corredora de propiedades en Temuco.",
+                rubroId = (short?)1,
+                telefonoPublico = "+56 9 1234 5678",
+                correoPublico = "contacto@soto.cl",
+                whatsapp = "912345678",
+                sitioWeb = "https://soto.cl",
+                direccion = (string?)null, latitud = (double?)null, longitud = (double?)null,
+                version,
+            }),
+        };
+        datos.Headers.Add("X-CSRF-Token", await TokenCsrfAsync());
+        Assert.Equal(HttpStatusCode.NoContent, (await _cliente.SendAsync(datos)).StatusCode);
+
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await PonerServiciosAsync(new[] { UnServicio(101, duracion: 45), UnServicio(102) })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await PonerCoberturaAsync(new[] { UnaZona(11, false), UnaZona(1, true) })).StatusCode);
+
+        var publicar = new HttpRequestMessage(HttpMethod.Post, "/api/mi/perfil-prestador/publicar");
+        publicar.Headers.Add("X-CSRF-Token", await TokenCsrfAsync());
+        Assert.Equal(HttpStatusCode.NoContent, (await _cliente.SendAsync(publicar)).StatusCode);
+        return slug;
+    }
+
+    [Fact]
+    public async Task La_ficha_publica_trae_el_rubro_los_servicios_las_zonas_y_el_contacto()
+    {
+        var slug = await UnaFichaCompletaAsync();
+        using var visitante = UnVisitante();
+
+        var respuesta = await visitante.GetAsync($"/api/prestadores/{slug}");
+
+        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
+        var ficha = (await respuesta.Content.ReadFromJsonAsync<JsonDocument>())!.RootElement;
+
+        Assert.Equal("Marcela Soto", ficha.GetProperty("nombrePublico").GetString());
+        Assert.Equal("Corredora de propiedades en Temuco.", ficha.GetProperty("descripcion").GetString());
+        Assert.Equal("Corretaje de propiedades", ficha.GetProperty("rubro").GetProperty("nombre").GetString());
+
+        var servicios = ficha.GetProperty("servicios").EnumerateArray().ToList();
+        Assert.Equal(2, servicios.Count);
+        var tasacion = servicios.Single(s => s.GetProperty("nombre").GetString() == "Tasación comercial");
+        Assert.Equal(45, tasacion.GetProperty("duracionMinutos").GetInt32());
+
+        // La zona principal va primero, aunque se mandara segunda.
+        var zonas = ficha.GetProperty("zonas").EnumerateArray().ToList();
+        Assert.Equal("Centro", zonas[0].GetProperty("nombre").GetString());
+        Assert.True(zonas[0].GetProperty("esPrincipal").GetBoolean());
+        Assert.Equal("Amanecer", zonas[1].GetProperty("nombre").GetString());
+        Assert.False(zonas[1].GetProperty("esPrincipal").GetBoolean());
+
+        var contacto = ficha.GetProperty("contacto");
+        Assert.Equal("+56 9 1234 5678", contacto.GetProperty("telefono").GetString());
+        Assert.Equal("912345678", contacto.GetProperty("whatsapp").GetString());
+        Assert.Equal("contacto@soto.cl", contacto.GetProperty("correo").GetString());
+        Assert.Equal("https://soto.cl", contacto.GetProperty("sitioWeb").GetString());
+    }
+
+    /// <summary>
+    /// RN-S3-02, sobre los BYTES de la respuesta: la ficha es el DTO que mas expone de todo el
+    /// sistema. Ni direccion, ni coordenadas, ni el identificador de la cuenta, ni el correo
+    /// con el que se registro (que es otro que el correo publico).
+    /// </summary>
+    [Fact]
+    public async Task La_ficha_publica_no_filtra_ubicacion_ni_datos_de_la_cuenta()
+    {
+        var slug = await UnaFichaCompletaAsync();
+        using var visitante = UnVisitante();
+
+        var texto = await (await visitante.GetAsync($"/api/prestadores/{slug}")).Content.ReadAsStringAsync();
+
+        Assert.DoesNotContain("latitud", texto, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("longitud", texto, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("direccion", texto, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("usuarioId", texto, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("@zass.local", texto, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("hash", texto, StringComparison.OrdinalIgnoreCase);
+        // Y el modo de agenda es de las citas, no de la ficha.
+        Assert.DoesNotContain("modoAgenda", texto, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Lo que el prestador dejo de ofrecer se CONSERVA en la base pero no sale en la ficha.
+    /// Esto recorre la desactivacion de verdad, contra PostgreSQL.
+    /// </summary>
+    [Fact]
+    public async Task Un_servicio_que_deja_de_ofrecer_desaparece_de_la_ficha_publica()
+    {
+        var slug = await UnaFichaCompletaAsync();
+        using var visitante = UnVisitante();
+
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await PonerServiciosAsync(new[] { UnServicio(101) })).StatusCode);
+
+        var ficha = (await visitante.GetFromJsonAsync<JsonDocument>($"/api/prestadores/{slug}"))!.RootElement;
+        var nombres = ficha.GetProperty("servicios").EnumerateArray()
+            .Select(s => s.GetProperty("nombre").GetString()).ToArray();
+        Assert.Equal(new[] { "Tasación comercial" }, nombres);
+    }
+
+    /// <summary>
+    /// "No esta publicado" y "no existe" tienen que ser INDISTINGUIBLES para quien pregunta: si
+    /// no, probar slugs diria quien se dio de alta sin publicar. Misma respuesta, byte a byte.
+    /// </summary>
+    [Fact]
+    public async Task Sin_publicar_y_no_existe_dan_exactamente_la_misma_respuesta()
+    {
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo, rol: "prestador");
+        await IniciarSesionAsync(correo);
+        var slugBorrador = (await _cliente.GetFromJsonAsync<JsonDocument>("/api/mi/perfil-prestador"))!
+            .RootElement.GetProperty("slug").GetString()!;
+        using var visitante = UnVisitante();
+
+        var sinPublicar = await visitante.GetAsync($"/api/prestadores/{slugBorrador}");
+        var noExiste = await visitante.GetAsync("/api/prestadores/este-slug-no-existe-para-nadie");
+
+        Assert.Equal(HttpStatusCode.NotFound, sinPublicar.StatusCode);
+        Assert.Equal(noExiste.StatusCode, sinPublicar.StatusCode);
+        Assert.Equal(
+            await noExiste.Content.ReadAsStringAsync(), await sinPublicar.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Al_despublicarse_la_ficha_deja_de_existir_para_el_publico()
+    {
+        var slug = await UnaFichaCompletaAsync();
+        using var visitante = UnVisitante();
+        Assert.Equal(HttpStatusCode.OK, (await visitante.GetAsync($"/api/prestadores/{slug}")).StatusCode);
+
+        var despublicar = new HttpRequestMessage(HttpMethod.Post, "/api/mi/perfil-prestador/despublicar");
+        despublicar.Headers.Add("X-CSRF-Token", await TokenCsrfAsync());
+        Assert.Equal(HttpStatusCode.NoContent, (await _cliente.SendAsync(despublicar)).StatusCode);
+
+        Assert.Equal(HttpStatusCode.NotFound, (await visitante.GetAsync($"/api/prestadores/{slug}")).StatusCode);
+    }
+
     private static object UnaZona(int zonaId, bool principal) => new
     {
         zonaId,

@@ -25,7 +25,7 @@ con las tablas `planes`, `suscripciones` y `pagos`; la pasarela no existe todav�
 ## 2. Resumen en una línea
 
 **MOD-01 Identidad, MOD-03 Catálogo, MOD-04 Geolocalización, MOD-05 Búsqueda y MOD-13 Suscripciones
-están construidos, con 587 pruebas en verde** (251 de aplicación sin base de datos, 213 de
+están construidos, con 612 pruebas en verde** (271 de aplicación sin base de datos, 218 de
 integración contra PostgreSQL real y la API por HTTPS, 123 de interfaz) más dos
 comprobaciones de navegador que crean una cuenta y entran contra la base de verdad.
 
@@ -223,6 +223,7 @@ asumiendo responsabilidades que no le tocan.
 | `IServicioBusqueda.Buscar` | Los cuatro filtros duros del paso 5 de CU-08, orden, cursor y distancia redondeada |
 | API-01 `GET /api/busqueda?rubro=corretaje&lat=&lon=&radio=` | Público y sin sesión (P1 de CU-08) |
 | `RubroPorCodigo` en MOD-03 | El rubro va por **código** en la URL, no por id: un enlace a una búsqueda se comparte y se lee |
+| `IServicioBusqueda.FichaPublica` · API-05 `GET /api/prestadores/{slug}` | **CU-09, la ficha pública completa.** Público y sin sesión |
 | `FilaDeBusqueda` | Tipo sin clave y sin tabla, que EF Core materializa desde `FromSqlInterpolated` |
 
 Decisiones con prueba detrás:
@@ -270,6 +271,39 @@ Decisiones con prueba detrás:
 - **RN-S5-11 también manda en el filtro**: filtrar por un promedio que nadie puede ver
   (menos de 3 reseñas) ocultaría perfiles por un número invisible. Y **una credencial en
   revisión no da sello**: si lo diera, subir un papel cualquiera bastaría.
+
+### CU-09, la ficha pública completa (API-05)
+
+La ficha devolvía solo lo que sabe MOD-01: nombre, zonas **como nombres sueltos** y contacto. **Le
+faltaban los servicios y el nombre del rubro** (solo traía el id), que es justo lo que cualquier
+diseño de ficha necesita. Ahora API-05 devuelve la ficha **compuesta**.
+
+- **Es de MOD-05**, porque la tabla de módulos le asigna CU-09 y porque consume a los tres: el
+  perfil es de MOD-01, los servicios de MOD-03 y las zonas de MOD-04, y ninguno puede armarla
+  solo. El contrato de MOD-01 (`PerfilPublicoPorSlug`) no se tocó.
+- **Trae:** nombre, descripción, foto, el **rubro con su nombre**, las **zonas con la principal
+  primero y marcada**, los **servicios** (nombre, duración y precio de referencia), el contacto que
+  el prestador marcó como público, y la reputación según RN-S5-11.
+- **Lo desactivado no sale.** Lo que un prestador dejó de ofrecer se conserva en la base (las citas
+  y los horarios cuelgan de esas filas) pero no es público. Se probó recorriendo la desactivación
+  contra PostgreSQL. Los servicios van ordenados **en español**: la "Á" y la "Ñ" ordenan donde
+  corresponde y no después de la zeta, que es lo que hace una comparación ordinal.
+- **Un rubro apagado sigue apareciendo** en la ficha de quien ya lo tiene: sin eso, apagar un rubro
+  del selector dejaría fichas sin rubro de un día para otro.
+- **"Sin publicar" y "no existe" son indistinguibles**: misma respuesta, byte a byte, comprobado por
+  HTTP. Si no, probar slugs diría quién se dio de alta sin publicar.
+- **RN-S3-02, sobre los bytes de la respuesta y sobre los tipos:** ni dirección, ni coordenadas, ni
+  el id de la cuenta, ni el correo con el que se registró (que es otro que el correo público). Y el
+  servicio público tampoco lleva lo interno: ni el id de la fila de oferta ni el modo de agenda.
+- **Una consulta tras otra, no en paralelo:** los tres módulos comparten el `DbContext` de la
+  petición, y un `DbContext` no admite dos operaciones a la vez.
+- **Se midió:** seis reglas de la composición rotas a propósito (7 rojos) y el endpoint y la regla
+  de "sin publicar" rotos por HTTP (4 rojos). Cada regla, cazada por su prueba.
+
+**Sigue abierto, y no es mío decidirlo (pregunta 4 de la sección 9):** esta ficha existe mientras el
+perfil esté **publicado**, sin mirar la suscripción. O sea que un prestador con la suscripción
+vencida desaparece de la búsqueda pero **su ficha por enlace directo sigue abierta**. Es el mismo
+asunto que la tarjeta NFC y conviene resolverlo antes de MOD-12.
 
 **Lo que NO está hecho de MOD-05, y no hay que dar por hecho:**
 
@@ -412,7 +446,7 @@ afirmar nada que no haga.
 | "Con títulos revisados por una persona" y el sello Verificado | **MOD-02 Credenciales no existe.** Nadie puede emitir un sello hoy |
 | "Reseñas de vecinos que los contrataron", promedio y citas | **MOD-11 Reseñas no existe**, y depende de MOD-06 Agenda (solo opina quien tuvo una cita) |
 | "Conecta con un toque": la tarjeta NFC | **MOD-12 no existe**, y falta resolver la pregunta 4 de la sección 9 |
-| Cuántas personas hay por barrio y por oficio | **No hay endpoint.** API-04 devuelve zonas, no conteos. Hace falta uno público y agregado |
+| Cuántas personas hay por barrio y por oficio | **No hay endpoint.** API-04 devuelve zonas, no conteos. Hace falta uno público y agregado, con el mismo criterio de "visible" que la búsqueda |
 | Fotos de las personas | **No existe subida de archivos.** El prototipo usa monogramas, que además es lo que se vería sin foto |
 | "Subir un documento" en Mi ficha | Depende de MOD-02 |
 | Nombre del rubro "Arquitectura y construcción", "Técnicos y oficios" | Existen en la base con esos nombres |
@@ -426,7 +460,7 @@ entonces la portada tiene que hablar de lo que sí hay (gente de tu barrio, con 
 donde tú estás, y a la que le escribes directo).
 
 **Orden propuesto para construirlo**, cuando Pablo lo apruebe: (1) la ficha pública, que es la pieza
-central y no necesita nada nuevo de backend; (2) Mi ficha, que reutiliza la ficha y ya tiene toda la
+central y **ya tiene todo el backend que necesita** (API-05 completa, con servicios y rubro); (2) Mi ficha, que reutiliza la ficha y ya tiene toda la
 capa de datos hecha; (3) la portada, que sí necesita el endpoint de conteos; (4) rehacer la búsqueda
 con este lenguaje.
 
@@ -471,8 +505,8 @@ Endpoints: **API-01 a API-05, 08-23**, más `GET /api/auth/csrf` y `GET /api/sal
 
 | Proyecto | Cuántas | Qué cubre |
 |---|---|---|
-| `Zass.Aplicacion.Pruebas` | **251** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02 a RN-S3-08, RN-S5-11, CC-02, y MOD-03, MOD-04 y MOD-05 completos |
-| `Zass.Integracion.Pruebas` | **213** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
+| `Zass.Aplicacion.Pruebas` | **271** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02 a RN-S3-08, RN-S5-11, CC-02, y MOD-03, MOD-04 y MOD-05 completos |
+| `Zass.Integracion.Pruebas` | **218** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
 | `frontend` (Vitest) | **31** | Cliente HTTP y pantallas, con `fetch` simulado |
 | `frontend/pruebas-navegador` | 2 guiones | Navegador real contra la API real: que la página monta, los colores de marca, y el registro e ingreso completos |
 
