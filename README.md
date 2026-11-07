@@ -22,7 +22,7 @@ aparecen en el código (`CU-03`, `TBL-09`, `API-20`, `RN-S3-09`, `CC-02`) apunta
 | `backend/src/Zass.Aplicacion` | Los casos de uso y los puertos. Se prueba sin base de datos y sin red |
 | `backend/src/Zass.Infraestructura` | EF Core, Argon2id, AES-256-GCM, las migraciones |
 | `backend/src/Zass.Api` | La API REST con cookies httpOnly, CSRF, límite de tasa y cabeceras |
-| `backend/pruebas` | 170 pruebas de aplicación y 106 de integración contra PostgreSQL real |
+| `backend/pruebas` | 207 pruebas de aplicación y 145 de integración contra PostgreSQL real |
 | `frontend` | React 19 + TypeScript + Vite, con 31 pruebas y 2 guiones de navegador |
 
 `ESTADO.md` dice **qué está hecho y comprobado, qué no, y el siguiente paso exacto**. Es el
@@ -30,10 +30,14 @@ archivo que hay que leer para retomar.
 
 ## El estado, en una línea
 
-**MOD-01 Identidad** está completo con pantalla incluida. **MOD-03 Catálogo** y
-**MOD-13 Suscripciones** están completos de dominio a API, todavía sin pantalla. En total,
-**307 pruebas en verde**: 170 de aplicación, 106 de integración y 31 de interfaz. Falta
-MOD-02 y MOD-04 a MOD-12.
+**MOD-01 Identidad** está completo con pantalla incluida. **MOD-03 Catálogo**,
+**MOD-04 Geolocalización** y **MOD-13 Suscripciones** están completos de dominio a API,
+todavía sin pantalla. En total, **383 pruebas en verde**: 207 de aplicación, 145 de
+integración y 31 de interfaz. Falta MOD-02 y MOD-05 a MOD-12.
+
+El camino completo de un prestador —registrarse, elegir rubro y servicios, declarar su zona,
+publicar y arrancar la suscripción de prueba— está probado de punta a punta por HTTP contra
+PostgreSQL. Lo que falta para que el producto haga lo que promete es la **búsqueda**.
 
 ## Tecnología
 
@@ -76,6 +80,12 @@ cd frontend && npm run prueba
 
 La API necesita dos ajustes que nunca se versionan y viven en User Secrets:
 `Zass:CadenaConexion` y `Zass:ClaveDireccionesBase64`.
+
+## Datos de terceros
+
+Las coordenadas de las 16 zonas de Temuco provienen de **OpenStreetMap**, bajo licencia
+[ODbL](https://www.openstreetmap.org/copyright). Cualquier pantalla que las muestre debe
+atribuir a *OpenStreetMap contributors*.
 
 ## Licencia
 

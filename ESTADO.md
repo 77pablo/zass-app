@@ -1,6 +1,6 @@
 # ZASS! — estado del desarrollo
 
-**Última sesión:** 7 de noviembre de 2026, tarde (MOD-03 Catálogo, y el repositorio ya está en GitHub).
+**Última sesión:** 7 de noviembre de 2026, tarde (MOD-03 Catálogo, MOD-04 Geolocalización, y el repositorio ya está en GitHub).
 
 Este archivo existe para retomar sin reconstruir contexto. Dice **qué está hecho y
 comprobado**, **qué no**, y **el siguiente paso exacto**.
@@ -24,25 +24,31 @@ con las tablas `planes`, `suscripciones` y `pagos`; la pasarela no existe todav�
 
 ## 2. Resumen en una línea
 
-**MOD-01 Identidad, MOD-03 Catálogo y MOD-13 Suscripciones están construidos, con 319
-pruebas en verde** (170 de aplicación sin base de datos, 118 de integración contra
-PostgreSQL real y la API por HTTPS, 31 de interfaz) más dos comprobaciones de navegador
-que crean una cuenta y entran contra la base de verdad.
+**MOD-01 Identidad, MOD-03 Catálogo, MOD-04 Geolocalización y MOD-13 Suscripciones
+están construidos, con 383 pruebas en verde** (207 de aplicación sin base de datos, 145 de
+integración contra PostgreSQL real y la API por HTTPS, 31 de interfaz) más dos
+comprobaciones de navegador que crean una cuenta y entran contra la base de verdad.
 
-MOD-01 llega hasta la pantalla. MOD-03 y MOD-13 están completos de dominio a API y
+MOD-01 llega hasta la pantalla. MOD-03, MOD-04 y MOD-13 están completos de dominio a API y
 **todavía sin pantalla**.
+
+**El camino completo de CU-03 ya está probado de punta a punta por HTTP**: un prestador se
+registra, verifica su correo, elige rubro, guarda servicios, guarda su zona, publica, y le
+arranca la suscripción de prueba de 30 días. Era la prueba que este archivo daba por
+imposible en las dos sesiones anteriores, y lo único que faltaba para hacerla eran MOD-03 y
+MOD-04. Lo que sigue sin poder probarse es la última palabra de la frase: **visible**, que
+es la búsqueda y es MOD-05.
 
 **Todo el entorno local va por HTTPS.** `https://localhost:5173` la interfaz y
 `https://localhost:7277` la API, con el certificado de `dotnet dev-certs`. Eso permitió
 activar la marca `Secure` en las cookies también en desarrollo, y ahora hay una prueba
 que la comprueba; antes solo se podía ver desplegando.
 
-**El repositorio ya está en GitHub: `77pablo/zass-app`, privado.** 11 commits, 116
-archivos. La instancia portable de PostgreSQL, los dos secretos y la clave privada del
+**El repositorio ya está en GitHub: `77pablo/zass-app`, privado.** 15 commits. La instancia portable de PostgreSQL, los dos secretos y la clave privada del
 certificado quedan fuera, y eso se comprobó revisando la historia entera antes de subir,
 no de oídas. Hay `README.md` para quien abra el repositorio.
 
-Lo que falta es MOD-02 y MOD-04 a MOD-12, el resto de las pantallas y los trabajos de
+Lo que falta es MOD-02 y MOD-05 a MOD-12, el resto de las pantallas y los trabajos de
 fondo.
 
 ---
@@ -68,6 +74,7 @@ fondo.
 | `UbicacionFueraDelModelo` | **Índice GIST** en `ubicacion_exacta`, y la columna fuera del modelo de EF Core | `pg_indexes` muestra el GIST; la columna sigue `is_generated = ALWAYS` |
 | `PlanDePruebaSembrado` | El plan `prueba` como dato del esquema | `SELECT * FROM planes` |
 | `CatalogoSembrado` | 5 rubros y 39 servicios, la columna `nombre_normalizado`, el único `ux_servicio_rubro_nombre`, dos `CHECK` en `prestador_servicios` y la secuencia de `servicios` reiniciada en 1000 | `pg_indexes`, `pg_constraint`, y un `INSERT` real que devolvió el id **1000** |
+| `ZonasDeTemuco` | Las 16 zonas, el único `(comuna, nombre)` y la secuencia de `zonas` reiniciada en 100 | `pg_indexes` dice `CREATE UNIQUE INDEX`; un `INSERT` duplicado da **23505** y uno nuevo devuelve el id **100** |
 
 ### Backend
 
@@ -150,6 +157,58 @@ Decisiones con prueba detrás:
 de ellos y **solo pide la zona**, que es MOD-04. Hay una prueba por HTTP que lo afirma, y
 es justo la que la versión anterior de este archivo daba por imposible.
 
+### MOD-04 Geolocalización — las zonas, y lo que cierra el mínimo publicable
+
+| Pieza | Estado |
+|---|---|
+| `IServicioGeografia` | Las 5 operaciones de la tabla de módulos, más `ZonasDeCobertura` y `ReemplazarCobertura` |
+| API-04 `GET /api/zonas?sector=` | Público. **16 zonas** sembradas con el esquema |
+| API-21 `PUT /api/mi/perfil-prestador/cobertura` | Exige exactamente una zona principal (RN-S3-08, R-2) |
+| API-21 `GET` de la misma ruta | **No estaba en el documento.** Sin él, el formulario de CU-10 no puede pintarse con lo guardado |
+| `Geo` en `Zass.Dominio.Comun` | Haversine y el redondeo público. Cero paquetes, se prueba sin base |
+| `GeocodificadorNoDisponible` | N-08 no tiene proveedor: devuelve la falla que lleva al flujo 4B de CU-03 |
+
+Las dos decisiones que lo hicieron posible, y que Pablo tomó el 7 de noviembre:
+
+- **La zona de un punto es la del centroide más cercano**, no la del polígono que lo
+  contiene. TBL-10 declaraba una columna `limite` con el polígono del barrio, pero no
+  existe en la base y no hay polígonos reales de los barrios de Temuco. Documento corregido.
+- **El geocodificador queda en espera.** Azure Maps, Google y Nominatim exigen una clave o
+  una decisión de costo que no está tomada. Es un puerto con una implementación que
+  contesta que no está disponible, y eso dispara el flujo 4B de CU-03 —elegir la zona de
+  una lista—, que ya estaba diseñado.
+
+Decisiones con prueba detrás:
+
+- **RN-S3-03 se hace cumplir con dos métodos, no con un comentario.** `DistanciaEnMetros`
+  es exacta y de uso interno; `DistanciaPublica` devuelve texto y es la única que puede
+  salir en una respuesta. Por debajo de un kilómetro **no da número**: "a 400 m" en tres
+  fichas distintas ubica una casa por trilateración, y eso es lo que RN-S3-02 prohíbe. Hay
+  una prueba que recorre varias distancias y comprueba que ningún texto público menciona
+  metros.
+- **`ResolverZona` tiene tope de 50 km**, el mismo radio máximo de RN-S3-04, porque "el más
+  cercano" siempre devuelve algo: sin tope, un punto en Santiago resolvería a un barrio de
+  Temuco.
+- **Cambiar de zona principal se hace en dos guardados, y está medido.** Se escribió la
+  versión ingenua —marcar la nueva en el mismo guardado— y la prueba de integración se cae
+  con un 23505: `ux_cobertura_principal` es un único parcial y PostgreSQL lo comprueba
+  después de **cada sentencia**, no al final de la transacción. En memoria las dos
+  versiones pasan, así que esa prueba vive en integración.
+- **Una prueba comprueba que ninguna de las 16 zonas quedó con latitud y longitud
+  invertidas.** Es el error clásico y silencioso de todo lo geográfico: las coordenadas
+  invertidas dan un punto perfectamente válido en otro continente.
+- **`MaxZonas = 10` es una decisión del código, no del documento.** RN-S3-08 dice que un
+  prestador puede cubrir varias zonas y no pone número. Sin tope, uno se marca las 16 y
+  sale en todas las búsquedas de la ciudad. Si Pablo quiere otro número, está en una sola
+  constante.
+
+**De dónde salieron las coordenadas.** Son los nodos de OpenStreetMap de cada sector,
+consultados por Overpass el 7 de noviembre de 2026. Overpass devuelve **256** lugares
+poblados dentro de la comuna, hasta el último condominio, y eso no sirve como selector:
+nadie dice "atiendo en Condominio Nueva Milano". Quedaron los 16 sectores con los que la
+gente de Temuco dice dónde está. Ninguna coordenada está inventada, y eso importa: un
+centroide mal puesto manda al prestador al barrio de al lado sin que nada falle.
+
 ### Interfaz — `frontend/`
 
 React 19 + TypeScript + Vite, con la marca aplicada (amarillo `#F6C81E`, Montserrat,
@@ -180,25 +239,35 @@ Decisiones que quedaron fijadas en el código y tienen prueba:
 **CU-04** preferencias · **CS-01** verificar correo · **CS-02** recuperar contraseña ·
 **CS-03** revocar sesiones · **CS-04** eliminar cuenta.
 
-Endpoints: **API-02, API-03, API-05, 08-20, 22, 23**, más `GET /api/auth/csrf` y
-`GET /api/salud`. Falta **API-21** (cobertura), que es de MOD-04.
+**CU-10** definir zonas de cobertura también funciona, y **CS-10** resuelve la zona de
+un punto (no la de una dirección: eso espera a N-08).
+
+Endpoints: **API-02 a API-05, 08-23**, más `GET /api/auth/csrf` y `GET /api/salud`. De los
+23 primeros solo falta **API-01**, la búsqueda, que es MOD-05.
 
 ### Las pruebas, y qué prueba cada grupo
 
 | Proyecto | Cuántas | Qué cubre |
 |---|---|---|
-| `Zass.Aplicacion.Pruebas` | **170** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02, RN-S5-11, CC-02, y MOD-03 completo |
-| `Zass.Integracion.Pruebas` | **118** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
+| `Zass.Aplicacion.Pruebas` | **207** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02 a RN-S3-08, RN-S5-11, CC-02, y MOD-03 y MOD-04 completos |
+| `Zass.Integracion.Pruebas` | **145** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
 | `frontend` (Vitest) | **31** | Cliente HTTP y pantallas, con `fetch` simulado |
 | `frontend/pruebas-navegador` | 2 guiones | Navegador real contra la API real: que la página monta, los colores de marca, y el registro e ingreso completos |
 
 Escritas con TDD: cada prueba se vio fallar antes de que existiera el código.
 
-Las 38 de MOD-03 se escribieron antes del servicio, pero pasaron todas en la primera
-ejecución, y eso no prueba nada por sí solo. Se comprobó rompiendo cuatro reglas del
-servicio a propósito —el `es_catalogo` de los servicios nuevos, la desactivación de lo que
-sale de la lista, el rechazo de la lista vacía y la actualización de la duración—: cayeron
-exactamente cuatro pruebas, una por regla. Después se restauró el código.
+Las 38 de MOD-03 y las 35 de MOD-04 pasaron todas en la primera ejecución, y eso no
+prueba nada por sí solo. En los dos casos se comprobó rompiendo cuatro reglas a propósito y
+contando los rojos.
+
+En MOD-03 cayeron exactamente cuatro. En MOD-04 cayeron **cinco**, y la quinta enseñó algo
+que el código contaba mal: el punto `0,0` —lo que manda un formulario vacío— no lo rechaza
+la validación de rango, porque 0 es una latitud perfectamente válida, sino el tope de 50 km,
+que cae en el golfo de Guinea. El comentario decía lo contrario y quedó corregido.
+
+**Esta es la forma más útil que ha tenido la regla de "un verde no prueba nada" en este
+proyecto:** cuando una tanda de pruebas pasa de primera, romper el código a propósito y
+contar los rojos dice si las pruebas miran de verdad, y dos veces ha destapado algo más.
 
 Cosas que **tienen prueba propia**, no solo un comentario:
 
@@ -252,6 +321,24 @@ paso resolvió las tildes, que era otro agujero: "tasacion" ya encuentra "Tasaci
 Si una regla de unicidad se apoya en una función de la base, depende de cómo se creó la
 base.
 
+### Los dos que encontró el camino completo de CU-03
+
+Los encontró la prueba por HTTP que publica un perfil de verdad. No se podía escribir antes
+de MOD-03 y MOD-04 porque no había forma de llegar al mínimo publicable, así que de API-22
+solo se había comprobado el lado del fallo.
+
+| # | Fallo | Qué habría pasado en producción |
+|---|---|---|
+| 8 | **Publicar dos veces devolvía 500** | Un doble clic en "Publicar". Y despublicar y volver a publicar, que es el flujo 4E de CU-03, habría fallado igual |
+| 9 | La API serializaba los enums como **número**: `"estado": 1` | La pantalla del perfil tendría una tabla de números que se desalinea en silencio el día que alguien reordene el enum |
+
+El 8 es el que vale la pena entender. `PublicadoEn` se asigna con `??=`, así que no cambia;
+la clave de idempotencia del aviso se armaba con esa fecha, el segundo publicar generaba la
+**misma** clave y chocaba con el único de R-18 en `notificaciones`. Arreglado donde
+corresponde: solo se avisa cuando el perfil **entra** en publicado, y la clave es del aviso
+y no de una fecha que no se mueve. **R-18 existe para que el aviso llegue una sola vez, no
+para que el caso de uso le delegue la decisión de si hay algo que avisar.**
+
 Además, un fallo latente encontrado leyendo: los dos tokens de un solo uso compartían una
 columna de vencimiento, así que pedir recuperación le acortaba en silencio el plazo al
 token de verificación de quien aún no confirmaba su correo.
@@ -295,6 +382,9 @@ desbalanceado).
 | `03-datos/diccionario-de-tablas.md` | TBL-07 declara `icono`, que existe en la base desde la primera migración, y dice que los 5 rubros se siembran con el esquema |
 | `03-datos/diccionario-de-tablas.md` | TBL-08 declara `nombre_normalizado`, el único `(rubro_id, nombre_normalizado)` con el porqué del locale, y la secuencia de identidad reiniciada |
 | `06-desarrollo/api-rest.md` | API-20 lleva también el GET de la misma ruta, como API-22 lleva publicar y despublicar. API-02 dice que `?q=` no es un patrón |
+| `03-datos/diccionario-de-tablas.md` | TBL-10 queda como está de verdad: sin `limite` ni `centro` geográficos, con `comuna` y las dos columnas del centroide, el único `(comuna, nombre)`, y escrito **por qué** se resuelve por centroide y qué haría falta para volver al polígono |
+| `06-desarrollo/api-rest.md` | API-04 lleva `?sector=`; API-21 lleva su GET y dice que exige exactamente una zona principal |
+| `06-desarrollo/tabla-de-modulos.md` | MOD-04 dice que `ResolverZona` va por centroide con tope de 50 km, que `Geocodificar` espera proveedor, y por qué `DistanciaPublica` no da números por debajo de 1 km |
 
 En los cuatro casos **se movió el documento**, no el código, salvo `rubro_id`, donde el
 documento se contradecía consigo mismo: marcaba la columna obligatoria y a la vez CU-03
@@ -306,15 +396,16 @@ guarda el avance en borrador antes de elegir rubro. Mandó el caso de uso.
 
 | Capa | Falta |
 |---|---|
-| `Zass.Aplicacion` | **MOD-02 y MOD-04 a MOD-12.** MOD-01, MOD-03 y MOD-13 listos |
+| `Zass.Aplicacion` | **MOD-02 y MOD-05 a MOD-12.** MOD-01, MOD-03, MOD-04 y MOD-13 listos |
 | `Zass.Api` | Filtro de idempotencia (`Idempotency-Key`), que se necesita desde API-36 |
 | Pruebas de arquitectura | Las 4 reglas de `paquetes-por-capas.md` §5 **no se verifican solas** todavía |
-| Datos de ejemplo | Zonas, prestadores, reseñas. Los roles, el plan de prueba, los **rubros** y los **servicios** ya están, y como dato del esquema, no como siembra aparte |
-| Frontend | Hechas las pantallas de **registro e ingreso**. Faltan: verificar correo, recuperar contraseña, perfil del prestador (ya tiene API-02, API-03 y API-20 detrás) y búsqueda |
+| Datos de ejemplo | Prestadores y reseñas. Los roles, el plan de prueba, los rubros, los servicios y las **16 zonas** ya están, y como dato del esquema |
+| Frontend | Hechas las pantallas de **registro e ingreso**. Faltan: verificar correo, recuperar contraseña, perfil del prestador (ya tiene API-02, API-03, API-04, API-20 y API-21 detrás) y búsqueda |
 | Trabajos en segundo plano | Recordatorios, vencimientos, bloques, purgas |
 | Notificaciones | Se encolan en TBL-27; **nadie las despacha**. Decidido: buzón local `.eml` |
 | Suscripciones | Tablas sí, lógica y pasarela no |
 | Repositorio git | **Hecho y subido:** `77pablo/zass-app` en GitHub, privado |
+| Geocodificar direcciones | **Falta elegir proveedor (N-08).** Mientras no esté, manda el flujo 4B de CU-03: el prestador elige su zona de una lista |
 
 ### El CSRF: resuelto
 
@@ -338,15 +429,9 @@ no reintente sin fin.
 HECHO   MOD-01 Identidad        dominio, API y pantalla
 HECHO   MOD-13 Suscripciones    7-nov-2026
 HECHO   MOD-03 Catalogo         7-nov-2026, con 72 pruebas nuevas
+HECHO   MOD-04 Geolocalizacion   7-nov-2026, con 64 pruebas nuevas
 
-1. MOD-04 Geolocalizacion: zonas y cobertura (TBL-10, 11)      <-- AQUI
-   - IServicioGeografia, API-04, API-21
-   - zonas de Temuco como dato del esquema, igual que los rubros
-   - R-2: una sola zona principal por prestador
-   - CIERRA la prueba que todavia falta: publicar -> prueba -> visible.
-     Hoy publicar ya solo pide la zona, y hay una prueba que lo afirma
-
-3. MOD-05 Busqueda: API-01, con FromSqlInterpolated y el indice GIST
+1. MOD-05 Busqueda: API-01, con FromSqlInterpolated y el indice GIST   <-- AQUI
    - Ya desbloqueado: RN-S3-09 dice que el impago DESAPARECE
    - El filtro de suscripcion va DENTRO del SQL, no resultado por resultado
    - Llamar a IServicioSuscripciones.VigentesEntreAsync, nunca a EstaVigente
@@ -365,10 +450,18 @@ HECHO   MOD-03 Catalogo         7-nov-2026, con 72 pruebas nuevas
    - Falta quien los llame cada dia
 ```
 
-**La decision a tomar primero** es si MOD-04 o la pantalla de perfil del prestador. Con
-MOD-04 el perfil se puede publicar de verdad y el camino completo queda probado de punta a
-punta; con la pantalla primero, se puede ver y tocar lo que ya existe, pero publicar sigue
-sin poder completarse. Por eso va MOD-04.
+**La decision a tomar primero** es si MOD-05 o la pantalla de perfil del prestador.
+
+MOD-05 cierra la ultima palabra de "publicar -> prueba -> visible": hoy un prestador puede
+publicar y arrancar su prueba, pero NADIE puede buscarlo, asi que el producto todavia no
+hace lo que promete. La pantalla, en cambio, hace visible y tocable lo que ya existe.
+
+Van los dos, y MOD-05 primero: mientras no exista, la mitad del producto —el lado del
+buscador— no se puede ni mirar.
+
+Para MOD-05 ya esta todo lo que necesita: las zonas con su centroide, los servicios por
+rubro, `VigentesEntreAsync` para el filtro de suscripcion en lote, `Geo.DistanciaPublica`
+para RN-S3-03 y el indice GIST de `ubicacion_exacta`.
 
 ---
 
@@ -483,5 +576,6 @@ Al terminar: `detener-postgres.bat`.
 | **`certificados/` tiene una clave privada** | En `.gitignore`. Se regenera con `dotnet dev-certs https --export-path certificados/localhost.pem --format PEM --no-password` |
 | **`node_modules` pesa ~300 MB** | En `.gitignore`. Al clonar hace falta `npm install` dentro de `frontend` |
 | **Playwright baja Chromium (~123 MB)** | Queda en `%LOCALAPPDATA%\ms-playwright`, fuera del proyecto. Al clonar: `npx playwright install chromium` |
+| **Las coordenadas de las zonas son de OpenStreetMap (ODbL)** | La licencia pide atribuir a *OpenStreetMap contributors* allá donde se muestren. Son 16 puntos y nombres de barrio, pero conviene poner la atribución en el pie del mapa desde el primer día en vez de acordarse después |
 | **El clúster local se creó con locale `C`** | `lower()` y `upper()` solo pliegan ASCII. Ninguna regla puede apoyarse en ellas: por eso `servicio` lleva `nombre_normalizado` calculado en C#. Si alguna vez se recrea el clúster, **no** cambia nada de esto, y es a propósito: en Azure el locale será otro |
 | **Subir al repositorio exige revisar la historia, no solo `.gitignore`** | Antes del primer `push` se revisaron los nombres de archivo de **todos** los commits buscando claves, `.env`, certificados y `appsettings.Development.json`. No había ninguno. Un `.gitignore` correcto no dice nada de lo que ya se versionó |
