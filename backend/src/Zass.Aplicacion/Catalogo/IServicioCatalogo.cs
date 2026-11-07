@@ -16,6 +16,12 @@ public interface IServicioCatalogo
     Task<IReadOnlyList<RubroDto>> BuscarRubrosAsync(
         string? texto = null, CancellationToken ct = default);
 
+    /// <summary>
+    /// Si ese rubro existe y esta activo. Lo necesita MOD-05 para la excepcion E-422 de
+    /// CU-08 sin traerse los servicios del rubro solo para mirar si hay alguno.
+    /// </summary>
+    Task<bool> ExisteRubroActivoAsync(short rubroId, CancellationToken ct = default);
+
     /// <summary>API-03. Los servicios sugeridos de un rubro (CU-03 paso 3).</summary>
     Task<Resultado<IReadOnlyList<ServicioDto>>> ServiciosDeRubroAsync(
         short rubroId, CancellationToken ct = default);

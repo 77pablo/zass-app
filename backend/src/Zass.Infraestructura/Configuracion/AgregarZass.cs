@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Catalogo;
+using Zass.Aplicacion.Busqueda;
 using Zass.Aplicacion.Geografia;
 using Zass.Aplicacion.Suscripciones;
 using Zass.Aplicacion.Puertos;
@@ -97,6 +98,7 @@ public static class RegistroDeServicios
         servicios.AddScoped<IRepositorioSuscripciones, RepositorioSuscripcionesEfCore>();
         servicios.AddScoped<IRepositorioCatalogo, RepositorioCatalogoEfCore>();
         servicios.AddScoped<IRepositorioGeografia, RepositorioGeografiaEfCore>();
+        servicios.AddScoped<IRepositorioBusqueda, RepositorioBusquedaEfCore>();
 
         // N-08 todavia no existe. Esta implementacion contesta que no esta disponible, y
         // eso dispara el flujo 4B de CU-03 en vez de un 500.
@@ -116,6 +118,9 @@ public static class RegistroDeServicios
 
         // --- MOD-04 Geolocalizacion ---
         servicios.AddScoped<IServicioGeografia, ServicioGeografia>();
+
+        // --- MOD-05 Busqueda ---
+        servicios.AddScoped<IServicioBusqueda, ServicioBusqueda>();
 
         // --- MOD-13 Suscripciones ---
         servicios.AddScoped<IServicioSuscripciones, ServicioSuscripciones>();

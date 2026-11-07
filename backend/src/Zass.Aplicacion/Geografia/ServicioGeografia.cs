@@ -58,6 +58,15 @@ public sealed class ServicioGeografia : IServicioGeografia
         return zonas.Select(Describir).ToList();
     }
 
+    public async Task<Resultado<ZonaDto>> ZonaPorIdAsync(
+        int zonaId, CancellationToken ct = default)
+    {
+        var zona = await _repo.ZonaPorIdAsync(zonaId, ct);
+        return zona is null
+            ? Resultado.Falla<ZonaDto>(Fallas.NoEncontrado, "Esa zona no existe.")
+            : Resultado.Ok(Describir(zona));
+    }
+
     // ------------------------------------------------------------- CS-10
 
     public async Task<Resultado<ZonaDto>> ResolverZonaAsync(

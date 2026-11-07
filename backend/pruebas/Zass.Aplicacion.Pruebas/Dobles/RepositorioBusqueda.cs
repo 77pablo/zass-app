@@ -1,0 +1,61 @@
+using Zass.Aplicacion.Puertos;
+
+namespace Zass.Aplicacion.Pruebas.Dobles;
+
+/// <summary>
+/// MOD-05, y este doble es TONTO a proposito.
+///
+/// No filtra, no ordena y no sabe de zonas: devuelve las filas que la prueba le dejo y
+/// anota con que criterios lo llamaron. Es deliberado. Reimplementar aqui los filtros
+/// duros y el orden por distancia seria escribir una segunda version del SQL en C#, y
+/// entonces las pruebas pasarian comprobando mi imitacion de PostgreSQL en vez de la
+/// consulta que corre en produccion. Esa parte se prueba en integracion, contra la base.
+///
+/// Lo que SI se puede probar sin base de datos es todo lo que decide el servicio: que el
+/// rubro exista, que el radio se corrija, que el punto se resuelva a zona, que el cursor
+/// vaya y vuelva, que la distancia salga redondeada y que el promedio respete RN-S5-11.
+/// </summary>
+public sealed class RepositorioBusquedaFalso : IRepositorioBusqueda
+{
+    /// <summary>Lo que devolvera la proxima consulta, en el orden en que esta.</summary>
+    public List<FilaDeBusqueda> Filas { get; } = new();
+
+    public CriteriosDeConsulta? UltimosCriterios { get; private set; }
+    public int? UltimoRadioMetros { get; private set; }
+    public double? UltimoDesdeMetros { get; private set; }
+    public Guid? UltimoDesdeId { get; private set; }
+    public decimal? UltimoDesdePromedio { get; private set; }
+    public int? UltimoDesdeResenas { get; private set; }
+    public int Llamadas { get; private set; }
+    public bool PidioPorDistancia { get; private set; }
+
+    public Task<IReadOnlyList<FilaDeBusqueda>> PorDistanciaAsync(
+        CriteriosDeConsulta criterios, double latitud, double longitud, int radioMetros,
+        double? desdeMetros, Guid? desdeId, CancellationToken ct = default)
+    {
+        Llamadas++;
+        PidioPorDistancia = true;
+        UltimosCriterios = criterios;
+        UltimoRadioMetros = radioMetros;
+        UltimoDesdeMetros = desdeMetros;
+        UltimoDesdeId = desdeId;
+
+        IReadOnlyList<FilaDeBusqueda> r = Filas.Take(criterios.Limite).ToList();
+        return Task.FromResult(r);
+    }
+
+    public Task<IReadOnlyList<FilaDeBusqueda>> PorZonaAsync(
+        CriteriosDeConsulta criterios, decimal? desdePromedio, int? desdeResenas,
+        Guid? desdeId, CancellationToken ct = default)
+    {
+        Llamadas++;
+        PidioPorDistancia = false;
+        UltimosCriterios = criterios;
+        UltimoDesdePromedio = desdePromedio;
+        UltimoDesdeResenas = desdeResenas;
+        UltimoDesdeId = desdeId;
+
+        IReadOnlyList<FilaDeBusqueda> r = Filas.Take(criterios.Limite).ToList();
+        return Task.FromResult(r);
+    }
+}

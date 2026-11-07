@@ -23,6 +23,12 @@ public interface IServicioGeografia
     Task<IReadOnlyList<ZonaDto>> ZonasAsync(string? sector = null, CancellationToken ct = default);
 
     /// <summary>
+    /// Una zona por identificador. La necesita MOD-05 para validar la zona pedida y para
+    /// poder decir en la respuesta en que zona se busco.
+    /// </summary>
+    Task<Resultado<ZonaDto>> ZonaPorIdAsync(int zonaId, CancellationToken ct = default);
+
+    /// <summary>
     /// CS-10. La zona de unas coordenadas: la del centroide mas cercano.
     ///
     /// Falla si el punto no es valido o si queda a mas de

@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Zass.Dominio.Agenda;
+using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Catalogo;
 using Zass.Dominio.Comun;
 using Zass.Dominio.Credenciales;
@@ -75,6 +76,7 @@ public class ZassDbContext : DbContext
         ConfigurarAgenda(b);
         ConfigurarReputacion(b);
         ConfigurarTarjetas(b);
+        ConfigurarBusqueda(b);
         ConfigurarSuscripciones(b);
         ConfigurarSoporte(b);
 
@@ -572,6 +574,21 @@ public class ZassDbContext : DbContext
             e.HasIndex(x => x.Estado);
             e.HasOne(x => x.Resena).WithMany(r => r.Reportes)
                 .HasForeignKey(x => x.ResenaId).OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    // ------------------------------------------------- MOD-05, solo lectura
+
+    private static void ConfigurarBusqueda(ModelBuilder b)
+    {
+        // El resultado de la consulta de CU-08 no es una tabla ni una vista: es la forma
+        // de una consulta. Se declara sin clave y sin tabla para que EF Core pueda
+        // materializarla desde FromSqlInterpolated sin creer que existe en la base, y
+        // para que ninguna migracion intente crearla.
+        b.Entity<FilaDeBusqueda>(e =>
+        {
+            e.HasNoKey();
+            e.ToView(null);
         });
     }
 

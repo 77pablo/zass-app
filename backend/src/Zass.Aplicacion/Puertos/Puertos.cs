@@ -220,3 +220,71 @@ public interface IGeocodificador
 {
     Task<Resultado<Punto>> GeocodificarAsync(string direccion, CancellationToken ct = default);
 }
+
+/// <summary>
+/// MOD-05. La consulta de CU-08, que es la mas caliente del producto.
+///
+/// Devuelve <see cref="FilaDeBusqueda"/> y no entidades del dominio a proposito: una
+/// busqueda no necesita perfiles completos, y traerlos obligaria a cargar la direccion
+/// cifrada y la ubicacion exacta solo para despues descartarlas. Lo que no se trae no se
+/// puede filtrar por accidente (RN-S3-02).
+/// </summary>
+public interface IRepositorioBusqueda
+{
+    /// <summary>
+    /// Ordenada por distancia. El punto ya viene resuelto a zona por MOD-04, porque la
+    /// cobertura de la zona es un filtro duro del paso 5 de CU-08.
+    ///
+    /// El cursor es keyset sobre (metros, id): nada de OFFSET.
+    /// </summary>
+    Task<IReadOnlyList<FilaDeBusqueda>> PorDistanciaAsync(
+        CriteriosDeConsulta criterios, double latitud, double longitud, int radioMetros,
+        double? desdeMetros, Guid? desdeId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sin punto: filtra por zona y ordena por reputacion y credencial verificada
+    /// (RN-S3-07 y flujo 4C.4 de CU-08). Es el camino normal mientras N-08 no exista.
+    ///
+    /// El cursor es keyset sobre (promedio, resenas, id).
+    /// </summary>
+    Task<IReadOnlyList<FilaDeBusqueda>> PorZonaAsync(
+        CriteriosDeConsulta criterios,
+        decimal? desdePromedio, int? desdeResenas, Guid? desdeId,
+        CancellationToken ct = default);
+}
+
+/// <summary>Lo que los dos caminos de la consulta tienen en comun.</summary>
+public sealed record CriteriosDeConsulta(
+    short RubroId,
+    int ZonaId,
+    int? ServicioId,
+    bool SoloVerificados,
+    decimal? CalificacionMinima,
+    DateTime Ahora,
+    int Limite);
+
+/// <summary>
+/// Una fila cruda de la consulta de busqueda.
+///
+/// Es una clase con propiedades asignables, y no un record posicional, porque EF Core la
+/// materializa desde SQL: se declara aqui —en la capa que la necesita— y
+/// <c>ZassDbContext</c> la configura como tipo sin clave. La flecha de dependencia sigue
+/// apuntando de infraestructura hacia aqui.
+///
+/// `Metros` es la distancia EXACTA y no sale nunca de la capa de aplicacion: el servicio
+/// la convierte en el texto redondeado de RN-S3-03 antes de armar el resultado publico.
+/// </summary>
+public class FilaDeBusqueda
+{
+    public Guid Id { get; set; }
+    public string Slug { get; set; } = "";
+    public string NombrePublico { get; set; } = "";
+    public string? Descripcion { get; set; }
+    public string? UrlFoto { get; set; }
+    public short RubroId { get; set; }
+    public string? ZonaPrincipal { get; set; }
+    public double? Metros { get; set; }
+    public bool TieneVerificada { get; set; }
+    public decimal? PromedioCalificacion { get; set; }
+    public int TotalResenas { get; set; }
+}
