@@ -226,11 +226,17 @@ no reintente sin fin.
    - datos de ejemplo de rubros y servicios de Temuco
 3. MOD-04 Geolocalizacion: zonas y cobertura (TBL-10, 11)
    - IServicioGeografia, API-04, API-21
-4. MOD-05 Busqueda: API-01, con FromSqlInterpolated y el indice GIST
-   - AQUI hace falta la respuesta a la pregunta 1 de la seccion 9
-5. MOD-02 Credenciales -> MOD-06 Agenda -> MOD-11 Resenas -> MOD-12 Tarjetas
-6. Pruebas de arquitectura (NetArchTest) y filtro de idempotencia
-7. Las pantallas que faltan, sobre el cliente que ya existe en frontend/src/api:
+4. MOD-13 Suscripciones (NUEVO): IServicioSuscripciones, TBL-29/30/31
+   - Las tablas YA existen en la base; falta el modulo que las gobierne
+   - EstaVigente y VigentesEntre, que es lo que la busqueda necesita
+   - Decidir los planes es la pregunta 2 de la seccion 9, pero NO bloquea:
+     se puede construir con un unico plan de prueba de 30 dias
+5. MOD-05 Busqueda: API-01, con FromSqlInterpolated y el indice GIST
+   - Ya desbloqueado: RN-S3-09 dice que el impago DESAPARECE
+   - El filtro va dentro del SQL de la busqueda, no resultado por resultado
+6. MOD-02 Credenciales -> MOD-06 Agenda -> MOD-11 Resenas -> MOD-12 Tarjetas
+7. Pruebas de arquitectura (NetArchTest) y filtro de idempotencia
+8. Las pantallas que faltan, sobre el cliente que ya existe en frontend/src/api:
    verificar correo (API-14), recuperar contrasena (API-15), perfil del
    prestador (API-17/18) y busqueda (API-01)
 ```
@@ -308,12 +314,25 @@ Al terminar: `detener-postgres.bat`.
 
 ## 9. Lo que falta confirmar con Pablo
 
-1. **Bloquea MOD-05, que es el paso 4.** Si un prestador **sin suscripción vigente**
-   desaparece de la búsqueda o solo aparece degradado.
+1. ~~Si un prestador sin suscripción vigente desaparece de la búsqueda o solo aparece
+   degradado.~~ **RESPONDIDA el 7 de noviembre de 2026: desaparece.** Escrita en el
+   documento como **RN-S3-09** y como filtro duro de CU-08. Ya no bloquea MOD-05.
 2. Precio y nombre de los planes.
 3. Pasarela simulada en el prototipo, o sin cobro hasta integrar Transbank, Flow o
    Mercado Pago.
-4. `EsMismaPersona` hoy solo detecta la misma cuenta o el mismo correo. El modelo no
+4. **Nueva, y la abrió la respuesta anterior.** Desaparecer de la búsqueda está decidido,
+   pero no qué pasa con la **ficha pública por enlace directo y por tarjeta NFC** cuando
+   la suscripción vence. La tarjeta es un objeto físico que ya está en manos de alguien:
+   - Si **deja de funcionar**, el producto que se vendió se apaga al dejar de pagar. Es
+     coherente con el modelo, pero quien la tiene en la mano no entiende por qué.
+   - Si **sigue funcionando**, hay una puerta al perfil que no pasa por la búsqueda, y el
+     prestador impago conserva lo que más se nota del producto.
+   - Punto medio posible: la tarjeta abre, pero muestra la ficha **sin los botones de
+     contacto ni de agendar**, y con un aviso.
+
+   Afecta a S6 entero (MOD-12) y conviene resolverla **antes** de construirlo.
+
+5. `EsMismaPersona` hoy solo detecta la misma cuenta o el mismo correo. El modelo no
    guarda nada que ligue dos cuentas distintas a una persona —no se pide RUT, por
    minimización—, así que RN-S2-09 y RN-S5-09 tienen un **falso negativo conocido**: dos
    cuentas de la misma persona pasan el control de conflicto de interés. Ampliarlo exige
