@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using Zass.Aplicacion.Catalogo;
+using Zass.Aplicacion.Credenciales;
 using Zass.Aplicacion.Geografia;
 using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Puertos;
@@ -21,12 +22,15 @@ public sealed class ServicioBusqueda : IServicioBusqueda
     private readonly IServicioCatalogo _catalogo;
     private readonly IServicioGeografia _geografia;
     private readonly IServicioIdentidad _identidad;
+    private readonly IServicioCredenciales _credenciales;
     private readonly IRelojSistema _reloj;
 
     public ServicioBusqueda(
         IRepositorioBusqueda repo, IServicioCatalogo catalogo,
-        IServicioGeografia geografia, IServicioIdentidad identidad, IRelojSistema reloj)
+        IServicioGeografia geografia, IServicioIdentidad identidad,
+        IServicioCredenciales credenciales, IRelojSistema reloj)
     {
+        _credenciales = credenciales;
         _repo = repo;
         _catalogo = catalogo;
         _geografia = geografia;
@@ -166,6 +170,7 @@ public sealed class ServicioBusqueda : IServicioBusqueda
             : null;
         var servicios = await _catalogo.ServiciosPublicosDePrestadorAsync(perfil.Id, ct);
         var zonas = await _geografia.ZonasDeCoberturaAsync(perfil.Id, ct);
+        var credenciales = await _credenciales.CredencialesPublicasAsync(perfil.Id, ct);
 
         return new FichaPublicaDto(
             perfil.Id,
@@ -177,6 +182,7 @@ public sealed class ServicioBusqueda : IServicioBusqueda
             // MOD-04 ya las entrega con la principal primero (RN-S3-08).
             zonas.Select(z => new ZonaPublicaDto(z.Nombre, z.Sector, z.EsPrincipal)).ToList(),
             servicios,
+            credenciales,
             perfil.PromedioCalificacion,      // MOD-01 ya aplico RN-S5-11
             perfil.TotalResenas,
             new ContactoPublicoDto(

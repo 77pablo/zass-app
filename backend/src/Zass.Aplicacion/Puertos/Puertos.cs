@@ -1,5 +1,6 @@
 using Zass.Dominio.Catalogo;
 using Zass.Dominio.Comun;
+using Zass.Dominio.Credenciales;
 using Zass.Dominio.Identidad;
 using Zass.Dominio.Suscripciones;
 
@@ -353,4 +354,32 @@ public class FilaDeBusqueda
     public decimal ReputacionOrden { get; set; }
 
     public int TotalResenas { get; set; }
+}
+
+/// <summary>MOD-02 - Credenciales (TBL-12, TBL-13, TBL-14, TBL-15).</summary>
+public interface IRepositorioCredenciales
+{
+    /// <summary>Las de un prestador con su entidad y sus documentos, la mas nueva primero.</summary>
+    Task<IReadOnlyList<Credencial>> DePrestadorAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default);
+
+    /// <summary>Las que el publico puede ver: todas menos los borradores.</summary>
+    Task<IReadOnlyList<Credencial>> PublicasDePrestadorAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default);
+
+    Task<Credencial?> PorIdAsync(Guid id, CancellationToken ct = default);
+
+    Task<int> ContarDePrestadorAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+
+    Task<bool> TieneVerificadaAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+
+    void Agregar(Credencial credencial);
+    void Eliminar(Credencial credencial);
+
+    Task<EntidadCertificadora?> EntidadActivaPorIdAsync(short id, CancellationToken ct = default);
+
+    /// <summary>Por nombre sin distinguir mayusculas: "Universidad de la Frontera" y "universidad de la frontera" son la misma.</summary>
+    Task<EntidadCertificadora?> EntidadPorNombreAsync(string nombre, CancellationToken ct = default);
+
+    void AgregarEntidad(EntidadCertificadora entidad);
 }

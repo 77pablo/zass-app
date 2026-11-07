@@ -88,6 +88,14 @@ public class ApiPruebas : IAsyncLifetime
             }
         }
 
+        // Las entidades que escribieron las pruebas de credenciales no cuelgan de ningun usuario.
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            ctx.EntidadesCertificadoras.RemoveRange(
+                ctx.EntidadesCertificadoras.Where(e => e.Nombre.StartsWith(PrefijoDeEntidad)));
+            await ctx.SaveChangesAsync();
+        }
+
         _cliente.Dispose();
         _app.Dispose();
     }
@@ -1235,6 +1243,211 @@ public class ApiPruebas : IAsyncLifetime
 
         foreach (var prohibido in new[] { "latitud", "longitud", "direccion", "usuarioId", "@zass.local", "telefono", "whatsapp", "hash" })
             Assert.DoesNotContain(prohibido, texto, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ------------------------------------------------- MOD-02 Credenciales por HTTP
+
+    private const string PrefijoDeEntidad = "api-entidad-";
+
+    private static object UnaCredencial(
+        string nombre = "Abogado", string? entidadNombre = null, string tipo = "Titulo",
+        string obtenidaEn = "2020-03-15", string? venceEn = null) => new
+        {
+            tipo, nombre, entidadId = (short?)null,
+            entidadNombre = entidadNombre ?? $"{PrefijoDeEntidad}{Guid.NewGuid():N}",
+            obtenidaEn, venceEn,
+        };
+
+    private async Task<HttpResponseMessage> CrearCredencialAsync(object cuerpo, bool conCsrf = true)
+    {
+        var peticion = new HttpRequestMessage(HttpMethod.Post, "/api/mi/credenciales")
+        {
+            Content = JsonContent.Create(cuerpo),
+        };
+        if (conCsrf) peticion.Headers.Add("X-CSRF-Token", await TokenCsrfAsync());
+        return await _cliente.SendAsync(peticion);
+    }
+
+    private async Task<HttpResponseMessage> EliminarCredencialAsync(string id)
+    {
+        var peticion = new HttpRequestMessage(HttpMethod.Delete, $"/api/mi/credenciales/{id}");
+        peticion.Headers.Add("X-CSRF-Token", await TokenCsrfAsync());
+        return await _cliente.SendAsync(peticion);
+    }
+
+    private static async Task<string> IdDeAsync(HttpResponseMessage creada) =>
+        (await creada.Content.ReadFromJsonAsync<JsonDocument>())!.RootElement.GetProperty("id").GetString()!;
+
+    private async Task UnPrestadorConSesionAsync()
+    {
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo, rol: "prestador");
+        await VerificarAsync(correo);
+        await IniciarSesionAsync(correo);
+    }
+
+    [Fact]
+    public async Task Sin_sesion_las_credenciales_responden_401()
+    {
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _cliente.GetAsync("/api/mi/credenciales")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Crear_una_credencial_sin_el_token_csrf_devuelve_403()
+    {
+        await UnPrestadorConSesionAsync();
+
+        var r = await CrearCredencialAsync(UnaCredencial(), conCsrf: false);
+
+        Assert.Equal(HttpStatusCode.Forbidden, r.StatusCode);
+    }
+
+    [Fact]
+    public async Task Una_cuenta_de_buscador_no_puede_tener_credenciales()
+    {
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo, rol: "buscador");
+        await IniciarSesionAsync(correo);
+
+        var lista = await _cliente.GetAsync("/api/mi/credenciales");
+        var crear = await CrearCredencialAsync(UnaCredencial());
+
+        Assert.False(lista.IsSuccessStatusCode);
+        Assert.False(crear.IsSuccessStatusCode);
+    }
+
+    /// <summary>El camino de CU-05 sin archivos, por HTTP y contra la base real: crear, ver, eliminar.</summary>
+    [Fact]
+    public async Task Un_prestador_crea_ve_y_elimina_una_credencial()
+    {
+        await UnPrestadorConSesionAsync();
+
+        var creada = await CrearCredencialAsync(UnaCredencial("Abogado"));
+        Assert.Equal(HttpStatusCode.Created, creada.StatusCode);
+        var id = await IdDeAsync(creada);
+
+        var lista = (await _cliente.GetFromJsonAsync<JsonDocument>("/api/mi/credenciales"))!.RootElement;
+        var mia = Assert.Single(lista.EnumerateArray().ToList());
+        Assert.Equal(id, mia.GetProperty("id").GetString());
+        Assert.Equal("Abogado", mia.GetProperty("nombre").GetString());
+        Assert.Equal("Titulo", mia.GetProperty("tipo").GetString());
+        // El dueño SI ve el estado interno (API-24), y que la entidad aun no esta reconocida.
+        Assert.Equal("Borrador", mia.GetProperty("estado").GetString());
+        Assert.False(mia.GetProperty("entidadReconocida").GetBoolean());
+        Assert.False(mia.GetProperty("tieneRespaldo").GetBoolean());
+
+        Assert.Equal(HttpStatusCode.NoContent, (await EliminarCredencialAsync(id)).StatusCode);
+        var despues = (await _cliente.GetFromJsonAsync<JsonDocument>("/api/mi/credenciales"))!.RootElement;
+        Assert.Equal(0, despues.GetArrayLength());
+    }
+
+    [Theory]
+    [InlineData("ab", "2020-03-15", null, "nombre")]             // nombre demasiado corto
+    [InlineData("Abogado", "2020-03-15", "2020-03-15", "vence")] // vence el mismo dia
+    [InlineData("Abogado", "2999-01-01", null, "futura")]        // obtenida en el futuro
+    public async Task Una_credencial_invalida_devuelve_400_y_no_se_guarda(
+        string nombre, string obtenidaEn, string? venceEn, string pista)
+    {
+        await UnPrestadorConSesionAsync();
+
+        var r = await CrearCredencialAsync(UnaCredencial(nombre, obtenidaEn: obtenidaEn, venceEn: venceEn));
+
+        Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
+        Assert.Contains(pista, (await r.Content.ReadAsStringAsync()).ToLowerInvariant());
+        var lista = (await _cliente.GetFromJsonAsync<JsonDocument>("/api/mi/credenciales"))!.RootElement;
+        Assert.Equal(0, lista.GetArrayLength());
+    }
+
+    /// <summary>
+    /// Un cuerpo ilegible es un 400 en todos los entornos. En Development ASP.NET lanzaba la
+    /// excepcion y el manejador global la volvia un 500, asi que las pruebas veian una API
+    /// distinta de la que se despliega.
+    /// </summary>
+    [Fact]
+    public async Task Un_cuerpo_que_no_es_json_devuelve_400_y_no_500()
+    {
+        var r = await _cliente.PostAsync("/api/auth/registro",
+            new StringContent("{ esto no es json", System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
+    }
+
+    [Fact]
+    public async Task Un_tipo_de_credencial_que_no_existe_devuelve_400()
+    {
+        await UnPrestadorConSesionAsync();
+
+        var r = await CrearCredencialAsync(UnaCredencial(tipo: "Hechicero"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
+    }
+
+    /// <summary>
+    /// E-403: eliminar la credencial de otra persona responde igual que una que no existe. Si
+    /// respondiera distinto, quien prueba ids sabria cuales existen.
+    /// </summary>
+    [Fact]
+    public async Task Eliminar_la_credencial_de_otro_responde_404_igual_que_una_inexistente()
+    {
+        await UnPrestadorConSesionAsync();
+        var idAjeno = await IdDeAsync(await CrearCredencialAsync(UnaCredencial()));
+        var primero = _cliente;
+
+        // Otra persona, con su propia sesion (otro cliente: otra jarra de cookies).
+        using var otroCliente = _app.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            HandleCookies = true, AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost"),
+        });
+        _cliente = otroCliente;
+        try
+        {
+            await UnPrestadorConSesionAsync();
+            var ajena = await EliminarCredencialAsync(idAjeno);
+            var inexistente = await EliminarCredencialAsync(Guid.NewGuid().ToString());
+
+            Assert.Equal(HttpStatusCode.NotFound, ajena.StatusCode);
+            Assert.Equal(inexistente.StatusCode, ajena.StatusCode);
+            Assert.Equal(await inexistente.Content.ReadAsStringAsync(), await ajena.Content.ReadAsStringAsync());
+        }
+        finally { _cliente = primero; }
+
+        // La de la primera persona sigue ahi.
+        var lista = (await _cliente.GetFromJsonAsync<JsonDocument>("/api/mi/credenciales"))!.RootElement;
+        Assert.Equal(1, lista.GetArrayLength());
+    }
+
+    /// <summary>
+    /// La ficha publica muestra credenciales sin borradores y sin estado interno: "Declarada por
+    /// el usuario" o "Verificada", y nada mas (RN-S2-03). El estado se mueve por la base porque
+    /// enviar a revision y verificar esperan a MOD-08 y al Verificador.
+    /// </summary>
+    [Fact]
+    public async Task La_ficha_publica_muestra_credenciales_sin_borradores_ni_estado_interno()
+    {
+        var slug = await UnaFichaCompletaAsync();
+        Assert.Equal(HttpStatusCode.Created, (await CrearCredencialAsync(UnaCredencial("Borrador privado"))).StatusCode);
+        var idRevision = Guid.Parse(await IdDeAsync(await CrearCredencialAsync(UnaCredencial("Magister en derecho"))));
+        var idVerificada = Guid.Parse(await IdDeAsync(await CrearCredencialAsync(UnaCredencial("Abogado titulado"))));
+
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            (await ctx.Credenciales.FindAsync(idRevision))!.Estado = EstadoCredencial.EnRevision;
+            (await ctx.Credenciales.FindAsync(idVerificada))!.Verificar(Guid.NewGuid());
+            await ctx.SaveChangesAsync();
+        }
+
+        using var visitante = UnVisitante();
+        var texto = await (await visitante.GetAsync($"/api/prestadores/{slug}")).Content.ReadAsStringAsync();
+        var credenciales = JsonDocument.Parse(texto).RootElement
+            .GetProperty("credenciales").EnumerateArray().ToList();
+
+        Assert.Equal(new[] { "Abogado titulado", "Magister en derecho" },
+            credenciales.Select(c => c.GetProperty("nombre").GetString()).ToArray());
+        Assert.Equal("Verificada", credenciales[0].GetProperty("etiqueta").GetString());
+        Assert.Equal("Declarada por el usuario", credenciales[1].GetProperty("etiqueta").GetString());
+        Assert.DoesNotContain("Borrador privado", texto);
+        foreach (var interno in new[] { "EnRevision", "Rechazada", "selloPor", "documentos", "reservada" })
+            Assert.DoesNotContain(interno, texto, StringComparison.OrdinalIgnoreCase);
     }
 
     private static object UnaZona(int zonaId, bool principal) => new

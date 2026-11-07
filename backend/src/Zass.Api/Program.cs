@@ -35,6 +35,16 @@ constructor.Services
 constructor.Services.ConfigureHttpJsonOptions(opciones =>
     opciones.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
+// Un cuerpo que no se puede leer (JSON roto, un valor de enum que no existe) es un 400.
+//
+// ASP.NET lo hace asi en produccion, pero en DESARROLLO lanza la excepcion en vez de
+// responder, y el manejador global la vuelve un 500. Las pruebas corren en Development, asi
+// que ahi un cuerpo ilegible daba 500 mientras en produccion daria 400: dos aplicaciones
+// distintas. Lo encontro la prueba de "tipo de credencial que no existe". Se fija aqui para que
+// el comportamiento sea el mismo en todos los entornos.
+constructor.Services.Configure<Microsoft.AspNetCore.Routing.RouteHandlerOptions>(
+    opciones => opciones.ThrowOnBadRequest = false);
+
 var app = constructor.Build();
 
 // El orden importa: las cabeceras primero, para que acompanen incluso a una respuesta
@@ -66,6 +76,7 @@ app.MapearIdentidad();
 app.MapearCatalogo();
 app.MapearGeografia();
 app.MapearBusqueda();
+app.MapearCredenciales();
 
 // Sonda de vida. Sin sesion y con el limite publico: tambien es un endpoint.
 app.MapGet("/api/salud", () => Results.Ok(new { estado = "vivo" }))

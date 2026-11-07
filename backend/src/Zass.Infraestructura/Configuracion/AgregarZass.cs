@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Catalogo;
+using Zass.Aplicacion.Credenciales;
 using Zass.Aplicacion.Busqueda;
 using Zass.Aplicacion.Geografia;
 using Zass.Aplicacion.Suscripciones;
@@ -112,6 +113,10 @@ public static class RegistroDeServicios
         servicios.AddScoped<ServicioSesion>();
         servicios.AddScoped<ServicioCuenta>();
         servicios.AddScoped<ServicioPerfiles>();
+
+        // --- MOD-02 Credenciales ---
+        servicios.AddScoped<IRepositorioCredenciales, RepositorioCredencialesEfCore>();
+        servicios.AddScoped<IServicioCredenciales, ServicioCredenciales>();
 
         // --- MOD-03 Catalogo ---
         servicios.AddScoped<IServicioCatalogo, ServicioCatalogo>();

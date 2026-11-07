@@ -1,3 +1,4 @@
+using Zass.Aplicacion.Credenciales;
 using Zass.Aplicacion.Catalogo;
 using Zass.Dominio.Comun;
 
@@ -143,6 +144,8 @@ public sealed record FichaPublicaDto(
     RubroDto? Rubro,
     IReadOnlyList<ZonaPublicaDto> Zonas,
     IReadOnlyList<ServicioPublicoDto> Servicios,
+    /// <summary>De MOD-02: solo "Verificada" o "Declarada por el usuario", nunca el estado interno ni archivos.</summary>
+    IReadOnlyList<CredencialPublicaDto> Credenciales,
     /// <summary>Nulo con menos de 3 resenas (RN-S5-11): entonces solo se muestra el recuento.</summary>
     decimal? PromedioCalificacion,
     int TotalResenas,

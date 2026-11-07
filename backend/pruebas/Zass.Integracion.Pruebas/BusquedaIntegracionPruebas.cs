@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Zass.Aplicacion.Busqueda;
 using Zass.Aplicacion.Catalogo;
+using Zass.Aplicacion.Credenciales;
 using Zass.Aplicacion.Geografia;
 using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Puertos;
@@ -56,6 +57,7 @@ public class BusquedaIntegracionPruebas : IDisposable
                 new RepositorioGeografiaEfCore(ctx), new GeocodificadorNoDisponible(),
                 trabajo, _reloj, auditor),
             new ServicioIdentidad(new RepositorioUsuariosEfCore(ctx), new RepositorioPerfilesEfCore(ctx)),
+            new ServicioCredenciales(new RepositorioCredencialesEfCore(ctx), trabajo, _reloj, auditor),
             _reloj);
     }
 

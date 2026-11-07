@@ -1,5 +1,6 @@
 using Zass.Aplicacion.Busqueda;
 using Zass.Aplicacion.Catalogo;
+using Zass.Aplicacion.Credenciales;
 using Zass.Aplicacion.Geografia;
 using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Pruebas.Dobles;
@@ -39,7 +40,10 @@ public class FichaPublicaPruebas
         var identidad = new ServicioIdentidad(
             new RepositorioUsuariosEnMemoria(_base), new RepositorioPerfilesEnMemoria(_base));
 
-        _servicio = new ServicioBusqueda(new RepositorioBusquedaFalso(), catalogo, geografia, identidad, _reloj);
+        _servicio = new ServicioBusqueda(
+            new RepositorioBusquedaFalso(), catalogo, geografia, identidad,
+            new ServicioCredenciales(new RepositorioCredencialesEnMemoria(_base), _base, _reloj, auditor),
+            _reloj);
     }
 
     private PerfilPrestador UnPerfil(

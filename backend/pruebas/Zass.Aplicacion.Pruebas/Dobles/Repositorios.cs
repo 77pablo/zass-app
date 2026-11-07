@@ -1,5 +1,6 @@
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Catalogo;
+using Zass.Dominio.Credenciales;
 using Zass.Dominio.Identidad;
 using Zass.Dominio.Suscripciones;
 
@@ -31,6 +32,8 @@ public sealed class BaseEnMemoria : IUnidadDeTrabajo
     public List<Plan> Planes { get; } = new();
     public List<Suscripcion> Suscripciones { get; } = new();
     public List<Pago> Pagos { get; } = new();
+    public List<Credencial> Credenciales { get; } = new();
+    public List<EntidadCertificadora> Entidades { get; } = new();
 
     public int Guardados { get; private set; }
     public Task<int> GuardarAsync(CancellationToken ct = default)

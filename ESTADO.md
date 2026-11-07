@@ -213,6 +213,42 @@ nadie dice "atiendo en Condominio Nueva Milano". Quedaron los 16 sectores con lo
 gente de Temuco dice dónde está. Ninguna coordenada está inventada, y eso importa: un
 centroide mal puesto manda al prestador al barrio de al lado sin que nada falle.
 
+### MOD-02 Credenciales — la primera parte (7-nov-2026, noche)
+
+Se hizo lo que **no necesita archivos**: declarar, listar y eliminar credenciales (CU-05 pasos 1 a 5 y
+flujo 4F), y mostrar las públicas en la ficha. Subir documentos (API-26) y enviar a revisión (API-27)
+dependen de **MOD-08** (almacenamiento privado con antivirus), que no existe; la cola del Verificador
+(API-29 a 31) depende de lo anterior.
+
+| Hecho | Detalle |
+|---|---|
+| API-24 `GET /api/mi/credenciales` | Las del dueño, **con estado interno** y si tiene respaldo |
+| API-25 `POST /api/mi/credenciales` | Crea en `Borrador`: solo su dueño la ve. Nombre 3–150, obtención no futura, vencimiento posterior, entidad del catálogo o escrita a mano (**queda «no catalogada»** y se reutiliza si ya existe, sin distinguir mayúsculas) |
+| API-28 `DELETE /api/mi/credenciales/{id}` | Borra la propia y sus documentos (cascada). **La de otra persona responde igual que una inexistente** (404, mismo cuerpo) |
+| Ficha pública (API-05) | Ahora trae `credenciales`: solo «Verificada» o «Declarada por el usuario», **ningún borrador**, sin estado interno ni archivos (RN-S2-03). Las verificadas van primero |
+| Tope | 25 credenciales por prestador (decisión mía: holgura sobre «1 a 5» y límite al trabajo de revisión) |
+| Auditoría | Crear y eliminar quedan registrados (RN-S2-08), **sin el contenido** |
+
+**Se midió:** 16 mutantes sobre el servicio (todos muertos), 8 sobre el repositorio (**al principio 4
+sobrevivían**: el servicio tapaba al repositorio; se escribieron pruebas que lo preguntan solo) y 7 sobre
+los endpoints (uno equivalente: sin la política de autorización el endpoint ya responde 401 por su cuenta).
+
+**Un fallo real que destapó una prueba:** un valor de enum inexistente en el JSON (`"tipo": "Hechicero"`)
+daba **500**. ASP.NET lanza la excepción en Development en vez de responder 400, y el manejador global la
+volvía 500: las pruebas veían una API distinta de la desplegada. Se fijó `ThrowOnBadRequest = false` en
+`Program.cs` y hay una prueba con JSON roto (400 en todos los entornos).
+
+**Lo que NO está hecho de MOD-02:**
+
+| Falta | Por qué importa |
+|---|---|
+| **MOD-08**: subir archivos, almacenamiento privado, antivirus, URL firmada | Sin eso no hay `Disponible`, y sin eso nada puede enviarse a revisión (RN-S2-01) |
+| API-27 enviar a revisión, API-29/30/31 cola y resolución del Verificador | El sello «Verificado» **sigue sin poder dárselo nadie** |
+| Flujo 4E: editar una credencial verificada la devuelve a revisión (RN-S2-07) | No hay edición todavía |
+| Borradores de 90 días (4D.3) | Falta el trabajo de fondo |
+| Entidades nuevas duplicadas por carrera | Dos personas escribiendo a la vez la misma entidad nueva chocan con el índice único (500 raro, muy improbable) |
+| Pantalla de «Mis credenciales» | Falta (se hace aparte) |
+
 ### El sitio multipágina (7-nov-2026, noche)
 
 Pablo pidió *"una página web llamativa, no todo en una sola página, que una abra otra"*. La interfaz
@@ -562,8 +598,8 @@ Endpoints: **API-01 a API-05, 08-23**, más `GET /api/auth/csrf` y `GET /api/sal
 
 | Proyecto | Cuántas | Qué cubre |
 |---|---|---|
-| `Zass.Aplicacion.Pruebas` | **275** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02 a RN-S3-08, RN-S5-11, CC-02, y MOD-03, MOD-04 y MOD-05 completos |
-| `Zass.Integracion.Pruebas` | **231** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
+| `Zass.Aplicacion.Pruebas` | **307** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02 a RN-S3-08, RN-S5-11, CC-02, y MOD-03, MOD-04 y MOD-05 completos |
+| `Zass.Integracion.Pruebas` | **257** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
 | `frontend` (Vitest) | **107** | Cliente HTTP y pantallas, con `fetch` simulado |
 | `frontend/pruebas-navegador` | 2 guiones | Navegador real contra la API real: que la página monta, los colores de marca, y el registro e ingreso completos |
 
@@ -771,7 +807,8 @@ HECHO   MOD-05 Busqueda          7-nov-2026, con 74 pruebas nuevas
    - Poner la atribucion a OpenStreetMap en el pie del mapa desde el dia uno
    - Verificar correo (API-14) y recuperar contrasena (API-15) van con estas
 
-4. MOD-02 Credenciales -> MOD-06 Agenda -> MOD-11 Resenas -> MOD-12 Tarjetas
+4. MOD-02 Credenciales (primera parte HECHA: declarar, listar, eliminar; falta MOD-08)
+   -> MOD-06 Agenda -> MOD-11 Resenas -> MOD-12 Tarjetas
    - Antes de MOD-12 hace falta la respuesta a la pregunta 4 de la seccion 9
 
 5. Pruebas de arquitectura (NetArchTest) y filtro de idempotencia
