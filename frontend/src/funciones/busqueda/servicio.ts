@@ -152,6 +152,10 @@ export interface CriteriosDeTexto {
   lon?: number
   zona?: number
   pagina?: number
+  /** Solo quien tiene una credencial verificada. */
+  verificados?: boolean
+  /** Nota minima de 1 a 5; solo cuenta a quien ya tiene 3 resenas (RN-S5-11). */
+  calificacion?: number
 }
 
 /** API-63. Texto libre: un oficio, un servicio o un nombre. Sin texto devuelve a todos. */
@@ -165,6 +169,9 @@ export function buscarTexto(c: CriteriosDeTexto): Promise<PaginaDeTexto> {
   }
   if (c.zona !== undefined) q.set('zona', String(c.zona))
   if (c.pagina !== undefined && c.pagina > 1) q.set('pagina', String(c.pagina))
+  // Solo viaja lo que de verdad se pidio: un `verificados=false` ensuciaria la URL de una busqueda compartida.
+  if (c.verificados) q.set('verificados', 'true')
+  if (c.calificacion !== undefined) q.set('calificacion', String(c.calificacion))
   const texto = q.toString()
   return obtener<PaginaDeTexto>(texto === '' ? '/api/buscar' : `/api/buscar?${texto}`)
 }

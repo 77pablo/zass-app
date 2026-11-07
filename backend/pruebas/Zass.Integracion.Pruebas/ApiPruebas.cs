@@ -1525,6 +1525,40 @@ public class ApiPruebas : IAsyncLifetime
         Assert.True((int)r.StatusCode is 400 or 404, $"respondio {(int)r.StatusCode}");
     }
 
+    /// <summary>Sin el filtro aparece, con «solo verificados» no: asi se sabe que el parametro llega a la consulta.</summary>
+    [Fact]
+    public async Task Solo_verificados_por_http_deja_fuera_a_quien_no_tiene_sello()
+    {
+        var slug = await UnaFichaCompletaAsync();      // publicada, sin credencial verificada
+        using var visitante = UnVisitante();
+
+        async Task<bool> Aparece(string consulta)
+        {
+            var r = await visitante.GetFromJsonAsync<JsonDocument>($"/api/buscar?q=marcela{consulta}");
+            return r!.RootElement.GetProperty("resultados").EnumerateArray()
+                .Any(x => x.GetProperty("slug").GetString() == slug);
+        }
+
+        Assert.True(await Aparece(""));
+        Assert.False(await Aparece("&verificados=true"));
+        Assert.False(await Aparece("&calificacion=4"));      // sin 3 resenas no hay nota publica
+    }
+
+    [Fact]
+    public async Task Los_filtros_de_la_barra_se_aceptan_por_http_y_una_nota_imposible_da_400()
+    {
+        using var visitante = UnVisitante();
+
+        var bien = await visitante.GetAsync("/api/buscar?q=marcela&verificados=true&calificacion=4");
+        var mal = await visitante.GetAsync("/api/buscar?q=marcela&calificacion=7");
+
+        Assert.Equal(HttpStatusCode.OK, bien.StatusCode);
+        var pagina = (await bien.Content.ReadFromJsonAsync<JsonDocument>())!.RootElement;
+        // Nadie del seed de esta prueba tiene sello ni 3 resenas: con los filtros puestos no queda nadie.
+        Assert.Equal(0, pagina.GetProperty("resultados").GetArrayLength());
+        Assert.Equal(HttpStatusCode.BadRequest, mal.StatusCode);
+    }
+
     [Fact]
     public async Task Un_texto_larguisimo_o_con_comodines_no_rompe_nada()
     {

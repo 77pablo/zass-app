@@ -285,6 +285,11 @@ public sealed class RepositorioBusquedaEfCore : IRepositorioBusqueda
                    total_resenas, precio_desde,
                    COUNT(*) OVER () AS total_filas
             FROM base
+            -- Los filtros van aqui y no dentro de la base: asi COUNT(*) OVER () cuenta solo a quien los cumple.
+            -- La nota minima se mira sobre la reputacion PUBLICA: quien tiene menos de 3 resenas vale -1 y
+            -- no entra (RN-S5-11), igual que en la busqueda por rubro.
+            WHERE ({c.SoloVerificados}::boolean = false OR tiene_verificada)
+              AND ({c.CalificacionMinima}::numeric IS NULL OR reputacion_orden >= {c.CalificacionMinima}::numeric)
             ORDER BY
                 CASE WHEN {c.Orden}::text = 'cercania'    THEN tramo        END ASC  NULLS LAST,
                 CASE WHEN {c.Orden}::text = 'precio_asc'  THEN precio_desde END ASC  NULLS LAST,

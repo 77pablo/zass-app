@@ -54,6 +54,8 @@ export function PaginaBuscar() {
   const zona = params.get('zona') ?? ''
   const cerca = params.get('cerca') === '1'
   const ordenPedido = ordenDe(params.get('orden'))
+  const soloVerificados = params.get('verificados') === '1'
+  const cuatroEstrellas = params.get('cal') === '4'
 
   // La URL manda: «cerca=1» dice que se busca desde la persona, y el punto sale de la memoria. No hay un
   // estado aparte que pueda cambiar antes que la URL (React Router navega dentro de una transicion): eso
@@ -74,6 +76,8 @@ export function PaginaBuscar() {
     q, orden,
     ...(cerca && punto ? { lat: punto.lat, lon: punto.lon } : {}),
     ...(zona !== '' ? { zona: Number(zona) } : {}),
+    ...(soloVerificados ? { verificados: true } : {}),
+    ...(cuatroEstrellas ? { calificacion: 4 } : {}),
   }
   const clave = JSON.stringify(criterios)
 
@@ -189,6 +193,20 @@ export function PaginaBuscar() {
             </button>
           ))}
 
+          <button
+            type="button" className="chip" aria-pressed={soloVerificados}
+            onClick={() => cambiar({ verificados: soloVerificados ? null : '1' })}
+          >
+            <Icono nombre="sello" />Solo verificados
+          </button>
+          <button
+            type="button" className="chip" aria-pressed={cuatroEstrellas}
+            onClick={() => cambiar({ cal: cuatroEstrellas ? null : '4' })}
+            title="Cuenta solo a quienes ya tienen 3 reseñas"
+          >
+            <Icono nombre="estrella" />4 estrellas o más
+          </button>
+
           <label className="orden-zona">
             <span className="solo-lector">Barrio</span>
             <select value={zona} onChange={(e) => cambiar({ zona: e.target.value })} aria-label="Barrio">
@@ -221,9 +239,10 @@ export function PaginaBuscar() {
             <div className="vacio">
               <h2 className="vacio-titulo">Todavía no encontramos a nadie para {titulo}.</h2>
               <p>
-                {zona !== '' ? 'Prueba en toda la ciudad, o con otra palabra.' : 'Prueba con otra palabra: un oficio («abogado»), un servicio («divorcio») o un nombre.'}
+                {soloVerificados || cuatroEstrellas ? 'Prueba quitando los filtros: «4 estrellas» solo cuenta a quienes ya tienen 3 reseñas.' : zona !== '' ? 'Prueba en toda la ciudad, o con otra palabra.' : 'Prueba con otra palabra: un oficio («abogado»), un servicio («divorcio») o un nombre.'}
               </p>
               <p className="vacio-acciones">
+                {(soloVerificados || cuatroEstrellas) && <button type="button" className="boton" onClick={() => cambiar({ verificados: null, cal: null })}>Quitar los filtros</button>}
                 {zona !== '' && <button type="button" className="boton" onClick={() => cambiar({ zona: null })}>Buscar en toda la ciudad</button>}
                 <Link to="/profesionales" className="enlace">¿Eres de este oficio? Súmate</Link>
               </p>

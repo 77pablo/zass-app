@@ -374,6 +374,59 @@ describe('el sitio de varias paginas', () => {
     expect(llamadas.some((l) => l.includes('orden=Cercania'))).toBe(false)
   })
 
+  it('«Solo verificados» y «4 estrellas» se piden a la API y quedan en la direccion', async () => {
+    const u = userEvent.setup()
+    en('/buscar?q=corredor')
+    await screen.findByRole('link', { name: /Marcela Soto/ })
+
+    await u.click(screen.getByRole('button', { name: 'Solo verificados' }))
+    await vi.waitFor(() => expect(llamadas).toContain('/api/buscar?q=corredor&orden=Recomendados&verificados=true'))
+    await u.click(screen.getByRole('button', { name: '4 estrellas o más' }))
+    await vi.waitFor(() => expect(llamadas).toContain('/api/buscar?q=corredor&orden=Recomendados&verificados=true&calificacion=4'))
+
+    expect(screen.getByRole('button', { name: 'Solo verificados' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: '4 estrellas o más' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTestId('url').textContent).toContain('verificados=1')
+    expect(screen.getByTestId('url').textContent).toContain('cal=4')
+  })
+
+  it('volver a pulsar un filtro lo quita de la API y de la direccion', async () => {
+    const u = userEvent.setup()
+    en('/buscar?q=corredor&verificados=1')
+    await screen.findByRole('link', { name: /Marcela Soto/ })
+    expect(llamadas).toContain('/api/buscar?q=corredor&orden=Recomendados&verificados=true')
+
+    await u.click(screen.getByRole('button', { name: 'Solo verificados' }))
+
+    await vi.waitFor(() => expect(screen.getByTestId('url').textContent).toBe('/buscar?q=corredor'))
+    expect(screen.getByRole('button', { name: 'Solo verificados' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('volver a pulsar «4 estrellas» tambien la quita', async () => {
+    const u = userEvent.setup()
+    en('/buscar?q=corredor&cal=4')
+    await screen.findByRole('link', { name: /Marcela Soto/ })
+
+    await u.click(screen.getByRole('button', { name: '4 estrellas o más' }))
+
+    await vi.waitFor(() => expect(screen.getByTestId('url').textContent).toBe('/buscar?q=corredor'))
+    expect(screen.getByRole('button', { name: '4 estrellas o más' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('sin resultados con filtros, ofrece quitarlos y explica lo de las 3 reseñas', async () => {
+    const u = userEvent.setup()
+    const original = fetch
+    vi.stubGlobal('fetch', vi.fn(async (ruta: string) =>
+      ruta.startsWith('/api/buscar') && ruta.includes('calificacion=4')
+        ? json({ ...TEXTO, resultados: [], total: 0 }) : original(ruta)))
+    en('/buscar?q=corredor&cal=4')
+
+    expect(await screen.findByText(/solo cuenta a quienes ya tienen 3 reseñas/)).toBeInTheDocument()
+    await u.click(screen.getByRole('button', { name: 'Quitar los filtros' }))
+
+    expect(await screen.findByRole('link', { name: /Marcela Soto/ })).toBeInTheDocument()
+  })
+
   it('un barrio filtra la busqueda', async () => {
     const u = userEvent.setup()
     en('/buscar?q=corredor')

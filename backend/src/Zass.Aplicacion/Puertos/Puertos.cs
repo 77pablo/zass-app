@@ -301,7 +301,9 @@ public sealed record CriteriosDeTexto(
     string Orden,
     DateTime Ahora,
     int Limite,
-    int Desplazamiento);
+    int Desplazamiento,
+    bool SoloVerificados = false,
+    decimal? CalificacionMinima = null);
 
 /// <summary>Una fila de la busqueda por texto. Como FilaDeBusqueda: lleva los metros, y el servicio los redondea.</summary>
 public class FilaDeTexto

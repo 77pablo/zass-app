@@ -64,7 +64,9 @@ public sealed record CriteriosDeTextoDeBusqueda(
     double? Longitud,
     int? ZonaId,
     OrdenDeTexto Orden,
-    int Pagina);
+    int Pagina,
+    bool SoloVerificados = false,
+    decimal? CalificacionMinima = null);
 
 /// <summary>
 /// Lo que ve cualquiera. Como en API-01: la distancia es TEXTO redondeado, nunca un numero, y no

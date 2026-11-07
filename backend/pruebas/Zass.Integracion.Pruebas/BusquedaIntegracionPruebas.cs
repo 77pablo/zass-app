@@ -709,11 +709,13 @@ public class BusquedaIntegracionPruebas : IDisposable
 
     private async Task<IReadOnlyList<FilaDeTexto>> TextoAsync(
         string? q, string orden = "recomendados", int? zona = null,
-        double lat = CentroLat, double lon = CentroLon, int limite = 50, int desplazamiento = 0)
+        double lat = CentroLat, double lon = CentroLon, int limite = 50, int desplazamiento = 0,
+        bool soloVerificados = false, decimal? notaMinima = null)
     {
         var (formas, grupos) = TextoDeBusqueda.Grupos(q);
         return await _repo.PorTextoAsync(new CriteriosDeTexto(
-            formas, grupos, lat, lon, zona, orden, _reloj.Ahora, limite, desplazamiento));
+            formas, grupos, lat, lon, zona, orden, _reloj.Ahora, limite, desplazamiento,
+            soloVerificados, notaMinima));
     }
 
     private static string[] Nombres(IEnumerable<FilaDeTexto> filas) => filas.Select(f => f.NombrePublico).ToArray();
@@ -928,6 +930,67 @@ public class BusquedaIntegracionPruebas : IDisposable
         await _prueba.Ctx.SaveChangesAsync();
 
         Assert.Equal(30_000, (await TextoAsync("dos servicios")).Single().PrecioDesde);
+    }
+
+    // ------------------------------------------------- los filtros
+
+    [Fact]
+    public async Task Solo_verificados_deja_fuera_a_quien_no_tiene_sello()
+    {
+        await UnPrestadorBuscableAsync(nombre: "Con sello", conCredencialVerificada: true);
+        await UnPrestadorBuscableAsync(nombre: "Sin sello");
+
+        Assert.Equal(new[] { "Con sello" }, Nombres(await TextoAsync(null, soloVerificados: true)));
+        Assert.Equal(2, (await TextoAsync(null, soloVerificados: false)).Count);
+    }
+
+    /// <summary>
+    /// La nota minima mira la reputacion PUBLICA: con menos de 3 reseñas no hay nota (RN-S5-11), asi que
+    /// quien tiene 2 reseñas de 5 estrellas no entra en «4 estrellas o mas».
+    /// </summary>
+    [Fact]
+    public async Task La_nota_minima_solo_cuenta_a_quien_tiene_tres_resenas_o_mas()
+    {
+        await UnPrestadorBuscableAsync(nombre: "Cuatro con tres", promedio: 4.0m, resenas: 3);
+        await UnPrestadorBuscableAsync(nombre: "Cinco con dos", promedio: 5.0m, resenas: 2);
+        await UnPrestadorBuscableAsync(nombre: "Tres con diez", promedio: 3.9m, resenas: 10);
+        await UnPrestadorBuscableAsync(nombre: "Sin resenas");
+
+        var r = await TextoAsync(null, notaMinima: 4m);
+
+        Assert.Equal(new[] { "Cuatro con tres" }, Nombres(r));
+    }
+
+    [Fact]
+    public async Task La_nota_minima_incluye_justo_la_nota_pedida()
+    {
+        await UnPrestadorBuscableAsync(nombre: "Justo cuatro", promedio: 4.0m, resenas: 5);
+
+        Assert.Single(await TextoAsync(null, notaMinima: 4m));
+        Assert.Empty(await TextoAsync(null, notaMinima: 4.1m));
+    }
+
+    [Fact]
+    public async Task Los_filtros_se_suman_y_el_total_cuenta_solo_a_quien_los_cumple()
+    {
+        await UnPrestadorBuscableAsync(nombre: "Cumple todo", conCredencialVerificada: true, promedio: 4.8m, resenas: 12);
+        await UnPrestadorBuscableAsync(nombre: "Solo sello", conCredencialVerificada: true);
+        await UnPrestadorBuscableAsync(nombre: "Solo nota", promedio: 4.9m, resenas: 20);
+
+        var r = await TextoAsync(null, soloVerificados: true, notaMinima: 4m);
+
+        Assert.Equal(new[] { "Cumple todo" }, Nombres(r));
+        Assert.Equal(1, r.Single().TotalFilas);       // el total es de lo filtrado, no de todos
+    }
+
+    [Fact]
+    public async Task Los_filtros_se_combinan_con_el_texto_y_el_orden()
+    {
+        await UnPrestadorBuscableAsync(rubroId: Derecho, servicioId: 201, nombre: "Abogada con sello", conCredencialVerificada: true);
+        await UnPrestadorBuscableAsync(rubroId: Derecho, servicioId: 201, nombre: "Abogado sin sello");
+        await UnPrestadorBuscableAsync(nombre: "Corredor con sello", conCredencialVerificada: true);
+
+        Assert.Equal(new[] { "Abogada con sello" }, Nombres(await TextoAsync("abogado", "precio_asc", soloVerificados: true)));
     }
 
     // ------------------------------------------------- zona y paginas

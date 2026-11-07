@@ -312,6 +312,49 @@ public class BusquedaPorTextoPruebas
         Assert.Equal(aplicada, p.Pagina);
     }
 
+    // ------------------------------------------------------------- los filtros
+
+    [Fact]
+    public async Task Los_filtros_viajan_a_la_base_y_por_omision_no_filtran_nada()
+    {
+        await _servicio.BuscarPorTextoAsync(C());
+        Assert.False(_repo.UltimosCriteriosDeTexto!.SoloVerificados);
+        Assert.Null(_repo.UltimosCriteriosDeTexto.CalificacionMinima);
+
+        await _servicio.BuscarPorTextoAsync(new CriteriosDeTextoDeBusqueda(
+            "abogado", null, null, null, OrdenDeTexto.Recomendados, 1, SoloVerificados: true, CalificacionMinima: 4m));
+        Assert.True(_repo.UltimosCriteriosDeTexto.SoloVerificados);
+        Assert.Equal(4m, _repo.UltimosCriteriosDeTexto.CalificacionMinima);
+    }
+
+    [Theory]
+    [InlineData(0.5)]
+    [InlineData(0)]
+    [InlineData(5.1)]
+    [InlineData(7)]
+    [InlineData(-1)]
+    public async Task Una_calificacion_minima_fuera_de_1_a_5_se_rechaza_y_no_se_busca(double nota)
+    {
+        var r = await _servicio.BuscarPorTextoAsync(new CriteriosDeTextoDeBusqueda(
+            "abogado", null, null, null, OrdenDeTexto.Recomendados, 1, CalificacionMinima: (decimal)nota));
+
+        Assert.False(r.Exito);
+        Assert.Equal(Fallas.Validacion, r.Codigo);
+        Assert.Null(_repo.UltimosCriteriosDeTexto);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(4)]
+    [InlineData(5)]
+    public async Task Las_notas_de_1_a_5_se_aceptan(double nota)
+    {
+        var r = await _servicio.BuscarPorTextoAsync(new CriteriosDeTextoDeBusqueda(
+            "abogado", null, null, null, OrdenDeTexto.Recomendados, 1, CalificacionMinima: (decimal)nota));
+
+        Assert.True(r.Exito);
+    }
+
     // ------------------------------------------------------------- lo que se rechaza
 
     [Fact]

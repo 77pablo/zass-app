@@ -173,6 +173,11 @@ public sealed class ServicioBusqueda : IServicioBusqueda
         if (!Enum.IsDefined(criterios.Orden))
             return Resultado.Falla<PaginaDeTexto>(Fallas.Validacion, "Ese orden no existe.");
 
+        // La nota minima es de 1 a 5 estrellas. Fuera de eso no es una nota, y se rechaza en vez de
+        // «corregirla»: pedir 7 estrellas y recibir resultados de 5 enganaria sobre lo que se pidio.
+        if (criterios.CalificacionMinima is < 1m or > 5m)
+            return Resultado.Falla<PaginaDeTexto>(Fallas.Validacion, "La calificacion minima va de 1 a 5.");
+
         int? zonaId = null;
         if (criterios.ZonaId is not null)
         {
@@ -198,7 +203,8 @@ public sealed class ServicioBusqueda : IServicioBusqueda
 
         var filas = await _repo.PorTextoAsync(new CriteriosDeTexto(
             formas, grupos, origen.Latitud, origen.Longitud, zonaId, CodigoDeOrden(orden),
-            _reloj.Ahora, PorPaginaDeTexto + 1, (pagina - 1) * PorPaginaDeTexto), ct);
+            _reloj.Ahora, PorPaginaDeTexto + 1, (pagina - 1) * PorPaginaDeTexto,
+            criterios.SoloVerificados, criterios.CalificacionMinima), ct);
 
         var hayMas = filas.Count > PorPaginaDeTexto;
         var visibles = hayMas ? filas.Take(PorPaginaDeTexto).ToList() : filas.ToList();

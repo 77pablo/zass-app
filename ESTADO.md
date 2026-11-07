@@ -235,6 +235,8 @@ de la persona**; `Cercania` sin ubicación cae a `Recomendados` y lo dice. Sin t
 | Sugerencias mientras se escribe | Espera 280 ms, mínimo 2 letras, descarta respuestas viejas y **guarda en memoria lo ya preguntado** (el límite público es 100 peticiones por 15 min por IP) |
 | Accesibilidad | Combobox con flechas, Enter y Escape; lista que se anuncia; 44 px de toque |
 
+**Filtros (hechos):** `verificados=true` y `calificacion=1..5` en API-63, y los botones «Solo verificados» y «4 estrellas o más» en la pantalla. La nota mira la reputación **pública**: quien tiene menos de 3 reseñas no entra (RN-S5-11), y la pantalla lo avisa cuando no hay resultados. Se rechaza una nota fuera de 1 a 5 en vez de «corregirla». Mutación: 11 mutantes en el backend (uno sobrevivía: el endpoint podía ignorar `verificados` y la prueba HTTP no lo notaba) y 7 en la pantalla.
+
 **Rediseño (oscuro, con la marca):** amarillo eléctrico sobre tinta, vidrio, cuadrícula tenue, JetBrains Mono para las
 etiquetas. Piezas propias: **radar de Temuco** con los barrios reales (dirección real desde el Centro, distancia
 comprimida con raíz, puntos separados, cada uno es un enlace a ese barrio), borde de luz giratorio en la barra, foco que
@@ -252,7 +254,6 @@ cerca» sin ubicación (el estado local cambiaba antes que la URL); ahora **la U
 
 | Falta | Por qué importa |
 |---|---|
-| Filtros «solo verificados» y «4 estrellas» en la búsqueda nueva | Existían en API-01 (que sigue en el backend) pero la pantalla nueva no los trae todavía |
 | Sinónimos: solo los 5 rubros de hoy | Cada rubro nuevo necesita sus palabras |
 | Fotos | Siguen siendo las iniciales |
 | Rendimiento no medido | Con miles de prestadores hay que revisar el plan de la consulta (`ILIKE` sobre `LIKE '%…%'` no usa índice) |
@@ -642,9 +643,9 @@ Endpoints: **API-01 a API-05, 08-23**, más `GET /api/auth/csrf` y `GET /api/sal
 
 | Proyecto | Cuántas | Qué cubre |
 |---|---|---|
-| `Zass.Aplicacion.Pruebas` | **362** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02 a RN-S3-08, RN-S5-11, CC-02, y MOD-03, MOD-04 y MOD-05 completos |
-| `Zass.Integracion.Pruebas` | **293** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
-| `frontend` (Vitest) | **150** | Cliente HTTP y pantallas, con `fetch` simulado |
+| `Zass.Aplicacion.Pruebas` | **371** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02 a RN-S3-08, RN-S5-11, CC-02, y MOD-03, MOD-04 y MOD-05 completos |
+| `Zass.Integracion.Pruebas` | **300** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
+| `frontend` (Vitest) | **154** | Cliente HTTP y pantallas, con `fetch` simulado |
 | `frontend/pruebas-navegador` | 2 guiones | Navegador real contra la API real: que la página monta, los colores de marca, y el registro e ingreso completos |
 
 Escritas con TDD: cada prueba se vio fallar antes de que existiera el código.
