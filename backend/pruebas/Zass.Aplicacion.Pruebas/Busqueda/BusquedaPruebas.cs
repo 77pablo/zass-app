@@ -505,6 +505,67 @@ public class BusquedaPruebas
         Assert.Equal(0, _repo.Llamadas);
     }
 
+    // ------------------------------------------------------------- API-62, la comunidad
+
+    [Fact]
+    public async Task El_resumen_traduce_lo_que_devuelve_el_repositorio()
+    {
+        _repo.Resumen = new ResumenCrudo(
+            Total: 9,
+            PorZona: new[] { new ConteoCrudo(1, 5), new ConteoCrudo(14, 4) },
+            PorRubro: new[] { new ConteoCrudo(1, 7), new ConteoCrudo(2, 2) },
+            Recientes: new[] { new RecienLlegadoFila("marcela-soto", "Marcela Soto", "Corretaje de propiedades", "Centro", true) });
+
+        var r = await _servicio.ResumenDeComunidadAsync();
+
+        Assert.Equal(9, r.Total);
+        Assert.Equal(new[] { 5, 4 }, r.PorZona.Select(z => z.Personas).ToArray());
+        Assert.Equal(new short[] { 1, 2 }, r.PorRubro.Select(x => x.RubroId).ToArray());
+        var uno = Assert.Single(r.RecienLlegados);
+        Assert.Equal(new RecienLlegadoDto("marcela-soto", "Marcela Soto", "Corretaje de propiedades", "Centro", true), uno);
+    }
+
+    /// <summary>
+    /// La hora la pone el reloj del sistema y viaja a la consulta: es con lo que se decide si una
+    /// suscripcion esta vigente. Si la pusiera la base con now(), la portada y la busqueda
+    /// podrian discrepar por el instante entre una consulta y otra.
+    /// </summary>
+    [Fact]
+    public async Task El_resumen_usa_la_hora_del_sistema_y_pide_seis_recientes()
+    {
+        await _servicio.ResumenDeComunidadAsync();
+
+        Assert.Equal(_reloj.Ahora, _repo.ResumenAhora);
+        Assert.Equal(ServicioBusqueda.RecienLlegadosMaximos, _repo.ResumenRecientes);
+        Assert.Equal(6, ServicioBusqueda.RecienLlegadosMaximos);
+    }
+
+    [Fact]
+    public async Task Sin_nadie_el_resumen_viene_vacio_y_no_nulo()
+    {
+        var r = await _servicio.ResumenDeComunidadAsync();
+
+        Assert.Equal(0, r.Total);
+        Assert.Empty(r.PorZona);
+        Assert.Empty(r.PorRubro);
+        Assert.Empty(r.RecienLlegados);
+    }
+
+    /// <summary>Estructural, como el resto de la busqueda: nada de ubicacion ni de la cuenta.</summary>
+    [Fact]
+    public void El_resumen_no_tiene_campos_de_ubicacion_ni_de_la_cuenta()
+    {
+        var tipos = new[]
+        {
+            typeof(ResumenDeComunidadDto), typeof(PersonasPorZonaDto),
+            typeof(PersonasPorRubroDto), typeof(RecienLlegadoDto),
+        };
+        var campos = tipos.SelectMany(t => t.GetProperties()).Select(p => p.Name).ToArray();
+
+        foreach (var prohibido in new[] { "Direccion", "Latitud", "Longitud", "Ubicacion", "Metros", "UsuarioId", "Correo", "Telefono", "Hash" })
+            Assert.DoesNotContain(campos, c => c.Contains(prohibido, StringComparison.OrdinalIgnoreCase));
+    }
+
     // ------------------------------------------------------------- los filtros de CS-09
 
     [Fact]

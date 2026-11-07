@@ -1198,6 +1198,45 @@ public class ApiPruebas : IAsyncLifetime
         Assert.Equal(HttpStatusCode.NotFound, (await visitante.GetAsync($"/api/prestadores/{slug}")).StatusCode);
     }
 
+    // ------------------------------------------------- API-62, la comunidad por HTTP
+
+    [Fact]
+    public async Task La_comunidad_se_pide_sin_sesion_y_cuenta_a_quien_se_publico()
+    {
+        var slug = await UnaFichaCompletaAsync();      // un prestador publicado de verdad
+        using var visitante = UnVisitante();
+
+        var respuesta = await visitante.GetAsync("/api/comunidad");
+
+        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
+        var c = (await respuesta.Content.ReadFromJsonAsync<JsonDocument>())!.RootElement;
+
+        Assert.True(c.GetProperty("total").GetInt32() >= 1);
+        // El Centro (zona 1) lo cubre como principal, y Amanecer (11) como secundaria.
+        var porZona = c.GetProperty("porZona").EnumerateArray().ToList();
+        Assert.Contains(porZona, z => z.GetProperty("zonaId").GetInt32() == 1 && z.GetProperty("personas").GetInt32() >= 1);
+        Assert.Contains(porZona, z => z.GetProperty("zonaId").GetInt32() == 11);
+        var recientes = c.GetProperty("recienLlegados").EnumerateArray().ToList();
+        Assert.Contains(recientes, r => r.GetProperty("slug").GetString() == slug);
+        var mio = recientes.Single(r => r.GetProperty("slug").GetString() == slug);
+        Assert.Equal("Marcela Soto", mio.GetProperty("nombrePublico").GetString());
+        Assert.Equal("Corretaje de propiedades", mio.GetProperty("rubro").GetString());
+        Assert.Equal("Centro", mio.GetProperty("zona").GetString());
+    }
+
+    /// <summary>Sobre los BYTES: la comunidad es publica, asi que nada de la cuenta ni de la ubicacion.</summary>
+    [Fact]
+    public async Task La_comunidad_no_filtra_ubicacion_ni_datos_de_la_cuenta()
+    {
+        await UnaFichaCompletaAsync();
+        using var visitante = UnVisitante();
+
+        var texto = await (await visitante.GetAsync("/api/comunidad")).Content.ReadAsStringAsync();
+
+        foreach (var prohibido in new[] { "latitud", "longitud", "direccion", "usuarioId", "@zass.local", "telefono", "whatsapp", "hash" })
+            Assert.DoesNotContain(prohibido, texto, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static object UnaZona(int zonaId, bool principal) => new
     {
         zonaId,

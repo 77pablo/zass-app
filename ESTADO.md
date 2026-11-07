@@ -305,6 +305,8 @@ perfil esté **publicado**, sin mirar la suscripción. O sea que un prestador co
 vencida desaparece de la búsqueda pero **su ficha por enlace directo sigue abierta**. Es el mismo
 asunto que la tarjeta NFC y conviene resolverlo antes de MOD-12.
 
+**API-62 `GET /api/comunidad` (añadido al rediseñar el sitio):** total de prestadores, personas por barrio y por oficio, y los 6 últimos en sumarse, para que la portada, los barrios y los oficios muestren gente real. Público, tasa P, sin ubicación ni datos de la cuenta. "Visible" se repite en LINQ (el SQL de la búsqueda es aparte), y una prueba compara los conteos con lo que la búsqueda devuelve. **Se midió:** 8 mutantes (sin filtro de publicado, sin vigencia, cualquier estado de suscripción, orden invertido, zona no principal, sello sin verificar, sin corte, total por coberturas): al principio sobrevivieron 2 (zona y sello), se añadieron pruebas y ahora los 8 mueren.
+
 **Lo que NO está hecho de MOD-05, y no hay que dar por hecho:**
 
 | Falta | Por qué importa |
@@ -505,8 +507,8 @@ Endpoints: **API-01 a API-05, 08-23**, más `GET /api/auth/csrf` y `GET /api/sal
 
 | Proyecto | Cuántas | Qué cubre |
 |---|---|---|
-| `Zass.Aplicacion.Pruebas` | **271** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02 a RN-S3-08, RN-S5-11, CC-02, y MOD-03, MOD-04 y MOD-05 completos |
-| `Zass.Integracion.Pruebas` | **218** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
+| `Zass.Aplicacion.Pruebas` | **275** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02 a RN-S3-08, RN-S5-11, CC-02, y MOD-03, MOD-04 y MOD-05 completos |
+| `Zass.Integracion.Pruebas` | **231** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
 | `frontend` (Vitest) | **31** | Cliente HTTP y pantallas, con `fetch` simulado |
 | `frontend/pruebas-navegador` | 2 guiones | Navegador real contra la API real: que la página monta, los colores de marca, y el registro e ingreso completos |
 

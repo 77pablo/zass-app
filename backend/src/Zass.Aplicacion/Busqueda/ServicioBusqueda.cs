@@ -132,6 +132,23 @@ public sealed class ServicioBusqueda : IServicioBusqueda
         }
     }
 
+    // ------------------------------------------------------------- API-62, la comunidad
+
+    /// <summary>Cuantas tarjetas de "recien llegados" se muestran. Una portada, no un listado.</summary>
+    public const int RecienLlegadosMaximos = 6;
+
+    public async Task<ResumenDeComunidadDto> ResumenDeComunidadAsync(CancellationToken ct = default)
+    {
+        var crudo = await _repo.ResumenAsync(_reloj.Ahora, RecienLlegadosMaximos, ct);
+
+        return new ResumenDeComunidadDto(
+            crudo.Total,
+            crudo.PorZona.Select(z => new PersonasPorZonaDto(z.Id, z.Personas)).ToList(),
+            crudo.PorRubro.Select(r => new PersonasPorRubroDto((short)r.Id, r.Personas)).ToList(),
+            crudo.Recientes.Select(r => new RecienLlegadoDto(
+                r.Slug, r.NombrePublico, r.RubroNombre, r.ZonaPrincipal, r.Verificada)).ToList());
+    }
+
     // ------------------------------------------------------------- CU-09, la ficha
 
     public async Task<FichaPublicaDto?> FichaPublicaAsync(string slug, CancellationToken ct = default)

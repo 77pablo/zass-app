@@ -700,6 +700,151 @@ public class BusquedaIntegracionPruebas : IDisposable
             ? 0
             : int.Parse(System.Text.RegularExpressions.Regex.Match(texto, @"\d+").Value);
 
+    // ------------------------------------------------- API-62, la comunidad
+
+    /// <summary>
+    /// La prueba que vigila la duplicacion: "visible" vive en el SQL de la busqueda y otra vez
+    /// en este LINQ. Si la portada contara a alguien que la busqueda no muestra, diria "14
+    /// personas en el Centro" y al entrar aparecerian 12. Se compara el conteo con lo que la
+    /// busqueda DEVUELVE, caso por caso.
+    /// </summary>
+    [Fact]
+    public async Task El_resumen_cuenta_exactamente_a_quien_la_busqueda_muestra()
+    {
+        await UnPrestadorBuscableAsync();                                          // visible
+        await UnPrestadorBuscableAsync(conCredencialVerificada: true);             // visible
+        await UnPrestadorBuscableAsync(diasDeVigencia: -3);                        // suscripcion vencida
+        await UnPrestadorBuscableAsync(estado: EstadoPerfil.Borrador);             // sin publicar
+        await UnPrestadorBuscableAsync(estado: EstadoPerfil.Despublicado);         // despublicado
+        await UnPrestadorBuscableAsync(estadoSuscripcion: EstadoSuscripcion.Cancelada); // cancelada
+        await UnPrestadorBuscableAsync(rubroId: Derecho, servicioId: 201);         // visible, otro rubro
+
+        var resumen = await _repo.ResumenAsync(_reloj.Ahora, 6);
+        var buscados = await _repo.PorZonaAsync(Consulta(_reloj.Ahora), null);
+
+        Assert.Equal(3, resumen.Total);
+        // En el Centro y en corretaje: lo mismo que devuelve la busqueda.
+        Assert.Equal(buscados.Count, resumen.PorZona.Single(z => z.Id == Centro).Personas - 1);   // el de derecho tambien cubre el Centro
+        Assert.Equal(2, resumen.PorRubro.Single(r => r.Id == Corretaje).Personas);
+        Assert.Equal(1, resumen.PorRubro.Single(r => r.Id == Derecho).Personas);
+    }
+
+    [Fact]
+    public async Task Un_prestador_que_cubre_dos_zonas_cuenta_en_cada_una_y_una_sola_vez_en_el_total()
+    {
+        var perfil = await UnPrestadorBuscableAsync(zonaId: Centro);
+        _prueba.Ctx.Coberturas.Add(new CoberturaPrestador
+        {
+            PerfilPrestadorId = perfil.Id, ZonaId = Labranza, EsPrincipal = false, DesdeEn = _reloj.Ahora,
+        });
+        await _prueba.Ctx.SaveChangesAsync();
+
+        var resumen = await _repo.ResumenAsync(_reloj.Ahora, 6);
+
+        Assert.Equal(1, resumen.Total);
+        Assert.Equal(1, resumen.PorZona.Single(z => z.Id == Centro).Personas);
+        Assert.Equal(1, resumen.PorZona.Single(z => z.Id == Labranza).Personas);
+    }
+
+    [Fact]
+    public async Task Los_recien_llegados_van_del_mas_nuevo_al_mas_viejo_con_su_zona_y_su_sello()
+    {
+        var viejo = await UnPrestadorBuscableAsync(nombre: "El mas viejo");
+        var nuevo = await UnPrestadorBuscableAsync(nombre: "El mas nuevo", conCredencialVerificada: true);
+        viejo.PublicadoEn = _reloj.Ahora.AddDays(-10);
+        nuevo.PublicadoEn = _reloj.Ahora.AddDays(-1);
+        await _prueba.Ctx.SaveChangesAsync();
+
+        var resumen = await _repo.ResumenAsync(_reloj.Ahora, 6);
+
+        Assert.Equal(new[] { "El mas nuevo", "El mas viejo" }, resumen.Recientes.Select(r => r.NombrePublico).ToArray());
+        var primero = resumen.Recientes[0];
+        Assert.Equal("Centro", primero.ZonaPrincipal);
+        Assert.Equal("Corretaje de propiedades", primero.RubroNombre);
+        Assert.True(primero.Verificada);
+        Assert.False(resumen.Recientes[1].Verificada);
+    }
+
+    /// <summary>Si tambien cubre otra zona, la tarjeta dice la PRINCIPAL; la otra no puede ganarle.</summary>
+    [Fact]
+    public async Task El_recien_llegado_muestra_su_zona_principal_y_no_una_secundaria()
+    {
+        var perfil = await UnPrestadorBuscableAsync(zonaId: Labranza);
+        _prueba.Ctx.Coberturas.Add(new CoberturaPrestador
+        {
+            PerfilPrestadorId = perfil.Id, ZonaId = Centro, EsPrincipal = false, DesdeEn = _reloj.Ahora,
+        });
+        await _prueba.Ctx.SaveChangesAsync();
+
+        // Se toca la principal DESPUES: en PostgreSQL la fila actualizada pasa al final, asi que la
+        // secundaria queda primera. Sin esto una consulta que olvide filtrar por principal acertaria
+        // por casualidad, porque la principal se inserto primero.
+        var principal = _prueba.Ctx.Coberturas.Single(c => c.PerfilPrestadorId == perfil.Id && c.EsPrincipal);
+        principal.DesdeEn = principal.DesdeEn.AddMinutes(1);
+        await _prueba.Ctx.SaveChangesAsync();
+
+        var resumen = await _repo.ResumenAsync(_reloj.Ahora, 6);
+
+        Assert.Equal("Labranza", Assert.Single(resumen.Recientes).ZonaPrincipal);
+    }
+
+    /// <summary>El sello es solo de lo verificado: una credencial en revision, rechazada o vencida no lo da.</summary>
+    [Theory]
+    [InlineData(EstadoCredencial.Borrador)]
+    [InlineData(EstadoCredencial.EnRevision)]
+    [InlineData(EstadoCredencial.Rechazada)]
+    [InlineData(EstadoCredencial.Vencida)]
+    public async Task Una_credencial_que_no_esta_verificada_no_da_sello(EstadoCredencial estado)
+    {
+        var perfil = await UnPrestadorBuscableAsync();
+        _prueba.Ctx.Credenciales.Add(new Credencial
+        {
+            PerfilPrestadorId = perfil.Id,
+            Tipo = TipoCredencial.Titulo,
+            Nombre = "Titulo profesional",
+            ObtenidaEn = new DateOnly(2020, 1, 15),
+            Estado = estado,
+        });
+        await _prueba.Ctx.SaveChangesAsync();
+
+        var resumen = await _repo.ResumenAsync(_reloj.Ahora, 6);
+
+        Assert.False(Assert.Single(resumen.Recientes).Verificada);
+    }
+
+    [Fact]
+    public async Task Los_recien_llegados_se_cortan_en_el_maximo_pedido()
+    {
+        for (var i = 0; i < 8; i++) await UnPrestadorBuscableAsync();
+
+        var resumen = await _repo.ResumenAsync(_reloj.Ahora, 6);
+
+        Assert.Equal(6, resumen.Recientes.Count);
+        Assert.Equal(8, resumen.Total);          // el corte es de la lista, no del conteo
+    }
+
+    [Fact]
+    public async Task Un_recien_llegado_con_suscripcion_vencida_no_sale()
+    {
+        await UnPrestadorBuscableAsync(nombre: "Vencido", diasDeVigencia: -1);
+
+        var resumen = await _repo.ResumenAsync(_reloj.Ahora, 6);
+
+        Assert.Empty(resumen.Recientes);
+        Assert.Equal(0, resumen.Total);
+    }
+
+    [Fact]
+    public async Task Sin_prestadores_visibles_todo_viene_vacio()
+    {
+        var resumen = await _repo.ResumenAsync(_reloj.Ahora, 6);
+
+        Assert.Equal(0, resumen.Total);
+        Assert.Empty(resumen.PorZona);
+        Assert.Empty(resumen.PorRubro);
+        Assert.Empty(resumen.Recientes);
+    }
+
     // ------------------------------------------------- la busqueda por zona
 
     [Fact]

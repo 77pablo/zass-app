@@ -28,6 +28,11 @@ public sealed class RepositorioBusquedaFalso : IRepositorioBusqueda
     public PosicionDeBusqueda? UltimaPosicion { get; private set; }
 
     public int Llamadas { get; private set; }
+
+    /// <summary>Lo que devolvera ResumenAsync, y con que argumentos lo llamaron.</summary>
+    public ResumenCrudo Resumen { get; set; } = new(0, Array.Empty<ConteoCrudo>(), Array.Empty<ConteoCrudo>(), Array.Empty<RecienLlegadoFila>());
+    public DateTime? ResumenAhora { get; private set; }
+    public int? ResumenRecientes { get; private set; }
     public bool PidioPorDistancia { get; private set; }
 
     public Task<IReadOnlyList<FilaDeBusqueda>> PorDistanciaAsync(
@@ -42,6 +47,13 @@ public sealed class RepositorioBusquedaFalso : IRepositorioBusqueda
 
         IReadOnlyList<FilaDeBusqueda> r = Filas.Take(criterios.Limite).ToList();
         return Task.FromResult(r);
+    }
+
+    public Task<ResumenCrudo> ResumenAsync(DateTime ahora, int recientes, CancellationToken ct = default)
+    {
+        ResumenAhora = ahora;
+        ResumenRecientes = recientes;
+        return Task.FromResult(Resumen);
     }
 
     public Task<IReadOnlyList<FilaDeBusqueda>> PorZonaAsync(

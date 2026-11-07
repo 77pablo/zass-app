@@ -36,6 +36,13 @@ public interface IServicioBusqueda
     /// distinguirlos permitiria sondear quien se dio de alta sin publicar.
     /// </summary>
     Task<FichaPublicaDto?> FichaPublicaAsync(string slug, CancellationToken ct = default);
+
+    /// <summary>
+    /// API-62. Lo que la portada, los barrios y los oficios necesitan para mostrar una comunidad
+    /// y no un buscador vacio: cuanta gente hay en cada barrio y en cada oficio, y quien se
+    /// sumo recien. Cuenta SOLO a quien la busqueda mostraria.
+    /// </summary>
+    Task<ResumenDeComunidadDto> ResumenDeComunidadAsync(CancellationToken ct = default);
 }
 
 /// <summary>
@@ -148,3 +155,21 @@ public sealed record ZonaPublicaDto(string Nombre, string Sector, bool EsPrincip
 /// <summary>Lo que el prestador eligio mostrar. Cualquiera puede ser nulo.</summary>
 public sealed record ContactoPublicoDto(
     string? Telefono, string? Whatsapp, string? Correo, string? SitioWeb);
+
+/// <summary>
+/// API-62. Datos AGREGADOS y publicos: contar personas por barrio no revela donde vive nadie,
+/// porque la zona que cuenta es una zona que cada prestador eligio mostrar en su ficha.
+/// </summary>
+public sealed record ResumenDeComunidadDto(
+    int Total,
+    IReadOnlyList<PersonasPorZonaDto> PorZona,
+    IReadOnlyList<PersonasPorRubroDto> PorRubro,
+    IReadOnlyList<RecienLlegadoDto> RecienLlegados);
+
+public sealed record PersonasPorZonaDto(int ZonaId, int Personas);
+
+public sealed record PersonasPorRubroDto(short RubroId, int Personas);
+
+/// <summary>Quien se sumo recien. Lo justo para mostrar una tarjeta y llevar a su ficha.</summary>
+public sealed record RecienLlegadoDto(
+    string Slug, string NombrePublico, string? Rubro, string? Zona, bool Verificada);

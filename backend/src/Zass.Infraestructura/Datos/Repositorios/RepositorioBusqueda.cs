@@ -141,6 +141,59 @@ public sealed class RepositorioBusquedaEfCore : IRepositorioBusqueda
             """).AsNoTracking().ToListAsync(ct);
     }
 
+    /// <summary>
+    /// LINQ y no SQL a mano: aqui no hay PostGIS, solo conteos. "Visible" es la misma condicion
+    /// que el SQL de la busqueda —publicado y con suscripcion vigente—, y hay una prueba que
+    /// compara los conteos con lo que la busqueda devuelve de verdad.
+    /// </summary>
+    public async Task<ResumenCrudo> ResumenAsync(
+        DateTime ahora, int recientes, CancellationToken ct = default)
+    {
+        var visibles = _ctx.PerfilesPrestador.Where(p =>
+            p.Estado == Zass.Dominio.Comun.EstadoPerfil.Publicado
+            && _ctx.Suscripciones.Any(s =>
+                s.PerfilPrestadorId == p.Id
+                && (s.Estado == Zass.Dominio.Comun.EstadoSuscripcion.Prueba
+                    || s.Estado == Zass.Dominio.Comun.EstadoSuscripcion.Activa)
+                && s.VigenteHasta > ahora));
+
+        var total = await visibles.CountAsync(ct);
+
+        // Una cobertura por (prestador, zona) es unica, asi que contar filas es contar personas.
+        var porZona = await _ctx.Coberturas
+            .Where(c => visibles.Any(p => p.Id == c.PerfilPrestadorId))
+            .GroupBy(c => c.ZonaId)
+            .Select(g => new ConteoCrudo(g.Key, g.Count()))
+            .ToListAsync(ct);
+
+        var porRubro = await visibles
+            .Where(p => p.RubroId != null)
+            .GroupBy(p => p.RubroId!.Value)
+            .Select(g => new ConteoCrudo(g.Key, g.Count()))
+            .ToListAsync(ct);
+
+        // El id desempata cuando dos se publicaron en el mismo instante: sin eso el orden de
+        // los empates cambiaria entre una peticion y otra.
+        var recientesFilas = await visibles
+            .OrderByDescending(p => p.PublicadoEn)
+            .ThenBy(p => p.Id)
+            .Take(recientes)
+            .Select(p => new RecienLlegadoFila(
+                p.Slug,
+                p.NombrePublico,
+                _ctx.Rubros.Where(r => r.Id == p.RubroId).Select(r => r.Nombre).FirstOrDefault(),
+                _ctx.Coberturas
+                    .Where(c => c.PerfilPrestadorId == p.Id && c.EsPrincipal)
+                    .Select(c => c.Zona!.Nombre)
+                    .FirstOrDefault(),
+                _ctx.Credenciales.Any(cr =>
+                    cr.PerfilPrestadorId == p.Id
+                    && cr.Estado == Zass.Dominio.Comun.EstadoCredencial.Verificada)))
+            .ToListAsync(ct);
+
+        return new ResumenCrudo(total, porZona, porRubro, recientesFilas);
+    }
+
     public async Task<IReadOnlyList<FilaDeBusqueda>> PorZonaAsync(
         CriteriosDeConsulta c, PosicionDeBusqueda? desde, CancellationToken ct = default)
     {

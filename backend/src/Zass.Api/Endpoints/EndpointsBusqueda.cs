@@ -73,6 +73,13 @@ public static class EndpointsBusqueda
             .RequireRateLimiting(Tasa.Publico)
             .WithName("API-01");
 
+        // API-62 - El resumen de la comunidad: cuanta gente hay por barrio y por oficio, y quien
+        // se sumo recien. Publico, y con el mismo criterio de "visible" que la busqueda.
+        grupo.MapGet("/comunidad", async (IServicioBusqueda busqueda) =>
+                Results.Ok(await busqueda.ResumenDeComunidadAsync()))
+            .RequireRateLimiting(Tasa.Publico)
+            .WithName("API-62");
+
         return app;
     }
 }

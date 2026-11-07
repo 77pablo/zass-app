@@ -269,7 +269,27 @@ public interface IRepositorioBusqueda
     Task<IReadOnlyList<FilaDeBusqueda>> PorZonaAsync(
         CriteriosDeConsulta criterios, PosicionDeBusqueda? desde,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// API-62. Cuanta gente hay y quien se sumo recien, con EL MISMO criterio de "visible" que la
+    /// busqueda: publicado y con suscripcion vigente (RN-S3-01 y RN-S3-09). Si la portada
+    /// contara a quien la busqueda no muestra, diria "14 personas en el Centro" y al entrar
+    /// aparecerian 12.
+    /// </summary>
+    Task<ResumenCrudo> ResumenAsync(
+        DateTime ahora, int recientes, CancellationToken ct = default);
 }
+
+public sealed record ConteoCrudo(int Id, int Personas);
+
+public sealed record RecienLlegadoFila(
+    string Slug, string NombrePublico, string? RubroNombre, string? ZonaPrincipal, bool Verificada);
+
+public sealed record ResumenCrudo(
+    int Total,
+    IReadOnlyList<ConteoCrudo> PorZona,
+    IReadOnlyList<ConteoCrudo> PorRubro,
+    IReadOnlyList<RecienLlegadoFila> Recientes);
 
 /// <summary>
 /// Donde quedo la ultima fila servida. Es lo que viaja en el cursor, y es EXACTAMENTE la
