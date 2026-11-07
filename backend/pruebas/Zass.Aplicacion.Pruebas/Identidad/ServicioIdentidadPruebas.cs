@@ -140,4 +140,27 @@ public class ServicioIdentidadPruebas
         var conTres = await _identidad.PerfilPublicoPorSlugAsync(perfil.Slug);
         Assert.Equal(5.0m, conTres!.PromedioCalificacion);
     }
+
+    // Lo pide MOD-13: la suscripcion cuelga del PERFIL, no del usuario, y traducir de
+    // uno a otro es trabajo de MOD-01. Si no lo expusiera aqui, el modulo de
+    // suscripciones acabaria leyendo la tabla de perfiles, que no es suya.
+    [Fact]
+    public async Task Da_el_id_del_perfil_de_prestador_de_una_cuenta()
+    {
+        await RegistrarAsync("pablo@correo.cl", "prestador");
+        var perfil = _base.PerfilesPrestador.Single();
+
+        var id = await _identidad.PerfilPrestadorIdAsync(perfil.UsuarioId);
+
+        Assert.Equal(perfil.Id, id);
+    }
+
+    [Fact]
+    public async Task Una_cuenta_de_buscador_no_tiene_perfil_de_prestador()
+    {
+        await RegistrarAsync("ana@correo.cl", "buscador");
+        var usuarioId = _base.Usuarios.Single().Id;
+
+        Assert.Null(await _identidad.PerfilPrestadorIdAsync(usuarioId));
+    }
 }

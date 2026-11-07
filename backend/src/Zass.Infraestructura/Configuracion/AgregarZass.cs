@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Zass.Aplicacion.Identidad;
+using Zass.Aplicacion.Suscripciones;
 using Zass.Aplicacion.Puertos;
 using Zass.Infraestructura.Datos;
 using Zass.Infraestructura.Datos.Repositorios;
@@ -91,6 +92,7 @@ public static class RegistroDeServicios
         servicios.AddScoped<IRepositorioUsuarios, RepositorioUsuariosEfCore>();
         servicios.AddScoped<IRepositorioSesiones, RepositorioSesionesEfCore>();
         servicios.AddScoped<IRepositorioPerfiles, RepositorioPerfilesEfCore>();
+        servicios.AddScoped<IRepositorioSuscripciones, RepositorioSuscripcionesEfCore>();
         servicios.AddScoped<INotificaciones, ColaNotificacionesEfCore>();
         servicios.AddScoped<IAuditor, AuditorEfCore>();
 
@@ -100,6 +102,9 @@ public static class RegistroDeServicios
         servicios.AddScoped<ServicioSesion>();
         servicios.AddScoped<ServicioCuenta>();
         servicios.AddScoped<ServicioPerfiles>();
+
+        // --- MOD-13 Suscripciones ---
+        servicios.AddScoped<IServicioSuscripciones, ServicioSuscripciones>();
 
         // --- Validadores ---
         // Se registran por ensamblado a proposito: agregar un comando sin su validador

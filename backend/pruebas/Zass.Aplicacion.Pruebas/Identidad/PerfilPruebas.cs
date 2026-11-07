@@ -188,6 +188,21 @@ public class PerfilPruebas
         Assert.Equal(EstadoPerfil.Borrador, _base.PerfilesPrestador.Single().Estado);
     }
 
+    // Lo necesita quien compone: al publicar hay que arrancar la suscripcion de prueba
+    // (MOD-13), y para eso hace falta saber de que perfil se trata. Sin esto, el
+    // endpoint tendria que volver a buscar el perfil que este metodo ya tiene en la mano.
+    [Fact]
+    public async Task Publicar_devuelve_el_id_del_perfil_publicado()
+    {
+        var (usuarioId, perfil) = await PrestadorAsync();
+        CompletarMinimoPublicable(perfil);
+
+        var r = await _perfiles.PublicarAsync(usuarioId);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(perfil.Id, r.Valor);
+    }
+
     [Fact]
     public async Task Publicar_con_el_minimo_publicable_deja_el_perfil_visible()
     {

@@ -1,6 +1,7 @@
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Catalogo;
 using Zass.Dominio.Identidad;
+using Zass.Dominio.Suscripciones;
 
 namespace Zass.Aplicacion.Pruebas.Dobles;
 
@@ -24,6 +25,9 @@ public sealed class BaseEnMemoria : IUnidadDeTrabajo
     public List<PerfilBuscador> PerfilesBuscador { get; } = new();
     public List<Rubro> Rubros { get; } = new();
     public List<Zona> Zonas { get; } = new();
+    public List<Plan> Planes { get; } = new();
+    public List<Suscripcion> Suscripciones { get; } = new();
+    public List<Pago> Pagos { get; } = new();
 
     public int Guardados { get; private set; }
     public Task<int> GuardarAsync(CancellationToken ct = default)

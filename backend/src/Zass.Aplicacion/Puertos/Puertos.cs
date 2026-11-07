@@ -1,6 +1,7 @@
 using Zass.Dominio.Catalogo;
 using Zass.Dominio.Comun;
 using Zass.Dominio.Identidad;
+using Zass.Dominio.Suscripciones;
 
 namespace Zass.Aplicacion.Puertos;
 
@@ -89,4 +90,46 @@ public interface IRepositorioPerfiles
     Task<PerfilBuscador?> BuscadorDeUsuarioAsync(Guid usuarioId, CancellationToken ct = default);
     void Agregar(PerfilPrestador perfil);
     void Agregar(PerfilBuscador perfil);
+}
+
+/// <summary>
+/// MOD-13. Lo que el modulo de suscripciones necesita de la base.
+///
+/// VigentesEntreAsync esta aparte de VigenteDePrestadorAsync a proposito: la busqueda
+/// no puede preguntar prestador por prestador, y si el puerto no ofreciera la version
+/// en lote, quien lo implemente acabaria haciendo el bucle igual.
+/// </summary>
+public interface IRepositorioSuscripciones
+{
+    Task<Suscripcion?> PorIdAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>La vigente de ese prestador, o nulo. Vigente = (Prueba|Activa) y fecha futura.</summary>
+    Task<Suscripcion?> VigenteDePrestadorAsync(
+        Guid perfilPrestadorId, DateTime ahora, CancellationToken ct = default);
+
+    /// <summary>La ultima que tuvo, vigente o no. Para el panel del prestador.</summary>
+    Task<Suscripcion?> UltimaDePrestadorAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default);
+
+    /// <summary>De los identificadores dados, cuales estan vigentes. UNA consulta.</summary>
+    Task<IReadOnlyCollection<Guid>> VigentesEntreAsync(
+        IReadOnlyCollection<Guid> perfilPrestadorIds, DateTime ahora,
+        CancellationToken ct = default);
+
+    /// <summary>Pasadas de fecha pero todavia marcadas Prueba o Activa.</summary>
+    Task<IReadOnlyList<Suscripcion>> ExpiradasSinMarcarAsync(
+        DateTime ahora, CancellationToken ct = default);
+
+    /// <summary>Vigentes que vencen antes de una fecha, para avisar con tiempo.</summary>
+    Task<IReadOnlyList<Suscripcion>> VigentesQueVencenAntesDeAsync(
+        DateTime ahora, DateTime hasta, CancellationToken ct = default);
+
+    Task<Plan?> PlanPorCodigoAsync(string codigo, CancellationToken ct = default);
+    Task<IReadOnlyList<Plan>> PlanesActivosAsync(CancellationToken ct = default);
+
+    /// <summary>Comprueba el perfil sin traerlo entero ni depender del repositorio de MOD-01.</summary>
+    Task<bool> ExistePerfilPrestadorAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+
+    void Agregar(Suscripcion suscripcion);
+    void AgregarPago(Pago pago);
 }

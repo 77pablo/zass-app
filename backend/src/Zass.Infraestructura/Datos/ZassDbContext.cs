@@ -485,6 +485,25 @@ public class ZassDbContext : DbContext
             e.HasIndex(x => x.Codigo).IsUnique();
             e.Property(x => x.Codigo).HasMaxLength(30).IsRequired();
             e.Property(x => x.Nombre).HasMaxLength(80).IsRequired();
+
+            // El plan de prueba se siembra con el esquema, igual que los roles de
+            // TBL-02. Sin el, IniciarPruebaAsync no tiene con que arrancar y NADIE
+            // llegaria nunca a estar vigente: con RN-S3-09, eso es una busqueda
+            // permanentemente vacia. Precio y nombre de los planes de pago siguen sin
+            // decidirse; este no es uno de ellos, es la puerta de entrada.
+            e.HasData(new Plan
+            {
+                Id = 1,
+                Codigo = "prueba",
+                Nombre = "Prueba",
+                Descripcion = "30 dias para publicar el perfil y aparecer en las busquedas.",
+                PrecioMensual = 0,
+                DiasPrueba = 30,
+                MaxServicios = 10,
+                MaxTarjetas = 1,
+                PermiteCredenciales = true,
+                Activo = true,
+            });
         });
 
         b.Entity<Suscripcion>(e =>

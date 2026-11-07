@@ -144,26 +144,32 @@ public sealed class ServicioPerfiles
     }
 
     /// <summary>API-22. Publica si se cumple el minimo publicable; si no, dice que falta.</summary>
-    public async Task<Resultado> PublicarAsync(Guid usuarioId, CancellationToken ct = default)
+    /// <summary>
+    /// CU-03. Devuelve el id del perfil publicado: quien compone lo necesita para
+    /// arrancar la suscripcion de prueba (MOD-13) sin volver a buscarlo.
+    /// </summary>
+    public async Task<Resultado<Guid>> PublicarAsync(
+        Guid usuarioId, CancellationToken ct = default)
     {
         var perfil = await _perfiles.PrestadorDeUsuarioAsync(usuarioId, ct);
         if (perfil is null)
-            return Resultado.Falla(Fallas.NoEncontrado, "Esta cuenta no tiene perfil de prestador.");
+            return Resultado.Falla<Guid>(Fallas.NoEncontrado, "Esta cuenta no tiene perfil de prestador.");
 
         var usuario = await _usuarios.PorIdAsync(usuarioId, ct);
         if (usuario is null || !usuario.CorreoVerificado)
-            return Resultado.Falla(Fallas.ReglaDeNegocio,
+            return Resultado.Falla<Guid>(Fallas.ReglaDeNegocio,
                 "Verifica tu correo antes de publicar el perfil.");   // RN-S1-02
 
         // El dominio decide si esta completo; aqui solo se traduce a lenguaje humano
         // cual de las cuatro cosas falta (flujo alternativo 4A de CU-03).
         var falta = Falta(perfil);
         if (falta.Length > 0)
-            return Resultado.Falla(Fallas.ReglaDeNegocio,
+            return Resultado.Falla<Guid>(Fallas.ReglaDeNegocio,
                 "Para publicar falta: " + string.Join(", ", falta) + ".");
 
         var publicado = perfil.Publicar();
-        if (!publicado.Exito) return publicado;
+        if (!publicado.Exito)
+            return Resultado.Falla<Guid>(publicado.Codigo!, publicado.Mensaje!);
         perfil.ActualizadoEn = _reloj.Ahora;
 
         _avisos.Encolar(new Notificacion
@@ -181,7 +187,7 @@ public sealed class ServicioPerfiles
             "publicar_perfil", "perfil_prestador", perfil.Id, _reloj.Ahora, actorId: usuarioId));
 
         await _unidad.GuardarAsync(ct);
-        return Resultado.Ok();
+        return Resultado.Ok(perfil.Id);
     }
 
     /// <summary>API-22. Despublicar no borra: el perfil vuelve cuando su dueno quiera.</summary>

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Zass.Api.Configuracion;
 using Zass.Aplicacion.Identidad;
+using Zass.Aplicacion.Suscripciones;
 
 namespace Zass.Api.Endpoints;
 
@@ -231,17 +232,60 @@ public static class EndpointsIdentidad
             .RequireRateLimiting(Tasa.General)
             .WithName("API-19");
 
-        // API-22 - Publica o despublica. Valida el minimo publicable.
+        // API-22 - Publica el perfil y arranca la suscripcion de prueba.
+        //
+        // Los dos modulos se componen AQUI, no uno dentro de otro: MOD-13 ya depende de
+        // MOD-01, asi que si MOD-01 llamara a MOD-13 habria un ciclo. Componer dos
+        // modulos es justamente el trabajo de un endpoint.
+        //
+        // El orden importa. Primero publicar: si falla por falta de datos, no tiene
+        // sentido haber empezado a contar los 30 dias de prueba.
         grupo.MapPost("/perfil-prestador/publicar", async (
-                ServicioPerfiles servicio, ClaimsPrincipal quien) =>
+                ServicioPerfiles servicio, IServicioSuscripciones suscripciones,
+                ClaimsPrincipal quien) =>
             {
                 var usuarioId = quien.UsuarioId();
-                return usuarioId is null
-                    ? Results.Unauthorized()
-                    : Respuestas.DeResultado(await servicio.PublicarAsync(usuarioId.Value));
+                if (usuarioId is null) return Results.Unauthorized();
+
+                var publicacion = await servicio.PublicarAsync(usuarioId.Value);
+                if (!publicacion.Exito) return Respuestas.Problema(publicacion);
+
+                // Sin suscripcion vigente el perfil no aparece en la busqueda
+                // (RN-S3-09): publicar sin arrancar la prueba dejaria un perfil
+                // "publicado" que no ve nadie, que es la peor forma de fallar.
+                // IniciarPrueba es idempotente, asi que republicar no reinicia nada.
+                var prueba = await suscripciones.IniciarPruebaAsync(publicacion.Valor);
+                if (!prueba.Exito) return Respuestas.Problema(prueba);
+
+                return Results.NoContent();
             })
             .RequireRateLimiting(Tasa.General)
             .WithName("API-22");
+
+        // Lo que el prestador ve de su suscripcion: plan, estado y dias restantes.
+        //
+        // La traduccion de cuenta a perfil la hace MOD-01, que es el dueno de esa
+        // tabla; MOD-13 solo entiende de perfiles. Son dos consultas en vez de una, y
+        // es el precio de que cada modulo mande sobre sus propios datos.
+        grupo.MapGet("/suscripcion", async (
+                IServicioIdentidad identidad, IServicioSuscripciones suscripciones,
+                ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+
+                var perfilId = await identidad.PerfilPrestadorIdAsync(usuarioId.Value);
+                if (perfilId is null)
+                    return Results.Problem(
+                        title: "No encontrado",
+                        detail: "Esta cuenta no tiene perfil de prestador.",
+                        statusCode: StatusCodes.Status404NotFound);
+
+                return Respuestas.DeResultado(
+                    await suscripciones.DePrestadorAsync(perfilId.Value));
+            })
+            .RequireRateLimiting(Tasa.General)
+            .WithName("MI-SUSCRIPCION");
 
         grupo.MapPost("/perfil-prestador/despublicar", async (
                 ServicioPerfiles servicio, ClaimsPrincipal quien) =>

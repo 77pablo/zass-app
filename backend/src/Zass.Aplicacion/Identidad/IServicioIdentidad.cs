@@ -57,6 +57,15 @@ public interface IServicioIdentidad
     Task<PerfilPublicoDto?> PerfilPublicoAsync(Guid perfilId, CancellationToken ct = default);
 
     Task<PerfilPublicoDto?> PerfilPublicoPorSlugAsync(string slug, CancellationToken ct = default);
+
+    /// <summary>
+    /// El id del perfil de prestador de esa cuenta, o nulo si no tiene.
+    ///
+    /// Lo necesita MOD-13: la suscripcion cuelga del perfil, no del usuario. Traducir
+    /// de uno a otro es trabajo de este modulo, que es el dueno de la tabla; exponerlo
+    /// aqui evita que suscripciones vaya a leerla por su cuenta.
+    /// </summary>
+    Task<Guid?> PerfilPrestadorIdAsync(Guid usuarioId, CancellationToken ct = default);
 }
 
 public sealed class ServicioIdentidad : IServicioIdentidad
@@ -117,6 +126,13 @@ public sealed class ServicioIdentidad : IServicioIdentidad
     public async Task<PerfilPublicoDto?> PerfilPublicoAsync(
         Guid perfilId, CancellationToken ct = default) =>
         Publicar(await _perfiles.PrestadorPorIdAsync(perfilId, ct));
+
+    public async Task<Guid?> PerfilPrestadorIdAsync(
+        Guid usuarioId, CancellationToken ct = default)
+    {
+        var perfil = await _perfiles.PrestadorDeUsuarioAsync(usuarioId, ct);
+        return perfil?.Id;
+    }
 
     public async Task<PerfilPublicoDto?> PerfilPublicoPorSlugAsync(
         string slug, CancellationToken ct = default) =>

@@ -1613,6 +1613,21 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasDatabaseName("i_x_planes_codigo");
 
                     b.ToTable("planes");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = (short)1,
+                            Activo = true,
+                            Codigo = "prueba",
+                            Descripcion = "30 dias para publicar el perfil y aparecer en las busquedas.",
+                            DiasPrueba = (short)30,
+                            MaxServicios = 10,
+                            MaxTarjetas = 1,
+                            Nombre = "Prueba",
+                            PermiteCredenciales = true,
+                            PrecioMensual = 0
+                        });
                 });
 
             modelBuilder.Entity("Zass.Dominio.Suscripciones.Suscripcion", b =>
