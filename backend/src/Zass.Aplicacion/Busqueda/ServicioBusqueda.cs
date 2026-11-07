@@ -136,6 +136,89 @@ public sealed class ServicioBusqueda : IServicioBusqueda
         }
     }
 
+    // ------------------------------------------------------------- API-63, la barra de busqueda
+
+    public const int PorPaginaDeTexto = 24;
+    public const int PaginaMaximaDeTexto = 50;
+
+    /// <summary>
+    /// La Plaza de Armas de Temuco. Sin ubicacion de la persona se mide desde aqui, solo para que
+    /// «mas cerca» y los empates tengan sentido; esa distancia NO se muestra, porque no es la de nadie.
+    /// </summary>
+    public static readonly Punto CentroDeTemuco = new(-38.7359, -72.5904);
+
+    private static string CodigoDeOrden(OrdenDeTexto orden) => orden switch
+    {
+        OrdenDeTexto.Cercania => "cercania",
+        OrdenDeTexto.PrecioAsc => "precio_asc",
+        OrdenDeTexto.PrecioDesc => "precio_desc",
+        _ => "recomendados",
+    };
+
+    public async Task<Resultado<PaginaDeTexto>> BuscarPorTextoAsync(
+        CriteriosDeTextoDeBusqueda criterios, CancellationToken ct = default)
+    {
+        // El punto viene entero o no viene: media coordenada es un dato roto, y adivinar la otra
+        // mitad seria buscar desde un lugar donde no esta nadie.
+        var conLat = criterios.Latitud is not null;
+        var conLon = criterios.Longitud is not null;
+        if (conLat != conLon)
+            return Resultado.Falla<PaginaDeTexto>(Fallas.Validacion,
+                "La ubicacion necesita latitud y longitud, las dos.");
+
+        var conUbicacion = conLat && conLon;
+        if (conUbicacion && !(criterios.Latitud is >= -90 and <= 90 && criterios.Longitud is >= -180 and <= 180))
+            return Resultado.Falla<PaginaDeTexto>(Fallas.Validacion, "Esa ubicacion no es valida.");
+
+        if (!Enum.IsDefined(criterios.Orden))
+            return Resultado.Falla<PaginaDeTexto>(Fallas.Validacion, "Ese orden no existe.");
+
+        int? zonaId = null;
+        if (criterios.ZonaId is not null)
+        {
+            var zona = await _geografia.ZonaPorIdAsync(criterios.ZonaId.Value, ct);
+            if (!zona.Exito)
+                return Resultado.Falla<PaginaDeTexto>(zona.Codigo!, zona.Mensaje!);
+            zonaId = zona.Valor!.Id;
+        }
+
+        // Ordenar por cercania sin saber donde esta la persona no tiene sentido. No es un error:
+        // se ordena por recomendados y se dice, para que la pantalla pueda ofrecer compartir la ubicacion.
+        var orden = criterios.Orden;
+        string? aviso = null;
+        if (orden == OrdenDeTexto.Cercania && !conUbicacion)
+        {
+            orden = OrdenDeTexto.Recomendados;
+            aviso = "Para ordenar por cercania necesitamos tu ubicacion.";
+        }
+
+        var pagina = Math.Clamp(criterios.Pagina, 1, PaginaMaximaDeTexto);
+        var (formas, grupos) = TextoDeBusqueda.Grupos(criterios.Texto);
+        var origen = conUbicacion ? new Punto(criterios.Latitud!.Value, criterios.Longitud!.Value) : CentroDeTemuco;
+
+        var filas = await _repo.PorTextoAsync(new CriteriosDeTexto(
+            formas, grupos, origen.Latitud, origen.Longitud, zonaId, CodigoDeOrden(orden),
+            _reloj.Ahora, PorPaginaDeTexto + 1, (pagina - 1) * PorPaginaDeTexto), ct);
+
+        var hayMas = filas.Count > PorPaginaDeTexto;
+        var visibles = hayMas ? filas.Take(PorPaginaDeTexto).ToList() : filas.ToList();
+        var total = filas.Count == 0 ? 0 : (int)Math.Min(int.MaxValue, filas[0].TotalFilas);
+
+        var resultados = visibles.Select(f => new ResultadoDeTexto(
+            f.Id, f.Slug, f.NombrePublico, f.Descripcion, f.UrlFoto,
+            f.RubroNombre, f.ZonaPrincipal,
+            // RN-S3-03: solo con la ubicacion REAL de la persona hay una distancia que decir, y
+            // siempre redondeada. Los metros se quedan aqui.
+            conUbicacion && f.Metros is not null ? Geo.DistanciaPublica(f.Metros.Value) : null,
+            f.TieneVerificada,
+            // RN-S5-11: con menos de 3 resenas el promedio no es publico.
+            f.TotalResenas >= 3 ? f.PromedioCalificacion : null,
+            f.TotalResenas,
+            f.PrecioDesde)).ToList();
+
+        return Resultado.Ok(new PaginaDeTexto(resultados, total, pagina, hayMas, orden, conUbicacion, aviso));
+    }
+
     // ------------------------------------------------------------- API-62, la comunidad
 
     /// <summary>Cuantas tarjetas de "recien llegados" se muestran. Una portada, no un listado.</summary>

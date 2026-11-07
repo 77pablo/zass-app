@@ -702,6 +702,301 @@ public class BusquedaIntegracionPruebas : IDisposable
             ? 0
             : int.Parse(System.Text.RegularExpressions.Regex.Match(texto, @"\d+").Value);
 
+    // ------------------------------------------------- API-63, la barra de busqueda
+
+    private const double CentroLat = -38.7359, CentroLon = -72.5904;
+    private const double LabranzaLat = -38.7665376, LabranzaLon = -72.7534177;
+
+    private async Task<IReadOnlyList<FilaDeTexto>> TextoAsync(
+        string? q, string orden = "recomendados", int? zona = null,
+        double lat = CentroLat, double lon = CentroLon, int limite = 50, int desplazamiento = 0)
+    {
+        var (formas, grupos) = TextoDeBusqueda.Grupos(q);
+        return await _repo.PorTextoAsync(new CriteriosDeTexto(
+            formas, grupos, lat, lon, zona, orden, _reloj.Ahora, limite, desplazamiento));
+    }
+
+    private static string[] Nombres(IEnumerable<FilaDeTexto> filas) => filas.Select(f => f.NombrePublico).ToArray();
+
+    private async Task PonerPrecioAsync(Guid perfilId, int? precio)
+    {
+        var oferta = await _prueba.Ctx.PrestadorServicios.FirstAsync(x => x.PerfilPrestadorId == perfilId);
+        oferta.PrecioReferencia = precio;
+        await _prueba.Ctx.SaveChangesAsync();
+    }
+
+    /// <summary>La razon de ser de los sinonimos: quien escribe «abogado» busca el rubro «Derecho».</summary>
+    [Fact]
+    public async Task Abogado_encuentra_a_los_de_derecho_y_no_a_los_de_corretaje()
+    {
+        await UnPrestadorBuscableAsync(rubroId: Derecho, servicioId: 201, nombre: "Andrea Quilodran");
+        await UnPrestadorBuscableAsync(nombre: "Marcela Soto");     // corretaje
+
+        Assert.Equal(new[] { "Andrea Quilodran" }, Nombres(await TextoAsync("abogado")));
+        Assert.Equal(new[] { "Andrea Quilodran" }, Nombres(await TextoAsync("Abogados")));    // plural y mayuscula
+    }
+
+    [Fact]
+    public async Task La_busqueda_no_distingue_tildes_ni_mayusculas_en_ningun_sentido()
+    {
+        await UnPrestadorBuscableAsync(nombre: "José García Ñancupil");
+
+        foreach (var q in new[] { "garcia", "GARCÍA", "jose", "ñancupil", "nancupil", "Josè" })
+            Assert.Single(await TextoAsync(q));
+    }
+
+    [Fact]
+    public async Task Se_encuentra_por_el_nombre_de_un_servicio_sin_nombrar_el_oficio()
+    {
+        await UnPrestadorBuscableAsync(servicioId: 101, nombre: "Tasadora Uno");                       // Tasacion comercial
+        await UnPrestadorBuscableAsync(rubroId: Derecho, servicioId: 201, nombre: "Abogada Dos");       // Escritura de compraventa
+
+        Assert.Equal(new[] { "Tasadora Uno" }, Nombres(await TextoAsync("tasacion")));
+        Assert.Equal(new[] { "Abogada Dos" }, Nombres(await TextoAsync("compraventa")));
+    }
+
+    [Fact]
+    public async Task Todas_las_palabras_tienen_que_cumplirse()
+    {
+        await UnPrestadorBuscableAsync(rubroId: Derecho, servicioId: 201, nombre: "Andrea García");
+        await UnPrestadorBuscableAsync(rubroId: Derecho, servicioId: 201, nombre: "Rodrigo Cayul");
+        await UnPrestadorBuscableAsync(nombre: "Pedro García");        // corretaje, tambien García
+
+        Assert.Equal(new[] { "Andrea García" }, Nombres(await TextoAsync("abogado garcia")));
+        Assert.Empty(await TextoAsync("abogado zzzz"));
+    }
+
+    /// <summary>Los comodines de LIKE no llegan a la consulta: «%» no encuentra a todo el mundo.</summary>
+    [Fact]
+    public async Task Un_porcentaje_o_un_guion_bajo_no_son_comodines()
+    {
+        await UnPrestadorBuscableAsync(nombre: "Marcela Soto");
+
+        Assert.Empty(await TextoAsync("zz%"));
+        Assert.Empty(await TextoAsync("m_rcela zzz"));
+    }
+
+    [Fact]
+    public async Task Sin_texto_aparece_todo_el_que_es_visible_y_nadie_mas()
+    {
+        await UnPrestadorBuscableAsync(nombre: "Visible Uno");
+        await UnPrestadorBuscableAsync(nombre: "Visible Dos", rubroId: Derecho, servicioId: 201);
+        await UnPrestadorBuscableAsync(nombre: "Vencido", diasDeVigencia: -2);
+        await UnPrestadorBuscableAsync(nombre: "Borrador", estado: EstadoPerfil.Borrador);
+        await UnPrestadorBuscableAsync(nombre: "Cancelado", estadoSuscripcion: EstadoSuscripcion.Cancelada);
+
+        var todos = await TextoAsync(null);
+
+        Assert.Equal(new[] { "Visible Dos", "Visible Uno" }.OrderBy(x => x), Nombres(todos).OrderBy(x => x));
+        Assert.All(todos, f => Assert.Equal(2, f.TotalFilas));
+    }
+
+    [Fact]
+    public async Task Lo_que_no_es_visible_no_aparece_ni_buscandolo_por_su_nombre_exacto()
+    {
+        await UnPrestadorBuscableAsync(nombre: "Fantasma Vencido", diasDeVigencia: -1);
+
+        Assert.Empty(await TextoAsync("fantasma"));
+    }
+
+    // ------------------------------------------------- los cuatro ordenes
+
+    /// <summary>
+    /// «Recomendados»: con sello primero, luego la reputacion PUBLICA. Dos reseñas de cinco estrellas
+    /// no le ganan a doce de 4,6: el promedio de quien tiene menos de tres no cuenta (RN-S5-11).
+    /// </summary>
+    [Fact]
+    public async Task Recomendados_pone_primero_al_verificado_y_despues_a_la_reputacion_publica()
+    {
+        await UnPrestadorBuscableAsync(nombre: "Pocas resenas", promedio: 5.0m, resenas: 2);
+        await UnPrestadorBuscableAsync(nombre: "Muchas resenas", promedio: 4.6m, resenas: 12);
+        await UnPrestadorBuscableAsync(nombre: "Con sello", conCredencialVerificada: true);
+
+        var r = await TextoAsync(null, "recomendados");
+
+        Assert.Equal(new[] { "Con sello", "Muchas resenas", "Pocas resenas" }, Nombres(r));
+    }
+
+    [Fact]
+    public async Task Cercania_ordena_por_lo_mas_cerca_de_la_persona_y_cambia_si_la_persona_se_mueve()
+    {
+        await UnPrestadorBuscableAsync(nombre: "En el centro", zonaId: Centro);
+        await UnPrestadorBuscableAsync(nombre: "En Labranza", zonaId: Labranza);
+
+        var desdeElCentro = await TextoAsync(null, "cercania", lat: CentroLat, lon: CentroLon);
+        var desdeLabranza = await TextoAsync(null, "cercania", lat: LabranzaLat, lon: LabranzaLon);
+
+        Assert.Equal(new[] { "En el centro", "En Labranza" }, Nombres(desdeElCentro));
+        Assert.Equal(new[] { "En Labranza", "En el centro" }, Nombres(desdeLabranza));
+        Assert.True(desdeElCentro[0].Tramo < desdeElCentro[1].Tramo);
+    }
+
+    /// <summary>
+    /// El orden pedido tiene que MANDAR sobre el de recomendados, y para probarlo hace falta que se
+    /// contradigan: el mas lejano tiene sello. Si «cercania» no ordenara, ganaria el del sello.
+    /// </summary>
+    [Fact]
+    public async Task Cercania_manda_sobre_recomendados_y_recomendados_sobre_cercania()
+    {
+        await UnPrestadorBuscableAsync(nombre: "Lejos con sello", zonaId: Labranza, conCredencialVerificada: true);
+        await UnPrestadorBuscableAsync(nombre: "Cerca sin sello", zonaId: Centro);
+
+        Assert.Equal("Cerca sin sello", (await TextoAsync(null, "cercania", lat: CentroLat, lon: CentroLon))[0].NombrePublico);
+        Assert.Equal("Lejos con sello", (await TextoAsync(null, "recomendados", lat: CentroLat, lon: CentroLon))[0].NombrePublico);
+    }
+
+    [Fact]
+    public async Task Precio_manda_sobre_recomendados_aunque_el_mas_barato_no_tenga_sello()
+    {
+        var baratoSinSello = await UnPrestadorBuscableAsync(nombre: "Barato sin sello");
+        var caroConSello = await UnPrestadorBuscableAsync(nombre: "Caro con sello", conCredencialVerificada: true);
+        await PonerPrecioAsync(baratoSinSello.Id, 10_000);
+        await PonerPrecioAsync(caroConSello.Id, 90_000);
+
+        Assert.Equal("Barato sin sello", (await TextoAsync(null, "precio_asc"))[0].NombrePublico);
+        Assert.Equal("Caro con sello", (await TextoAsync(null, "precio_desc"))[0].NombrePublico);
+    }
+
+    /// <summary>
+    /// La reputacion pesa por si misma, no solo como efecto de tener mas resenas: 5 resenas de 4,9
+    /// van antes que 20 de 4,0.
+    /// </summary>
+    [Fact]
+    public async Task Recomendados_prefiere_la_mejor_nota_publica_a_la_que_tiene_mas_resenas()
+    {
+        await UnPrestadorBuscableAsync(nombre: "Muchas pero regular", promedio: 4.0m, resenas: 20);
+        await UnPrestadorBuscableAsync(nombre: "Pocas pero excelente", promedio: 4.9m, resenas: 5);
+
+        Assert.Equal(new[] { "Pocas pero excelente", "Muchas pero regular" }, Nombres(await TextoAsync(null, "recomendados")));
+    }
+
+    [Fact]
+    public async Task Un_servicio_apagado_no_hace_que_encuentren_a_la_persona()
+    {
+        var perfil = await UnPrestadorBuscableAsync(nombre: "Persona apagada", servicioId: 101);
+        (await _prueba.Ctx.PrestadorServicios.FirstAsync(x => x.PerfilPrestadorId == perfil.Id)).Activo = false;
+        await _prueba.Ctx.SaveChangesAsync();
+
+        Assert.Empty(await TextoAsync("tasacion"));
+    }
+
+    [Fact]
+    public async Task Entre_dos_a_la_misma_distancia_gana_el_mejor_recomendado()
+    {
+        await UnPrestadorBuscableAsync(nombre: "Cerca sin resenas", zonaId: Centro);
+        await UnPrestadorBuscableAsync(nombre: "Cerca con sello", zonaId: Centro, conCredencialVerificada: true);
+
+        var r = await TextoAsync(null, "cercania");
+
+        Assert.Equal("Cerca con sello", r[0].NombrePublico);
+    }
+
+    [Fact]
+    public async Task Precio_ordena_de_menor_a_mayor_y_de_mayor_a_menor_con_los_sin_precio_al_final()
+    {
+        var barato = await UnPrestadorBuscableAsync(nombre: "Barato");
+        var caro = await UnPrestadorBuscableAsync(nombre: "Caro");
+        var sinPrecio = await UnPrestadorBuscableAsync(nombre: "Sin precio");
+        await PonerPrecioAsync(barato.Id, 20_000);
+        await PonerPrecioAsync(caro.Id, 90_000);
+        await PonerPrecioAsync(sinPrecio.Id, null);
+
+        var ascendente = await TextoAsync(null, "precio_asc");
+        var descendente = await TextoAsync(null, "precio_desc");
+
+        Assert.Equal(new[] { "Barato", "Caro", "Sin precio" }, Nombres(ascendente));
+        Assert.Equal(new[] { "Caro", "Barato", "Sin precio" }, Nombres(descendente));
+        Assert.Equal(20_000, ascendente[0].PrecioDesde);
+    }
+
+    [Fact]
+    public async Task El_precio_es_el_del_servicio_mas_barato_que_ofrece_y_ignora_los_apagados()
+    {
+        var perfil = await UnPrestadorBuscableAsync(nombre: "Dos servicios");
+        var oferta = await _prueba.Ctx.PrestadorServicios.FirstAsync(x => x.PerfilPrestadorId == perfil.Id);
+        oferta.PrecioReferencia = 50_000;
+        _prueba.Ctx.PrestadorServicios.Add(new PrestadorServicio
+        {
+            PerfilPrestadorId = perfil.Id, ServicioId = 102, DuracionMinutos = 60,
+            ModoAgenda = ModoAgenda.Automatico, Activo = true, PrecioReferencia = 30_000,
+        });
+        _prueba.Ctx.PrestadorServicios.Add(new PrestadorServicio
+        {
+            PerfilPrestadorId = perfil.Id, ServicioId = 103, DuracionMinutos = 60,
+            ModoAgenda = ModoAgenda.Automatico, Activo = false, PrecioReferencia = 5_000,   // apagado
+        });
+        await _prueba.Ctx.SaveChangesAsync();
+
+        Assert.Equal(30_000, (await TextoAsync("dos servicios")).Single().PrecioDesde);
+    }
+
+    // ------------------------------------------------- zona y paginas
+
+    [Fact]
+    public async Task La_zona_filtra_por_cobertura_y_no_solo_por_zona_principal()
+    {
+        var soloCentro = await UnPrestadorBuscableAsync(nombre: "Solo Centro", zonaId: Centro);
+        var ambas = await UnPrestadorBuscableAsync(nombre: "Centro y Labranza", zonaId: Centro);
+        _prueba.Ctx.Coberturas.Add(new CoberturaPrestador
+        {
+            PerfilPrestadorId = ambas.Id, ZonaId = Labranza, EsPrincipal = false, DesdeEn = _reloj.Ahora,
+        });
+        await _prueba.Ctx.SaveChangesAsync();
+
+        Assert.Equal(new[] { "Centro y Labranza" }, Nombres(await TextoAsync(null, zona: Labranza)));
+        Assert.Equal(2, (await TextoAsync(null, zona: Centro)).Count);
+        Assert.NotNull(soloCentro);
+    }
+
+    [Fact]
+    public async Task Las_paginas_no_se_repiten_ni_se_saltan_a_nadie_y_el_total_es_de_todas()
+    {
+        for (var i = 0; i < 7; i++) await UnPrestadorBuscableAsync(nombre: $"Persona {i}");
+
+        var primera = await TextoAsync(null, limite: 3, desplazamiento: 0);
+        var segunda = await TextoAsync(null, limite: 3, desplazamiento: 3);
+        var tercera = await TextoAsync(null, limite: 3, desplazamiento: 6);
+
+        var ids = primera.Concat(segunda).Concat(tercera).Select(f => f.Id).ToList();
+        Assert.Equal(7, ids.Count);
+        Assert.Equal(7, ids.Distinct().Count());
+        Assert.All(primera.Concat(segunda).Concat(tercera), f => Assert.Equal(7, f.TotalFilas));
+    }
+
+    [Fact]
+    public async Task El_orden_es_estable_entre_peticiones_aunque_haya_empates()
+    {
+        for (var i = 0; i < 6; i++) await UnPrestadorBuscableAsync(nombre: $"Empate {i}");
+
+        var a = Nombres(await TextoAsync(null));
+        var b = Nombres(await TextoAsync(null));
+
+        Assert.Equal(a, b);
+    }
+
+    // ------------------------------------------------- el SQL y C# dicen lo mismo
+
+    /// <summary>
+    /// «normalizar_texto» (SQL) y «TextoDeBusqueda.Normalizar» (C#) tienen que dar lo mismo, o la
+    /// consulta compararia «garcia» contra algo que ya no se parece a lo que se escribio.
+    /// </summary>
+    [Theory]
+    [InlineData("GARCÍA")]
+    [InlineData("Ñielol")]
+    [InlineData("Muñoz Ñandú")]
+    [InlineData("Güemes")]
+    [InlineData("ÁÉÍÓÚ áéíóú")]
+    [InlineData("àèìòù")]
+    [InlineData("Técnicos y oficios")]
+    [InlineData("sin tildes")]
+    public async Task La_normalizacion_de_la_base_y_la_de_C_sharp_coinciden(string texto)
+    {
+        var enSql = await _prueba.Ctx.Database
+            .SqlQuery<string>($"SELECT normalizar_texto({texto}) AS \"Value\"").SingleAsync();
+
+        Assert.Equal(TextoDeBusqueda.Normalizar(texto), enSql);
+    }
+
     // ------------------------------------------------- API-62, la comunidad
 
     /// <summary>

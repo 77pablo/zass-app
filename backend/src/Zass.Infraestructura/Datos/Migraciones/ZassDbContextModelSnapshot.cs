@@ -86,6 +86,75 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.ToView(null, (string)null);
                 });
 
+            modelBuilder.Entity("Zass.Aplicacion.Puertos.FilaDeTexto", b =>
+                {
+                    b.Property<string>("Descripcion")
+                        .HasColumnType("text")
+                        .HasColumnName("descripcion");
+
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<double?>("Metros")
+                        .HasColumnType("double precision")
+                        .HasColumnName("metros");
+
+                    b.Property<string>("NombrePublico")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("nombre_publico");
+
+                    b.Property<int?>("PrecioDesde")
+                        .HasColumnType("integer")
+                        .HasColumnName("precio_desde");
+
+                    b.Property<decimal?>("PromedioCalificacion")
+                        .HasColumnType("numeric")
+                        .HasColumnName("promedio_calificacion");
+
+                    b.Property<decimal>("ReputacionOrden")
+                        .HasColumnType("numeric")
+                        .HasColumnName("reputacion_orden");
+
+                    b.Property<string>("RubroNombre")
+                        .HasColumnType("text")
+                        .HasColumnName("rubro_nombre");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("slug");
+
+                    b.Property<bool>("TieneVerificada")
+                        .HasColumnType("boolean")
+                        .HasColumnName("tiene_verificada");
+
+                    b.Property<long>("TotalFilas")
+                        .HasColumnType("bigint")
+                        .HasColumnName("total_filas");
+
+                    b.Property<int>("TotalResenas")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_resenas");
+
+                    b.Property<int?>("Tramo")
+                        .HasColumnType("integer")
+                        .HasColumnName("tramo");
+
+                    b.Property<string>("UrlFoto")
+                        .HasColumnType("text")
+                        .HasColumnName("url_foto");
+
+                    b.Property<string>("ZonaPrincipal")
+                        .HasColumnType("text")
+                        .HasColumnName("zona_principal");
+
+                    b.ToTable((string)null);
+
+                    b.ToView(null, (string)null);
+                });
+
             modelBuilder.Entity("Zass.Dominio.Agenda.BloqueHorario", b =>
                 {
                     b.Property<Guid>("Id")

@@ -279,6 +279,50 @@ public interface IRepositorioBusqueda
     /// </summary>
     Task<ResumenCrudo> ResumenAsync(
         DateTime ahora, int recientes, CancellationToken ct = default);
+
+    /// <summary>
+    /// API-63. La barra de busqueda: texto libre, ordenado como pida la persona. Mismo criterio
+    /// de "visible" que la busqueda por rubro (publicado y con suscripcion vigente).
+    /// </summary>
+    Task<IReadOnlyList<FilaDeTexto>> PorTextoAsync(
+        CriteriosDeTexto criterios, CancellationToken ct = default);
+}
+
+/// <summary>
+/// Lo que la consulta de texto recibe ya masticado: las formas y el grupo de cada una (ver
+/// <c>TextoDeBusqueda.Grupos</c>), el punto desde el que se mide y el orden pedido.
+/// </summary>
+public sealed record CriteriosDeTexto(
+    string[] Formas,
+    int[] Grupos,
+    double Latitud,
+    double Longitud,
+    int? ZonaId,
+    string Orden,
+    DateTime Ahora,
+    int Limite,
+    int Desplazamiento);
+
+/// <summary>Una fila de la busqueda por texto. Como FilaDeBusqueda: lleva los metros, y el servicio los redondea.</summary>
+public class FilaDeTexto
+{
+    public Guid Id { get; set; }
+    public string Slug { get; set; } = "";
+    public string NombrePublico { get; set; } = "";
+    public string? Descripcion { get; set; }
+    public string? UrlFoto { get; set; }
+    public string? RubroNombre { get; set; }
+    public string? ZonaPrincipal { get; set; }
+    public double? Metros { get; set; }
+    public int? Tramo { get; set; }
+    public bool TieneVerificada { get; set; }
+    public decimal? PromedioCalificacion { get; set; }
+    public decimal ReputacionOrden { get; set; }
+    public int TotalResenas { get; set; }
+    public int? PrecioDesde { get; set; }
+
+    /// <summary>Cuantas personas cumplen la busqueda en total, no solo en esta pagina.</summary>
+    public long TotalFilas { get; set; }
 }
 
 public sealed record ConteoCrudo(int Id, int Personas);

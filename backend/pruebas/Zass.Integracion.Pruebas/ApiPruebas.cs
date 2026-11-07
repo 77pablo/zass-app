@@ -1450,6 +1450,94 @@ public class ApiPruebas : IAsyncLifetime
             Assert.DoesNotContain(interno, texto, StringComparison.OrdinalIgnoreCase);
     }
 
+    // ------------------------------------------------- API-63, la barra de busqueda por HTTP
+
+    [Fact]
+    public async Task La_barra_de_busqueda_se_usa_sin_sesion_y_encuentra_por_nombre_y_por_oficio()
+    {
+        var slug = await UnaFichaCompletaAsync();     // "Marcela Soto", corretaje, en el Centro
+        using var visitante = UnVisitante();
+
+        foreach (var q in new[] { "marcela", "Corredora", "corredores", "propiedades", "SOTO" })
+        {
+            var r = await visitante.GetAsync($"/api/buscar?q={Uri.EscapeDataString(q)}");
+            Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+            var pagina = (await r.Content.ReadFromJsonAsync<JsonDocument>())!.RootElement;
+            Assert.Contains(pagina.GetProperty("resultados").EnumerateArray().ToList(),
+                x => x.GetProperty("slug").GetString() == slug);
+        }
+
+        var otro = await (await visitante.GetAsync("/api/buscar?q=abogado")).Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.DoesNotContain(otro!.RootElement.GetProperty("resultados").EnumerateArray().ToList(),
+            x => x.GetProperty("slug").GetString() == slug);
+    }
+
+    /// <summary>La distancia es TEXTO y solo existe si la persona dio su ubicacion; nada de coordenadas en la respuesta.</summary>
+    [Fact]
+    public async Task La_barra_dice_la_distancia_en_texto_solo_con_ubicacion_y_nunca_filtra_coordenadas()
+    {
+        var slug = await UnaFichaCompletaAsync();
+        using var visitante = UnVisitante();
+
+        var sin = await (await visitante.GetAsync("/api/buscar?q=marcela")).Content.ReadAsStringAsync();
+        var con = await (await visitante.GetAsync("/api/buscar?q=marcela&lat=-38.7359&lon=-72.5904&orden=Cercania")).Content.ReadAsStringAsync();
+
+        var filaSin = JsonDocument.Parse(sin).RootElement.GetProperty("resultados").EnumerateArray()
+            .Single(x => x.GetProperty("slug").GetString() == slug);
+        var filaCon = JsonDocument.Parse(con).RootElement.GetProperty("resultados").EnumerateArray()
+            .Single(x => x.GetProperty("slug").GetString() == slug);
+
+        Assert.Equal(JsonValueKind.Null, filaSin.GetProperty("distancia").ValueKind);
+        Assert.Equal(JsonValueKind.String, filaCon.GetProperty("distancia").ValueKind);
+        Assert.Matches("^a (menos de 1|[0-9]+) km$", filaCon.GetProperty("distancia").GetString()!);
+
+        foreach (var texto in new[] { sin, con })
+            foreach (var prohibido in new[] { "latitud", "longitud", "metros", "direccion", "@zass.local", "correo" })
+                Assert.DoesNotContain(prohibido, texto, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Cercania_sin_ubicacion_responde_con_recomendados_y_el_aviso()
+    {
+        using var visitante = UnVisitante();
+
+        var r = await visitante.GetAsync("/api/buscar?q=marcela&orden=Cercania");
+
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        var pagina = (await r.Content.ReadFromJsonAsync<JsonDocument>())!.RootElement;
+        Assert.Equal("Recomendados", pagina.GetProperty("ordenAplicado").GetString());
+        Assert.Contains("ubicacion", pagina.GetProperty("aviso").GetString());
+        Assert.False(pagina.GetProperty("conUbicacion").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData("?q=abogado&lat=-38.7")]                  // media coordenada
+    [InlineData("?q=abogado&lat=95&lon=0")]               // latitud imposible
+    [InlineData("?q=abogado&orden=Hechicero")]            // orden que no existe
+    [InlineData("?q=abogado&zona=99999")]                 // zona que no existe
+    [InlineData("?q=abogado&lat=abc&lon=0")]              // no es un numero
+    public async Task Una_peticion_mala_a_la_barra_devuelve_400_o_404_y_nunca_500(string consulta)
+    {
+        using var visitante = UnVisitante();
+
+        var r = await visitante.GetAsync("/api/buscar" + consulta);
+
+        Assert.True((int)r.StatusCode is 400 or 404, $"respondio {(int)r.StatusCode}");
+    }
+
+    [Fact]
+    public async Task Un_texto_larguisimo_o_con_comodines_no_rompe_nada()
+    {
+        using var visitante = UnVisitante();
+        var largo = Uri.EscapeDataString(new string('a', 5000) + "%_");
+
+        var r = await visitante.GetAsync($"/api/buscar?q={largo}");
+        var comodin = await visitante.GetAsync("/api/buscar?q=%25");
+
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, comodin.StatusCode);
+    }
+
     private static object UnaZona(int zonaId, bool principal) => new
     {
         zonaId,

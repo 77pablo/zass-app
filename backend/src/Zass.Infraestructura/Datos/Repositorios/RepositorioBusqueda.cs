@@ -194,6 +194,112 @@ public sealed class RepositorioBusquedaEfCore : IRepositorioBusqueda
         return new ResumenCrudo(total, porZona, porRubro, recientesFilas);
     }
 
+    /// <summary>
+    /// La barra de busqueda. SQL a mano por lo mismo que la busqueda por distancia: la distancia sale
+    /// de PostGIS y el orden depende de ella.
+    ///
+    /// El texto se compara contra el nombre, el rubro y los servicios, SIN tildes ni mayusculas
+    /// (<c>normalizar_texto</c>). Cada palabra escrita es un GRUPO y hay que cumplirlos todos, con
+    /// cualquiera de las formas del grupo: «abogado» sirve como «abogado» y como «derecho».
+    /// El orden pedido se aplica con CASE y no con cuatro consultas: una sola consulta, un solo filtro
+    /// de «visible» que mantener.
+    /// </summary>
+    public async Task<IReadOnlyList<FilaDeTexto>> PorTextoAsync(
+        CriteriosDeTexto c, CancellationToken ct = default)
+    {
+        return await _ctx.Set<FilaDeTexto>().FromSqlInterpolated($"""
+            WITH punto AS (
+                SELECT ST_SetSRID(ST_MakePoint({c.Longitud}, {c.Latitud}), 4326)::geography AS g
+            ),
+            base AS (
+                SELECT
+                    p.id                                        AS id,
+                    p.slug                                      AS slug,
+                    p.nombre_publico                            AS nombre_publico,
+                    p.descripcion                               AS descripcion,
+                    p.url_foto                                  AS url_foto,
+                    r.nombre                                    AS rubro_nombre,
+                    zp.nombre                                   AS zona_principal,
+                    d.metros                                    AS metros,
+                    tramo_de_distancia(d.metros)                AS tramo,
+                    EXISTS (
+                        SELECT 1 FROM credenciales cr
+                        WHERE cr.perfil_prestador_id = p.id AND cr.estado = 'Verificada'
+                    )                                           AS tiene_verificada,
+                    p.promedio_calificacion                     AS promedio_calificacion,
+                    CASE WHEN p.total_resenas >= 3
+                         THEN COALESCE(p.promedio_calificacion, -1)
+                         ELSE -1 END                            AS reputacion_orden,
+                    p.total_resenas                             AS total_resenas,
+                    (SELECT MIN(ps.precio_referencia)
+                       FROM prestador_servicios ps
+                      WHERE ps.perfil_prestador_id = p.id
+                        AND ps.activo AND ps.precio_referencia IS NOT NULL)
+                                                                AS precio_desde
+                FROM perfiles_prestador p
+                -- RN-S3-09: sin suscripcion vigente el perfil DESAPARECE.
+                JOIN suscripciones s
+                     ON s.perfil_prestador_id = p.id
+                    AND s.estado IN ('Prueba', 'Activa')
+                    AND s.vigente_hasta > {c.Ahora}
+                LEFT JOIN rubros r ON r.id = p.rubro_id
+                LEFT JOIN coberturas cpp
+                     ON cpp.perfil_prestador_id = p.id AND cpp.es_principal
+                LEFT JOIN zonas zp ON zp.id = cpp.zona_id
+                CROSS JOIN LATERAL (
+                    SELECT ST_Distance(
+                        COALESCE(
+                            p.ubicacion_exacta,
+                            ST_SetSRID(ST_MakePoint(zp.centro_longitud, zp.centro_latitud), 4326)::geography
+                        ),
+                        (SELECT g FROM punto)
+                    ) AS metros
+                ) d
+                WHERE p.estado = 'Publicado'
+                  AND ({c.ZonaId}::int IS NULL OR EXISTS (
+                        SELECT 1 FROM coberturas cz
+                        WHERE cz.perfil_prestador_id = p.id AND cz.zona_id = {c.ZonaId}
+                  ))
+                  -- Todos los grupos tienen que cumplirse. Sin texto no hay grupos: entra todo el mundo.
+                  AND NOT EXISTS (
+                        SELECT 1 FROM (SELECT DISTINCT x.gr FROM unnest({c.Grupos}::int[]) AS x(gr)) gs
+                        WHERE NOT EXISTS (
+                            SELECT 1 FROM unnest({c.Formas}::text[], {c.Grupos}::int[]) AS a(txt, gr)
+                            WHERE a.gr = gs.gr
+                              AND (
+                                   normalizar_texto(p.nombre_publico) LIKE '%' || a.txt || '%'
+                                OR normalizar_texto(COALESCE(r.nombre, '')) LIKE '%' || a.txt || '%'
+                                OR EXISTS (
+                                     SELECT 1
+                                       FROM prestador_servicios ps
+                                       JOIN servicios sv ON sv.id = ps.servicio_id
+                                      WHERE ps.perfil_prestador_id = p.id
+                                        AND ps.activo
+                                        AND normalizar_texto(sv.nombre) LIKE '%' || a.txt || '%')
+                              )
+                        )
+                  )
+            )
+            SELECT id, slug, nombre_publico, descripcion, url_foto, rubro_nombre, zona_principal,
+                   metros, tramo, tiene_verificada, promedio_calificacion, reputacion_orden,
+                   total_resenas, precio_desde,
+                   COUNT(*) OVER () AS total_filas
+            FROM base
+            ORDER BY
+                CASE WHEN {c.Orden}::text = 'cercania'    THEN tramo        END ASC  NULLS LAST,
+                CASE WHEN {c.Orden}::text = 'precio_asc'  THEN precio_desde END ASC  NULLS LAST,
+                CASE WHEN {c.Orden}::text = 'precio_desc' THEN precio_desde END DESC NULLS LAST,
+                -- El resto es «recomendados», y tambien desempata a los demas: con sello primero,
+                -- luego la reputacion publica, luego cuantas resenas, luego lo mas cerca.
+                tiene_verificada DESC,
+                reputacion_orden DESC,
+                total_resenas DESC,
+                tramo ASC NULLS LAST,
+                id
+            LIMIT {c.Limite} OFFSET {c.Desplazamiento}
+            """).AsNoTracking().ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<FilaDeBusqueda>> PorZonaAsync(
         CriteriosDeConsulta c, PosicionDeBusqueda? desde, CancellationToken ct = default)
     {

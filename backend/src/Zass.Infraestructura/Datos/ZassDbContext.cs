@@ -591,6 +591,11 @@ public class ZassDbContext : DbContext
             e.HasNoKey();
             e.ToView(null);
         });
+        b.Entity<FilaDeTexto>(e =>
+        {
+            e.HasNoKey();
+            e.ToView(null);
+        });
     }
 
     // ---------------------------------------------------------------- S6

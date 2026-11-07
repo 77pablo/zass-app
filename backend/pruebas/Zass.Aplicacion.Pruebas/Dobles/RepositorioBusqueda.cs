@@ -56,6 +56,17 @@ public sealed class RepositorioBusquedaFalso : IRepositorioBusqueda
         return Task.FromResult(Resumen);
     }
 
+    /// <summary>Lo que devolvera PorTextoAsync, y con que criterios lo llamaron.</summary>
+    public List<FilaDeTexto> FilasDeTexto { get; } = new();
+    public CriteriosDeTexto? UltimosCriteriosDeTexto { get; private set; }
+
+    public Task<IReadOnlyList<FilaDeTexto>> PorTextoAsync(CriteriosDeTexto criterios, CancellationToken ct = default)
+    {
+        UltimosCriteriosDeTexto = criterios;
+        IReadOnlyList<FilaDeTexto> r = FilasDeTexto.Skip(criterios.Desplazamiento).Take(criterios.Limite).ToList();
+        return Task.FromResult(r);
+    }
+
     public Task<IReadOnlyList<FilaDeBusqueda>> PorZonaAsync(
         CriteriosDeConsulta criterios, PosicionDeBusqueda? desde,
         CancellationToken ct = default)

@@ -26,6 +26,10 @@ public sealed record BusquedaHttpQuery(
     decimal? Calificacion,
     string? Cursor);
 
+/// <summary>API-63: <c>GET /api/buscar?q=abogado&amp;lat=&amp;lon=&amp;orden=cercania&amp;pagina=1</c>.</summary>
+public sealed record BuscarTextoHttpQuery(
+    string? Q, double? Lat, double? Lon, int? Zona, OrdenDeTexto? Orden, int? Pagina);
+
 public static class EndpointsBusqueda
 {
     public static IEndpointRouteBuilder MapearBusqueda(this IEndpointRouteBuilder app)
@@ -72,6 +76,13 @@ public static class EndpointsBusqueda
             .ConValidacion<BusquedaHttpQuery>()
             .RequireRateLimiting(Tasa.Publico)
             .WithName("API-01");
+
+        // API-63 - La barra de busqueda: texto libre, sin rubro ni zona obligatorios. Publico.
+        grupo.MapGet("/buscar", async ([AsParameters] BuscarTextoHttpQuery q, IServicioBusqueda busqueda) =>
+                Respuestas.DeResultado(await busqueda.BuscarPorTextoAsync(new CriteriosDeTextoDeBusqueda(
+                    q.Q, q.Lat, q.Lon, q.Zona, q.Orden ?? OrdenDeTexto.Recomendados, q.Pagina ?? 1))))
+            .RequireRateLimiting(Tasa.Publico)
+            .WithName("API-63");
 
         // API-62 - El resumen de la comunidad: cuanta gente hay por barrio y por oficio, y quien
         // se sumo recien. Publico, y con el mismo criterio de "visible" que la busqueda.

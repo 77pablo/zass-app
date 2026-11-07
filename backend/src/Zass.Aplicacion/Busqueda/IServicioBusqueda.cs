@@ -44,7 +44,56 @@ public interface IServicioBusqueda
     /// sumo recien. Cuenta SOLO a quien la busqueda mostraria.
     /// </summary>
     Task<ResumenDeComunidadDto> ResumenDeComunidadAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// API-63. La barra de busqueda: la persona escribe «abogado», «gasfiter» o un nombre, y se le
+    /// devuelve gente de cualquier oficio que coincida, ordenada como pida (lo mas cerca, lo mas
+    /// recomendado, lo mas barato o lo mas caro). No pide rubro ni zona: eso es API-01.
+    /// </summary>
+    Task<Resultado<PaginaDeTexto>> BuscarPorTextoAsync(
+        CriteriosDeTextoDeBusqueda criterios, CancellationToken ct = default);
 }
+
+/// <summary>Como ordenar. Los nombres viajan como texto por HTTP.</summary>
+public enum OrdenDeTexto { Recomendados, Cercania, PrecioAsc, PrecioDesc }
+
+/// <summary>`Pagina` empieza en 1. Sin punto ni zona se busca en toda la ciudad.</summary>
+public sealed record CriteriosDeTextoDeBusqueda(
+    string? Texto,
+    double? Latitud,
+    double? Longitud,
+    int? ZonaId,
+    OrdenDeTexto Orden,
+    int Pagina);
+
+/// <summary>
+/// Lo que ve cualquiera. Como en API-01: la distancia es TEXTO redondeado, nunca un numero, y no
+/// hay direccion ni coordenadas (RN-S3-02 y RN-S3-03).
+/// </summary>
+public sealed record ResultadoDeTexto(
+    Guid PerfilId,
+    string Slug,
+    string NombrePublico,
+    string? Descripcion,
+    string? UrlFoto,
+    string? Rubro,
+    string? ZonaPrincipal,
+    string? Distancia,
+    bool TieneCredencialVerificada,
+    decimal? PromedioCalificacion,
+    int TotalResenas,
+    int? PrecioDesde);
+
+public sealed record PaginaDeTexto(
+    IReadOnlyList<ResultadoDeTexto> Resultados,
+    int Total,
+    int Pagina,
+    bool HayMas,
+    /// <summary>El orden que SE aplico: puede no ser el pedido (cercania sin ubicacion).</summary>
+    OrdenDeTexto OrdenAplicado,
+    /// <summary>Si las distancias del resultado salen de la ubicacion de la persona.</summary>
+    bool ConUbicacion,
+    string? Aviso);
 
 /// <summary>
 /// Lo que entra a una busqueda. El punto y la zona son alternativas, no complementos:
