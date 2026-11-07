@@ -37,7 +37,7 @@ export function Oficios() {
               const n = personasEnRubro(comunidad.datos, r.id)
               return (
                 <li key={r.id}>
-                  <Link className="oficio" to={`/buscar?rubro=${encodeURIComponent(r.codigo)}`}>
+                  <Link className="oficio" to={`/buscar?q=${encodeURIComponent(r.nombre)}`}>
                     <h2>{capitalizar(r.nombre)}</h2>
                     <span className="oficio-lado">
                       {comunidad.datos && (n === 0 ? 'Aún nadie' : personas(n))}

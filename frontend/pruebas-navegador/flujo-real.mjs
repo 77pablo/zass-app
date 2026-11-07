@@ -104,7 +104,7 @@ try {
   comprobar('publicar deja la ficha publicada', true)
 
   // --- Aparece en la busqueda y su ficha publica la muestra ---
-  await pagina.goto(`${BASE}/buscar?rubro=contabilidad&zona=1`, { waitUntil: 'networkidle' })
+  await pagina.goto(`${BASE}/buscar?q=contador&zona=1`, { waitUntil: 'networkidle' })
   const tarjeta = pagina.getByRole('link', { name: /Elena Flujo Contadora/ })
   await tarjeta.waitFor()
   comprobar('aparece en la busqueda de su oficio y su barrio', true)

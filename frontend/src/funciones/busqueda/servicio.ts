@@ -108,3 +108,63 @@ export interface FichaPublica {
 export function fichaPublica(slug: string): Promise<FichaPublica> {
   return obtener<FichaPublica>(`/api/prestadores/${encodeURIComponent(slug)}`)
 }
+
+// ---------------------------------------------------------------- la barra de busqueda (API-63)
+
+export type OrdenDeTexto = 'Recomendados' | 'Cercania' | 'PrecioAsc' | 'PrecioDesc'
+
+/**
+ * Una persona en los resultados de la barra. Como en API-01: la distancia es TEXTO redondeado
+ * ("a 3 km") y solo existe si la persona dio su ubicacion; el tipo no tiene donde guardar coordenadas.
+ */
+export interface ResultadoDeTexto {
+  perfilId: string
+  slug: string
+  nombrePublico: string
+  descripcion: string | null
+  urlFoto: string | null
+  rubro: string | null
+  zonaPrincipal: string | null
+  distancia: string | null
+  tieneCredencialVerificada: boolean
+  /** Nulo con menos de 3 resenas (RN-S5-11). */
+  promedioCalificacion: number | null
+  totalResenas: number
+  /** El servicio mas barato que ofrece, en pesos, si puso precio. */
+  precioDesde: number | null
+}
+
+export interface PaginaDeTexto {
+  resultados: ResultadoDeTexto[]
+  total: number
+  pagina: number
+  hayMas: boolean
+  /** El orden que SE aplico: puede no ser el pedido (cercania sin ubicacion). */
+  ordenAplicado: OrdenDeTexto
+  conUbicacion: boolean
+  aviso: string | null
+}
+
+export interface CriteriosDeTexto {
+  q?: string
+  orden?: OrdenDeTexto
+  lat?: number
+  lon?: number
+  zona?: number
+  pagina?: number
+}
+
+/** API-63. Texto libre: un oficio, un servicio o un nombre. Sin texto devuelve a todos. */
+export function buscarTexto(c: CriteriosDeTexto): Promise<PaginaDeTexto> {
+  const q = new URLSearchParams()
+  if (c.q && c.q.trim() !== '') q.set('q', c.q.trim())
+  if (c.orden) q.set('orden', c.orden)
+  if (c.lat !== undefined && c.lon !== undefined) {
+    q.set('lat', String(c.lat))
+    q.set('lon', String(c.lon))
+  }
+  if (c.zona !== undefined) q.set('zona', String(c.zona))
+  if (c.pagina !== undefined && c.pagina > 1) q.set('pagina', String(c.pagina))
+  const texto = q.toString()
+  return obtener<PaginaDeTexto>(texto === '' ? '/api/buscar' : `/api/buscar?${texto}`)
+}

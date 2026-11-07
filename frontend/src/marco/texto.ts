@@ -54,3 +54,6 @@ export function hoyISO(): string {
   const dos = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${dos(d.getMonth() + 1)}-${dos(d.getDate())}`
 }
+
+/** Lo que la gente suele buscar: sirve de ejemplo en el campo y de atajo al abrirlo vacio. */
+export const EJEMPLOS = ['abogado', 'contadora', 'gasfiter', 'arquitecto', 'corredor de propiedades', 'electricista']

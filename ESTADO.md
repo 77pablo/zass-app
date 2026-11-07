@@ -213,6 +213,50 @@ nadie dice "atiendo en Condominio Nueva Milano". Quedaron los 16 sectores con lo
 gente de Temuco dice dónde está. Ninguna coordenada está inventada, y eso importa: un
 centroide mal puesto manda al prestador al barrio de al lado sin que nada falle.
 
+### La barra de búsqueda y el segundo rediseño (7-nov-2026, noche)
+
+Pablo vio la página y dijo que **le faltaba mucho y se veía pobre**, que la frase fuera «busca a alguien de tu
+**ciudad**» (no de tu barrio), y pidió **un buscador como el de Google o Instagram**: escribir «abogado» y ver todos los
+abogados, ordenados de lo más cerca a lo más lejos, de lo más recomendado a lo menos, y por precio. Dijo que se podían
+usar animaciones.
+
+**API-63 `GET /api/buscar?q=&lat=&lon=&zona=&orden=&pagina=`** (MOD-05, público, tasa P): texto libre contra el
+**nombre, el rubro y los servicios**, sin tildes ni mayúsculas, con singular/plural (`abogados` = `abogado`) y con
+**sinónimos de oficio** (`abogado`→Derecho, `gasfiter`→Técnicos y oficios…; lista corta y a mano en
+`TextoDeBusqueda.cs`). Cada palabra es un grupo y **hay que cumplirlos todos**. Órdenes: `Recomendados` (con sello,
+luego reputación pública, luego cantidad de reseñas), `Cercania`, `PrecioAsc`, `PrecioDesc` (los sin precio, al final).
+Mismo criterio de «visible» que la búsqueda por rubro. La distancia es **texto redondeado y solo existe con la ubicación
+de la persona**; `Cercania` sin ubicación cae a `Recomendados` y lo dice. Sin texto lista a toda la comunidad. Páginas de 24.
+
+| Detalle | |
+|---|---|
+| `normalizar_texto()` en la base | Migración `NormalizarTexto`. **La prueba que la compara con C# cazó un fallo real**: `lower()` depende de la configuración regional y no pasaba `Ñ` ni `Í` a minúscula, así que «GARCÍA» no coincidía; las mayúsculas con tilde ahora van en el `translate` |
+| La ubicación | Vive **solo en memoria** (`marco/ubicacion.ts`), nunca en la URL. «Más cerca» la pide al pulsarlo, una vez, y si se niega no se insiste |
+| Sugerencias mientras se escribe | Espera 280 ms, mínimo 2 letras, descarta respuestas viejas y **guarda en memoria lo ya preguntado** (el límite público es 100 peticiones por 15 min por IP) |
+| Accesibilidad | Combobox con flechas, Enter y Escape; lista que se anuncia; 44 px de toque |
+
+**Rediseño (oscuro, con la marca):** amarillo eléctrico sobre tinta, vidrio, cuadrícula tenue, JetBrains Mono para las
+etiquetas. Piezas propias: **radar de Temuco** con los barrios reales (dirección real desde el Centro, distancia
+comprimida con raíz, puntos separados, cada uno es un enlace a ese barrio), borde de luz giratorio en la barra, foco que
+sigue al puntero, titular con brillo, cinta de dos filas, cifras que suben, entradas animadas al hacer scroll y tarjetas
+con foco de luz. **Todo se apaga con «reducir movimiento».**
+
+**Se midió:** 39 pruebas de aplicación nuevas, 15 de integración contra PostgreSQL, 8 por HTTP y 25 de interfaz. Mutación:
+25 mutantes sobre el SQL y el servicio (al principio **sobrevivían 6**: los desempates tapaban el orden pedido; se
+escribieron casos donde el orden pedido contradice al de recomendados) y 15 sobre la barra y la página. **Fallos reales
+que destapó:** (1) el desplegable de sugerencias quedaba *debajo* de los atajos y recortado (las animaciones de entrada
+crean un contexto de apilamiento por bloque); (2) al quitar la ubicación se hacía por un instante una búsqueda «más
+cerca» sin ubicación (el estado local cambiaba antes que la URL); ahora **la URL es la única fuente de verdad**.
+
+**Lo que NO está hecho:**
+
+| Falta | Por qué importa |
+|---|---|
+| Filtros «solo verificados» y «4 estrellas» en la búsqueda nueva | Existían en API-01 (que sigue en el backend) pero la pantalla nueva no los trae todavía |
+| Sinónimos: solo los 5 rubros de hoy | Cada rubro nuevo necesita sus palabras |
+| Fotos | Siguen siendo las iniciales |
+| Rendimiento no medido | Con miles de prestadores hay que revisar el plan de la consulta (`ILIKE` sobre `LIKE '%…%'` no usa índice) |
+
 ### MOD-02 Credenciales — la primera parte (7-nov-2026, noche)
 
 Se hizo lo que **no necesita archivos**: declarar, listar y eliminar credenciales (CU-05 pasos 1 a 5 y
@@ -598,9 +642,9 @@ Endpoints: **API-01 a API-05, 08-23**, más `GET /api/auth/csrf` y `GET /api/sal
 
 | Proyecto | Cuántas | Qué cubre |
 |---|---|---|
-| `Zass.Aplicacion.Pruebas` | **307** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02 a RN-S3-08, RN-S5-11, CC-02, y MOD-03, MOD-04 y MOD-05 completos |
-| `Zass.Integracion.Pruebas` | **257** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
-| `frontend` (Vitest) | **107** | Cliente HTTP y pantallas, con `fetch` simulado |
+| `Zass.Aplicacion.Pruebas` | **362** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02 a RN-S3-08, RN-S5-11, CC-02, y MOD-03, MOD-04 y MOD-05 completos |
+| `Zass.Integracion.Pruebas` | **293** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
+| `frontend` (Vitest) | **150** | Cliente HTTP y pantallas, con `fetch` simulado |
 | `frontend/pruebas-navegador` | 2 guiones | Navegador real contra la API real: que la página monta, los colores de marca, y el registro e ingreso completos |
 
 Escritas con TDD: cada prueba se vio fallar antes de que existiera el código.

@@ -19,7 +19,7 @@ mkdirSync(carpeta, { recursive: true })
 const PAGINAS = [
   ['inicio', '/'],
   ['buscar', '/buscar'],
-  ['buscar-corretaje', '/buscar?rubro=corretaje&zona=1'],
+  ['buscar-abogado', '/buscar?q=abogado&orden=PrecioAsc'],
   ['ficha', '/prestadores/marcela-soto'],
   ['barrios', '/barrios'],
   ['oficios', '/oficios'],
@@ -50,7 +50,19 @@ for (const [vista, tamano] of VISTAS) {
   for (const [nombre, ruta] of PAGINAS) {
     errores.length = 0
     await pagina.goto(BASE + ruta, { waitUntil: 'networkidle' })
-    await pagina.waitForTimeout(400)
+    await pagina.waitForTimeout(900)
+    // Recorre la pagina: las secciones entran con animacion al aparecer, y una captura de pagina entera
+    // sin pasar por ellas las mostraria todavia ocultas.
+    await pagina.evaluate(async () => {
+      const alto = document.documentElement.scrollHeight
+      for (let y = 0; y < alto; y += 500) {
+        // 'instant': la hoja de estilos pone scroll-behavior: smooth, y un scroll suave no llega a ningun sitio en 90 ms.
+        window.scrollTo({ top: y, behavior: 'instant' })
+        await new Promise((r) => setTimeout(r, 90))
+      }
+      window.scrollTo({ top: 0, behavior: 'instant' })
+    })
+    await pagina.waitForTimeout(1200)
 
     const medidas = await pagina.evaluate(() => {
       const ancho = document.documentElement.clientWidth
