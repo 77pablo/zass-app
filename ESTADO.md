@@ -1,6 +1,6 @@
 # ZASS! — estado del desarrollo
 
-**Última sesión:** 7 de noviembre de 2026, tarde (MOD-03 Catálogo, MOD-04 Geolocalización, y el repositorio ya está en GitHub).
+**Última sesión:** 7 de noviembre de 2026, tarde (MOD-03 Catálogo, MOD-04 Geolocalización, MOD-05 Búsqueda, y el repositorio ya está en GitHub).
 
 Este archivo existe para retomar sin reconstruir contexto. Dice **qué está hecho y
 comprobado**, **qué no**, y **el siguiente paso exacto**.
@@ -24,31 +24,33 @@ con las tablas `planes`, `suscripciones` y `pagos`; la pasarela no existe todav�
 
 ## 2. Resumen en una línea
 
-**MOD-01 Identidad, MOD-03 Catálogo, MOD-04 Geolocalización y MOD-13 Suscripciones
-están construidos, con 383 pruebas en verde** (207 de aplicación sin base de datos, 145 de
+**MOD-01 Identidad, MOD-03 Catálogo, MOD-04 Geolocalización, MOD-05 Búsqueda y MOD-13 Suscripciones
+están construidos, con 457 pruebas en verde** (241 de aplicación sin base de datos, 185 de
 integración contra PostgreSQL real y la API por HTTPS, 31 de interfaz) más dos
 comprobaciones de navegador que crean una cuenta y entran contra la base de verdad.
 
-MOD-01 llega hasta la pantalla. MOD-03, MOD-04 y MOD-13 están completos de dominio a API y
+MOD-01 llega hasta la pantalla. MOD-03, MOD-04, MOD-05 y MOD-13 están completos de dominio a API y
 **todavía sin pantalla**.
 
 **El camino completo de CU-03 ya está probado de punta a punta por HTTP**: un prestador se
 registra, verifica su correo, elige rubro, guarda servicios, guarda su zona, publica, y le
 arranca la suscripción de prueba de 30 días. Era la prueba que este archivo daba por
 imposible en las dos sesiones anteriores, y lo único que faltaba para hacerla eran MOD-03 y
-MOD-04. Lo que sigue sin poder probarse es la última palabra de la frase: **visible**, que
-es la búsqueda y es MOD-05.
+MOD-04. **La frase entera ya está probada, hasta la última palabra:** un visitante SIN sesión busca por
+rubro y ubicación y encuentra al prestador recién publicado, con la distancia como texto
+redondeado. Hay una prueba por HTTP que recorre registro, verificación, rubro, servicio, zona,
+publicar, y la búsqueda anónima. Y otra que comprueba que al despublicarse desaparece en el acto.
 
 **Todo el entorno local va por HTTPS.** `https://localhost:5173` la interfaz y
 `https://localhost:7277` la API, con el certificado de `dotnet dev-certs`. Eso permitió
 activar la marca `Secure` en las cookies también en desarrollo, y ahora hay una prueba
 que la comprueba; antes solo se podía ver desplegando.
 
-**El repositorio ya está en GitHub: `77pablo/zass-app`, privado.** 15 commits. La instancia portable de PostgreSQL, los dos secretos y la clave privada del
+**El repositorio ya está en GitHub: `77pablo/zass-app`, privado.** 18 commits. La instancia portable de PostgreSQL, los dos secretos y la clave privada del
 certificado quedan fuera, y eso se comprobó revisando la historia entera antes de subir,
 no de oídas. Hay `README.md` para quien abra el repositorio.
 
-Lo que falta es MOD-02 y MOD-05 a MOD-12, el resto de las pantallas y los trabajos de
+Lo que falta es MOD-02 y MOD-06 a MOD-12, el resto de las pantallas y los trabajos de
 fondo.
 
 ---
@@ -209,6 +211,66 @@ nadie dice "atiendo en Condominio Nueva Milano". Quedaron los 16 sectores con lo
 gente de Temuco dice dónde está. Ninguna coordenada está inventada, y eso importa: un
 centroide mal puesto manda al prestador al barrio de al lado sin que nada falle.
 
+### MOD-05 Búsqueda — la frase entera, por fin
+
+Es el único módulo **sin tablas propias**: solo lee. Si alguna vez necesita una, está
+asumiendo responsabilidades que no le tocan.
+
+| Pieza | Estado |
+|---|---|
+| `IServicioBusqueda.Buscar` | Los cuatro filtros duros del paso 5 de CU-08, orden, cursor y distancia redondeada |
+| API-01 `GET /api/busqueda?rubro=corretaje&lat=&lon=&radio=` | Público y sin sesión (P1 de CU-08) |
+| `RubroPorCodigo` en MOD-03 | El rubro va por **código** en la URL, no por id: un enlace a una búsqueda se comparte y se lee |
+| `FilaDeBusqueda` | Tipo sin clave y sin tabla, que EF Core materializa desde `FromSqlInterpolated` |
+
+Decisiones con prueba detrás:
+
+- **Los cuatro filtros duros van DENTRO del SQL**: publicado, rubro, cobertura de la zona y
+  suscripción vigente. Si el de suscripción se aplicara sobre el resultado, una página de 20
+  podría devolver 3 y el cursor apuntaría a un sitio que no existe.
+- **Desvío respecto de lo que este archivo decía antes.** El paso 3 de la lista de pasos
+  mandaba "llamar a `VigentesEntreAsync`, nunca a `EstaVigente`". No se hizo: el filtro es un
+  `JOIN` a `suscripciones` dentro de la propia consulta, que es lo que mantiene sana la
+  paginación. **`VigentesEntreAsync` existe, está probado, y hoy no lo usa nadie.**
+- **La condición de vigencia vive dos veces**: en C# dentro de MOD-13 y en el SQL de la
+  búsqueda. No se puede evitar sin sacar el filtro de la base. Hay una prueba que recorre
+  seis casos (Prueba y Activa con fecha futura y pasada, Vencida, Cancelada) y afirma que lo
+  que el SQL deja pasar es exactamente lo que `EstaVigenteAsync` llama vigente. **El día que
+  alguien cambie una punta y no la otra, esa prueba se cae.** Al vencer el plazo el prestador
+  deja de aparecer solo, sin ningún trabajo de fondo, porque el filtro compara con la hora
+  que se le pasa y no con un estado que alguien tenga que marcar.
+- **La búsqueda por punto resuelve primero la zona y la exige como cobertura.** El paso 5 de
+  CU-08 pide cobertura, no solo cercanía: un corredor que atiende solo en el Centro no le sale
+  a alguien de Labranza aunque esté dentro del radio.
+- **Hoy nadie tiene punto exacto** (el geocodificador no existe), así que la distancia se mide
+  al **centro de la zona principal**, que es lo que manda el flujo 4B.4 de CU-03. **El índice
+  GIST todavía no se gana el sueldo**, y no tiene sentido fingir que sí.
+- **La distancia viaja como texto, nunca como número**, y RN-S3-02 está comprobada **sobre los
+  bytes de la respuesta**: ni latitud, ni longitud, ni dirección, ni metros, ni correo, ni
+  teléfono pueden aparecer en el JSON, ni con otro nombre ni dentro de otro campo. Además hay
+  una prueba estructural que falla si alguien agrega esos campos al DTO.
+- **Cursor keyset, nunca `OFFSET`**: `(metros, id)` por distancia y `(promedio, reseñas, id)`
+  por reputación. La consulta pide una fila más que la página para saber si hay siguiente sin
+  contar el total, y el cursor apunta a la última fila **servida**, no a la extra. Dos
+  prestadores a la misma distancia no se pisan gracias al desempate por id. Un cursor de una
+  búsqueda por distancia no sirve en una por zona.
+- **E-400 corrige, no rechaza:** un radio fuera de rango se lleva al valor válido más cercano y
+  se informa. Por eso el validador de API-01 **no** mira el radio.
+- **Buscar desde fuera de toda zona conocida** devuelve una página vacía con el motivo, no un
+  404, para que el cliente ofrezca elegir otra zona.
+- **RN-S5-11 también manda en el filtro**: filtrar por un promedio que nadie puede ver
+  (menos de 3 reseñas) ocultaría perfiles por un número invisible. Y **una credencial en
+  revisión no da sello**: si lo diera, subir un papel cualquiera bastaría.
+
+**Lo que NO está hecho de MOD-05, y no hay que dar por hecho:**
+
+| Falta | Por qué importa |
+|---|---|
+| **`BuscarAgregadoPorZona`** y registrar la búsqueda de forma agregada (paso 13 de CU-08) | Es el dato que se le entrega al municipio, el segundo valor del producto para la postulación |
+| Flujos 4B (sugerencias sin resultados), 4D (reducir el radio si hay más de 200) y 4E (texto libre sin coincidencia) | Hoy sin resultados se devuelve una lista vacía y nada más |
+| La **caché de 60 s** (Redis, N-06) | No existe |
+| **La meta de rendimiento** (menos de 1 s en el percentil 95 con 1.000 perfiles) | **No está medida.** Las pruebas usan decenas de filas, y con el centroide de respaldo el GIST ni se usa. Hay que medir con `EXPLAIN` y con volumen antes de decir que cumple |
+
 ### Interfaz — `frontend/`
 
 React 19 + TypeScript + Vite, con la marca aplicada (amarillo `#F6C81E`, Montserrat,
@@ -242,15 +304,15 @@ Decisiones que quedaron fijadas en el código y tienen prueba:
 **CU-10** definir zonas de cobertura también funciona, y **CS-10** resuelve la zona de
 un punto (no la de una dirección: eso espera a N-08).
 
-Endpoints: **API-02 a API-05, 08-23**, más `GET /api/auth/csrf` y `GET /api/salud`. De los
-23 primeros solo falta **API-01**, la búsqueda, que es MOD-05.
+Endpoints: **API-01 a API-05, 08-23**, más `GET /api/auth/csrf` y `GET /api/salud`. De los
+23 primeros no falta ninguno. **CU-08** buscar por cercanía funciona.
 
 ### Las pruebas, y qué prueba cada grupo
 
 | Proyecto | Cuántas | Qué cubre |
 |---|---|---|
-| `Zass.Aplicacion.Pruebas` | **207** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02 a RN-S3-08, RN-S5-11, CC-02, y MOD-03 y MOD-04 completos |
-| `Zass.Integracion.Pruebas` | **145** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
+| `Zass.Aplicacion.Pruebas` | **241** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02 a RN-S3-08, RN-S5-11, CC-02, y MOD-03, MOD-04 y MOD-05 completos |
+| `Zass.Integracion.Pruebas` | **185** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
 | `frontend` (Vitest) | **31** | Cliente HTTP y pantallas, con `fetch` simulado |
 | `frontend/pruebas-navegador` | 2 guiones | Navegador real contra la API real: que la página monta, los colores de marca, y el registro e ingreso completos |
 
@@ -267,7 +329,13 @@ que cae en el golfo de Guinea. El comentario decía lo contrario y quedó correg
 
 **Esta es la forma más útil que ha tenido la regla de "un verde no prueba nada" en este
 proyecto:** cuando una tanda de pruebas pasa de primera, romper el código a propósito y
-contar los rojos dice si las pruebas miran de verdad, y dos veces ha destapado algo más.
+contar los rojos dice si las pruebas miran de verdad, y tres veces ha destapado algo más.
+
+La tercera fue en MOD-05 y es la más instructiva, porque el fallo era de una **prueba** y no
+del código: la de la media coordenada solo miraba el código 400, y sin la regla la petición
+igual devuelve 400 (cae en "dinos dónde buscas"). **Sobrevivió a la mutación.** Miraba el
+código y no el motivo. Ahora exige que el mensaje diga cuál coordenada falta, y contra el
+validador mutado falla.
 
 Cosas que **tienen prueba propia**, no solo un comentario:
 
@@ -396,11 +464,11 @@ guarda el avance en borrador antes de elegir rubro. Mandó el caso de uso.
 
 | Capa | Falta |
 |---|---|
-| `Zass.Aplicacion` | **MOD-02 y MOD-05 a MOD-12.** MOD-01, MOD-03, MOD-04 y MOD-13 listos |
+| `Zass.Aplicacion` | **MOD-02 y MOD-06 a MOD-12.** MOD-01, MOD-03, MOD-04, MOD-05 (salvo `BuscarAgregadoPorZona`) y MOD-13 listos |
 | `Zass.Api` | Filtro de idempotencia (`Idempotency-Key`), que se necesita desde API-36 |
 | Pruebas de arquitectura | Las 4 reglas de `paquetes-por-capas.md` §5 **no se verifican solas** todavía |
 | Datos de ejemplo | Prestadores y reseñas. Los roles, el plan de prueba, los rubros, los servicios y las **16 zonas** ya están, y como dato del esquema |
-| Frontend | Hechas las pantallas de **registro e ingreso**. Faltan: verificar correo, recuperar contraseña, perfil del prestador (ya tiene API-02, API-03, API-04, API-20 y API-21 detrás) y búsqueda |
+| Frontend | Hechas las pantallas de **registro e ingreso**. Faltan: verificar correo, recuperar contraseña, perfil del prestador (ya tiene API-02, API-03, API-04, API-20 y API-21 detrás) y búsqueda (ya tiene API-01 detrás) |
 | Trabajos en segundo plano | Recordatorios, vencimientos, bloques, purgas |
 | Notificaciones | Se encolan en TBL-27; **nadie las despacha**. Decidido: buzón local `.eml` |
 | Suscripciones | Tablas sí, lógica y pasarela no |
@@ -431,37 +499,40 @@ HECHO   MOD-13 Suscripciones    7-nov-2026
 HECHO   MOD-03 Catalogo         7-nov-2026, con 72 pruebas nuevas
 HECHO   MOD-04 Geolocalizacion   7-nov-2026, con 64 pruebas nuevas
 
-1. MOD-05 Busqueda: API-01, con FromSqlInterpolated y el indice GIST   <-- AQUI
-   - Ya desbloqueado: RN-S3-09 dice que el impago DESAPARECE
-   - El filtro de suscripcion va DENTRO del SQL, no resultado por resultado
-   - Llamar a IServicioSuscripciones.VigentesEntreAsync, nunca a EstaVigente
+HECHO   MOD-05 Busqueda          7-nov-2026, con 74 pruebas nuevas
+                                 (falta BuscarAgregadoPorZona, ver su seccion)
+
+1. LAS PANTALLAS: perfil del prestador y busqueda                      <-- AQUI
+   - Todo el backend que necesitan existe y esta probado: API-01 a API-05 y
+     API-18 a API-23. Es lo que hace visible y tocable el producto
+   - Perfil del prestador: rubro (API-02), servicios (API-03/20), zona
+     (API-04/21), publicar (API-22) y ver su suscripcion de prueba
+   - Busqueda: rubro, donde (zona, o ubicacion del navegador con el flujo 4A de
+     CU-08 si la niega), filtros de CS-09, resultados con la distancia en TEXTO
+     y paginacion por cursor
+   - Poner la atribucion a OpenStreetMap en el pie del mapa desde el dia uno
+   - Verificar correo (API-14) y recuperar contrasena (API-15) van con estas
 
 4. MOD-02 Credenciales -> MOD-06 Agenda -> MOD-11 Resenas -> MOD-12 Tarjetas
    - Antes de MOD-12 hace falta la respuesta a la pregunta 4 de la seccion 9
 
 5. Pruebas de arquitectura (NetArchTest) y filtro de idempotencia
 
-6. Las pantallas que faltan, sobre el cliente que ya existe en frontend/src/api:
-   verificar correo (API-14), recuperar contrasena (API-15), perfil del
-   prestador (API-17/18) y busqueda (API-01)
+6. (Subido al paso 1: las pantallas.)
 
 7. Trabajos de fondo: vencer suscripciones y avisar antes de que venzan
    - ServicioSuscripciones.VencerExpiradasAsync y PorVencerAsync ya existen
    - Falta quien los llame cada dia
 ```
 
-**La decision a tomar primero** es si MOD-05 o la pantalla de perfil del prestador.
+**Por que las pantallas van ahora.** Con MOD-05 el camino completo del producto existe y
+esta probado por HTTP, pero **nadie puede verlo ni tocarlo**: un prestador no tiene como
+publicarse sin llamar a la API a mano, y un buscador no tiene donde buscar. Las pantallas son
+lo que convierte 457 pruebas en algo que se le puede ensenar a un municipio.
 
-MOD-05 cierra la ultima palabra de "publicar -> prueba -> visible": hoy un prestador puede
-publicar y arrancar su prueba, pero NADIE puede buscarlo, asi que el producto todavia no
-hace lo que promete. La pantalla, en cambio, hace visible y tocable lo que ya existe.
-
-Van los dos, y MOD-05 primero: mientras no exista, la mitad del producto —el lado del
-buscador— no se puede ni mirar.
-
-Para MOD-05 ya esta todo lo que necesita: las zonas con su centroide, los servicios por
-rubro, `VigentesEntreAsync` para el filtro de suscripcion en lote, `Geo.DistanciaPublica`
-para RN-S3-03 y el indice GIST de `ubicacion_exacta`.
+Despues siguen MOD-02 Credenciales (hoy el sello de verificado no lo puede dar nadie, aunque
+la busqueda ya lo lee) y MOD-06 Agenda. `BuscarAgregadoPorZona` conviene antes de la
+postulacion municipal, porque es el dato que ese documento va a prometer.
 
 ---
 
