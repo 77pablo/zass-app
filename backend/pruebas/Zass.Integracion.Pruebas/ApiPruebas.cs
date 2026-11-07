@@ -422,6 +422,222 @@ public class ApiPruebas : IAsyncLifetime
 
     // ------------------------------------------------------------
 
+    // ------------------------------------------------- MOD-03 Catalogo por HTTP
+
+    /// <summary>
+    /// API-02 es publico: el selector de rubros de la busqueda (CU-08) y el del
+    /// formulario de perfil (CU-03) tienen que funcionar sin sesion.
+    /// </summary>
+    [Fact]
+    public async Task Los_rubros_se_piden_sin_sesion()
+    {
+        var respuesta = await _cliente.GetAsync("/api/rubros");
+
+        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
+        var rubros = await respuesta.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.Equal(5, rubros!.RootElement.GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Los_rubros_se_filtran_con_q()
+    {
+        var respuesta = await _cliente.GetAsync("/api/rubros?q=contab");
+
+        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
+        var rubros = await respuesta.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.Equal(1, rubros!.RootElement.GetArrayLength());
+        Assert.Equal("contabilidad", rubros.RootElement[0].GetProperty("codigo").GetString());
+    }
+
+    [Fact]
+    public async Task Los_servicios_de_un_rubro_se_piden_sin_sesion()
+    {
+        var respuesta = await _cliente.GetAsync("/api/rubros/1/servicios");
+
+        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
+        var servicios = await respuesta.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.True(servicios!.RootElement.GetArrayLength() > 0);
+    }
+
+    /// <summary>
+    /// Un identificador que no cabe en smallint no puede terminar en un 404 vacio por no
+    /// casar con la ruta: contesta lo mismo que un rubro que no existe, que es lo que es.
+    /// </summary>
+    [Theory]
+    [InlineData("77")]
+    [InlineData("99999")]
+    [InlineData("0")]
+    public async Task Los_servicios_de_un_rubro_que_no_existe_devuelven_404(string rubroId)
+    {
+        var respuesta = await _cliente.GetAsync($"/api/rubros/{rubroId}/servicios");
+
+        Assert.Equal(HttpStatusCode.NotFound, respuesta.StatusCode);
+        Assert.Contains("rubro", await respuesta.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Guardar_los_servicios_sin_sesion_devuelve_401()
+    {
+        var peticion = new HttpRequestMessage(
+            HttpMethod.Put, "/api/mi/perfil-prestador/servicios")
+        {
+            Content = JsonContent.Create(new { servicios = new[] { UnServicio(101) } }),
+        };
+
+        var respuesta = await _cliente.SendAsync(peticion);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, respuesta.StatusCode);
+    }
+
+    [Fact]
+    public async Task Guardar_los_servicios_sin_el_token_csrf_devuelve_403()
+    {
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo, rol: "prestador");
+        await IniciarSesionAsync(correo);
+
+        var peticion = new HttpRequestMessage(
+            HttpMethod.Put, "/api/mi/perfil-prestador/servicios")
+        {
+            Content = JsonContent.Create(new { servicios = new[] { UnServicio(101) } }),
+        };
+
+        var respuesta = await _cliente.SendAsync(peticion);
+
+        Assert.Equal(HttpStatusCode.Forbidden, respuesta.StatusCode);
+    }
+
+    /// <summary>
+    /// El rubro se elige en el paso 3 de CU-03 y los servicios en el 4. Llegar al 4 sin
+    /// el 3 es el formulario fuera de orden, no un dato invalido: 422 y se dice cual es.
+    /// </summary>
+    [Fact]
+    public async Task Guardar_los_servicios_sin_rubro_en_el_perfil_devuelve_422()
+    {
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo, rol: "prestador");
+        await IniciarSesionAsync(correo);
+
+        var respuesta = await PonerServiciosAsync(new[] { UnServicio(101) });
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, respuesta.StatusCode);
+        Assert.Contains("rubro", await respuesta.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Guardar_un_servicio_de_otro_rubro_devuelve_400()
+    {
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo, rol: "prestador");
+        await IniciarSesionAsync(correo);
+        await PonerRubroAsync(1);           // corretaje
+
+        var respuesta = await PonerServiciosAsync(new[] { UnServicio(201) });   // derecho
+
+        Assert.Equal(HttpStatusCode.BadRequest, respuesta.StatusCode);
+    }
+
+    /// <summary>El camino completo de CU-03 pasos 3 y 4, por HTTP y contra la base real.</summary>
+    [Fact]
+    public async Task Un_prestador_elige_su_rubro_y_guarda_sus_servicios()
+    {
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo, rol: "prestador");
+        await IniciarSesionAsync(correo);
+        await PonerRubroAsync(1);
+
+        var guardado = await PonerServiciosAsync(new object[]
+        {
+            UnServicio(101, duracion: 45),
+            UnServicio(102),
+            // Uno escrito a mano, que es lo que permite CU-03 paso 4.
+            new { servicioId = (int?)null, nombreNuevo = "Visita a terreno",
+                  duracionMinutos = 60, modoAgenda = "manual", precioReferencia = 25000 },
+        });
+        Assert.Equal(HttpStatusCode.NoContent, guardado.StatusCode);
+
+        var leido = await _cliente.GetAsync("/api/mi/perfil-prestador/servicios");
+        Assert.Equal(HttpStatusCode.OK, leido.StatusCode);
+        var servicios = await leido.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.Equal(3, servicios!.RootElement.GetArrayLength());
+
+        var escrito = servicios.RootElement.EnumerateArray()
+            .Single(s => s.GetProperty("nombre").GetString() == "Visita a terreno");
+        Assert.False(escrito.GetProperty("esCatalogo").GetBoolean());
+        Assert.Equal(25000, escrito.GetProperty("precioReferencia").GetInt32());
+    }
+
+    /// <summary>
+    /// Lo que MOD-03 desbloquea, y lo que todavia no: con rubro y servicio puestos,
+    /// publicar ya no se queja de ellos y solo falta la zona, que es MOD-04. Esta prueba
+    /// cambia el dia que MOD-04 exista, y eso es justamente lo que tiene que pasar.
+    /// </summary>
+    [Fact]
+    public async Task Con_rubro_y_servicios_publicar_ya_solo_pide_la_zona()
+    {
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo, rol: "prestador");
+        await VerificarAsync(correo);
+        await IniciarSesionAsync(correo);
+        await PonerRubroAsync(1);
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await PonerServiciosAsync(new[] { UnServicio(101) })).StatusCode);
+
+        var peticion = new HttpRequestMessage(
+            HttpMethod.Post, "/api/mi/perfil-prestador/publicar");
+        peticion.Headers.Add("X-CSRF-Token", await TokenCsrfAsync());
+        var respuesta = await _cliente.SendAsync(peticion);
+
+        var cuerpo = await respuesta.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, respuesta.StatusCode);
+        Assert.Contains("zona", cuerpo);
+        Assert.DoesNotContain("el rubro", cuerpo);
+        Assert.DoesNotContain("al menos un servicio", cuerpo);
+    }
+
+    private static object UnServicio(int servicioId, short duracion = 60) => new
+    {
+        servicioId,
+        nombreNuevo = (string?)null,
+        duracionMinutos = duracion,
+        modoAgenda = "automatico",
+        precioReferencia = (int?)null,
+    };
+
+    /// <summary>API-19 con lo minimo: el rubro y la version que exige CC-02.</summary>
+    private async Task PonerRubroAsync(short rubroId)
+    {
+        var perfil = await _cliente.GetFromJsonAsync<JsonDocument>("/api/mi/perfil-prestador");
+        var version = perfil!.RootElement.GetProperty("version").GetInt32();
+
+        var peticion = new HttpRequestMessage(HttpMethod.Put, "/api/mi/perfil-prestador")
+        {
+            Content = JsonContent.Create(new
+            {
+                nombrePublico = "Estudio de prueba", descripcion = (string?)null,
+                rubroId, telefonoPublico = (string?)null, correoPublico = (string?)null,
+                whatsapp = (string?)null, sitioWeb = (string?)null,
+                direccion = (string?)null, latitud = (double?)null, longitud = (double?)null,
+                version,
+            }),
+        };
+        peticion.Headers.Add("X-CSRF-Token", await TokenCsrfAsync());
+
+        var respuesta = await _cliente.SendAsync(peticion);
+        Assert.Equal(HttpStatusCode.NoContent, respuesta.StatusCode);
+    }
+
+    private async Task<HttpResponseMessage> PonerServiciosAsync(object[] servicios)
+    {
+        var peticion = new HttpRequestMessage(
+            HttpMethod.Put, "/api/mi/perfil-prestador/servicios")
+        {
+            Content = JsonContent.Create(new { servicios }),
+        };
+        peticion.Headers.Add("X-CSRF-Token", await TokenCsrfAsync());
+        return await _cliente.SendAsync(peticion);
+    }
+
     private string NuevoCorreo()
     {
         var correo = $"api-{Guid.NewGuid():N}@zass.local";
