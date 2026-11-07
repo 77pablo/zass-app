@@ -1,6 +1,6 @@
 # ZASS! — estado del desarrollo
 
-**Última sesión:** 7 de noviembre de 2026 (git, interfaz de identidad, MOD-13, HTTPS local).
+**Última sesión:** 7 de noviembre de 2026, tarde (MOD-03 Catálogo, y el repositorio ya está en GitHub).
 
 Este archivo existe para retomar sin reconstruir contexto. Dice **qué está hecho y
 comprobado**, **qué no**, y **el siguiente paso exacto**.
@@ -24,20 +24,26 @@ con las tablas `planes`, `suscripciones` y `pagos`; la pasarela no existe todav�
 
 ## 2. Resumen en una línea
 
-**MOD-01 Identidad y MOD-13 Suscripciones están construidos de punta a punta — dominio,
-aplicación, API y pantalla — con 247 pruebas en verde** (132 de aplicación sin base de
-datos, 84 de integración contra PostgreSQL real y la API por HTTPS, 31 de interfaz) más
-dos comprobaciones de navegador que crean una cuenta y entran contra la base de verdad.
+**MOD-01 Identidad, MOD-03 Catálogo y MOD-13 Suscripciones están construidos, con 319
+pruebas en verde** (170 de aplicación sin base de datos, 118 de integración contra
+PostgreSQL real y la API por HTTPS, 31 de interfaz) más dos comprobaciones de navegador
+que crean una cuenta y entran contra la base de verdad.
+
+MOD-01 llega hasta la pantalla. MOD-03 y MOD-13 están completos de dominio a API y
+**todavía sin pantalla**.
 
 **Todo el entorno local va por HTTPS.** `https://localhost:5173` la interfaz y
 `https://localhost:7277` la API, con el certificado de `dotnet dev-certs`. Eso permitió
 activar la marca `Secure` en las cookies también en desarrollo, y ahora hay una prueba
 que la comprueba; antes solo se podía ver desplegando.
 
-**El proyecto ya está bajo git.** Cuatro commits, 98 archivos, 422 KB: la instancia
-portable de PostgreSQL y los secretos quedan fuera.
+**El repositorio ya está en GitHub: `77pablo/zass-app`, privado.** 11 commits, 116
+archivos. La instancia portable de PostgreSQL, los dos secretos y la clave privada del
+certificado quedan fuera, y eso se comprobó revisando la historia entera antes de subir,
+no de oídas. Hay `README.md` para quien abra el repositorio.
 
-Lo que falta es MOD-02 a MOD-12, el resto de las pantallas y los trabajos de fondo.
+Lo que falta es MOD-02 y MOD-04 a MOD-12, el resto de las pantallas y los trabajos de
+fondo.
 
 ---
 
@@ -60,6 +66,8 @@ Lo que falta es MOD-02 a MOD-12, el resto de las pantallas y los trabajos de fon
 | `RolesDeCatalogo` | Los 5 roles de TBL-02 como datos del esquema | `SELECT * FROM roles` |
 | `RubroOpcionalEnBorrador` | `rubro_id` nulo mientras el perfil es borrador | el perfil en borrador ya se inserta |
 | `UbicacionFueraDelModelo` | **Índice GIST** en `ubicacion_exacta`, y la columna fuera del modelo de EF Core | `pg_indexes` muestra el GIST; la columna sigue `is_generated = ALWAYS` |
+| `PlanDePruebaSembrado` | El plan `prueba` como dato del esquema | `SELECT * FROM planes` |
+| `CatalogoSembrado` | 5 rubros y 39 servicios, la columna `nombre_normalizado`, el único `ux_servicio_rubro_nombre`, dos `CHECK` en `prestador_servicios` y la secuencia de `servicios` reiniciada en 1000 | `pg_indexes`, `pg_constraint`, y un `INSERT` real que devolvió el id **1000** |
 
 ### Backend
 
@@ -103,6 +111,45 @@ Decisiones con prueba detrás:
 ejemplo para ninguno hasta MOD-03 y MOD-04. Sí está probado que **publicar sin el mínimo
 NO arranca la prueba**, que es la mitad que puede fallar en silencio.
 
+### MOD-03 Catálogo — lo que desbloqueó el camino de publicar
+
+Las tres tablas y las entidades ya existían desde la primera migración; lo que no existía
+era el módulo. Es un **módulo hoja**: no consume a ningún otro, y no debe empezar a
+hacerlo.
+
+| Pieza | Estado |
+|---|---|
+| `IServicioCatalogo` | Las 3 operaciones de la tabla de módulos, más `ServiciosDePrestador` y `ReemplazarServicios` |
+| API-02 `GET /api/rubros?q=` | Público. 5 rubros sembrados con el esquema |
+| API-03 `GET /api/rubros/{id}/servicios` | Público. 39 servicios del catálogo |
+| API-20 `PUT /api/mi/perfil-prestador/servicios` | Compone MOD-01 (rubro), MOD-13 (tope del plan) y MOD-03 (la oferta) |
+| API-20 `GET` de la misma ruta | **No estaba en el documento.** Sin él, el formulario de CU-03 paso 4 no puede pintarse con lo guardado |
+| `IServicioSuscripciones.LimiteDeServiciosAsync` | Nuevo en MOD-13: el tope de servicios es del plan, y el plan es cosa suya |
+
+Decisiones con prueba detrás:
+
+- **Reemplazar la oferta NO borra y vuelve a crear.** TBL-13 `disponibilidad` y TBL-18
+  `cita` apuntan a `prestador_servicio` con `ON DELETE CASCADE`: recrear las filas se
+  llevaría por delante los horarios y las citas con solo cambiar un precio. Lo que sale de
+  la lista **se desactiva y se conserva**; lo que vuelve, se reactiva. Hay una prueba de
+  integración que crea una disponibilidad, quita el servicio y comprueba que sigue ahí.
+- **El prestador puede escribir servicios que no están en el catálogo** (CU-03 paso 4,
+  `es_catalogo = false`), pero si el nombre ya existe en el rubro **se reutiliza** el que
+  hay. "tasacion" escrito a mano encuentra "Tasación comercial".
+- **El tope de servicios no se repite en dos sitios:** es `plan.max_servicios`, y para el
+  plan de prueba son 10. Sin suscripción manda el plan inicial, porque el prestador elige
+  sus servicios **antes** de publicar, que es cuando arranca la prueba.
+- **Validar N servicios es UNA consulta**, no N: corre en el guardado del perfil y hay una
+  prueba que cuenta las idas al repositorio.
+- **La lista vacía se rechaza.** Vaciarla por API-20 dejaría un perfil `publicado` que no
+  ve nadie; para dejar de aparecer está despublicar.
+- **El texto de `?q=` no se interpreta como patrón.** Con `ILIKE`, un `?q=%` devolvería el
+  catálogo entero; con `ToLower().Contains()` el porcentaje es un carácter más.
+
+**Lo que MOD-03 desbloqueó, medido:** con rubro y servicio puestos, publicar ya no se queja
+de ellos y **solo pide la zona**, que es MOD-04. Hay una prueba por HTTP que lo afirma, y
+es justo la que la versión anterior de este archivo daba por imposible.
+
 ### Interfaz — `frontend/`
 
 React 19 + TypeScript + Vite, con la marca aplicada (amarillo `#F6C81E`, Montserrat,
@@ -133,19 +180,25 @@ Decisiones que quedaron fijadas en el código y tienen prueba:
 **CU-04** preferencias · **CS-01** verificar correo · **CS-02** recuperar contraseña ·
 **CS-03** revocar sesiones · **CS-04** eliminar cuenta.
 
-Endpoints: **API-05, 08-19, 22, 23**, más `GET /api/auth/csrf` y `GET /api/salud`.
-Faltan **API-20 y API-21** (servicios y cobertura) porque son de MOD-03 y MOD-04.
+Endpoints: **API-02, API-03, API-05, 08-20, 22, 23**, más `GET /api/auth/csrf` y
+`GET /api/salud`. Falta **API-21** (cobertura), que es de MOD-04.
 
 ### Las pruebas, y qué prueba cada grupo
 
 | Proyecto | Cuántas | Qué cubre |
 |---|---|---|
-| `Zass.Aplicacion.Pruebas` | **132** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02, RN-S5-11, CC-02 |
-| `Zass.Integracion.Pruebas` | **84** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
+| `Zass.Aplicacion.Pruebas` | **170** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02, RN-S5-11, CC-02, y MOD-03 completo |
+| `Zass.Integracion.Pruebas` | **118** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
 | `frontend` (Vitest) | **31** | Cliente HTTP y pantallas, con `fetch` simulado |
 | `frontend/pruebas-navegador` | 2 guiones | Navegador real contra la API real: que la página monta, los colores de marca, y el registro e ingreso completos |
 
 Escritas con TDD: cada prueba se vio fallar antes de que existiera el código.
+
+Las 38 de MOD-03 se escribieron antes del servicio, pero pasaron todas en la primera
+ejecución, y eso no prueba nada por sí solo. Se comprobó rompiendo cuatro reglas del
+servicio a propósito —el `es_catalogo` de los servicios nuevos, la desactivación de lo que
+sale de la lista, el rechazo de la lista vacía y la actualización de la duración—: cayeron
+exactamente cuatro pruebas, una por regla. Después se restauró el código.
 
 Cosas que **tienen prueba propia**, no solo un comentario:
 
@@ -178,6 +231,26 @@ porque son el argumento de por qué valió la pena la capa de integración.
 | 4 | EF Core intentaba **leer de vuelta** la columna `geography` como texto | Fallaba todo `INSERT` y `UPDATE` de perfil |
 | 5 | **Faltaba el índice GIST** en `ubicacion_exacta` | CU-08 recorrería la tabla entera: la columna estaba pero no servía |
 | 6 | `AgregarZass` leía la configuración al **registrar**, no al resolver | Cualquier fuente agregada después quedaba ignorada; en producción, Key Vault |
+
+### El séptimo, y el más caro de haber dejado pasar
+
+| # | Fallo | Qué habría pasado en producción |
+|---|---|---|
+| 7 | El único de `(rubro_id, nombre)` iba sobre `lower(nombre)` y **no rechazaba nada** | Dos servicios iguales en un rubro, y la búsqueda mostrando dos filas para lo mismo |
+
+Lo encontró una prueba de integración que esperaba el rechazo y **no lo obtuvo**. La causa:
+este clúster se creó con locale `C`, y ahí `lower()` solo pliega ASCII, así que `lower('Ó')`
+sigue siendo `'Ó'` y "TASACIÓN COMERCIAL" entraba al lado de "Tasación comercial". La regla
+dependía del locale del servidor, que en Azure es otro: habría pasado en desarrollo y
+fallado en producción, o al revés.
+
+Arreglado en la raíz: `servicio.nombre_normalizado`, que calcula `Texto.ClaveDeNombre` en C#
+(sin tildes, minúsculas, espacios comprimidos), y el índice compara por igualdad exacta. De
+paso resolvió las tildes, que era otro agujero: "tasacion" ya encuentra "Tasación comercial".
+
+**La lección, que es la de siempre con otra cara:** `lower()` parecía neutral y no lo era.
+Si una regla de unicidad se apoya en una función de la base, depende de cómo se creó la
+base.
 
 Además, un fallo latente encontrado leyendo: los dos tokens de un solo uso compartían una
 columna de vencimiento, así que pedir recuperación le acortaba en silencio el plazo al
@@ -219,6 +292,9 @@ desbalanceado).
 | `03-datos/diccionario-de-tablas.md` | TBL-05: `rubro_id` nulo en borrador, y el índice GIST de `ubicacion_exacta` |
 | `02-clases/clases-03-agenda-y-citas.md` | `TipoNotificacion`: los 16 valores reales, no 8 |
 | `06-desarrollo/paquetes-por-capas.md` | No hay `Zass.Compartido`: `Resultado` vive en `Zass.Dominio.Comun`, con la explicación |
+| `03-datos/diccionario-de-tablas.md` | TBL-07 declara `icono`, que existe en la base desde la primera migración, y dice que los 5 rubros se siembran con el esquema |
+| `03-datos/diccionario-de-tablas.md` | TBL-08 declara `nombre_normalizado`, el único `(rubro_id, nombre_normalizado)` con el porqué del locale, y la secuencia de identidad reiniciada |
+| `06-desarrollo/api-rest.md` | API-20 lleva también el GET de la misma ruta, como API-22 lleva publicar y despublicar. API-02 dice que `?q=` no es un patrón |
 
 En los cuatro casos **se movió el documento**, no el código, salvo `rubro_id`, donde el
 documento se contradecía consigo mismo: marcaba la columna obligatoria y a la vez CU-03
@@ -230,15 +306,15 @@ guarda el avance en borrador antes de elegir rubro. Mandó el caso de uso.
 
 | Capa | Falta |
 |---|---|
-| `Zass.Aplicacion` | **MOD-02 a MOD-12.** MOD-01 y MOD-13 listos |
+| `Zass.Aplicacion` | **MOD-02 y MOD-04 a MOD-12.** MOD-01, MOD-03 y MOD-13 listos |
 | `Zass.Api` | Filtro de idempotencia (`Idempotency-Key`), que se necesita desde API-36 |
 | Pruebas de arquitectura | Las 4 reglas de `paquetes-por-capas.md` §5 **no se verifican solas** todavía |
-| Datos de ejemplo | Zonas, rubros, servicios, prestadores, reseñas. Los roles **sí** están |
-| Frontend | Hechas las pantallas de **registro e ingreso**. Faltan: verificar correo, recuperar contraseña, perfil del prestador y búsqueda |
+| Datos de ejemplo | Zonas, prestadores, reseñas. Los roles, el plan de prueba, los **rubros** y los **servicios** ya están, y como dato del esquema, no como siembra aparte |
+| Frontend | Hechas las pantallas de **registro e ingreso**. Faltan: verificar correo, recuperar contraseña, perfil del prestador (ya tiene API-02, API-03 y API-20 detrás) y búsqueda |
 | Trabajos en segundo plano | Recordatorios, vencimientos, bloques, purgas |
 | Notificaciones | Se encolan en TBL-27; **nadie las despacha**. Decidido: buzón local `.eml` |
 | Suscripciones | Tablas sí, lógica y pasarela no |
-| Repositorio git | **Hecho.** Falta decidir si se sube a GitHub, y si privado |
+| Repositorio git | **Hecho y subido:** `77pablo/zass-app` en GitHub, privado |
 
 ### El CSRF: resuelto
 
@@ -261,14 +337,14 @@ no reintente sin fin.
 ```
 HECHO   MOD-01 Identidad        dominio, API y pantalla
 HECHO   MOD-13 Suscripciones    7-nov-2026
+HECHO   MOD-03 Catalogo         7-nov-2026, con 72 pruebas nuevas
 
-1. MOD-03 Catalogo: rubros y servicios (TBL-07, 08, 09)        <-- AQUI
-   - IServicioCatalogo, API-02, API-03, API-20
-   - datos de ejemplo de rubros y servicios de Temuco
-   - DESBLOQUEA la prueba que hoy falta: publicar -> prueba -> visible
-
-2. MOD-04 Geolocalizacion: zonas y cobertura (TBL-10, 11)
+1. MOD-04 Geolocalizacion: zonas y cobertura (TBL-10, 11)      <-- AQUI
    - IServicioGeografia, API-04, API-21
+   - zonas de Temuco como dato del esquema, igual que los rubros
+   - R-2: una sola zona principal por prestador
+   - CIERRA la prueba que todavia falta: publicar -> prueba -> visible.
+     Hoy publicar ya solo pide la zona, y hay una prueba que lo afirma
 
 3. MOD-05 Busqueda: API-01, con FromSqlInterpolated y el indice GIST
    - Ya desbloqueado: RN-S3-09 dice que el impago DESAPARECE
@@ -289,8 +365,10 @@ HECHO   MOD-13 Suscripciones    7-nov-2026
    - Falta quien los llame cada dia
 ```
 
-**La decision a tomar primero** es si MOD-03 o la pantalla de perfil del prestador. El
-perfil necesita la lista de rubros, que es MOD-03: por eso el catalogo va antes.
+**La decision a tomar primero** es si MOD-04 o la pantalla de perfil del prestador. Con
+MOD-04 el perfil se puede publicar de verdad y el camino completo queda probado de punta a
+punta; con la pantalla primero, se puede ver y tocar lo que ya existe, pero publicar sigue
+sin poder completarse. Por eso va MOD-04.
 
 ---
 
@@ -405,3 +483,5 @@ Al terminar: `detener-postgres.bat`.
 | **`certificados/` tiene una clave privada** | En `.gitignore`. Se regenera con `dotnet dev-certs https --export-path certificados/localhost.pem --format PEM --no-password` |
 | **`node_modules` pesa ~300 MB** | En `.gitignore`. Al clonar hace falta `npm install` dentro de `frontend` |
 | **Playwright baja Chromium (~123 MB)** | Queda en `%LOCALAPPDATA%\ms-playwright`, fuera del proyecto. Al clonar: `npx playwright install chromium` |
+| **El clúster local se creó con locale `C`** | `lower()` y `upper()` solo pliegan ASCII. Ninguna regla puede apoyarse en ellas: por eso `servicio` lleva `nombre_normalizado` calculado en C#. Si alguna vez se recrea el clúster, **no** cambia nada de esto, y es a propósito: en Azure el locale será otro |
+| **Subir al repositorio exige revisar la historia, no solo `.gitignore`** | Antes del primer `push` se revisaron los nombres de archivo de **todos** los commits buscando claves, `.env`, certificados y `appsettings.Development.json`. No había ninguno. Un `.gitignore` correcto no dice nada de lo que ya se versionó |
