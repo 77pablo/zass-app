@@ -370,4 +370,51 @@ public class SuscripcionesPruebas
         Assert.Single(planes);
         Assert.Equal("prueba", planes[0].Codigo);
     }
+
+    // ------------------------------------------------- El tope que consume API-20
+
+    /// <summary>
+    /// El prestador elige sus servicios ANTES de publicar, y la prueba arranca al
+    /// publicar: en ese momento no tiene ninguna suscripcion. Si el tope fuera cero ahi,
+    /// no podria llenar el formulario que lo lleva a publicar.
+    /// </summary>
+    [Fact]
+    public async Task Sin_suscripcion_el_tope_es_el_del_plan_inicial()
+    {
+        var p = UnPrestador();
+
+        Assert.Equal(10, await _servicio.LimiteDeServiciosAsync(p.Id));
+    }
+
+    [Fact]
+    public async Task Con_suscripcion_vigente_el_tope_es_el_de_su_plan()
+    {
+        _base.Planes.Add(new Plan
+        {
+            Id = 7, Codigo = "pro", Nombre = "Pro", MaxServicios = 40, Activo = true,
+        });
+        var p = UnPrestador();
+        var s = ConSuscripcion(p.Id, EstadoSuscripcion.Activa, Ahora.AddDays(20));
+        s.PlanId = 7;
+
+        Assert.Equal(40, await _servicio.LimiteDeServiciosAsync(p.Id));
+    }
+
+    /// <summary>
+    /// Vencida, el tope vuelve al del plan inicial y no se queda con el del plan caro.
+    /// Quien dejo de pagar no conserva las ventajas, aunque la fila siga ahi.
+    /// </summary>
+    [Fact]
+    public async Task Vencida_el_tope_vuelve_al_del_plan_inicial()
+    {
+        _base.Planes.Add(new Plan
+        {
+            Id = 7, Codigo = "pro", Nombre = "Pro", MaxServicios = 40, Activo = true,
+        });
+        var p = UnPrestador();
+        var s = ConSuscripcion(p.Id, EstadoSuscripcion.Activa, Ahora.AddDays(-1));
+        s.PlanId = 7;
+
+        Assert.Equal(10, await _servicio.LimiteDeServiciosAsync(p.Id));
+    }
 }

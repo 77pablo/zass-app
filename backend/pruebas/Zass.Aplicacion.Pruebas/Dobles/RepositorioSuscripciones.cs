@@ -27,9 +27,18 @@ public sealed class RepositorioSuscripcionesEnMemoria : IRepositorioSuscripcione
         Task.FromResult(_base.Suscripciones.FirstOrDefault(s => s.Id == id));
 
     public Task<Suscripcion?> VigenteDePrestadorAsync(
-        Guid perfilPrestadorId, DateTime ahora, CancellationToken ct = default) =>
-        Task.FromResult(_base.Suscripciones
-            .FirstOrDefault(s => s.PerfilPrestadorId == perfilPrestadorId && Vigente(s, ahora)));
+        Guid perfilPrestadorId, DateTime ahora, CancellationToken ct = default)
+    {
+        var s = _base.Suscripciones
+            .FirstOrDefault(x => x.PerfilPrestadorId == perfilPrestadorId && Vigente(x, ahora));
+
+        // El repositorio real trae el plan con Include; aqui se enlaza a mano para que
+        // el servicio vea lo mismo en los dos lados.
+        if (s is not null && s.Plan is null)
+            s.Plan = _base.Planes.FirstOrDefault(p => p.Id == s.PlanId);
+
+        return Task.FromResult(s);
+    }
 
     public Task<Suscripcion?> UltimaDePrestadorAsync(
         Guid perfilPrestadorId, CancellationToken ct = default)

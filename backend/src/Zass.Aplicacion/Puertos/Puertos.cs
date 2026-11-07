@@ -133,3 +133,50 @@ public interface IRepositorioSuscripciones
     void Agregar(Suscripcion suscripcion);
     void AgregarPago(Pago pago);
 }
+
+/// <summary>
+/// MOD-03. Lo que el catalogo necesita de la base: TBL-07, TBL-08 y TBL-09.
+///
+/// No hay aqui ni una sola operacion que lea TBL-05: el catalogo es un modulo hoja
+/// (dependencias-entre-modulos.md) y debe quedarse asi. El rubro del perfil y el tope
+/// de servicios del plan los pasa quien compone, no los busca este modulo.
+/// </summary>
+public interface IRepositorioCatalogo
+{
+    /// <summary>API-02. Solo rubros activos. Con texto, filtra para el autocompletado.</summary>
+    Task<IReadOnlyList<Rubro>> RubrosActivosAsync(
+        string? texto, int limite, CancellationToken ct = default);
+
+    Task<Rubro?> RubroActivoPorIdAsync(short rubroId, CancellationToken ct = default);
+
+    /// <summary>API-03. Los del catalogo del equipo; los que agrego un prestador no se sugieren.</summary>
+    Task<IReadOnlyList<Servicio>> ServiciosDeCatalogoAsync(
+        short rubroId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Los servicios de esos identificadores, en UNA consulta.
+    ///
+    /// Validar una lista de veinte servicios preguntando uno por uno serian veinte
+    /// consultas en el guardado del perfil; el puerto ofrece el lote para que quien lo
+    /// implemente no acabe haciendo el bucle igual (misma razon que VigentesEntreAsync).
+    /// </summary>
+    Task<IReadOnlyList<Servicio>> ServiciosPorIdsAsync(
+        IReadOnlyCollection<int> ids, CancellationToken ct = default);
+
+    /// <summary>
+    /// Un servicio del rubro con ese nombre ya normalizado, sea del catalogo o agregado
+    /// por alguien. Evita que "Tasacion" y "tasacion " se conviertan en dos servicios.
+    /// </summary>
+    Task<Servicio?> ServicioPorNombreAsync(
+        short rubroId, string nombreNormalizado, CancellationToken ct = default);
+
+    /// <summary>TBL-09 completo de un prestador, activos e inactivos.</summary>
+    Task<IReadOnlyList<PrestadorServicio>> OfertaDePrestadorAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default);
+
+    /// <summary>Lo que MOD-06 necesita para agendar: duracion y modo. Con el servicio incluido.</summary>
+    Task<PrestadorServicio?> OfertaPorIdAsync(Guid id, CancellationToken ct = default);
+
+    void AgregarServicio(Servicio servicio);
+    void AgregarOferta(PrestadorServicio oferta);
+}

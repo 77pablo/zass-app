@@ -21,6 +21,14 @@ public class Servicio
     public int Id { get; set; }
     public short RubroId { get; set; }
     public string Nombre { get; set; } = "";
+
+    /// <summary>
+    /// El nombre sin tildes, en minusculas y con los espacios comprimidos. Es la clave
+    /// con la que el unico de (rubro_id, nombre_normalizado) decide que dos servicios
+    /// son el mismo, y la calcula la aplicacion: dejarselo a lower() ataria la regla al
+    /// locale del servidor, que en el cluster local es C y solo plega ASCII.
+    /// </summary>
+    public string NombreNormalizado { get; set; } = "";
     public string? Descripcion { get; set; }
     public bool EsCatalogo { get; set; } = true;
 

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Zass.Aplicacion.Identidad;
+using Zass.Aplicacion.Catalogo;
 using Zass.Aplicacion.Suscripciones;
 using Zass.Aplicacion.Puertos;
 using Zass.Infraestructura.Datos;
@@ -93,6 +94,7 @@ public static class RegistroDeServicios
         servicios.AddScoped<IRepositorioSesiones, RepositorioSesionesEfCore>();
         servicios.AddScoped<IRepositorioPerfiles, RepositorioPerfilesEfCore>();
         servicios.AddScoped<IRepositorioSuscripciones, RepositorioSuscripcionesEfCore>();
+        servicios.AddScoped<IRepositorioCatalogo, RepositorioCatalogoEfCore>();
         servicios.AddScoped<INotificaciones, ColaNotificacionesEfCore>();
         servicios.AddScoped<IAuditor, AuditorEfCore>();
 
@@ -102,6 +104,9 @@ public static class RegistroDeServicios
         servicios.AddScoped<ServicioSesion>();
         servicios.AddScoped<ServicioCuenta>();
         servicios.AddScoped<ServicioPerfiles>();
+
+        // --- MOD-03 Catalogo ---
+        servicios.AddScoped<IServicioCatalogo, ServicioCatalogo>();
 
         // --- MOD-13 Suscripciones ---
         servicios.AddScoped<IServicioSuscripciones, ServicioSuscripciones>();

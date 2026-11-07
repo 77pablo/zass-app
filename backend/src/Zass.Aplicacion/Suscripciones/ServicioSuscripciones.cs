@@ -85,6 +85,14 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
             .ToList();
     }
 
+    public async Task<int> LimiteDeServiciosAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        var vigente = await _repo.VigenteDePrestadorAsync(perfilPrestadorId, _reloj.Ahora, ct);
+        var plan = vigente?.Plan ?? await _repo.PlanPorCodigoAsync(PlanInicial, ct);
+        return plan?.MaxServicios ?? 0;
+    }
+
     // ------------------------------------------------------------- Ciclo de vida
 
     public async Task<Resultado> IniciarPruebaAsync(

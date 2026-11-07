@@ -24,6 +24,8 @@ public sealed class BaseEnMemoria : IUnidadDeTrabajo
     public List<PerfilPrestador> PerfilesPrestador { get; } = new();
     public List<PerfilBuscador> PerfilesBuscador { get; } = new();
     public List<Rubro> Rubros { get; } = new();
+    public List<Servicio> Servicios { get; } = new();
+    public List<PrestadorServicio> PrestadorServicios { get; } = new();
     public List<Zona> Zonas { get; } = new();
     public List<Plan> Planes { get; } = new();
     public List<Suscripcion> Suscripciones { get; } = new();

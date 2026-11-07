@@ -52,6 +52,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapearIdentidad();
+app.MapearCatalogo();
 
 // Sonda de vida. Sin sesion y con el limite publico: tambien es un endpoint.
 app.MapGet("/api/salud", () => Results.Ok(new { estado = "vivo" }))

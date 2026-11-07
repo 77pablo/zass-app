@@ -56,6 +56,17 @@ public interface IServicioSuscripciones
         int dentroDeDias, CancellationToken ct = default);
 
     Task<IReadOnlyList<PlanDto>> PlanesActivosAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Cuantos servicios permite el plan de ese prestador. Lo necesita quien compone
+    /// API-20: el tope es del plan, y el plan es cosa de este modulo.
+    ///
+    /// Sin suscripcion todavia manda el plan inicial. Es el caso normal, no un borde:
+    /// el prestador elige sus servicios ANTES de publicar, y la prueba empieza justo
+    /// al publicar (API-22). Devolver cero ahi le impediria llenar el formulario que
+    /// lo lleva a tener suscripcion.
+    /// </summary>
+    Task<int> LimiteDeServiciosAsync(Guid perfilPrestadorId, CancellationToken ct = default);
 }
 
 /// <summary>

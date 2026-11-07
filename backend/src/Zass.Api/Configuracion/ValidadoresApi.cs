@@ -38,3 +38,32 @@ public sealed class ValidadorCambiarContrasena : AbstractValidator<CambiarContra
                 .WithMessage("La contraseña nueva tiene que ser distinta de la actual.");
     }
 }
+
+/// <summary>
+/// API-20. Solo acota la forma del cuerpo: el tope de verdad es el del plan y lo aplica
+/// MOD-03, que es quien sabe cual es. Esto evita que una lista de diez mil servicios
+/// llegue a recorrerse entera.
+/// </summary>
+public sealed class ValidadorReemplazarServicios : AbstractValidator<ReemplazarServiciosHttpCmd>
+{
+    public const int MaximoPorPeticion = 50;
+
+    public ValidadorReemplazarServicios()
+    {
+        RuleFor(x => x.Servicios)
+            .NotNull().WithMessage("Falta la lista de servicios.");
+
+        When(x => x.Servicios is not null, () =>
+        {
+            RuleFor(x => x.Servicios.Count)
+                .LessThanOrEqualTo(MaximoPorPeticion)
+                .WithMessage($"No se pueden enviar mas de {MaximoPorPeticion} servicios de una vez.");
+
+            RuleForEach(x => x.Servicios).ChildRules(s =>
+            {
+                s.RuleFor(i => i.NombreNuevo).MaximumLength(200);
+                s.RuleFor(i => i.ModoAgenda).NotEmpty().MaximumLength(20);
+            });
+        });
+    }
+}

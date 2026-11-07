@@ -399,7 +399,12 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .IsUnique()
                         .HasDatabaseName("i_x_prestador_servicios_perfil_prestador_id_servicio_id");
 
-                    b.ToTable("prestador_servicios");
+                    b.ToTable("prestador_servicios", t =>
+                        {
+                            t.HasCheckConstraint("ck_prestador_servicio_duracion", "duracion_minutos >= 10 AND duracion_minutos <= 480");
+
+                            t.HasCheckConstraint("ck_prestador_servicio_precio", "precio_referencia IS NULL OR precio_referencia >= 0");
+                        });
                 });
 
             modelBuilder.Entity("Zass.Dominio.Catalogo.Rubro", b =>
@@ -436,6 +441,48 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasDatabaseName("i_x_rubros_codigo");
 
                     b.ToTable("rubros");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = (short)1,
+                            Activo = true,
+                            Codigo = "corretaje",
+                            Icono = "llave",
+                            Nombre = "Corretaje de propiedades"
+                        },
+                        new
+                        {
+                            Id = (short)2,
+                            Activo = true,
+                            Codigo = "derecho",
+                            Icono = "balanza",
+                            Nombre = "Derecho"
+                        },
+                        new
+                        {
+                            Id = (short)3,
+                            Activo = true,
+                            Codigo = "contabilidad",
+                            Icono = "calculadora",
+                            Nombre = "Contabilidad"
+                        },
+                        new
+                        {
+                            Id = (short)4,
+                            Activo = true,
+                            Codigo = "arquitectura",
+                            Icono = "regla",
+                            Nombre = "Arquitectura y construcción"
+                        },
+                        new
+                        {
+                            Id = (short)5,
+                            Activo = true,
+                            Codigo = "oficios",
+                            Icono = "herramientas",
+                            Nombre = "Técnicos y oficios"
+                        });
                 });
 
             modelBuilder.Entity("Zass.Dominio.Catalogo.Servicio", b =>
@@ -461,6 +508,12 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasColumnType("character varying(120)")
                         .HasColumnName("nombre");
 
+                    b.Property<string>("NombreNormalizado")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("nombre_normalizado");
+
                     b.Property<short>("RubroId")
                         .HasColumnType("smallint")
                         .HasColumnName("rubro_id");
@@ -471,7 +524,325 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.HasIndex("RubroId")
                         .HasDatabaseName("i_x_servicios_rubro_id");
 
+                    b.HasIndex("RubroId", "NombreNormalizado")
+                        .IsUnique()
+                        .HasDatabaseName("ux_servicio_rubro_nombre");
+
                     b.ToTable("servicios");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 101,
+                            EsCatalogo = true,
+                            Nombre = "Tasación comercial",
+                            NombreNormalizado = "tasacion comercial",
+                            RubroId = (short)1
+                        },
+                        new
+                        {
+                            Id = 102,
+                            EsCatalogo = true,
+                            Nombre = "Administración de arriendos",
+                            NombreNormalizado = "administracion de arriendos",
+                            RubroId = (short)1
+                        },
+                        new
+                        {
+                            Id = 103,
+                            EsCatalogo = true,
+                            Nombre = "Venta de casa o departamento",
+                            NombreNormalizado = "venta de casa o departamento",
+                            RubroId = (short)1
+                        },
+                        new
+                        {
+                            Id = 104,
+                            EsCatalogo = true,
+                            Nombre = "Arriendo de propiedad",
+                            NombreNormalizado = "arriendo de propiedad",
+                            RubroId = (short)1
+                        },
+                        new
+                        {
+                            Id = 105,
+                            EsCatalogo = true,
+                            Nombre = "Corretaje de terrenos y parcelas",
+                            NombreNormalizado = "corretaje de terrenos y parcelas",
+                            RubroId = (short)1
+                        },
+                        new
+                        {
+                            Id = 106,
+                            EsCatalogo = true,
+                            Nombre = "Estudio de títulos",
+                            NombreNormalizado = "estudio de titulos",
+                            RubroId = (short)1
+                        },
+                        new
+                        {
+                            Id = 107,
+                            EsCatalogo = true,
+                            Nombre = "Gestión de crédito hipotecario",
+                            NombreNormalizado = "gestion de credito hipotecario",
+                            RubroId = (short)1
+                        },
+                        new
+                        {
+                            Id = 201,
+                            EsCatalogo = true,
+                            Nombre = "Escritura de compraventa",
+                            NombreNormalizado = "escritura de compraventa",
+                            RubroId = (short)2
+                        },
+                        new
+                        {
+                            Id = 202,
+                            EsCatalogo = true,
+                            Nombre = "Contrato de arriendo",
+                            NombreNormalizado = "contrato de arriendo",
+                            RubroId = (short)2
+                        },
+                        new
+                        {
+                            Id = 203,
+                            EsCatalogo = true,
+                            Nombre = "Constitución de sociedad",
+                            NombreNormalizado = "constitucion de sociedad",
+                            RubroId = (short)2
+                        },
+                        new
+                        {
+                            Id = 204,
+                            EsCatalogo = true,
+                            Nombre = "Divorcio de mutuo acuerdo",
+                            NombreNormalizado = "divorcio de mutuo acuerdo",
+                            RubroId = (short)2
+                        },
+                        new
+                        {
+                            Id = 205,
+                            EsCatalogo = true,
+                            Nombre = "Posesión efectiva",
+                            NombreNormalizado = "posesion efectiva",
+                            RubroId = (short)2
+                        },
+                        new
+                        {
+                            Id = 206,
+                            EsCatalogo = true,
+                            Nombre = "Defensa laboral",
+                            NombreNormalizado = "defensa laboral",
+                            RubroId = (short)2
+                        },
+                        new
+                        {
+                            Id = 207,
+                            EsCatalogo = true,
+                            Nombre = "Cobranza de deudas",
+                            NombreNormalizado = "cobranza de deudas",
+                            RubroId = (short)2
+                        },
+                        new
+                        {
+                            Id = 208,
+                            EsCatalogo = true,
+                            Nombre = "Revisión de contratos",
+                            NombreNormalizado = "revision de contratos",
+                            RubroId = (short)2
+                        },
+                        new
+                        {
+                            Id = 301,
+                            EsCatalogo = true,
+                            Nombre = "Declaración de renta",
+                            NombreNormalizado = "declaracion de renta",
+                            RubroId = (short)3
+                        },
+                        new
+                        {
+                            Id = 302,
+                            EsCatalogo = true,
+                            Nombre = "Declaración mensual de IVA",
+                            NombreNormalizado = "declaracion mensual de iva",
+                            RubroId = (short)3
+                        },
+                        new
+                        {
+                            Id = 303,
+                            EsCatalogo = true,
+                            Nombre = "Contabilidad mensual de empresa",
+                            NombreNormalizado = "contabilidad mensual de empresa",
+                            RubroId = (short)3
+                        },
+                        new
+                        {
+                            Id = 304,
+                            EsCatalogo = true,
+                            Nombre = "Liquidación de sueldos",
+                            NombreNormalizado = "liquidacion de sueldos",
+                            RubroId = (short)3
+                        },
+                        new
+                        {
+                            Id = 305,
+                            EsCatalogo = true,
+                            Nombre = "Inicio de actividades en el SII",
+                            NombreNormalizado = "inicio de actividades en el sii",
+                            RubroId = (short)3
+                        },
+                        new
+                        {
+                            Id = 306,
+                            EsCatalogo = true,
+                            Nombre = "Facturación electrónica",
+                            NombreNormalizado = "facturacion electronica",
+                            RubroId = (short)3
+                        },
+                        new
+                        {
+                            Id = 307,
+                            EsCatalogo = true,
+                            Nombre = "Finiquitos y trámites laborales",
+                            NombreNormalizado = "finiquitos y tramites laborales",
+                            RubroId = (short)3
+                        },
+                        new
+                        {
+                            Id = 401,
+                            EsCatalogo = true,
+                            Nombre = "Anteproyecto de vivienda",
+                            NombreNormalizado = "anteproyecto de vivienda",
+                            RubroId = (short)4
+                        },
+                        new
+                        {
+                            Id = 402,
+                            EsCatalogo = true,
+                            Nombre = "Permiso de edificación",
+                            NombreNormalizado = "permiso de edificacion",
+                            RubroId = (short)4
+                        },
+                        new
+                        {
+                            Id = 403,
+                            EsCatalogo = true,
+                            Nombre = "Regularización de ampliaciones",
+                            NombreNormalizado = "regularizacion de ampliaciones",
+                            RubroId = (short)4
+                        },
+                        new
+                        {
+                            Id = 404,
+                            EsCatalogo = true,
+                            Nombre = "Diseño de remodelación",
+                            NombreNormalizado = "diseno de remodelacion",
+                            RubroId = (short)4
+                        },
+                        new
+                        {
+                            Id = 405,
+                            EsCatalogo = true,
+                            Nombre = "Inspección técnica de obra",
+                            NombreNormalizado = "inspeccion tecnica de obra",
+                            RubroId = (short)4
+                        },
+                        new
+                        {
+                            Id = 406,
+                            EsCatalogo = true,
+                            Nombre = "Cálculo estructural",
+                            NombreNormalizado = "calculo estructural",
+                            RubroId = (short)4
+                        },
+                        new
+                        {
+                            Id = 407,
+                            EsCatalogo = true,
+                            Nombre = "Certificado de recepción final",
+                            NombreNormalizado = "certificado de recepcion final",
+                            RubroId = (short)4
+                        },
+                        new
+                        {
+                            Id = 501,
+                            EsCatalogo = true,
+                            Nombre = "Instalación eléctrica",
+                            NombreNormalizado = "instalacion electrica",
+                            RubroId = (short)5
+                        },
+                        new
+                        {
+                            Id = 502,
+                            EsCatalogo = true,
+                            Nombre = "Reparación de gasfitería",
+                            NombreNormalizado = "reparacion de gasfiteria",
+                            RubroId = (short)5
+                        },
+                        new
+                        {
+                            Id = 503,
+                            EsCatalogo = true,
+                            Nombre = "Instalación de calefón",
+                            NombreNormalizado = "instalacion de calefon",
+                            RubroId = (short)5
+                        },
+                        new
+                        {
+                            Id = 504,
+                            EsCatalogo = true,
+                            Nombre = "Pintura de interiores",
+                            NombreNormalizado = "pintura de interiores",
+                            RubroId = (short)5
+                        },
+                        new
+                        {
+                            Id = 505,
+                            EsCatalogo = true,
+                            Nombre = "Instalación de cerámica y piso flotante",
+                            NombreNormalizado = "instalacion de ceramica y piso flotante",
+                            RubroId = (short)5
+                        },
+                        new
+                        {
+                            Id = 506,
+                            EsCatalogo = true,
+                            Nombre = "Reparación de techumbre",
+                            NombreNormalizado = "reparacion de techumbre",
+                            RubroId = (short)5
+                        },
+                        new
+                        {
+                            Id = 507,
+                            EsCatalogo = true,
+                            Nombre = "Cerrajería",
+                            NombreNormalizado = "cerrajeria",
+                            RubroId = (short)5
+                        },
+                        new
+                        {
+                            Id = 508,
+                            EsCatalogo = true,
+                            Nombre = "Instalación de aire acondicionado",
+                            NombreNormalizado = "instalacion de aire acondicionado",
+                            RubroId = (short)5
+                        },
+                        new
+                        {
+                            Id = 509,
+                            EsCatalogo = true,
+                            Nombre = "Soldadura y estructuras metálicas",
+                            NombreNormalizado = "soldadura y estructuras metalicas",
+                            RubroId = (short)5
+                        },
+                        new
+                        {
+                            Id = 510,
+                            EsCatalogo = true,
+                            Nombre = "Mantención de estufas y calefacción",
+                            NombreNormalizado = "mantencion de estufas y calefaccion",
+                            RubroId = (short)5
+                        });
                 });
 
             modelBuilder.Entity("Zass.Dominio.Catalogo.Zona", b =>
