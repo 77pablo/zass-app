@@ -1,22 +1,10 @@
 import { obtener } from '../../api/cliente'
 
-/** API-02. */
-export interface Rubro {
-  id: number
-  codigo: string
-  nombre: string
-  icono: string | null
-}
-
-/** API-04. El centroide es dato publico: el centro de un barrio, no la casa de nadie. */
-export interface Zona {
-  id: number
-  nombre: string
-  sector: string
-  comuna: string
-  centroLatitud: number
-  centroLongitud: number
-}
+// El catalogo (rubros, zonas) lo comparte con el perfil del prestador, asi que vive en
+// api/catalogo. Se vuelve a exportar desde aqui para que la pantalla de busqueda siga
+// importando todo de su propio servicio.
+export { listarRubros, listarZonas } from '../../api/catalogo'
+export type { Rubro, Zona } from '../../api/catalogo'
 
 /**
  * Un prestador como lo ve cualquiera (API-01).
@@ -65,14 +53,6 @@ export interface Criterios {
   verificados?: boolean
   calificacion?: number
   cursor?: string
-}
-
-export function listarRubros(): Promise<Rubro[]> {
-  return obtener<Rubro[]>('/api/rubros')
-}
-
-export function listarZonas(): Promise<Zona[]> {
-  return obtener<Zona[]>('/api/zonas')
 }
 
 /**

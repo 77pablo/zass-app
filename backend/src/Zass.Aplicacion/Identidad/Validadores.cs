@@ -18,7 +18,10 @@ public static class Limites
     public const int ContrasenaMaxima = 128;      // hashear megabytes es una DoS gratis
     public const int NombreMaximo = 150;          // TBL-01
     public const int NombrePublicoMaximo = 150;   // TBL-05
-    public const int DescripcionMaxima = 2000;    // TBL-05
+    // 1500 y no 2000 (decision de Pablo): una presentacion mas larga ya no se lee en una
+    // pantalla de celular. La COLUMNA de la base lee esta constante: el numero estuvo escrito
+    // dos veces a mano, y cambiar una sin la otra dejaba un limite que mentia.
+    public const int DescripcionMaxima = 1500;    // TBL-05
     public const int UrlMaxima = 300;
 
     /// <summary>

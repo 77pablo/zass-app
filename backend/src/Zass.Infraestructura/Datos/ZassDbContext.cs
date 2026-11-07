@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Zass.Dominio.Agenda;
+using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Catalogo;
 using Zass.Dominio.Comun;
@@ -142,7 +143,7 @@ public class ZassDbContext : DbContext
             e.HasIndex(x => x.Slug).IsUnique();
             e.Property(x => x.Slug).HasMaxLength(120).IsRequired();
             e.Property(x => x.NombrePublico).HasMaxLength(150).IsRequired();
-            e.Property(x => x.Descripcion).HasMaxLength(2000);
+            e.Property(x => x.Descripcion).HasMaxLength(Limites.DescripcionMaxima);
             e.Property(x => x.Estado).HasConversion<string>().HasMaxLength(20);
             e.Property(x => x.OrigenUbicacion).HasConversion<string>().HasMaxLength(20);
             e.Property(x => x.PromedioCalificacion).HasPrecision(2, 1);

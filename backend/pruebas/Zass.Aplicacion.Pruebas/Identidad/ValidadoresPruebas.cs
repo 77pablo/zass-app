@@ -144,13 +144,40 @@ public class ValidadoresPruebas
         Assert.True(_restablecer.Validate(new RestablecerContrasenaCmd("token", "contrasena-larga-1")).IsValid);
     }
 
+    /// <summary>
+    /// La descripcion del perfil admite hasta 1500 caracteres. Era 2000 y Pablo lo bajo: una
+    /// presentacion de mas de 1500 ya no se lee en una pantalla de celular. Nadie probaba
+    /// este limite, ni el viejo ni el nuevo.
+    /// </summary>
+    [Fact]
+    public void La_descripcion_admite_1500_caracteres_y_no_1501()
+    {
+        Assert.True(_perfil.Validate(Perfil(descripcion: new string('a', 1500))).IsValid);
+        Assert.False(_perfil.Validate(Perfil(descripcion: new string('a', 1501))).IsValid);
+    }
+
+    [Fact]
+    public void Una_descripcion_de_2000_caracteres_ya_no_vale()
+    {
+        // El limite anterior. Si esto pasara, el cambio a 1500 no habria llegado al validador.
+        Assert.False(_perfil.Validate(Perfil(descripcion: new string('a', 2000))).IsValid);
+    }
+
+    [Fact]
+    public void La_descripcion_puede_estar_vacia()
+    {
+        Assert.True(_perfil.Validate(Perfil(descripcion: null)).IsValid);
+        Assert.True(_perfil.Validate(Perfil(descripcion: "")).IsValid);
+    }
+
     private static EditarPerfilPrestadorCmd Perfil(
         double? latitud = null,
         double? longitud = null,
         string? sitioWeb = null,
-        string? telefono = null) => new(
+        string? telefono = null,
+        string? descripcion = null) => new(
             NombrePublico: "Estudio Espinoza",
-            Descripcion: null,
+            Descripcion: descripcion,
             RubroId: 1,
             TelefonoPublico: telefono,
             CorreoPublico: null,

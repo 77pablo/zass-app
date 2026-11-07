@@ -25,8 +25,8 @@ con las tablas `planes`, `suscripciones` y `pagos`; la pasarela no existe todav�
 ## 2. Resumen en una línea
 
 **MOD-01 Identidad, MOD-03 Catálogo, MOD-04 Geolocalización, MOD-05 Búsqueda y MOD-13 Suscripciones
-están construidos, con 549 pruebas en verde** (248 de aplicación sin base de datos, 210 de
-integración contra PostgreSQL real y la API por HTTPS, 91 de interfaz) más dos
+están construidos, con 587 pruebas en verde** (251 de aplicación sin base de datos, 213 de
+integración contra PostgreSQL real y la API por HTTPS, 123 de interfaz) más dos
 comprobaciones de navegador que crean una cuenta y entran contra la base de verdad.
 
 MOD-01 llega hasta la pantalla. MOD-03, MOD-04, MOD-05 y MOD-13 están completos de dominio a API y
@@ -78,6 +78,7 @@ fondo.
 | `CatalogoSembrado` | 5 rubros y 39 servicios, la columna `nombre_normalizado`, el único `ux_servicio_rubro_nombre`, dos `CHECK` en `prestador_servicios` y la secuencia de `servicios` reiniciada en 1000 | `pg_indexes`, `pg_constraint`, y un `INSERT` real que devolvió el id **1000** |
 | `ZonasDeTemuco` | Las 16 zonas, el único `(comuna, nombre)` y la secuencia de `zonas` reiniciada en 100 | `pg_indexes` dice `CREATE UNIQUE INDEX`; un `INSERT` duplicado da **23505** y uno nuevo devuelve el id **100** |
 | `TramoDeDistancia` | La función `tramo_de_distancia(metros)`: el kilómetro entero que la búsqueda **muestra** y por el que **ordena** | Llamada con los bordes (1499, 1500, 2500, 3500) y comparada con `Geo.DistanciaPublica` por 13 casos de una prueba de integración. Con `round(double)` el 2,5 km da 2 y el dominio dice 3: la prueba cae justo ahí |
+| `DescripcionMaximaA1500` | La descripción del perfil baja de 2000 a **1500** caracteres (decisión de Pablo) | `information_schema` dice 1500, y la **guardia** de la migración se probó con un perfil de 1600: falla con "1 perfil(es) tienen una más larga" en vez de un error de truncamiento sin contexto |
 
 ### Backend
 
@@ -344,6 +345,34 @@ diciembre de 2026 (revisar si aplica, no lo asumo).
 prestadores sembrados quedan publicados y hacen fallar las pruebas de integración de la
 búsqueda. Las instrucciones exactas están en la cabecera del guion.
 
+### Dirección de diseño — lo que dijo Pablo, y lo que implica
+
+> "Quiero que sea un sitio web profesional, que no sea un formulario, recuerda que es como
+> una comunidad al fin al cabo."
+
+Esto no es un retoque de estilos: cambia la forma de las pantallas. Lo que implica, como
+propuesta que Pablo todavía no ha visto:
+
+- **Un sitio, no una herramienta.** La portada presenta ZASS! y su idea ("Conecta con un
+  toque"), muestra a la gente y los rubros, y la búsqueda es una parte de ella, no toda ella.
+- **Las personas por delante de los campos.** Lo central de la comunidad son los prestadores
+  y su reputación: una **ficha pública** que se lea como la página de un profesional (quién
+  es, qué ofrece, dónde atiende, qué dicen de él, cómo contactarlo), no como una fila de una
+  lista.
+- **Editar tu perfil es editar tu ficha.** CU-03 paso 12 ya dice "ve su ficha tal como la ve
+  el público". La pantalla del prestador no es un formulario por secciones: es **su propia
+  ficha, editable en el sitio**, con lo que falta para publicar como una guía de
+  incorporación que va completándose, no como una lista de errores.
+- **Tono de comunidad.** El texto habla de personas y de cercanía, no de "registros" y
+  "entradas". Hoy los mensajes son los de un sistema.
+
+**Lo que no se sabe y conviene preguntarle a Pablo:** qué referencia visual tiene en mente
+(¿un directorio estilo mercado, un sitio de comunidad con presencia de los prestadores,
+algo más sobrio y corporativo?), si habrá fotos de los prestadores desde el primer día (hoy
+no existe subida de archivos, y una comunidad sin caras se ve vacía), y si la comunidad
+incluye también al buscador como miembro con perfil. Sin eso se puede avanzar con una
+propuesta razonable, pero es una apuesta.
+
 ### Interfaz — `frontend/`
 
 React 19 + TypeScript + Vite, con la marca aplicada (amarillo `#F6C81E`, Montserrat,
@@ -385,8 +414,8 @@ Endpoints: **API-01 a API-05, 08-23**, más `GET /api/auth/csrf` y `GET /api/sal
 
 | Proyecto | Cuántas | Qué cubre |
 |---|---|---|
-| `Zass.Aplicacion.Pruebas` | **248** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02 a RN-S3-08, RN-S5-11, CC-02, y MOD-03, MOD-04 y MOD-05 completos |
-| `Zass.Integracion.Pruebas` | **210** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
+| `Zass.Aplicacion.Pruebas` | **251** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02 a RN-S3-08, RN-S5-11, CC-02, y MOD-03, MOD-04 y MOD-05 completos |
+| `Zass.Integracion.Pruebas` | **213** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
 | `frontend` (Vitest) | **31** | Cliente HTTP y pantallas, con `fetch` simulado |
 | `frontend/pruebas-navegador` | 2 guiones | Navegador real contra la API real: que la página monta, los colores de marca, y el registro e ingreso completos |
 
@@ -576,18 +605,16 @@ HECHO   MOD-04 Geolocalizacion   7-nov-2026, con 64 pruebas nuevas
 HECHO   MOD-05 Busqueda          7-nov-2026, con 74 pruebas nuevas
                                  (falta BuscarAgregadoPorZona, ver su seccion)
 
-1. LAS PANTALLAS: perfil del prestador y busqueda                      <-- AQUI
-   - Todo el backend que necesitan existe y esta probado: API-01 a API-05 y
-     API-18 a API-23. Es lo que hace visible y tocable el producto
-   - ESTADO: HECHA la pantalla de BUSQUEDA, cableada como portada, vista en un
-     navegador real, y con el orden de los resultados ya arreglado.
-     FALTA: la pantalla del perfil del prestador, que no existe todavia. Es lo
-     siguiente: la busqueda ya esta completa de punta a punta
-   - Perfil del prestador: rubro (API-02), servicios (API-03/20), zona
-     (API-04/21), publicar (API-22) y ver su suscripcion de prueba
-   - Busqueda: rubro, donde (zona, o ubicacion del navegador con el flujo 4A de
-     CU-08 si la niega), filtros de CS-09, resultados con la distancia en TEXTO
-     y paginacion por cursor
+1. REDISENO: UN SITIO PROFESIONAL Y DE COMUNIDAD, NO FORMULARIOS     <-- AQUI
+   - DIRECCION DE PABLO (7-nov-2026): "quiero que sea un sitio web profesional, que no
+     sea un formulario, recuerda que es como una comunidad al fin al cabo". Aplica a TODO
+     lo que se construya de aqui en adelante, y obliga a rehacer lo que ya existe
+   - Lo que ya existe y NO cumple: la busqueda es una tarjeta con campos y una lista (un
+     formulario con resultados), y la portada es esa tarjeta sola. La pantalla del perfil
+     del prestador iba a ser una sucesion de formularios, y se PARO antes de construirla
+   - Lo que si se conserva, porque es independiente del diseno: toda la capa de datos
+     (api/catalogo, funciones/perfil/servicio y validacion, 123 pruebas) y el backend
+   - Ver "Direccion de diseno" mas abajo para lo que esto significa
    - Poner la atribucion a OpenStreetMap en el pie del mapa desde el dia uno
    - Verificar correo (API-14) y recuperar contrasena (API-15) van con estas
 

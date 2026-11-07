@@ -48,6 +48,10 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasColumnType("numeric")
                         .HasColumnName("promedio_calificacion");
 
+                    b.Property<decimal>("ReputacionOrden")
+                        .HasColumnType("numeric")
+                        .HasColumnName("reputacion_orden");
+
                     b.Property<short>("RubroId")
                         .HasColumnType("smallint")
                         .HasColumnName("rubro_id");
@@ -64,6 +68,10 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.Property<int>("TotalResenas")
                         .HasColumnType("integer")
                         .HasColumnName("total_resenas");
+
+                    b.Property<int?>("Tramo")
+                        .HasColumnType("integer")
+                        .HasColumnName("tramo");
 
                     b.Property<string>("UrlFoto")
                         .HasColumnType("text")
@@ -1520,8 +1528,8 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasColumnName("correo_publico");
 
                     b.Property<string>("Descripcion")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)")
+                        .HasMaxLength(1500)
+                        .HasColumnType("character varying(1500)")
                         .HasColumnName("descripcion");
 
                     b.Property<byte[]>("DireccionCifrada")
