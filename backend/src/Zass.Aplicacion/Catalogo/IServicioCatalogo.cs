@@ -22,6 +22,12 @@ public interface IServicioCatalogo
     /// </summary>
     Task<bool> ExisteRubroActivoAsync(short rubroId, CancellationToken ct = default);
 
+    /// <summary>
+    /// El rubro por su codigo, que es como llega en la URL de API-01. Nulo si no existe
+    /// o esta apagado.
+    /// </summary>
+    Task<RubroDto?> RubroPorCodigoAsync(string codigo, CancellationToken ct = default);
+
     /// <summary>API-03. Los servicios sugeridos de un rubro (CU-03 paso 3).</summary>
     Task<Resultado<IReadOnlyList<ServicioDto>>> ServiciosDeRubroAsync(
         short rubroId, CancellationToken ct = default);

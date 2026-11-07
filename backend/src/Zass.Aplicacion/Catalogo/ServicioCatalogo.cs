@@ -55,6 +55,14 @@ public sealed class ServicioCatalogo : IServicioCatalogo
     public async Task<bool> ExisteRubroActivoAsync(short rubroId, CancellationToken ct = default) =>
         await _repo.RubroActivoPorIdAsync(rubroId, ct) is not null;
 
+    public async Task<RubroDto?> RubroPorCodigoAsync(
+        string codigo, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(codigo)) return null;
+        var rubro = await _repo.RubroActivoPorCodigoAsync(codigo, ct);
+        return rubro is null ? null : new RubroDto(rubro.Id, rubro.Codigo, rubro.Nombre, rubro.Icono);
+    }
+
     // ------------------------------------------------------------- API-03
 
     public async Task<Resultado<IReadOnlyList<ServicioDto>>> ServiciosDeRubroAsync(

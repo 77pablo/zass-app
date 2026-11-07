@@ -808,6 +808,237 @@ public class ApiPruebas : IAsyncLifetime
         Assert.Single(await ctx.Suscripciones.Where(s => s.PerfilPrestadorId == perfil.Id).ToListAsync());
     }
 
+    // ------------------------------------------------- MOD-05 Busqueda por HTTP (API-01)
+
+    /// <summary>Un cliente SIN cookies: un visitante que nunca inicio sesion (P1 de CU-08).</summary>
+    private HttpClient UnVisitante() => _app.CreateClient(new WebApplicationFactoryClientOptions
+    {
+        HandleCookies = false,
+        AllowAutoRedirect = false,
+        BaseAddress = new Uri("https://localhost"),
+    });
+
+    /// <summary>
+    /// Deja a un prestador publicado y buscable, recorriendo el camino de verdad por HTTP:
+    /// registro, correo, rubro, servicio, zona y publicar. Devuelve el id de su perfil.
+    /// </summary>
+    private async Task<Guid> UnPrestadorPublicadoAsync()
+    {
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo, rol: "prestador");
+        await VerificarAsync(correo);
+        await IniciarSesionAsync(correo);
+        await PonerRubroAsync(1);
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await PonerServiciosAsync(new[] { UnServicio(101) })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await PonerCoberturaAsync(new[] { UnaZona(1, true) })).StatusCode);
+
+        var publicar = new HttpRequestMessage(
+            HttpMethod.Post, "/api/mi/perfil-prestador/publicar");
+        publicar.Headers.Add("X-CSRF-Token", await TokenCsrfAsync());
+        Assert.Equal(HttpStatusCode.NoContent, (await _cliente.SendAsync(publicar)).StatusCode);
+
+        var perfil = await _cliente.GetFromJsonAsync<JsonDocument>("/api/mi/perfil-prestador");
+        return perfil!.RootElement.GetProperty("id").GetGuid();
+    }
+
+    [Fact]
+    public async Task Buscar_sin_rubro_devuelve_400()
+    {
+        using var visitante = UnVisitante();
+
+        var respuesta = await visitante.GetAsync("/api/busqueda?zona=1");
+
+        Assert.Equal(HttpStatusCode.BadRequest, respuesta.StatusCode);
+    }
+
+    [Fact]
+    public async Task Buscar_en_un_rubro_que_no_existe_devuelve_400_y_lo_dice()
+    {
+        using var visitante = UnVisitante();
+
+        var respuesta = await visitante.GetAsync("/api/busqueda?rubro=astrologia&zona=1");
+
+        Assert.Equal(HttpStatusCode.BadRequest, respuesta.StatusCode);
+        Assert.Contains("rubro", await respuesta.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Buscar_sin_decir_donde_devuelve_400()
+    {
+        using var visitante = UnVisitante();
+
+        var respuesta = await visitante.GetAsync("/api/busqueda?rubro=corretaje");
+
+        Assert.Equal(HttpStatusCode.BadRequest, respuesta.StatusCode);
+        Assert.Contains("ubicacion", await respuesta.Content.ReadAsStringAsync(),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Media coordenada no es una ubicacion. Sin la regla, mandar solo `lat` caeria en
+    /// "dinos donde buscas", que no explica el error de verdad.
+    /// </summary>
+    [Theory]
+    [InlineData("lat=-38.73", "longitud")]
+    [InlineData("lon=-72.59", "latitud")]
+    public async Task Buscar_con_media_coordenada_dice_cual_falta(string mitad, string faltante)
+    {
+        using var visitante = UnVisitante();
+
+        var respuesta = await visitante.GetAsync($"/api/busqueda?rubro=corretaje&{mitad}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, respuesta.StatusCode);
+        // Solo con el codigo 400 la prueba pasaba tambien SIN la regla, porque sin ella
+        // la peticion igual cae en "dinos donde buscas". Lo que importa es el motivo.
+        Assert.Contains(faltante, await respuesta.Content.ReadAsStringAsync(),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Buscar_con_un_cursor_basura_devuelve_400()
+    {
+        using var visitante = UnVisitante();
+
+        var respuesta = await visitante.GetAsync(
+            "/api/busqueda?rubro=corretaje&zona=1&cursor=esto-no-es-base64!!");
+
+        Assert.Equal(HttpStatusCode.BadRequest, respuesta.StatusCode);
+    }
+
+    /// <summary>
+    /// E-400 de CU-08: un radio fuera de rango se CORRIGE y se informa, no se rechaza.
+    /// Quien pide 500 km quiere buscar lejos, no leer un error.
+    /// </summary>
+    [Fact]
+    public async Task Un_radio_imposible_se_corrige_y_la_respuesta_lo_dice()
+    {
+        using var visitante = UnVisitante();
+
+        var respuesta = await visitante.GetAsync(
+            "/api/busqueda?rubro=corretaje&lat=-38.7359&lon=-72.5904&radio=500");
+
+        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
+        var cuerpo = await respuesta.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.Contains("radio", cuerpo!.RootElement.GetProperty("aviso").GetString()!,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// La frase entera del producto, por HTTP y de punta a punta: un prestador se
+    /// publica, y un visitante SIN sesion lo encuentra.
+    /// </summary>
+    [Fact]
+    public async Task Un_visitante_sin_sesion_encuentra_al_prestador_publicado()
+    {
+        var perfilId = await UnPrestadorPublicadoAsync();
+        using var visitante = UnVisitante();
+
+        var respuesta = await visitante.GetAsync(
+            "/api/busqueda?rubro=corretaje&lat=-38.7359&lon=-72.5904");
+
+        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
+        var cuerpo = await respuesta.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.True(cuerpo!.RootElement.GetProperty("ordenadoPorDistancia").GetBoolean());
+        Assert.Equal("Centro", cuerpo.RootElement.GetProperty("zonaBuscada").GetString());
+
+        var encontrado = cuerpo.RootElement.GetProperty("resultados").EnumerateArray()
+            .Single(r => r.GetProperty("perfilId").GetGuid() == perfilId);
+        // RN-S3-03: lo que viaja es texto redondeado, nunca un numero.
+        Assert.Equal(JsonValueKind.String, encontrado.GetProperty("distancia").ValueKind);
+        Assert.StartsWith("a ", encontrado.GetProperty("distancia").GetString());
+        Assert.False(encontrado.GetProperty("esTuPerfil").GetBoolean());
+    }
+
+    /// <summary>
+    /// RN-S3-02, comprobada sobre los BYTES de la respuesta y no sobre el DTO: nada de
+    /// ubicacion exacta, direccion, metros ni correo puede aparecer en el JSON, ni con
+    /// otro nombre ni dentro de otro campo.
+    /// </summary>
+    [Fact]
+    public async Task La_respuesta_publica_no_filtra_ubicacion_direccion_ni_correo()
+    {
+        await UnPrestadorPublicadoAsync();
+        using var visitante = UnVisitante();
+
+        var respuesta = await visitante.GetAsync(
+            "/api/busqueda?rubro=corretaje&lat=-38.7359&lon=-72.5904");
+        var texto = await respuesta.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
+        Assert.DoesNotContain("latitud", texto, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("longitud", texto, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("direccion", texto, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("metros", texto, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("correo", texto, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("@zass.local", texto, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("telefono", texto, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Buscar_por_zona_sin_punto_encuentra_y_avisa_que_no_hay_orden_por_distancia()
+    {
+        var perfilId = await UnPrestadorPublicadoAsync();
+        using var visitante = UnVisitante();
+
+        var respuesta = await visitante.GetAsync("/api/busqueda?rubro=corretaje&zona=1");
+
+        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
+        var cuerpo = await respuesta.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.False(cuerpo!.RootElement.GetProperty("ordenadoPorDistancia").GetBoolean());
+        Assert.Contains("distancia", cuerpo.RootElement.GetProperty("aviso").GetString()!,
+            StringComparison.OrdinalIgnoreCase);
+
+        var encontrado = cuerpo.RootElement.GetProperty("resultados").EnumerateArray()
+            .Single(r => r.GetProperty("perfilId").GetGuid() == perfilId);
+        Assert.Equal(JsonValueKind.Null, encontrado.GetProperty("distancia").ValueKind);
+    }
+
+    /// <summary>
+    /// Flujo 4F de CU-08: un prestador autenticado que busca su rubro se ve marcado como
+    /// "este eres tu". Es lo unico que cambia entre un visitante y un prestador.
+    /// </summary>
+    [Fact]
+    public async Task Un_prestador_que_busca_su_rubro_se_ve_marcado_como_propio()
+    {
+        var perfilId = await UnPrestadorPublicadoAsync();   // _cliente queda con su sesion
+
+        var respuesta = await _cliente.GetAsync("/api/busqueda?rubro=corretaje&zona=1");
+
+        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
+        var cuerpo = await respuesta.Content.ReadFromJsonAsync<JsonDocument>();
+        var suyo = cuerpo!.RootElement.GetProperty("resultados").EnumerateArray()
+            .Single(r => r.GetProperty("perfilId").GetGuid() == perfilId);
+        Assert.True(suyo.GetProperty("esTuPerfil").GetBoolean());
+    }
+
+    /// <summary>
+    /// Lo que RN-S3-09 promete, de punta a punta por HTTP: el prestador que se
+    /// despublica desaparece de la busqueda en el acto.
+    /// </summary>
+    [Fact]
+    public async Task Un_prestador_despublicado_desaparece_de_la_busqueda()
+    {
+        var perfilId = await UnPrestadorPublicadoAsync();
+        using var visitante = UnVisitante();
+
+        var antes = await visitante.GetFromJsonAsync<JsonDocument>(
+            "/api/busqueda?rubro=corretaje&zona=1");
+        Assert.Contains(antes!.RootElement.GetProperty("resultados").EnumerateArray(),
+            r => r.GetProperty("perfilId").GetGuid() == perfilId);
+
+        var despublicar = new HttpRequestMessage(
+            HttpMethod.Post, "/api/mi/perfil-prestador/despublicar");
+        despublicar.Headers.Add("X-CSRF-Token", await TokenCsrfAsync());
+        Assert.Equal(HttpStatusCode.NoContent, (await _cliente.SendAsync(despublicar)).StatusCode);
+
+        var despues = await visitante.GetFromJsonAsync<JsonDocument>(
+            "/api/busqueda?rubro=corretaje&zona=1");
+        Assert.DoesNotContain(despues!.RootElement.GetProperty("resultados").EnumerateArray(),
+            r => r.GetProperty("perfilId").GetGuid() == perfilId);
+    }
+
     private static object UnaZona(int zonaId, bool principal) => new
     {
         zonaId,

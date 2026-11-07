@@ -36,6 +36,13 @@ public sealed class RepositorioCatalogoEfCore : IRepositorioCatalogo
     public Task<Rubro?> RubroActivoPorIdAsync(short rubroId, CancellationToken ct = default) =>
         _ctx.Rubros.FirstOrDefaultAsync(r => r.Id == rubroId && r.Activo, ct);
 
+    public Task<Rubro?> RubroActivoPorCodigoAsync(
+        string codigo, CancellationToken ct = default)
+    {
+        var buscado = codigo.Trim().ToLower();
+        return _ctx.Rubros.FirstOrDefaultAsync(r => r.Activo && r.Codigo == buscado, ct);
+    }
+
     public async Task<IReadOnlyList<Servicio>> ServiciosDeCatalogoAsync(
         short rubroId, CancellationToken ct = default) =>
         await _ctx.Servicios

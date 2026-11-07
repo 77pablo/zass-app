@@ -89,3 +89,43 @@ public sealed class ValidadorReemplazarCobertura : AbstractValidator<ReemplazarC
         });
     }
 }
+
+/// <summary>
+/// API-01. Lo que se puede juzgar en el borde sin ir a la base.
+///
+/// El radio NO se valida aqui a proposito: CU-08 dice en E-400 que un radio fuera de
+/// rango se CORRIGE al valor valido mas cercano y se informa, y eso lo hace MOD-05.
+/// Rechazarlo aqui convertiria una correccion prevista en un error.
+/// </summary>
+public sealed class ValidadorBusqueda : AbstractValidator<BusquedaHttpQuery>
+{
+    public ValidadorBusqueda()
+    {
+        RuleFor(x => x.Rubro)
+            .NotEmpty().WithMessage("Dinos que buscas: falta el rubro.")
+            .MaximumLength(40);
+
+        RuleFor(x => x.Lat)
+            .InclusiveBetween(-90, 90).When(x => x.Lat is not null)
+            .WithMessage("Esa latitud no es valida.");
+
+        RuleFor(x => x.Lon)
+            .InclusiveBetween(-180, 180).When(x => x.Lon is not null)
+            .WithMessage("Esa longitud no es valida.");
+
+        // Media coordenada no es una ubicacion. Sin esto, mandar solo `lat` caeria en
+        // "dinos donde buscas", que es un mensaje que no explica el error de verdad.
+        RuleFor(x => x.Lon)
+            .NotNull().When(x => x.Lat is not null)
+            .WithMessage("Falta la longitud.");
+        RuleFor(x => x.Lat)
+            .NotNull().When(x => x.Lon is not null)
+            .WithMessage("Falta la latitud.");
+
+        RuleFor(x => x.Calificacion)
+            .InclusiveBetween(1m, 5m).When(x => x.Calificacion is not null)
+            .WithMessage("La calificacion va de 1 a 5.");
+
+        RuleFor(x => x.Cursor).MaximumLength(200);
+    }
+}

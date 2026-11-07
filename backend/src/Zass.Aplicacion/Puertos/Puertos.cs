@@ -149,6 +149,13 @@ public interface IRepositorioCatalogo
 
     Task<Rubro?> RubroActivoPorIdAsync(short rubroId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Por codigo, que es como lo pide API-01: `?rubro=corretaje` y no `?rubro=1`. Un
+    /// enlace a una busqueda se comparte y se lee, y el identificador numerico ademas
+    /// ataria las URLs publicas al orden en que se sembro el catalogo.
+    /// </summary>
+    Task<Rubro?> RubroActivoPorCodigoAsync(string codigo, CancellationToken ct = default);
+
     /// <summary>API-03. Los del catalogo del equipo; los que agrego un prestador no se sugieren.</summary>
     Task<IReadOnlyList<Servicio>> ServiciosDeCatalogoAsync(
         short rubroId, CancellationToken ct = default);
