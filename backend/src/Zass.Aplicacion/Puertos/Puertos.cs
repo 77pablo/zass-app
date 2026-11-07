@@ -180,3 +180,43 @@ public interface IRepositorioCatalogo
     void AgregarServicio(Servicio servicio);
     void AgregarOferta(PrestadorServicio oferta);
 }
+
+/// <summary>
+/// MOD-04. TBL-10 zona y TBL-11 cobertura_prestador.
+///
+/// Las zonas se traen TODAS y la mas cercana se elige en memoria. Es deliberado: hoy son
+/// decenas, caben en una consulta, y asi la regla vive en el dominio y se prueba sin base
+/// de datos. Cuando pasen de unos cientos habra que mover esto a PostGIS con una columna
+/// geography y un indice GIST, y se notara en esta firma, no en todo el modulo.
+/// </summary>
+public interface IRepositorioGeografia
+{
+    Task<IReadOnlyList<Zona>> ZonasAsync(string? sector = null, CancellationToken ct = default);
+
+    Task<Zona?> ZonaPorIdAsync(int zonaId, CancellationToken ct = default);
+
+    /// <summary>Las zonas pedidas, en UNA consulta, para validar una lista de cobertura.</summary>
+    Task<IReadOnlyList<Zona>> ZonasPorIdsAsync(
+        IReadOnlyCollection<int> ids, CancellationToken ct = default);
+
+    Task<IReadOnlyList<CoberturaPrestador>> CoberturaDePrestadorAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default);
+
+    void AgregarCobertura(CoberturaPrestador cobertura);
+    void QuitarCobertura(CoberturaPrestador cobertura);
+}
+
+/// <summary>
+/// N-08, el servicio externo de mapas. CS-10 lo necesita para pasar de una direccion
+/// escrita a un punto.
+///
+/// Esta aparte del repositorio porque falla distinto: una base que no responde es una
+/// caida; un geocodificador que no responde es un caso de uso previsto, el flujo 4B de
+/// CU-03, donde el prestador elige su zona de una lista. Por eso devuelve Resultado y no
+/// lanza, y por eso hoy existe una implementacion que siempre dice que no esta
+/// disponible: el proveedor todavia no esta elegido.
+/// </summary>
+public interface IGeocodificador
+{
+    Task<Resultado<Punto>> GeocodificarAsync(string direccion, CancellationToken ct = default);
+}
