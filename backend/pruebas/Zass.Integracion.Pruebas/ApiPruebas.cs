@@ -595,6 +595,236 @@ public class ApiPruebas : IAsyncLifetime
         Assert.DoesNotContain("al menos un servicio", cuerpo);
     }
 
+    // ------------------------------------------------- MOD-04 Geografia por HTTP
+
+    /// <summary>
+    /// API-04 es publico: el selector de zonas lo necesitan la busqueda (CU-08) y el
+    /// formulario de perfil (CU-03) antes de que haya sesion.
+    /// </summary>
+    [Fact]
+    public async Task Las_zonas_se_piden_sin_sesion()
+    {
+        var respuesta = await _cliente.GetAsync("/api/zonas");
+
+        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
+        var zonas = await respuesta.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.Equal(16, zonas!.RootElement.GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Las_zonas_se_filtran_por_sector()
+    {
+        var respuesta = await _cliente.GetAsync("/api/zonas?sector=poniente");
+
+        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
+        var zonas = await respuesta.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.True(zonas!.RootElement.GetArrayLength() > 0);
+        Assert.All(
+            zonas.RootElement.EnumerateArray(),
+            z => Assert.Equal("poniente", z.GetProperty("sector").GetString()));
+    }
+
+    /// <summary>
+    /// El centroide de la zona SI viaja: es el centro de un barrio, no la casa de nadie.
+    /// Lo que no puede viajar nunca es la ubicacion exacta del prestador (RN-S3-02), y de
+    /// eso se encarga el DTO del perfil, que no tiene esos campos.
+    /// </summary>
+    [Fact]
+    public async Task La_zona_publica_lleva_su_centroide_y_su_comuna()
+    {
+        var respuesta = await _cliente.GetAsync("/api/zonas?sector=centro");
+        var zonas = await respuesta.Content.ReadFromJsonAsync<JsonDocument>();
+
+        var centro = zonas!.RootElement[0];
+        Assert.Equal("Temuco", centro.GetProperty("comuna").GetString());
+        Assert.InRange(centro.GetProperty("centroLatitud").GetDouble(), -39.1, -38.4);
+    }
+
+    [Fact]
+    public async Task Guardar_la_cobertura_sin_sesion_devuelve_401()
+    {
+        var peticion = new HttpRequestMessage(
+            HttpMethod.Put, "/api/mi/perfil-prestador/cobertura")
+        {
+            Content = JsonContent.Create(new { zonas = new[] { UnaZona(1, true) } }),
+        };
+
+        var respuesta = await _cliente.SendAsync(peticion);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, respuesta.StatusCode);
+    }
+
+    [Fact]
+    public async Task Guardar_la_cobertura_sin_el_token_csrf_devuelve_403()
+    {
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo, rol: "prestador");
+        await IniciarSesionAsync(correo);
+
+        var peticion = new HttpRequestMessage(
+            HttpMethod.Put, "/api/mi/perfil-prestador/cobertura")
+        {
+            Content = JsonContent.Create(new { zonas = new[] { UnaZona(1, true) } }),
+        };
+
+        var respuesta = await _cliente.SendAsync(peticion);
+
+        Assert.Equal(HttpStatusCode.Forbidden, respuesta.StatusCode);
+    }
+
+    /// <summary>R-2 y RN-S3-08, dichos en el borde: sin principal no se guarda.</summary>
+    [Fact]
+    public async Task Guardar_la_cobertura_sin_zona_principal_devuelve_400()
+    {
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo, rol: "prestador");
+        await IniciarSesionAsync(correo);
+
+        var respuesta = await PonerCoberturaAsync(new[] { UnaZona(1, false) });
+
+        Assert.Equal(HttpStatusCode.BadRequest, respuesta.StatusCode);
+        Assert.Contains("principal", await respuesta.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Guardar_una_zona_que_no_existe_devuelve_400()
+    {
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo, rol: "prestador");
+        await IniciarSesionAsync(correo);
+
+        var respuesta = await PonerCoberturaAsync(new[] { UnaZona(9999, true) });
+
+        Assert.Equal(HttpStatusCode.BadRequest, respuesta.StatusCode);
+    }
+
+    [Fact]
+    public async Task Un_prestador_guarda_su_cobertura_y_la_lee_de_vuelta()
+    {
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo, rol: "prestador");
+        await IniciarSesionAsync(correo);
+
+        var guardado = await PonerCoberturaAsync(new[]
+        {
+            UnaZona(11, false),      // Amanecer
+            UnaZona(1, true),        // Centro, la principal
+        });
+        Assert.Equal(HttpStatusCode.NoContent, guardado.StatusCode);
+
+        var leido = await _cliente.GetAsync("/api/mi/perfil-prestador/cobertura");
+        Assert.Equal(HttpStatusCode.OK, leido.StatusCode);
+        var cobertura = await leido.Content.ReadFromJsonAsync<JsonDocument>();
+
+        Assert.Equal(2, cobertura!.RootElement.GetArrayLength());
+        // La principal va primero: es la que se muestra en la ficha (RN-S3-08).
+        Assert.True(cobertura.RootElement[0].GetProperty("esPrincipal").GetBoolean());
+        Assert.Equal("Centro", cobertura.RootElement[0].GetProperty("nombre").GetString());
+    }
+
+    // --------------------------------------- el camino completo de CU-03, por HTTP
+
+    /// <summary>
+    /// La prueba que ESTADO.md daba por imposible durante dos sesiones: publicar y que
+    /// arranque la suscripcion de prueba, de punta a punta y por HTTP.
+    ///
+    /// Hasta que existieron MOD-03 y MOD-04 no habia forma de llegar al minimo publicable
+    /// (RN-S1-05: nombre, rubro, un servicio y una zona), asi que la mitad de API-22 —la
+    /// que compone publicar con arrancar la prueba— solo se podia comprobar por el lado
+    /// del fallo. Esto recorre el camino bueno.
+    /// </summary>
+    [Fact]
+    public async Task Un_prestador_completa_su_perfil_lo_publica_y_le_arranca_la_prueba()
+    {
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo, rol: "prestador");
+        await VerificarAsync(correo);       // RN-S1-02: sin correo verificado no publica
+        await IniciarSesionAsync(correo);
+
+        // Paso 3 de CU-03: el rubro
+        await PonerRubroAsync(1);
+
+        // Paso 4: los servicios
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await PonerServiciosAsync(new[] { UnServicio(101) })).StatusCode);
+
+        // Pasos 6 y 7: la zona de cobertura
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await PonerCoberturaAsync(new[] { UnaZona(1, true) })).StatusCode);
+
+        // Paso 9: publicar
+        var publicar = new HttpRequestMessage(
+            HttpMethod.Post, "/api/mi/perfil-prestador/publicar");
+        publicar.Headers.Add("X-CSRF-Token", await TokenCsrfAsync());
+        var publicado = await _cliente.SendAsync(publicar);
+
+        Assert.Equal(HttpStatusCode.NoContent, publicado.StatusCode);
+
+        // Y lo que importa de verdad: sin suscripcion vigente el perfil no apareceria en
+        // la busqueda (RN-S3-09), asi que publicar TIENE que haber arrancado la prueba.
+        var suscripcion = await _cliente.GetFromJsonAsync<JsonDocument>("/api/mi/suscripcion");
+        Assert.True(suscripcion!.RootElement.GetProperty("vigente").GetBoolean());
+        Assert.True(suscripcion.RootElement.GetProperty("enPrueba").GetBoolean());
+        Assert.Equal(30, suscripcion.RootElement.GetProperty("diasRestantes").GetInt32());
+
+        // El perfil quedo publicado y ya no le falta nada.
+        var perfil = await _cliente.GetFromJsonAsync<JsonDocument>("/api/mi/perfil-prestador");
+        Assert.Equal("Publicado", perfil!.RootElement.GetProperty("estado").GetString());
+        Assert.Empty(perfil.RootElement.GetProperty("faltaParaPublicar").EnumerateArray());
+        Assert.Equal("Centro", perfil.RootElement.GetProperty("zonaPrincipal").GetString());
+    }
+
+    /// <summary>
+    /// Publicar dos veces no reinicia la prueba: IniciarPrueba es idempotente, y si no lo
+    /// fuera, despublicar y volver a publicar regalaria 30 dias cada vez.
+    /// </summary>
+    [Fact]
+    public async Task Volver_a_publicar_no_regala_otros_30_dias()
+    {
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo, rol: "prestador");
+        await VerificarAsync(correo);
+        await IniciarSesionAsync(correo);
+        await PonerRubroAsync(1);
+        await PonerServiciosAsync(new[] { UnServicio(101) });
+        await PonerCoberturaAsync(new[] { UnaZona(1, true) });
+
+        var csrf = await TokenCsrfAsync();
+        for (var vez = 0; vez < 2; vez++)
+        {
+            var peticion = new HttpRequestMessage(
+                HttpMethod.Post, "/api/mi/perfil-prestador/publicar");
+            peticion.Headers.Add("X-CSRF-Token", csrf);
+            var r = await _cliente.SendAsync(peticion);
+            Assert.Equal(HttpStatusCode.NoContent, r.StatusCode);
+        }
+
+        var suscripcion = await _cliente.GetFromJsonAsync<JsonDocument>("/api/mi/suscripcion");
+        Assert.Equal(30, suscripcion!.RootElement.GetProperty("diasRestantes").GetInt32());
+
+        using var ctx = ContextoDePrueba.Crear();
+        var usuario = await ctx.Usuarios.SingleAsync(u => u.Correo == correo);
+        var perfil = await ctx.PerfilesPrestador.SingleAsync(p => p.UsuarioId == usuario.Id);
+        Assert.Single(await ctx.Suscripciones.Where(s => s.PerfilPrestadorId == perfil.Id).ToListAsync());
+    }
+
+    private static object UnaZona(int zonaId, bool principal) => new
+    {
+        zonaId,
+        esPrincipal = principal,
+    };
+
+    private async Task<HttpResponseMessage> PonerCoberturaAsync(object[] zonas)
+    {
+        var peticion = new HttpRequestMessage(
+            HttpMethod.Put, "/api/mi/perfil-prestador/cobertura")
+        {
+            Content = JsonContent.Create(new { zonas }),
+        };
+        peticion.Headers.Add("X-CSRF-Token", await TokenCsrfAsync());
+        return await _cliente.SendAsync(peticion);
+    }
+
     private static object UnServicio(int servicioId, short duracion = 60) => new
     {
         servicioId,

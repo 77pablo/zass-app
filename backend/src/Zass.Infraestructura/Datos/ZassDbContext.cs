@@ -306,6 +306,48 @@ public class ZassDbContext : DbContext
             e.Property(x => x.Nombre).HasMaxLength(120).IsRequired();
             e.Property(x => x.Sector).HasMaxLength(60).IsRequired();
             e.HasIndex(x => x.Sector);
+
+            // Dos zonas con el mismo nombre en la misma comuna son la misma zona, y en
+            // un selector serian indistinguibles. La comparacion es exacta a proposito:
+            // este cluster tiene locale C y lower() solo pliega ASCII, asi que un unico
+            // sobre lower(nombre) no haria lo que parece (ver TBL-08).
+            e.HasIndex(x => new { x.Comuna, x.Nombre }).IsUnique();
+
+            // TBL-10. Las zonas son catalogo, igual que los rubros y los roles: sin al
+            // menos una, un prestador no puede publicar (RN-S1-05 exige una zona de
+            // cobertura) y la busqueda por cercania no tiene con que comparar.
+            //
+            // Son 16 sectores, no 256. OpenStreetMap conoce 256 lugares poblados dentro
+            // de la comuna, hasta el ultimo condominio, y eso no sirve como selector:
+            // nadie dice "atiendo en Condominio Nueva Milano". Estos son los sectores con
+            // los que la gente de Temuco dice donde esta.
+            //
+            // PROCEDENCIA DE LAS COORDENADAS: cada punto es el nodo de OpenStreetMap con
+            // ese nombre, consultado por Overpass el 7 de noviembre de 2026. No hay
+            // ninguna coordenada inventada ni redondeada a mano, y eso importa: un
+            // centroide mal puesto manda al prestador al barrio de al lado sin que nada
+            // falle. Los datos de OSM son ODbL, que pide atribucion a
+            // "OpenStreetMap contributors" donde se muestren.
+            //
+            // El administrador (A-06) gestiona las zonas, asi que esta lista es un punto
+            // de partida y no una verdad fija.
+            e.HasData(
+                new Zona { Id = 1, Nombre = "Centro", Sector = "centro", CentroLatitud = -38.7400362, CentroLongitud = -72.5903905, Comuna = "Temuco" },
+                new Zona { Id = 2, Nombre = "Santa Rosa", Sector = "oriente", CentroLatitud = -38.7394601, CentroLongitud = -72.5757387, Comuna = "Temuco" },
+                new Zona { Id = 3, Nombre = "Parque Costanera", Sector = "oriente", CentroLatitud = -38.7090893, CentroLongitud = -72.5457341, Comuna = "Temuco" },
+                new Zona { Id = 4, Nombre = "Las Mariposas", Sector = "oriente", CentroLatitud = -38.6929012, CentroLongitud = -72.5470631, Comuna = "Temuco" },
+                new Zona { Id = 5, Nombre = "Pedro de Valdivia", Sector = "norte", CentroLatitud = -38.7221498, CentroLongitud = -72.6171431, Comuna = "Temuco" },
+                new Zona { Id = 6, Nombre = "Caupolicán", Sector = "norte", CentroLatitud = -38.7221214, CentroLongitud = -72.6223782, Comuna = "Temuco" },
+                new Zona { Id = 7, Nombre = "San José de Lanín", Sector = "norte", CentroLatitud = -38.720374, CentroLongitud = -72.6079935, Comuna = "Temuco" },
+                new Zona { Id = 8, Nombre = "Ñielol", Sector = "norte", CentroLatitud = -38.7287777, CentroLongitud = -72.5989384, Comuna = "Temuco" },
+                new Zona { Id = 9, Nombre = "El Bosque", Sector = "norte", CentroLatitud = -38.7227428, CentroLongitud = -72.6327342, Comuna = "Temuco" },
+                new Zona { Id = 10, Nombre = "Fundo El Carmen", Sector = "norte", CentroLatitud = -38.7143385, CentroLongitud = -72.653094, Comuna = "Temuco" },
+                new Zona { Id = 11, Nombre = "Amanecer", Sector = "poniente", CentroLatitud = -38.7563283, CentroLongitud = -72.6241415, Comuna = "Temuco" },
+                new Zona { Id = 12, Nombre = "Barrio Inglés", Sector = "poniente", CentroLatitud = -38.7375952, CentroLongitud = -72.6436021, Comuna = "Temuco" },
+                new Zona { Id = 13, Nombre = "Portal La Frontera", Sector = "poniente", CentroLatitud = -38.7480501, CentroLongitud = -72.6465207, Comuna = "Temuco" },
+                new Zona { Id = 14, Nombre = "Labranza", Sector = "poniente", CentroLatitud = -38.7665376, CentroLongitud = -72.7534177, Comuna = "Temuco" },
+                new Zona { Id = 15, Nombre = "Las Quilas", Sector = "sur", CentroLatitud = -38.7489399, CentroLongitud = -72.6069585, Comuna = "Temuco" },
+                new Zona { Id = 16, Nombre = "Pichicautín", Sector = "sur", CentroLatitud = -38.7455569, CentroLongitud = -72.5985394, Comuna = "Temuco" });
         });
 
         b.Entity<CoberturaPrestador>(e =>

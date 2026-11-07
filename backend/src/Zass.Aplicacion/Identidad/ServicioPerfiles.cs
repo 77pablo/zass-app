@@ -167,21 +167,41 @@ public sealed class ServicioPerfiles
             return Resultado.Falla<Guid>(Fallas.ReglaDeNegocio,
                 "Para publicar falta: " + string.Join(", ", falta) + ".");
 
+        // Hay que saberlo ANTES de publicar: es lo que distingue "lo acaba de publicar"
+        // de "volvio a pulsar el boton".
+        var yaEstabaPublicado = perfil.Estado == EstadoPerfil.Publicado;
+
         var publicado = perfil.Publicar();
         if (!publicado.Exito)
             return Resultado.Falla<Guid>(publicado.Codigo!, publicado.Mensaje!);
         perfil.ActualizadoEn = _reloj.Ahora;
 
-        _avisos.Encolar(new Notificacion
+        // Solo se avisa cuando el perfil ENTRA en publicado.
+        //
+        // Antes se encolaba siempre, con la clave armada desde PublicadoEn. Y PublicadoEn
+        // se asigna con ??=, asi que no cambia: el segundo publicar generaba la MISMA
+        // clave de idempotencia, chocaba con el unico de R-18 en notificaciones y salia
+        // un 500. Un doble clic en "Publicar" bastaba. Lo encontro la prueba por HTTP que
+        // publica dos veces.
+        //
+        // R-18 existe para que el aviso llegue una sola vez, no para que el caso de uso
+        // le delegue la decision de si hay algo que avisar.
+        if (!yaEstabaPublicado)
         {
-            DestinatarioId = usuarioId,
-            Tipo = TipoNotificacion.PerfilPublicado,
-            Canal = CanalNotificacion.Correo,
-            ClaveIdempotencia = $"perfil-publicado:{perfil.Id}:{perfil.PublicadoEn:yyyyMMddHHmmss}",
-            Asunto = "Tu perfil ya esta publicado en ZASS!",
-            Cuerpo = "Tu perfil ya aparece en las búsquedas de quienes buscan cerca de ti.",
-            ProgramadaPara = _reloj.Ahora,
-        });
+            _avisos.Encolar(new Notificacion
+            {
+                DestinatarioId = usuarioId,
+                Tipo = TipoNotificacion.PerfilPublicado,
+                Canal = CanalNotificacion.Correo,
+                // La clave es del AVISO, no de la fecha de publicacion: despublicar y
+                // volver a publicar (flujo 4E de CU-03) es una publicacion nueva y su
+                // aviso tambien, y con la clave vieja habria chocado igual.
+                ClaveIdempotencia = $"perfil-publicado:{perfil.Id}:{_reloj.Ahora:yyyyMMddHHmmss}",
+                Asunto = "Tu perfil ya esta publicado en ZASS!",
+                Cuerpo = "Tu perfil ya aparece en las búsquedas de quienes buscan cerca de ti.",
+                ProgramadaPara = _reloj.Ahora,
+            });
+        }
 
         _auditor.Registrar(Auditar.Entrada(
             "publicar_perfil", "perfil_prestador", perfil.Id, _reloj.Ahora, actorId: usuarioId));

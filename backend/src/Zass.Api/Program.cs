@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using FluentValidation;
 using Zass.Api.Configuracion;
 using Zass.Api.Endpoints;
@@ -23,6 +24,16 @@ constructor.Services
     .AddProblemDetails()                              // RFC 7807 en todos los errores
     .AddEndpointsApiExplorer()
     .AddSwaggerGen();
+
+// Los enums viajan como TEXTO, no como numero.
+//
+// Con el serializador por omision, EstadoPerfil.Publicado sale como `"estado": 1`, y la
+// pantalla tendria que mantener una tabla de numeros que se desalinea en silencio el dia
+// que alguien reordene el enum o inserte un valor en medio. La base ya los guarda como
+// texto (HasConversion<string> en el contexto), asi que esto hace coincidir las dos
+// puntas. Lo encontro la prueba del camino completo de CU-03 al leer "estado".
+constructor.Services.ConfigureHttpJsonOptions(opciones =>
+    opciones.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
 var app = constructor.Build();
 
@@ -53,6 +64,7 @@ if (app.Environment.IsDevelopment())
 
 app.MapearIdentidad();
 app.MapearCatalogo();
+app.MapearGeografia();
 
 // Sonda de vida. Sin sesion y con el limite publico: tambien es un endpoint.
 app.MapGet("/api/salud", () => Results.Ok(new { estado = "vivo" }))

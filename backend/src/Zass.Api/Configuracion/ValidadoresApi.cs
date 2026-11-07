@@ -67,3 +67,25 @@ public sealed class ValidadorReemplazarServicios : AbstractValidator<ReemplazarS
         });
     }
 }
+
+/// <summary>
+/// API-21. Igual que en API-20, esto solo acota la forma del cuerpo: las reglas de verdad
+/// —una sola zona principal, el tope de zonas, que existan— las aplica MOD-04.
+/// </summary>
+public sealed class ValidadorReemplazarCobertura : AbstractValidator<ReemplazarCoberturaHttpCmd>
+{
+    public const int MaximoPorPeticion = 50;
+
+    public ValidadorReemplazarCobertura()
+    {
+        RuleFor(x => x.Zonas)
+            .NotNull().WithMessage("Falta la lista de zonas.");
+
+        When(x => x.Zonas is not null, () =>
+        {
+            RuleFor(x => x.Zonas.Count)
+                .LessThanOrEqualTo(MaximoPorPeticion)
+                .WithMessage($"No se pueden enviar mas de {MaximoPorPeticion} zonas de una vez.");
+        });
+    }
+}

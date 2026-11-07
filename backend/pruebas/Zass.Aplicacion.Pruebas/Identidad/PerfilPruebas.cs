@@ -246,6 +246,50 @@ public class PerfilPruebas
         Assert.Contains("búsquedas", aviso.Cuerpo);
     }
 
+    /// <summary>
+    /// Un doble clic en "Publicar" no puede mandar dos avisos, y sobre todo no puede
+    /// reventar: antes se encolaba siempre con la clave armada desde PublicadoEn, que
+    /// se asigna con ??= y por tanto no cambia. La segunda vez chocaba con el unico de
+    /// R-18 en notificaciones y salia un 500. Lo encontro una prueba por HTTP.
+    /// </summary>
+    [Fact]
+    public async Task Publicar_dos_veces_no_manda_dos_avisos_ni_falla()
+    {
+        var (usuarioId, perfil) = await PrestadorAsync();
+        CompletarMinimoPublicable(perfil);
+        _cola.Encoladas.Clear();
+
+        var primera = await _perfiles.PublicarAsync(usuarioId);
+        var segunda = await _perfiles.PublicarAsync(usuarioId);
+
+        Assert.True(primera.Exito, primera.Mensaje);
+        Assert.True(segunda.Exito, segunda.Mensaje);
+        Assert.Single(_cola.Encoladas);
+    }
+
+    /// <summary>
+    /// Despublicar y volver a publicar (flujo 4E de CU-03) SI es una publicacion nueva, y
+    /// su aviso tambien: el perfil estuvo fuera de la busqueda y vuelve a aparecer. Con
+    /// la clave vieja —la de PublicadoEn, que no cambia— este caso tambien chocaba.
+    /// </summary>
+    [Fact]
+    public async Task Despublicar_y_volver_a_publicar_avisa_otra_vez_con_otra_clave()
+    {
+        var (usuarioId, perfil) = await PrestadorAsync();
+        CompletarMinimoPublicable(perfil);
+        _cola.Encoladas.Clear();
+
+        await _perfiles.PublicarAsync(usuarioId);
+        await _perfiles.DespublicarAsync(usuarioId);
+        _reloj.Avanzar(TimeSpan.FromDays(3));
+        var r = await _perfiles.PublicarAsync(usuarioId);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(2, _cola.Encoladas.Count);
+        // Dos claves distintas: si fueran iguales, R-18 rechazaria el segundo aviso.
+        Assert.Equal(2, _cola.Encoladas.Select(a => a.ClaveIdempotencia).Distinct().Count());
+    }
+
     [Fact]
     public async Task Despublicar_saca_el_perfil_de_la_busqueda_sin_borrar_nada()
     {

@@ -161,11 +161,15 @@ public sealed class ServicioGeografia : IServicioGeografia
 
         // Paso 1: dejar a TODAS sin principal, y recien despues marcar la nueva.
         //
-        // No es un rodeo. ux_cobertura_principal es un unico parcial sobre
-        // (perfil_prestador_id) WHERE es_principal, y PostgreSQL lo comprueba despues de
-        // cada sentencia, no al final de la transaccion. EF Core no garantiza en que
-        // orden emite los UPDATE, asi que si marcara la nueva antes de desmarcar la
-        // vieja, cambiar de zona principal fallaria con un 23505 segun el dia.
+        // No es un rodeo, y esto esta MEDIDO, no supuesto: se escribio la version
+        // ingenua —marcar la nueva en el mismo guardado— y la prueba
+        // Cambiar_la_zona_principal_no_rompe_el_unico_de_la_base se cae contra
+        // PostgreSQL. ux_cobertura_principal es un unico parcial sobre
+        // (perfil_prestador_id) WHERE es_principal, y la base lo comprueba despues de
+        // CADA sentencia, no al final de la transaccion, asi que cambiar de zona
+        // principal termina en un 23505 que llegaria al usuario como un 500.
+        //
+        // En memoria las dos versiones pasan. Por eso la prueba vive en integracion.
         foreach (var c in actual) c.EsPrincipal = false;
 
         foreach (var quitada in actual.Where(c => !ids.Contains(c.ZonaId)).ToList())

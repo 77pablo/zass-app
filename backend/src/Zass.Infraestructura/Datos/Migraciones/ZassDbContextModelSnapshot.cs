@@ -885,7 +885,157 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.HasIndex("Sector")
                         .HasDatabaseName("i_x_zonas_sector");
 
+                    b.HasIndex("Comuna", "Nombre")
+                        .IsUnique()
+                        .HasDatabaseName("i_x_zonas_comuna_nombre");
+
                     b.ToTable("zonas");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            CentroLatitud = -38.740036199999999,
+                            CentroLongitud = -72.590390499999998,
+                            Comuna = "Temuco",
+                            Nombre = "Centro",
+                            Sector = "centro"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            CentroLatitud = -38.739460100000002,
+                            CentroLongitud = -72.575738700000002,
+                            Comuna = "Temuco",
+                            Nombre = "Santa Rosa",
+                            Sector = "oriente"
+                        },
+                        new
+                        {
+                            Id = 3,
+                            CentroLatitud = -38.709089300000002,
+                            CentroLongitud = -72.545734100000004,
+                            Comuna = "Temuco",
+                            Nombre = "Parque Costanera",
+                            Sector = "oriente"
+                        },
+                        new
+                        {
+                            Id = 4,
+                            CentroLatitud = -38.692901200000001,
+                            CentroLongitud = -72.547063100000003,
+                            Comuna = "Temuco",
+                            Nombre = "Las Mariposas",
+                            Sector = "oriente"
+                        },
+                        new
+                        {
+                            Id = 5,
+                            CentroLatitud = -38.722149799999997,
+                            CentroLongitud = -72.617143100000007,
+                            Comuna = "Temuco",
+                            Nombre = "Pedro de Valdivia",
+                            Sector = "norte"
+                        },
+                        new
+                        {
+                            Id = 6,
+                            CentroLatitud = -38.722121399999999,
+                            CentroLongitud = -72.6223782,
+                            Comuna = "Temuco",
+                            Nombre = "Caupolicán",
+                            Sector = "norte"
+                        },
+                        new
+                        {
+                            Id = 7,
+                            CentroLatitud = -38.720374,
+                            CentroLongitud = -72.607993500000006,
+                            Comuna = "Temuco",
+                            Nombre = "San José de Lanín",
+                            Sector = "norte"
+                        },
+                        new
+                        {
+                            Id = 8,
+                            CentroLatitud = -38.728777700000002,
+                            CentroLongitud = -72.598938399999994,
+                            Comuna = "Temuco",
+                            Nombre = "Ñielol",
+                            Sector = "norte"
+                        },
+                        new
+                        {
+                            Id = 9,
+                            CentroLatitud = -38.722742799999999,
+                            CentroLongitud = -72.632734200000002,
+                            Comuna = "Temuco",
+                            Nombre = "El Bosque",
+                            Sector = "norte"
+                        },
+                        new
+                        {
+                            Id = 10,
+                            CentroLatitud = -38.714338499999997,
+                            CentroLongitud = -72.653093999999996,
+                            Comuna = "Temuco",
+                            Nombre = "Fundo El Carmen",
+                            Sector = "norte"
+                        },
+                        new
+                        {
+                            Id = 11,
+                            CentroLatitud = -38.7563283,
+                            CentroLongitud = -72.624141499999993,
+                            Comuna = "Temuco",
+                            Nombre = "Amanecer",
+                            Sector = "poniente"
+                        },
+                        new
+                        {
+                            Id = 12,
+                            CentroLatitud = -38.737595200000001,
+                            CentroLongitud = -72.643602099999995,
+                            Comuna = "Temuco",
+                            Nombre = "Barrio Inglés",
+                            Sector = "poniente"
+                        },
+                        new
+                        {
+                            Id = 13,
+                            CentroLatitud = -38.7480501,
+                            CentroLongitud = -72.646520699999996,
+                            Comuna = "Temuco",
+                            Nombre = "Portal La Frontera",
+                            Sector = "poniente"
+                        },
+                        new
+                        {
+                            Id = 14,
+                            CentroLatitud = -38.766537599999999,
+                            CentroLongitud = -72.7534177,
+                            Comuna = "Temuco",
+                            Nombre = "Labranza",
+                            Sector = "poniente"
+                        },
+                        new
+                        {
+                            Id = 15,
+                            CentroLatitud = -38.748939900000003,
+                            CentroLongitud = -72.606958500000005,
+                            Comuna = "Temuco",
+                            Nombre = "Las Quilas",
+                            Sector = "sur"
+                        },
+                        new
+                        {
+                            Id = 16,
+                            CentroLatitud = -38.745556899999997,
+                            CentroLongitud = -72.598539400000007,
+                            Comuna = "Temuco",
+                            Nombre = "Pichicautín",
+                            Sector = "sur"
+                        });
                 });
 
             modelBuilder.Entity("Zass.Dominio.Comun.Notificacion", b =>
