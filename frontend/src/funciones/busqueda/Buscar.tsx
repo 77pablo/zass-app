@@ -12,6 +12,16 @@ interface Punto {
   lon: number
 }
 
+/**
+ * Los radios que se ofrecen, en km. El mayor es el maximo de RN-S3-04: la API corrige
+ * hacia abajo cualquier cosa mas grande, asi que ofrecer mas seria prometer lo que no hay.
+ */
+const RADIOS_KM = [5, 10, 20, 50] as const
+const RADIO_MAXIMO_KM = RADIOS_KM[RADIOS_KM.length - 1]
+const OPCIONES_DE_RADIO: OpcionDeSeleccion[] = RADIOS_KM.map((km) => ({
+  valor: String(km), texto: `${km} km`,
+}))
+
 function mensajeDe(e: unknown, porDefecto: string): string {
   return e instanceof ErrorApi ? e.mensaje : porDefecto
 }
@@ -52,6 +62,8 @@ export function Buscar() {
   const [errorZona, setErrorZona] = useState<string>()
   const [avisoUbicacion, setAvisoUbicacion] = useState<string>()
   const [pidiendoUbicacion, setPidiendoUbicacion] = useState(false)
+  // 10 km es lo que la API usa por omision (RN-S3-04). Solo cuenta con ubicacion.
+  const [radio, setRadio] = useState('10')
 
   // ...y lo que la ultima busqueda devolvio. Son cosas distintas a proposito: "ver mas"
   // tiene que seguir la busqueda que genero el cursor, no lo que el formulario diga ahora.
@@ -147,7 +159,9 @@ export function Buscar() {
     // (RN-S3-07), y mandar ambos dejaria a la API decidir cual manda.
     void ejecutar({
       rubro,
-      ...(punto ? { lat: punto.lat, lon: punto.lon } : { zona: Number(zona) }),
+      ...(punto
+        ? { lat: punto.lat, lon: punto.lon, radio: Number(radio) }
+        : { zona: Number(zona) }),
       ...(verificados ? { verificados: true } : {}),
       ...(cuatroEstrellas ? { calificacion: 4 } : {}),
     })
@@ -191,6 +205,22 @@ export function Buscar() {
   const hayFiltros = consulta !== null
     && (consulta.verificados === true || consulta.calificacion !== undefined)
 
+  // Flujo 4B de CU-08: sin resultados, lo primero que se propone es ampliar el radio. Se
+  // mira la busqueda que SE HIZO (`consulta`), no el formulario: la persona puede haber
+  // tocado el control despues sin volver a buscar.
+  const puedeAmpliar = consulta !== null && consulta.lat !== undefined
+    && consulta.radio !== undefined && consulta.radio < RADIO_MAXIMO_KM
+
+  const sugerencia = puedeAmpliar
+    ? 'Prueba ampliando el radio.'
+    : hayFiltros ? 'Prueba quitando los filtros.' : 'Prueba con otra zona.'
+
+  function ampliar() {
+    if (consulta === null) return
+    setRadio(String(RADIO_MAXIMO_KM))   // el formulario refleja lo que se busca ahora
+    void ejecutar({ ...consulta, radio: RADIO_MAXIMO_KM })
+  }
+
   return (
     <section className="buscador">
       <form className="tarjeta tarjeta--ancha" onSubmit={alEnviar} noValidate>
@@ -220,12 +250,20 @@ export function Buscar() {
 
         <div className="ubicacion">
           {punto ? (
-            <p className="ubicacion-estado">
-              Usando tu ubicación.{' '}
-              <button className="enlace" type="button" onClick={() => setPunto(null)}>
-                Quitar
-              </button>
-            </p>
+            <>
+              <p className="ubicacion-estado">
+                Usando tu ubicación.{' '}
+                <button className="enlace" type="button" onClick={() => setPunto(null)}>
+                  Quitar
+                </button>
+              </p>
+              {/* Solo con ubicacion: con zona no hay desde donde medir, y un control que no
+                  hace nada se mueve esperando que cambie algo. */}
+              <Seleccion
+                id="radio" etiqueta="¿Hasta qué distancia?"
+                valor={radio} alCambiar={setRadio} opciones={OPCIONES_DE_RADIO}
+              />
+            </>
           ) : (
             <button
               className="boton boton--claro" type="button"
@@ -271,9 +309,12 @@ export function Buscar() {
         {buscado && resultados.length === 0 && !errorBusqueda && (
           <div className="vacio">
             <p className="vacio-titulo">No encontramos a nadie con esos datos.</p>
-            <p className="bajada">
-              {hayFiltros ? 'Prueba quitando los filtros.' : 'Prueba con otra zona.'}
-            </p>
+            <p className="bajada">{sugerencia}</p>
+            {puedeAmpliar && (
+              <button className="boton boton--claro" type="button" onClick={ampliar}>
+                Ampliar a {RADIO_MAXIMO_KM} km
+              </button>
+            )}
           </div>
         )}
 

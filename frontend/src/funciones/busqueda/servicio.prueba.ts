@@ -46,6 +46,26 @@ describe('servicio de busqueda', () => {
     expect(url.searchParams.has('zona')).toBe(false)
   })
 
+  // El radio solo significa algo con punto: con zona no hay desde donde medirlo. Mandarlo
+  // igual dejaria una URL que dice "radio=20" y una lista que no lo respeta.
+  it('manda el radio cuando se busca por punto', async () => {
+    await buscar({ rubro: 'corretaje', lat: -38.7359, lon: -72.5904, radio: 20 })
+
+    expect(ultimaUrl().searchParams.get('radio')).toBe('20')
+  })
+
+  it('no manda el radio cuando se busca por zona', async () => {
+    await buscar({ rubro: 'corretaje', zona: 1, radio: 20 })
+
+    expect(ultimaUrl().searchParams.has('radio')).toBe(false)
+  })
+
+  it('con punto y sin radio, no inventa uno: la API tiene el suyo por omision', async () => {
+    await buscar({ rubro: 'corretaje', lat: -38.7359, lon: -72.5904 })
+
+    expect(ultimaUrl().searchParams.has('radio')).toBe(false)
+  })
+
   // Si llegan las dos cosas, el punto es mas preciso y manda. Mandar ambas dejaria a la
   // API decidir, y la pantalla ya no sabria si la lista viene ordenada por distancia.
   it('si llegan punto y zona, manda el punto y no envia la zona', async () => {

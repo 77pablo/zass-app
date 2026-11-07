@@ -553,6 +553,133 @@ describe('buscar con la ubicación', () => {
     expect(await screen.findByText(/no permite usar la ubicación/i)).toBeInTheDocument()
   })
 
+  // ---- el radio (hallazgo 15 de ESTADO.md)
+
+  const radio = () => screen.queryByLabelText(/hasta qué distancia/i)
+
+  // Con zona no hay desde donde medir: ofrecer un radio ahi seria un control que no hace
+  // nada, y la persona lo moveria esperando que cambie algo.
+  it('el control de radio solo aparece cuando se usa la ubicación', async () => {
+    geolocalizacion('acepta')
+    await montar()
+    expect(radio()).not.toBeInTheDocument()
+
+    await usuario.click(screen.getByRole('button', { name: /usar mi ubicación/i }))
+
+    expect(await screen.findByLabelText(/hasta qué distancia/i)).toBeInTheDocument()
+  })
+
+  it('empieza en 10 km, que es lo que la API usa por omisión', async () => {
+    geolocalizacion('acepta')
+    await montar()
+    await usuario.click(screen.getByRole('button', { name: /usar mi ubicación/i }))
+
+    expect(await screen.findByLabelText(/hasta qué distancia/i)).toHaveValue('10')
+  })
+
+  it('busca con el radio elegido', async () => {
+    geolocalizacion('acepta')
+    await montar()
+    await usuario.selectOptions(screen.getByLabelText(/qué necesitas/i), 'corretaje')
+    await usuario.click(screen.getByRole('button', { name: /usar mi ubicación/i }))
+    await usuario.selectOptions(await screen.findByLabelText(/hasta qué distancia/i), '20')
+
+    await usuario.click(botonBuscar())
+
+    await waitFor(() => expect(buscar).toHaveBeenCalled())
+    expect(buscar).toHaveBeenCalledWith(expect.objectContaining({ radio: 20 }))
+  })
+
+  it('en una búsqueda por zona no manda radio', async () => {
+    await montar()
+    await elegir()
+
+    await usuario.click(botonBuscar())
+
+    await waitFor(() => expect(buscar).toHaveBeenCalled())
+    expect(buscar.mock.calls[0][0].radio).toBeUndefined()
+  })
+
+  it('quitar la ubicación esconde el control de radio', async () => {
+    geolocalizacion('acepta')
+    await montar()
+    await usuario.click(screen.getByRole('button', { name: /usar mi ubicación/i }))
+    await screen.findByLabelText(/hasta qué distancia/i)
+
+    await usuario.click(screen.getByRole('button', { name: /quitar/i }))
+
+    expect(radio()).not.toBeInTheDocument()
+  })
+
+  // Flujo 4B de CU-08: sin resultados, lo primero que se propone es ampliar el radio. Y el
+  // boton lo hace, para que la persona no tenga que buscar el control, moverlo y volver a
+  // pulsar Buscar.
+  it('sin resultados y con radio menor a 50 km, ofrece ampliarlo y lo hace', async () => {
+    geolocalizacion('acepta')
+    buscar
+      .mockResolvedValueOnce(pagina({ resultados: [] }))
+      .mockResolvedValueOnce(pagina({ resultados: [resultado({ nombrePublico: 'Más lejos' })] }))
+    await montar()
+    await usuario.selectOptions(screen.getByLabelText(/qué necesitas/i), 'corretaje')
+    await usuario.click(screen.getByRole('button', { name: /usar mi ubicación/i }))
+    await usuario.click(botonBuscar())
+    expect(await screen.findByText(/prueba ampliando el radio/i)).toBeInTheDocument()
+
+    await usuario.click(screen.getByRole('button', { name: /ampliar a 50 km/i }))
+
+    expect(await screen.findByRole('heading', { name: 'Más lejos' })).toBeInTheDocument()
+    expect(buscar).toHaveBeenLastCalledWith(expect.objectContaining({ radio: 50 }))
+    // Y el control del formulario refleja lo que se busco, no lo viejo.
+    expect(screen.getByLabelText(/hasta qué distancia/i)).toHaveValue('50')
+  })
+
+  // Ampliar repite la busqueda QUE SE HIZO, no lo que el formulario diga ahora: misma
+  // razon que en "ver mas".
+  it('ampliar conserva el rubro y los filtros de la búsqueda que se hizo', async () => {
+    geolocalizacion('acepta')
+    buscar.mockResolvedValue(pagina({ resultados: [] }))
+    await montar()
+    await usuario.selectOptions(screen.getByLabelText(/qué necesitas/i), 'corretaje')
+    await usuario.click(screen.getByRole('button', { name: /usar mi ubicación/i }))
+    await usuario.click(screen.getByLabelText(/solo verificados/i))
+    await usuario.click(botonBuscar())
+    await screen.findByText(/prueba ampliando el radio/i)
+
+    // La persona toca el rubro pero no vuelve a buscar.
+    await usuario.selectOptions(screen.getByLabelText(/qué necesitas/i), 'derecho')
+    await usuario.click(screen.getByRole('button', { name: /ampliar a 50 km/i }))
+
+    await waitFor(() => expect(buscar).toHaveBeenCalledTimes(2))
+    expect(buscar).toHaveBeenLastCalledWith(
+      expect.objectContaining({ rubro: 'corretaje', verificados: true, radio: 50 }))
+  })
+
+  it('con el radio ya en 50 km no ofrece ampliar, y cae a quitar los filtros', async () => {
+    geolocalizacion('acepta')
+    buscar.mockResolvedValue(pagina({ resultados: [] }))
+    await montar()
+    await usuario.selectOptions(screen.getByLabelText(/qué necesitas/i), 'corretaje')
+    await usuario.click(screen.getByRole('button', { name: /usar mi ubicación/i }))
+    await usuario.selectOptions(await screen.findByLabelText(/hasta qué distancia/i), '50')
+    await usuario.click(screen.getByLabelText(/solo verificados/i))
+
+    await usuario.click(botonBuscar())
+
+    expect(await screen.findByText(/prueba quitando los filtros/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /ampliar a 50 km/i })).not.toBeInTheDocument()
+  })
+
+  it('por zona, sin resultados, no ofrece ampliar un radio que no existe', async () => {
+    buscar.mockResolvedValue(pagina({ resultados: [] }))
+    await montar()
+    await elegir()
+
+    await usuario.click(botonBuscar())
+
+    expect(await screen.findByText(/prueba con otra zona/i)).toBeInTheDocument()
+    expect(screen.queryByText(/ampliando el radio/i)).not.toBeInTheDocument()
+  })
+
   it('elegir una zona después de usar la ubicación descarta el punto', async () => {
     geolocalizacion('acepta')
     await montar()

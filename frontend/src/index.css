@@ -159,7 +159,21 @@ select.campo-entrada {
 .boton--claro:hover:not(:disabled) { background: #fffaea; border-color: var(--amarillo-hondo); }
 
 .ubicacion { margin: -4px 0 18px; }
-.ubicacion-estado { margin: 0; font-size: 14px; font-weight: 600; }
+.ubicacion-estado {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+/* "Quitar" es una accion que se pulsa con el dedo, no una palabra dentro de una frase. */
+.ubicacion-estado .enlace {
+  min-height: 44px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+}
 
 .filtros { border: 0; padding: 0; margin: 0 0 18px; }
 .filtros legend { padding: 0; margin-bottom: 4px; }
@@ -227,6 +241,7 @@ select.campo-entrada {
 .vacio { text-align: center; padding: 24px 12px; }
 .vacio-titulo { margin: 0 0 4px; font-size: 16px; font-weight: 800; }
 .vacio .bajada { margin: 0; }
+.vacio .boton { margin-top: 14px; }
 
 .pie a { color: var(--tinta); font-weight: 600; }
 

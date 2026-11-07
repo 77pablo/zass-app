@@ -121,7 +121,7 @@ comprobar('el nombre largo no se sale de su tarjeta',
   nombreLargo.x + nombreLargo.width <= caja.x + caja.width + 0.5)
 
 // --- objetivos tactiles: 44 px es el minimo recomendado para un dedo
-const chicos = await movil.evaluate(() => {
+const medirObjetivos = (pagina) => pagina.evaluate(() => {
   // Un enlace DENTRO de una frase (el credito de OpenStreetMap) esta exento: WCAG 2.5.8
   // exceptua los enlaces en linea. Un enlace que es un objetivo aparte, no.
   const candidatos = [
@@ -134,6 +134,7 @@ const chicos = await movil.evaluate(() => {
     })
     .filter((x) => x.alto < 44)
 })
+const chicos = await medirObjetivos(movil)
 comprobar('todos los botones, listas y casillas miden al menos 44 px de alto',
   chicos.length === 0, chicos.map((x) => `${x.texto}=${x.alto}px`).join(', '))
 
@@ -219,20 +220,41 @@ comprobar('con ubicacion hay distancia redondeada y no hay aviso de "sin distanc
   metaPunto.every((m) => /a (menos de 1|\d+) km/.test(m))
   && (await conPunto.locator('.aviso--info').count()) === 0)
 
-// Ampliando el radio a 20 km (por la API, porque la pantalla no tiene el control), el que
-// se basa lejos SI aparece, y ultimo: el orden es por tramo de distancia.
-const ampliada = await (await conPunto.request.get(
-  'https://localhost:5173/api/busqueda?rubro=corretaje&lat=-38.7359&lon=-72.5904&radio=20')).json()
-const ordenAmpliado = ampliada.resultados.map((r) => r.nombrePublico)
-console.log('     radio 20 km:  ', ordenAmpliado.map((n) => n.slice(0, 16)).join(' > '),
-  '|', ampliada.resultados.at(-1)?.distancia)
-comprobar('con radio de 20 km aparece el lejano, y ultimo',
-  ordenAmpliado.length === 5 && ordenAmpliado.at(-1).startsWith('Gestión Inmobiliaria Labranza'))
-const kmLejano = Number(/a (\d+) km/.exec(ampliada.resultados.at(-1)?.distancia ?? '')?.[1])
+// El control de radio (hallazgo 15): con 20 km el que se basa lejos SI aparece, y ultimo,
+// porque se ordena por tramo de distancia. Se usa el control de la pantalla, no la API.
+await conPunto.getByLabel(/hasta qué distancia/i).selectOption('20')
+await conPunto.getByRole('button', { name: /^busca/i }).click()
+await conPunto.waitForFunction(() => document.querySelectorAll('.resultado').length === 5)
+const nombres20 = await conPunto.locator('.resultado-nombre').allTextContents()
+const meta20 = await conPunto.locator('.resultado-meta').allTextContents()
+console.log('     radio 20 km:  ', nombres20.map((n) => n.slice(0, 16)).join(' > '), '|', meta20.at(-1))
+comprobar('con 20 km aparece el lejano, y ultimo',
+  nombres20.at(-1)?.startsWith('Gestión Inmobiliaria Labranza'))
 // Plaza -> centroide de Labranza son 14,5 km (haversine calculado aparte), o sea "a 15 km".
 // La primera version de esta comprobacion esperaba ~13: era mala aritmetica de memoria, y
 // fue el servidor quien tenia razon.
-comprobar('y dice 15 km, que es lo que da la cuenta hecha aparte', kmLejano === 15, `a ${kmLejano} km`)
+comprobar('y dice 15 km, que es lo que da la cuenta hecha aparte', /a 15 km/.test(meta20.at(-1) ?? ''), meta20.at(-1))
+await conPunto.screenshot({ path: resolve(carpeta, '06-con-radio-de-20.png'), fullPage: true })
+const chicosConRadio = await medirObjetivos(conPunto)
+comprobar('con el control de radio visible, todo sigue midiendo 44 px',
+  chicosConRadio.length === 0, chicosConRadio.map((x) => `${x.texto}=${x.alto}px`).join(', '))
+
+// Flujo 4B: sin resultados, lo primero que se propone es ampliar el radio. Contabilidad no
+// tiene ningun prestador sembrado, asi que la busqueda sale vacia.
+await conPunto.getByLabel(/hasta qué distancia/i).selectOption('10')
+await conPunto.getByLabel(/qué necesitas/i).selectOption('contabilidad')
+await conPunto.getByRole('button', { name: /^busca/i }).click()
+await conPunto.getByText(/no encontramos a nadie/i).waitFor({ timeout: 10000 })
+await conPunto.screenshot({ path: resolve(carpeta, '07-sin-resultados-ampliar.png'), fullPage: true })
+comprobar('sin resultados a 10 km se propone ampliar el radio',
+  await conPunto.getByText(/prueba ampliando el radio/i).isVisible()
+  && await conPunto.getByRole('button', { name: /ampliar a 50 km/i }).isVisible())
+await conPunto.getByRole('button', { name: /ampliar a 50 km/i }).click()
+await conPunto.getByText(/prueba con otra zona/i).waitFor({ timeout: 10000 })
+comprobar('al ampliar, el control de la pantalla pasa a 50 km',
+  (await conPunto.getByLabel(/hasta qué distancia/i).inputValue()) === '50')
+comprobar('y a 50 km ya no ofrece ampliar',
+  (await conPunto.getByRole('button', { name: /ampliar a 50 km/i }).count()) === 0)
 const htmlPunto = await conPunto.content()
 comprobar('con ubicacion tampoco se filtran coordenadas',
   !/@zass\.local|latitud|longitud|-38\.7|-72\.5/i.test(htmlPunto.replace(/<option[^>]*>[^<]*<\/option>/g, '')))

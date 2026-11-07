@@ -25,8 +25,8 @@ con las tablas `planes`, `suscripciones` y `pagos`; la pasarela no existe todav�
 ## 2. Resumen en una línea
 
 **MOD-01 Identidad, MOD-03 Catálogo, MOD-04 Geolocalización, MOD-05 Búsqueda y MOD-13 Suscripciones
-están construidos, con 537 pruebas en verde** (248 de aplicación sin base de datos, 210 de
-integración contra PostgreSQL real y la API por HTTPS, 79 de interfaz) más dos
+están construidos, con 549 pruebas en verde** (248 de aplicación sin base de datos, 210 de
+integración contra PostgreSQL real y la API por HTTPS, 91 de interfaz) más dos
 comprobaciones de navegador que crean una cuenta y entran contra la base de verdad.
 
 MOD-01 llega hasta la pantalla. MOD-03, MOD-04, MOD-05 y MOD-13 están completos de dominio a API y
@@ -277,7 +277,7 @@ Decisiones con prueba detrás:
 | **`BuscarAgregadoPorZona`** y registrar la búsqueda de forma agregada (paso 13 de CU-08) | Es el dato que se le entrega al municipio, el segundo valor del producto para la postulación |
 | Flujos 4B (sugerencias sin resultados), 4D (reducir el radio si hay más de 200) y 4E (texto libre sin coincidencia) | Hoy sin resultados se devuelve una lista vacía y nada más |
 | **Desempate por completitud** (paso 7 de CU-08) | No existe ninguna medida de completitud del perfil. Hoy desempata verificado, reputación pública, reseñas e id |
-| **Control de radio en la pantalla**, y el flujo 4B ("ampliar el radio") | Ver el hallazgo 15: hoy quien busca con su ubicación nunca ve a alguien que cubre su zona pero se basa a más de 10 km |
+| El resto del flujo 4B de CU-08 | Hoy sin resultados se sugiere ampliar el radio, quitar los filtros u otra zona. Falta "buscar en un rubro cercano" y "avísame cuando haya alguien" (que necesita cuenta) |
 | La **caché de 60 s** (Redis, N-06) | No existe |
 | **La meta de rendimiento** (menos de 1 s en el percentil 95 con 1.000 perfiles) | **No está medida.** Las pruebas usan decenas de filas, y con el centroide de respaldo el GIST ni se usa. Hay que medir con `EXPLAIN` y con volumen antes de decir que cumple |
 
@@ -294,7 +294,8 @@ que es RN-S3-01 y RN-S3-09 funcionando de punta a punta. Lo demás:
 | 11 | **El orden no desempata como dice CU-08** ("por credencial verificada, reputación y completitud"). Hoy todos los prestadores de una zona están a la **misma** distancia (la de su centroide), así que el desempate es lo único que ordena, y hoy sale por `id`, que es un UUID: orden arbitrario | **Arreglado** (ahora desempata verificado, reputación pública, reseñas e id) |
 | 12 | `salir()` dejaba escapar la promesa rechazada (un *Uncaught in promise*) cuando la API fallaba al cerrar sesión | Arreglado, con prueba |
 | 13 | Mi comprobación de la fuente decía OK sin saber nada: `document.fonts.check()` devuelve `true` para una fuente que **ni existe** | Corregida: ahora mira las fuentes que el navegador descargó (400, 600 y 800) |
-| 15 | **La pantalla no tiene control de radio.** Con la ubicación, el radio es 10 km y no se puede cambiar. Quien cubre tu zona pero se basa a más de 10 km (el centroide de su zona principal está a 14,5 km del Centro, en el caso de la prueba) **no aparece nunca**, y no hay cómo ampliar ni se le dice a la persona que hay alguien más lejos. El flujo 4B de CU-08 ("ampliar el radio") existe en el documento y no en el código | **Sin arreglar** |
+| 15 | **La pantalla no tiene control de radio.** Con la ubicación, el radio es 10 km y no se puede cambiar. Quien cubre tu zona pero se basa a más de 10 km (el centroide de su zona principal está a 14,5 km del Centro, en el caso de la prueba) **no aparece nunca**, y no hay cómo ampliar ni se le dice a la persona que hay alguien más lejos. El flujo 4B de CU-08 ("ampliar el radio") existe en el documento y no en el código | **Arreglado.** Con la ubicación aparece "¿Hasta qué distancia?" (5, 10, 20 y 50 km, el mayor es el máximo de RN-S3-04), y sin resultados se propone "Ampliar a 50 km", que repite **la búsqueda que se hizo** y no lo que el formulario diga ahora. Visto en el navegador real: con 20 km aparece el prestador de Labranza, último y "a 15 km". 12 pruebas y 6 mutaciones, 6 rojos |
+| 16 | **"Quitar" medía 18 px de alto**, un objetivo táctil que en un celular se falla. Lo cazó la medición apenas apareció el control de radio, porque "Quitar" solo existe con la ubicación puesta y el guion no la ejercitaba | Arreglado: ahora mide 44 px, y el guion mide también con la ubicación activa |
 | 14 | Los guiones `flujo-real.mjs` y `humo.mjs` asumían que la app abría en "Entrar", y `humo.mjs` habría medido **el botón de la búsqueda escondida** en vez del de la pantalla, sin avisar | Corregidos; pasan |
 
 ### Cómo se arregló el orden
@@ -355,7 +356,7 @@ buenos mirando una captura.
 | Entrar | API-09 | **Funciona contra la base real** |
 | Salir | API-11 | Funciona |
 | Aviso de correo sin verificar | — | Funciona |
-| **Buscar** (rubro, zona o ubicación, filtros, ver más) | API-01, API-02, API-04 | **Es la portada. Probada con `fetch` simulado (42 pruebas) y VISTA en un navegador real contra la API y la base** (390 px y 1280 px): sin desborde horizontal, objetivos táctiles de 44 px, colores de marca y Montserrat medidos. **Pero el orden de los resultados tiene un fallo, ver más abajo** |
+| **Buscar** (rubro, zona o ubicación, filtros, ver más) | API-01, API-02, API-04 | **Es la portada. Probada con `fetch` simulado (54 pruebas) y VISTA en un navegador real contra la API y la base** (390 px y 1280 px): sin desborde horizontal, objetivos táctiles de 44 px, colores de marca y Montserrat medidos. El orden de los resultados tuvo un fallo que ya está arreglado, y con la ubicación tiene **control de radio** y la sugerencia de ampliarlo |
 
 Decisiones que quedaron fijadas en el código y tienen prueba:
 
@@ -580,8 +581,8 @@ HECHO   MOD-05 Busqueda          7-nov-2026, con 74 pruebas nuevas
      API-18 a API-23. Es lo que hace visible y tocable el producto
    - ESTADO: HECHA la pantalla de BUSQUEDA, cableada como portada, vista en un
      navegador real, y con el orden de los resultados ya arreglado.
-     FALTA: (a) un control de radio en la busqueda con ubicacion (hallazgo 15);
-     (b) la pantalla del perfil del prestador, que no existe todavia
+     FALTA: la pantalla del perfil del prestador, que no existe todavia. Es lo
+     siguiente: la busqueda ya esta completa de punta a punta
    - Perfil del prestador: rubro (API-02), servicios (API-03/20), zona
      (API-04/21), publicar (API-22) y ver su suscripcion de prueba
    - Busqueda: rubro, donde (zona, o ubicacion del navegador con el flujo 4A de
@@ -605,7 +606,7 @@ HECHO   MOD-05 Busqueda          7-nov-2026, con 74 pruebas nuevas
 **Por que las pantallas van ahora.** Con MOD-05 el camino completo del producto existe y
 esta probado por HTTP, pero **nadie puede verlo ni tocarlo**: un prestador no tiene como
 publicarse sin llamar a la API a mano, y un buscador no tiene donde buscar. Las pantallas son
-lo que convierte 537 pruebas en algo que se le puede ensenar a un municipio.
+lo que convierte 549 pruebas en algo que se le puede ensenar a un municipio.
 
 Despues siguen MOD-02 Credenciales (hoy el sello de verificado no lo puede dar nadie, aunque
 la busqueda ya lo lee) y MOD-06 Agenda. `BuscarAgregadoPorZona` conviene antes de la

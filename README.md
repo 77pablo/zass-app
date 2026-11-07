@@ -32,8 +32,8 @@ archivo que hay que leer para retomar.
 
 **MOD-01 Identidad** está completo con pantalla incluida. **MOD-03 Catálogo**,
 **MOD-04 Geolocalización**, **MOD-05 Búsqueda** y **MOD-13 Suscripciones** están completos
-de dominio a API, todavía sin pantalla. En total, **537 pruebas en verde**: 248 de
-aplicación, 210 de integración y 79 de interfaz. Falta MOD-02 y MOD-06 a MOD-12.
+de dominio a API, todavía sin pantalla. En total, **549 pruebas en verde**: 248 de
+aplicación, 210 de integración y 91 de interfaz. Falta MOD-02 y MOD-06 a MOD-12.
 
 El camino completo de un prestador —registrarse, elegir rubro y servicios, declarar su zona,
 publicar y arrancar la suscripción de prueba— está probado de punta a punta por HTTP contra

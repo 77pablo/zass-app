@@ -60,6 +60,8 @@ export interface Criterios {
   zona?: number
   lat?: number
   lon?: number
+  /** En kilometros. Solo significa algo con punto: con zona no hay desde donde medirlo. */
+  radio?: number
   verificados?: boolean
   calificacion?: number
   cursor?: string
@@ -86,6 +88,8 @@ export function buscar(c: Criterios): Promise<PaginaDeBusqueda> {
   if (c.lat !== undefined && c.lon !== undefined) {
     q.set('lat', String(c.lat))
     q.set('lon', String(c.lon))
+    // Solo con punto, y solo si se pidio: sin radio la API usa el suyo por omision.
+    if (c.radio !== undefined) q.set('radio', String(c.radio))
   } else if (c.zona !== undefined) {
     q.set('zona', String(c.zona))
   }

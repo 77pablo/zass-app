@@ -10,7 +10,8 @@ export interface OpcionDeSeleccion {
  * por htmlFor/id y el error se anuncia con aria-describedby.
  *
  * La primera opcion (`vacio`) es la que dice "Elige...": sin ella, el navegador
- * preselecciona la primera de verdad y la persona busca por algo que no eligio.
+ * preselecciona la primera de verdad y la persona busca por algo que no eligio. Se
+ * omite cuando SIEMPRE hay un valor valido, como un radio que parte en 10 km.
  */
 export function Seleccion({
   id, etiqueta, valor, alCambiar, opciones, vacio, error, ayuda,
@@ -20,7 +21,7 @@ export function Seleccion({
   valor: string
   alCambiar: (v: string) => void
   opciones: OpcionDeSeleccion[]
-  vacio: string
+  vacio?: string
   error?: string
   ayuda?: string
 }) {
@@ -45,7 +46,7 @@ export function Seleccion({
         aria-describedby={descrito}
         onChange={(e) => alCambiar(e.target.value)}
       >
-        <option value="">{vacio}</option>
+        {vacio !== undefined && <option value="">{vacio}</option>}
         {sinGrupo.map((o) => <option key={o.valor} value={o.valor}>{o.texto}</option>)}
         {grupos.map((g) => (
           <optgroup key={g} label={g}>
