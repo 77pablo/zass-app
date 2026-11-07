@@ -127,3 +127,42 @@ export function guardarCobertura(
 /** API-22. Publica y arranca la suscripcion de prueba. */
 export const publicar = () => enviar<void>(`${PERFIL}/publicar`)
 export const despublicar = () => enviar<void>(`${PERFIL}/despublicar`)
+
+/** Los enums viajan como texto. Son los cuatro de TipoCredencial. */
+export type TipoDeCredencial = 'Titulo' | 'Certificacion' | 'Curso' | 'Colegiatura'
+export type EstadoDeCredencial = 'Borrador' | 'EnRevision' | 'Verificada' | 'Rechazada' | 'Vencida'
+
+/** API-24. Lo que el DUENO ve de su credencial, con el estado interno. */
+export interface MiCredencial {
+  id: string
+  tipo: TipoDeCredencial
+  nombre: string
+  entidad: string | null
+  /** Falso si la escribio el propio prestador y ZASS! aun no la reconoce. */
+  entidadReconocida: boolean | null
+  obtenidaEn: string
+  venceEn: string | null
+  estado: EstadoDeCredencial
+  tieneRespaldo: boolean
+  documentos: number
+}
+
+export interface DatosDeCredencial {
+  tipo: TipoDeCredencial
+  nombre: string
+  entidadNombre: string | null
+  obtenidaEn: string
+  venceEn: string | null
+}
+
+export const misCredenciales = () => obtener<MiCredencial[]>('/api/mi/credenciales')
+
+/** API-25. La crea en borrador: solo su dueno la ve. */
+export async function crearCredencial(datos: DatosDeCredencial): Promise<void> {
+  await enviar('/api/mi/credenciales', { ...datos, entidadId: null })
+}
+
+/** API-28. Elimina la credencial y sus archivos. */
+export async function eliminarCredencial(id: string): Promise<void> {
+  await enviar(`/api/mi/credenciales/${encodeURIComponent(id)}`, undefined, 'DELETE')
+}

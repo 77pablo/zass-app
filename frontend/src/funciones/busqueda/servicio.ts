@@ -91,6 +91,8 @@ export interface FichaPublica {
   rubro: { id: number; codigo: string; nombre: string; icono: string | null } | null
   zonas: { nombre: string; sector: string; esPrincipal: boolean }[]
   servicios: { nombre: string; duracionMinutos: number; precioReferencia: number | null }[]
+  /** Sin estado interno ni archivos: solo "Verificada" o "Declarada por el usuario". */
+  credenciales: { tipo: string; nombre: string; entidad: string | null; obtenidaEn: string; etiqueta: string; verificada: boolean }[]
   /** Nulo con menos de 3 resenas (RN-S5-11). */
   promedioCalificacion: number | null
   totalResenas: number

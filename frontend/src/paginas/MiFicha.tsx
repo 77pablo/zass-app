@@ -6,8 +6,8 @@ import { useCatalogo } from '../api/useCargado'
 import { Campo } from '../componentes/Campo'
 import {
   despublicar, guardarCobertura, guardarDatos, guardarServicios, miCobertura, miPerfil,
-  misServicios, miSuscripcion, publicar,
-  type MiPerfil, type ServicioOfrecido, type ServicioParaGuardar, type Suscripcion, type ZonaCubierta,
+  misServicios, miSuscripcion, publicar, misCredenciales,
+  type MiCredencial, type MiPerfil, type ServicioOfrecido, type ServicioParaGuardar, type Suscripcion, type ZonaCubierta,
 } from '../funciones/perfil/servicio'
 import { erroresDelServidor, LIMITES, validarDatos, type ErroresDelFormulario } from '../funciones/perfil/validacion'
 import { Icono } from '../marco/Icono'
@@ -15,12 +15,14 @@ import { Monograma } from '../marco/Monograma'
 import { capitalizar, duracion, pesos } from '../marco/texto'
 import { useTitulo } from '../marco/useTitulo'
 import { useSesion } from '../sesion/contexto'
+import { MisCredenciales } from './MisCredenciales'
 
 interface Todo {
   perfil: MiPerfil
   servicios: ServicioOfrecido[]
   cobertura: ZonaCubierta[]
   suscripcion: Suscripcion | null
+  credenciales: MiCredencial[]
 }
 
 type Seccion = 'datos' | 'servicios' | 'zonas'
@@ -55,9 +57,10 @@ export function MiFicha() {
       miPerfil(), misServicios(), miCobertura(),
       // La suscripcion todavia no existe antes de publicar por primera vez: un 404 aqui es normal.
       miSuscripcion().catch(() => null),
+      misCredenciales(),
     ])
-      .then(([perfil, servicios, cobertura, suscripcion]) => {
-        if (vigente) { setTodo({ perfil, servicios, cobertura, suscripcion }); setError(null) }
+      .then(([perfil, servicios, cobertura, suscripcion, credenciales]) => {
+        if (vigente) { setTodo({ perfil, servicios, cobertura, suscripcion, credenciales }); setError(null) }
       })
       .catch((e: unknown) => {
         if (vigente) setError(mensajeDe(e, 'No pudimos cargar tu ficha.'))
@@ -102,7 +105,7 @@ export function MiFicha() {
     return <div className="contenedor ficha-pagina"><p className="cargando-linea" role="status">Cargando tu ficha…</p></div>
   }
 
-  const { perfil, servicios, cobertura, suscripcion } = todo
+  const { perfil, servicios, cobertura, suscripcion, credenciales } = todo
   const { rubros, zonas } = catalogo.datos
   const rubro = rubros.find((r) => r.id === perfil.rubroId)
   const activos = servicios.filter((s) => s.activo)
@@ -256,6 +259,8 @@ export function MiFicha() {
           <Invitacion texto="Elige los barrios donde atiendes y cuál es el principal." accion="Elegir mis barrios" alPulsar={() => setEditando('zonas')} />
         )}
       </section>
+
+      <MisCredenciales credenciales={credenciales} alCambiar={recargar} />
 
       <p className="letra-chica">
         Por ahora no puedes subir tu foto, tus títulos ni tu dirección.

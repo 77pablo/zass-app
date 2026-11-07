@@ -4,7 +4,7 @@ import { ErrorApi } from '../api/cliente'
 import { fichaPublica, type FichaPublica } from '../funciones/busqueda/servicio'
 import { Icono } from '../marco/Icono'
 import { Monograma } from '../marco/Monograma'
-import { capitalizar, duracion, pesos, reputacion } from '../marco/texto'
+import { capitalizar, duracion, etiquetaDeTipo, pesos, reputacion } from '../marco/texto'
 import { useTitulo } from '../marco/useTitulo'
 import { NoEncontrada } from './NoEncontrada'
 
@@ -141,6 +141,24 @@ export function Ficha() {
               <p className="bloque-texto bloque-vacio">Todavía no publicó sus servicios.</p>
             )}
           </section>
+
+          {ficha.credenciales.length > 0 && (
+            <section className="bloque">
+              <h2>Credenciales</h2>
+              <ul className="credenciales">
+                {ficha.credenciales.map((c) => (
+                  <li key={`${c.nombre}-${c.obtenidaEn}`}>
+                    <Icono nombre="sello" />
+                    <div>
+                      <strong>{c.nombre}</strong>
+                      <small>{[etiquetaDeTipo(c.tipo), c.entidad, c.obtenidaEn.slice(0, 4)].filter(Boolean).join(' · ')}</small>
+                      <span className={c.verificada ? 'sello' : 'dato'}>{c.etiqueta}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           <section className="bloque">
             <h2>Dónde atiende</h2>

@@ -39,3 +39,18 @@ export function duracion(minutos: number): string {
   const m = minutos % 60
   return m === 0 ? `${h} h` : `${h} h ${m} min`
 }
+
+const TIPOS_DE_CREDENCIAL: Record<string, string> = {
+  Titulo: 'Título', Certificacion: 'Certificación', Curso: 'Curso', Colegiatura: 'Colegiatura',
+}
+
+export function etiquetaDeTipo(tipo: string): string {
+  return TIPOS_DE_CREDENCIAL[tipo] ?? tipo
+}
+
+/** La fecha de hoy como AAAA-MM-DD en hora LOCAL: es lo que entiende <input type="date" max>. */
+export function hoyISO(): string {
+  const d = new Date()
+  const dos = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${dos(d.getMonth() + 1)}-${dos(d.getDate())}`
+}

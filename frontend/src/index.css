@@ -496,3 +496,14 @@ textarea.campo-entrada { resize: vertical; line-height: 1.5; }
 .pie-fila li a { display: inline-flex; align-items: center; min-height: 44px; font-weight: 700; text-underline-offset: 4px; }
 .pie-final { margin-top: 36px; padding-top: 24px; border-top: 1px solid #3a3a3a; font-size: 0.8125rem; color: #a39c86; font-weight: 600; }
 .pie-final a { display: inline-flex; align-items: center; min-height: 44px; color: var(--crema); text-underline-offset: 4px; }
+
+/* Credenciales: en la ficha publica y en Mi ficha */
+.credenciales { margin-top: 12px; }
+.credenciales li { display: flex; gap: 14px; align-items: flex-start; padding: 16px 0; border-bottom: 1px solid var(--linea); }
+.credenciales li:last-child { border-bottom: 0; }
+.credenciales li > .icono { width: 1.6em; height: 1.6em; margin-top: 2px; color: var(--tinta); }
+.credenciales li > div { flex: 1; min-width: 0; display: grid; gap: 2px; justify-items: start; }
+.credenciales strong { font-weight: 700; overflow-wrap: anywhere; }
+.credenciales small { color: var(--gris); font-weight: 600; font-size: 0.875rem; }
+.credenciales .sello, .credenciales .dato { margin-top: 6px; }
+.credencial-confirmar { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-weight: 700; font-size: 0.9375rem; }

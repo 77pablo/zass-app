@@ -28,6 +28,10 @@ const FICHA = {
   urlFoto: null, rubro: { id: 1, codigo: 'corretaje', nombre: 'Corretaje de propiedades', icono: null },
   zonas: [{ nombre: 'Centro', sector: 'centro', esPrincipal: true }],
   servicios: [{ nombre: 'Tasación comercial', duracionMinutos: 90, precioReferencia: 60000 }],
+  credenciales: [
+    { tipo: 'Titulo', nombre: 'Abogado', entidad: 'Universidad de La Frontera', obtenidaEn: '2010-03-01', etiqueta: 'Verificada', verificada: true },
+    { tipo: 'Curso', nombre: 'Curso de tasación', entidad: null, obtenidaEn: '2021-05-10', etiqueta: 'Declarada por el usuario', verificada: false },
+  ],
   promedioCalificacion: null, totalResenas: 2,
   contacto: { telefono: null, whatsapp: '+56 9 5550 0101', correo: null, sitioWeb: 'javascript:alert(1)' },
   publicadoEn: null,
@@ -136,6 +140,27 @@ describe('el sitio de varias paginas', () => {
     expect(screen.queryByRole('link', { name: /sitio web/ })).not.toBeInTheDocument()
     // 2 reseñas: el promedio no es publico (RN-S5-11), se dice el recuento y no se inventa uno.
     expect(screen.getByText(/El promedio se muestra desde la tercera/)).toBeInTheDocument()
+  })
+
+  it('la ficha muestra las credenciales con la etiqueta publica, sin estado interno', async () => {
+    en('/prestadores/marcela-soto')
+
+    await screen.findByRole('heading', { level: 1, name: 'Marcela Soto' })
+    expect(screen.getByRole('heading', { name: 'Credenciales' })).toBeInTheDocument()
+    expect(screen.getByText('Título · Universidad de La Frontera · 2010')).toBeInTheDocument()
+    expect(screen.getByText('Verificada', { selector: '.sello' })).toBeInTheDocument()
+    expect(screen.getByText('Declarada por el usuario', { selector: '.dato' })).toBeInTheDocument()
+    expect(screen.getByText('Curso · 2021')).toBeInTheDocument()
+  })
+
+  it('sin credenciales la ficha no muestra la seccion', async () => {
+    const original = fetch
+    vi.stubGlobal('fetch', vi.fn(async (ruta: string) =>
+      ruta === '/api/prestadores/marcela-soto' ? json({ ...FICHA, credenciales: [] }) : original(ruta)))
+    en('/prestadores/marcela-soto')
+
+    await screen.findByRole('heading', { level: 1, name: 'Marcela Soto' })
+    expect(screen.queryByRole('heading', { name: 'Credenciales' })).not.toBeInTheDocument()
   })
 
   it('una ficha que no existe lo dice y ofrece seguir buscando', async () => {
