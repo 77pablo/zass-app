@@ -1,0 +1,863 @@
+<!doctype html>
+<html lang="es-CL">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F6C81E">
+  <title>ZASS! — prototipo de diseño</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    /* ---------------------------------------------------------------- Fichas de color
+       La marca manda: amarillo, tinta, crema y Montserrat. Lo unico que se agrega es el
+       verde del sello "Verificado", que ya existia en la aplicacion, y un amarillo suave
+       para las invitaciones. */
+    :root {
+      --amarillo: #F6C81E;
+      --amarillo-suave: #FCEFB4;
+      --tinta: #1A1A1A;
+      --crema: #FDF8E7;
+      --papel: #FFFFFF;
+      --linea: #E3DDC9;
+      --gris: #5E5A4F;
+      --musgo: #1B6B3A;
+      --musgo-suave: #E4F3EA;
+      --radio: 20px;
+      --ancho: 1180px;
+      font-family: Montserrat, system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background: var(--crema);
+      color: var(--tinta);
+      font-size: 1.0625rem;
+      font-weight: 500;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: inherit; }
+    img, svg { display: block; }
+    h1, h2, h3, p, ul { margin: 0; }
+    ul { padding: 0; list-style: none; }
+    button { font: inherit; color: inherit; }
+
+    :focus-visible { outline: 3px solid var(--tinta); outline-offset: 3px; border-radius: 6px; }
+    .sobre-tinta :focus-visible { outline-color: var(--amarillo); }
+
+    .solo-lector {
+      position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+      overflow: hidden; clip: rect(0 0 0 0); border: 0; white-space: nowrap;
+    }
+
+    .icono { width: 1.25em; height: 1.25em; flex: none; stroke: currentColor; fill: none;
+             stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+    .contenedor { width: 100%; max-width: var(--ancho); margin: 0 auto; padding: 0 24px; }
+
+    /* ------------------------------------------------------- Barra del prototipo */
+    .prototipo {
+      background: var(--tinta); color: var(--crema);
+      font-size: 0.8125rem; font-weight: 600; line-height: 1.4;
+      padding: 10px 24px; display: flex; flex-wrap: wrap; gap: 6px 18px;
+      align-items: center; justify-content: center; text-align: center;
+    }
+    .prototipo nav { display: flex; gap: 14px; }
+    .prototipo a { color: var(--amarillo); text-underline-offset: 3px; }
+
+    /* ----------------------------------------------------------------- Cabecera */
+    .cabecera { background: var(--crema); }
+    body[data-vista="inicio"] .cabecera { background: var(--amarillo); }
+
+    .cabecera-fila {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 16px; min-height: 76px;
+    }
+
+    .logo { display: inline-flex; align-items: center; min-height: 44px; font-size: 1.75rem; font-weight: 800; letter-spacing: -0.04em; text-decoration: none; }
+    .logo em { font-style: normal; color: var(--amarillo); background: var(--tinta);
+               padding: 0 0.12em; border-radius: 6px; margin-left: 2px; }
+    body[data-vista="inicio"] .logo em { color: var(--amarillo); }
+
+    .navegacion { display: flex; align-items: center; gap: 4px; }
+    .navegacion a {
+      display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px;
+      font-size: 0.9375rem; font-weight: 700; text-decoration: none; border-radius: 999px;
+    }
+    .navegacion a:hover { background: rgba(26, 26, 26, 0.08); }
+    .navegacion .entrar { background: var(--tinta); color: var(--amarillo); margin-left: 8px; }
+    .navegacion .entrar:hover { background: #000; }
+
+    @media (max-width: 760px) { .navegacion .enlace-largo { display: none; } }
+
+    /* -------------------------------------------------------------------- Botones */
+    .boton {
+      display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+      min-height: 52px; padding: 0 28px; border-radius: 999px; border: 2.5px solid var(--tinta);
+      font-size: 1rem; font-weight: 800; text-decoration: none; cursor: pointer;
+      background: var(--papel); transition: background 0.15s, transform 0.15s;
+    }
+    .boton:hover { background: var(--amarillo-suave); }
+    .boton--tinta { background: var(--tinta); color: var(--amarillo); }
+    .boton--tinta:hover { background: #000; }
+    .boton--amarillo { background: var(--amarillo); }
+    .boton--amarillo:hover { background: #E8BA10; }
+    .boton--lleno { width: 100%; }
+    .boton[disabled] { opacity: 0.45; cursor: not-allowed; }
+    /* Sobre el amarillo, un boton oscuro apagado se veia barroso. Deshabilitado = contorno
+       punteado: dice "todavia no" sin parecer un error. */
+    .mi-cabecera .boton--tinta[disabled] { background: transparent; color: var(--tinta); border-style: dashed; opacity: 0.75; }
+
+    /* --------------------------------------------------------------------- Portada */
+    .hero { background: var(--amarillo); padding: 24px 0 88px; }
+
+    .hero-rejilla {
+      display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+      gap: 56px; align-items: center;
+    }
+
+    .titular {
+      font-size: clamp(2.7rem, 7.4vw, 5.75rem); font-weight: 800;
+      letter-spacing: -0.045em; line-height: 0.96; text-wrap: balance;
+    }
+
+    .bajada { margin-top: 24px; max-width: 36ch; font-size: 1.1875rem; font-weight: 600; line-height: 1.5; }
+
+    /* La busqueda es una frase que se completa, no un formulario con campos */
+    .frase { margin-top: 40px; }
+    .frase-texto {
+      font-size: clamp(1.35rem, 3.1vw, 2.05rem); font-weight: 800;
+      line-height: 2.05; letter-spacing: -0.025em;
+    }
+    .elige { position: relative; display: inline-block; }
+    .elige select {
+      appearance: none; -webkit-appearance: none; font: inherit; letter-spacing: inherit;
+      color: var(--tinta); background-color: var(--papel); border: 2.5px solid var(--tinta);
+      border-radius: 999px; min-height: 48px; padding: 0 2.1em 0 0.7em; cursor: pointer; max-width: 100%;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%231A1A1A' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 9l7 7 7-7'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 0.85em center;
+    }
+    .frase-acciones { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-top: 18px; }
+    .enlace-ubicacion {
+      display: inline-flex; align-items: center; gap: 8px; min-height: 44px;
+      font-size: 0.9375rem; font-weight: 700; text-underline-offset: 4px;
+    }
+
+    /* La tarjeta que te da alguien de tu barrio */
+    .tarjeta-mano {
+      /* Es un <a>, inline por defecto. Dentro de una rejilla se vuelve bloque solo, pero dentro
+         del .mazo no: ahi el transform no se aplica y el apilado se rompe. */
+      display: block;
+      background: var(--papel); border-radius: 24px; padding: 28px;
+      border: 2px solid var(--tinta); transform: rotate(-1.6deg);
+      box-shadow: 0 30px 60px -28px rgba(26, 26, 26, 0.55);
+    }
+    .monograma {
+      flex: none; display: grid; place-items: center; border-radius: 50%;
+      background: var(--tinta); color: var(--amarillo); font-weight: 800; letter-spacing: -0.02em;
+    }
+    .monograma--m { width: 64px; height: 64px; font-size: 1.5rem; }
+    .monograma--g { width: 96px; height: 96px; font-size: 2.1rem; }
+    .tarjeta-persona { display: flex; gap: 16px; align-items: center; }
+    .tarjeta-nombre { font-size: 1.375rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1.2; }
+    .tarjeta-detalle { font-size: 0.9375rem; color: var(--gris); font-weight: 600; }
+    .fila-etiquetas { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+    .tarjeta-servicios { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--linea);
+                         font-size: 0.9375rem; font-weight: 600; display: grid; gap: 6px; }
+    .tarjeta-pie {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      margin-top: 20px; font-size: 0.9375rem; font-weight: 800;
+    }
+    .tarjeta-pie .icono { width: 1.6em; height: 1.6em; }
+
+    .sello {
+      display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px 4px 9px;
+      font-size: 0.8125rem; font-weight: 800; color: var(--musgo);
+      background: var(--musgo-suave); border: 1px solid #BFE1CB; border-radius: 999px;
+    }
+    .sello .icono { width: 1.1em; height: 1.1em; stroke-width: 2.6; }
+    .dato {
+      display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px;
+      font-size: 0.8125rem; font-weight: 700; background: var(--crema);
+      border: 1px solid var(--linea); border-radius: 999px;
+    }
+
+    /* Una persona no es un barrio: la tarjeta va acompanada de otras dos, de gente distinta,
+       asomando por detras. Dicen "comunidad" mejor que cualquier frase. */
+    .mazo { position: relative; padding-bottom: 124px; }
+    .mazo .tarjeta-mano { position: relative; z-index: 3; }
+    .tarjeta-atras {
+      position: absolute; left: 0; right: 0; height: 140px; z-index: 1;
+      display: flex; align-items: flex-end; gap: 12px; padding: 0 24px 11px;
+      background: var(--papel); border: 2px solid var(--tinta); border-radius: 24px;
+      font-size: 0.9375rem; font-weight: 700; line-height: 1.2;
+    }
+    .tarjeta-atras small { display: block; color: var(--gris); font-weight: 600; font-size: 0.8125rem; }
+    .tarjeta-atras .monograma { width: 30px; height: 30px; font-size: 0.75rem; }
+    .tarjeta-atras--1 { bottom: 62px; z-index: 2; transform: rotate(2.2deg) translateX(16px); }
+    .tarjeta-atras--2 { bottom: 0; transform: rotate(-3.4deg) translateX(-12px); }
+
+    @media (max-width: 900px) {
+      .hero-rejilla { grid-template-columns: 1fr; gap: 48px; }
+      .mazo { max-width: 440px; }
+    }
+
+    /* ------------------------------------------------------------------- Secciones */
+    .seccion { padding: 88px 0; }
+    .seccion-titulo {
+      font-size: clamp(1.9rem, 4.2vw, 3.1rem); font-weight: 800;
+      letter-spacing: -0.04em; line-height: 1.05; max-width: 20ch; text-wrap: balance;
+    }
+    .seccion-bajada { margin-top: 14px; max-width: 44ch; color: var(--gris); font-weight: 600; }
+
+    /* Barrios: un indice por sector, con cuanta gente hay en cada uno */
+    /* Columnas que se acomodan solas: los sectores tienen alturas muy distintas (Norte tiene seis
+       barrios, Centro uno), y una rejilla dejaba a "Sur" solo en una segunda fila con un hueco. */
+    .barrios { column-width: 250px; column-gap: 56px; margin-top: 48px; }
+    .sector { break-inside: avoid; margin-bottom: 44px; }
+    .sector h3 {
+      font-size: 0.8125rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--gris); padding-bottom: 10px; border-bottom: 2px solid var(--tinta);
+    }
+    .barrio {
+      display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+      min-height: 52px; padding: 12px 6px; margin: 0 -6px; border-bottom: 1px solid var(--linea);
+      font-size: 1.1875rem; font-weight: 700; letter-spacing: -0.015em; text-decoration: none;
+      border-radius: 6px; transition: background 0.15s;
+    }
+    .barrio:hover { background: var(--amarillo-suave); }
+    .barrio small { font-size: 0.875rem; font-weight: 700; color: var(--gris); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+    /* Oficios: filas grandes, no tarjetas iguales */
+    .oficios { margin-top: 48px; border-bottom: 2px solid var(--tinta); }
+    .oficio {
+      display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 24px; align-items: center;
+      padding: 28px 8px; margin: 0 -8px; border-top: 2px solid var(--tinta);
+      text-decoration: none; transition: background 0.15s;
+    }
+    .oficio:hover { background: var(--amarillo); }
+    .oficio h3 { font-size: clamp(1.5rem, 3.4vw, 2.2rem); font-weight: 800; letter-spacing: -0.035em; line-height: 1.1; }
+    .oficio p { grid-column: 1; color: var(--gris); font-weight: 600; max-width: 52ch; }
+    .oficio:hover p { color: var(--tinta); }
+    .oficio-lado { grid-column: 2; grid-row: 1 / span 2; display: flex; align-items: center; gap: 14px;
+                   font-size: 0.9375rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .oficio-lado .icono { width: 2.1em; height: 2.1em; padding: 0.45em; border: 2px solid var(--tinta); border-radius: 50%; }
+
+    /* Confianza */
+    .oscuro { background: var(--tinta); color: var(--crema); }
+    .oscuro .seccion-bajada { color: #CFC8B2; }
+    .principios { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 48px; margin-top: 56px; }
+    .principio .icono { width: 2.4rem; height: 2.4rem; color: var(--amarillo); stroke-width: 1.8; }
+    .principio h3 { margin-top: 20px; font-size: 1.4rem; font-weight: 800; letter-spacing: -0.025em; line-height: 1.2; color: var(--papel); }
+    .principio p { margin-top: 10px; color: #CFC8B2; font-weight: 500; max-width: 34ch; }
+
+    /* Para profesionales */
+    .profesionales { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr); gap: 64px; align-items: center; }
+    .profesionales .boton { margin-top: 32px; }
+    .letra-chica { margin-top: 14px; font-size: 0.875rem; color: var(--gris); font-weight: 600; }
+    @media (max-width: 900px) { .profesionales { grid-template-columns: 1fr; gap: 48px; } }
+
+    .pie { background: var(--tinta); color: var(--crema); padding: 56px 0 48px; }
+    .pie-fila { display: flex; flex-wrap: wrap; gap: 24px 48px; justify-content: space-between; align-items: flex-start; }
+    .pie .logo { color: var(--papel); }
+    .pie p { color: #CFC8B2; font-size: 0.9375rem; font-weight: 600; max-width: 36ch; margin-top: 10px; }
+    .pie ul { display: grid; gap: 2px; }
+    .pie li a { display: inline-flex; align-items: center; min-height: 44px; font-weight: 700; text-underline-offset: 4px; }
+    .pie-final { margin-top: 36px; padding-top: 24px; border-top: 1px solid #3A3A3A; font-size: 0.8125rem; color: #A39C86; font-weight: 600; }
+    .pie-final a { color: var(--crema); }
+
+    /* ------------------------------------------------- Ficha publica y Mi ficha */
+    /* padding-block y no el atajo `padding`: el atajo pisaba los margenes laterales de
+       .contenedor, y la ficha quedaba pegada a los bordes de la pantalla. */
+    .ficha-pagina { padding-block: 28px 120px; }
+    .volver { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-weight: 700; font-size: 0.9375rem; text-underline-offset: 4px; }
+    .volver .icono { transform: rotate(180deg); }
+
+    .ficha-rejilla { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 64px; align-items: start; margin-top: 12px; }
+    /* minmax(0, 1fr) y no 1fr: 1fr es minmax(auto, 1fr), y una columna asi crece hasta lo que
+       mida su contenido, que en un celular es mas que la pantalla. */
+    @media (max-width: 960px) { .ficha-rejilla { grid-template-columns: minmax(0, 1fr); gap: 8px; } }
+
+    .persona { display: flex; gap: 24px; align-items: center; }
+    .persona h1 { font-size: clamp(2rem, 5.4vw, 3.5rem); font-weight: 800; letter-spacing: -0.04em; line-height: 1; }
+    .persona-detalle { margin-top: 8px; font-weight: 700; color: var(--gris); }
+    .persona .fila-etiquetas { margin-top: 14px; }
+    @media (max-width: 560px) { .persona { flex-direction: column; align-items: flex-start; gap: 18px; } .monograma--g { width: 80px; height: 80px; font-size: 1.8rem; } }
+
+    .bloque { padding: 36px 0; border-top: 1px solid var(--linea); }
+    .persona + .bloque { margin-top: 36px; }
+    .bloque-cabeza { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+    .bloque h2 { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; }
+    .bloque-texto { margin-top: 16px; max-width: 62ch; }
+    .editar {
+      display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 10px; margin-right: -10px;
+      font-weight: 700; font-size: 0.9375rem; background: none; border: 0; cursor: pointer;
+      text-decoration: underline; text-underline-offset: 4px;
+    }
+    .editar .icono { width: 1.05em; height: 1.05em; }
+
+    .servicios { margin-top: 12px; }
+    .servicio { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 24px; padding: 16px 0; border-bottom: 1px solid var(--linea); }
+    .servicio:last-child { border-bottom: 0; }
+    .servicio strong { font-size: 1.125rem; font-weight: 700; }
+    .servicio span { color: var(--gris); font-weight: 600; font-size: 0.9375rem; font-variant-numeric: tabular-nums; }
+
+    .zonas { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+    .zona {
+      display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 18px;
+      border: 2px solid var(--tinta); border-radius: 999px; background: var(--papel);
+      font-weight: 700; font-size: 0.9375rem; cursor: default;
+    }
+    .zona--principal { background: var(--tinta); color: var(--amarillo); }
+    button.zona { cursor: pointer; }
+    button.zona[aria-pressed="true"] { background: var(--tinta); color: var(--amarillo); }
+
+    .credenciales li { display: flex; gap: 14px; align-items: flex-start; padding: 16px 0; border-bottom: 1px solid var(--linea); }
+    .credenciales li:last-child { border-bottom: 0; }
+    .credenciales .icono { width: 1.6em; height: 1.6em; color: var(--musgo); margin-top: 2px; }
+    .credenciales strong { display: block; font-weight: 700; }
+    .credenciales small { color: var(--gris); font-weight: 600; font-size: 0.875rem; }
+
+    .nota { display: flex; align-items: baseline; gap: 14px; margin-top: 16px; flex-wrap: wrap; }
+    .nota-promedio { font-size: 3rem; font-weight: 800; letter-spacing: -0.05em; line-height: 1; font-variant-numeric: tabular-nums; }
+    .nota-detalle { font-weight: 700; color: var(--gris); }
+    .opiniones { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 24px; }
+    .opinion { background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio); padding: 22px; }
+    .opinion p { font-weight: 600; line-height: 1.55; }
+    .opinion footer { margin-top: 16px; font-size: 0.875rem; font-weight: 700; color: var(--gris); }
+    .aclaracion { margin-top: 18px; font-size: 0.875rem; font-weight: 600; color: var(--gris); max-width: 60ch; }
+
+    /* Lateral: como contactar */
+    .lateral { position: sticky; top: 24px; background: var(--papel); border: 2px solid var(--tinta); border-radius: 24px; padding: 28px; }
+    .lateral h2 { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; }
+    .lateral-botones { display: grid; gap: 10px; margin-top: 20px; }
+    .lateral-enlaces { margin-top: 18px; display: grid; gap: 2px; }
+    .lateral-enlaces a { display: flex; align-items: center; gap: 12px; min-height: 44px; font-weight: 700; font-size: 0.9375rem; text-underline-offset: 4px; }
+    .lateral-nota { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--linea); font-size: 0.875rem; font-weight: 600; color: var(--gris); }
+    @media (max-width: 960px) { .lateral { position: static; margin-top: 12px; } }
+
+    .barra-contacto {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+      background: var(--crema); border-top: 2px solid var(--tinta); display: none; gap: 10px;
+    }
+    .barra-contacto .boton { flex: 1; min-height: 52px; padding: 0 12px; }
+    @media (max-width: 960px) { body[data-vista="ficha"] .barra-contacto { display: flex; } }
+
+    /* --------------------------------------------------------------- Mi ficha */
+    .mi-cabecera {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 24px;
+      padding: 20px 24px; background: var(--amarillo); border-radius: var(--radio);
+    }
+    .mi-cabecera h1 { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.035em; line-height: 1.1; }
+    .estado { display: inline-flex; align-items: center; gap: 8px; margin-top: 6px; font-weight: 700; font-size: 0.9375rem; }
+    .estado::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--tinta); }
+    .mi-acciones { display: flex; flex-wrap: wrap; gap: 10px; }
+    .mi-acciones .boton { min-height: 48px; padding: 0 20px; }
+    .mi-aviso { margin-top: 12px; font-size: 0.875rem; font-weight: 600; color: var(--gris); }
+
+    .guia { background: var(--papel); border: 2px solid var(--tinta); border-radius: 24px; padding: 28px; position: sticky; top: 24px; }
+    @media (max-width: 960px) { .guia { position: static; order: -1; margin-bottom: 8px; } }
+    .guia h2 { font-size: 1.35rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.2; }
+    .barra { height: 12px; margin-top: 18px; background: var(--crema); border: 1.5px solid var(--tinta); border-radius: 999px; overflow: hidden; }
+    .barra > div { height: 100%; background: var(--amarillo); border-right: 1.5px solid var(--tinta); }
+    .guia-porcentaje { margin-top: 8px; font-size: 0.875rem; font-weight: 700; color: var(--gris); }
+    .pasos { margin-top: 18px; }
+    .paso { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 0; border-bottom: 1px solid var(--linea); font-weight: 700; font-size: 0.9375rem; }
+    .paso:last-child { border-bottom: 0; }
+    .paso .marca { flex: none; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; border: 2px solid var(--tinta); }
+    .paso--hecho .marca { background: var(--musgo); border-color: var(--musgo); color: var(--papel); }
+    .paso--hecho .marca .icono { width: 15px; height: 15px; stroke-width: 3.2; }
+    .paso a { margin-left: auto; display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px; margin-right: -8px; font-size: 0.875rem; text-underline-offset: 4px; }
+    .paso--hecho { color: var(--gris); }
+    .paso small { display: block; font-weight: 600; color: var(--gris); font-size: 0.8125rem; }
+
+    .invitacion { margin-top: 18px; padding: 24px; background: var(--amarillo-suave); border: 2px dashed var(--tinta); border-radius: var(--radio); }
+    .invitacion strong { display: block; font-size: 1.125rem; font-weight: 800; letter-spacing: -0.02em; }
+    .invitacion p { margin-top: 6px; font-weight: 600; max-width: 52ch; }
+    .invitacion .boton { margin-top: 16px; min-height: 48px; }
+    .invitacion .zonas { margin-top: 16px; }
+
+    .edicion { margin-top: 16px; padding: 20px; background: var(--papel); border: 2px solid var(--tinta); border-radius: var(--radio); }
+    .edicion textarea {
+      width: 100%; min-height: 168px; padding: 14px 16px; font: inherit; font-weight: 500; line-height: 1.55;
+      color: var(--tinta); background: var(--crema); border: 2px solid var(--linea); border-radius: 14px; resize: vertical;
+    }
+    .edicion textarea:focus-visible { outline: 3px solid var(--amarillo); outline-offset: 0; border-color: var(--tinta); }
+    .edicion-pie { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+    .contador { font-size: 0.875rem; font-weight: 700; color: var(--gris); font-variant-numeric: tabular-nums; }
+    .edicion-botones { display: flex; gap: 10px; }
+    .edicion-botones .boton { min-height: 46px; padding: 0 22px; }
+    .vacio-texto { margin-top: 14px; font-weight: 600; color: var(--gris); max-width: 52ch; }
+
+    .vista[hidden] { display: none; }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { transition: none !important; animation: none !important; }
+    }
+  </style>
+</head>
+<body data-vista="inicio">
+
+  <!-- Iconos de linea, sin emojis a color (regla de la marca) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11a7 7 0 1 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M4 12.5l5 5L20 6.5"/></symbol>
+    <symbol id="i-escudo" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6l8-3z"/><path d="M8.5 12l2.5 2.5L16 9.5"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4V5z"/></symbol>
+    <symbol id="i-fono" viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></symbol>
+    <symbol id="i-correo" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></symbol>
+    <symbol id="i-web" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></symbol>
+    <symbol id="i-flecha" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-toque" viewBox="0 0 24 24"><path d="M8 8c2.5 2.5 2.5 5.5 0 8M12 5.5c4 3.5 4 9.5 0 13M16 3c5.5 4.5 5.5 13.5 0 18"/></symbol>
+    <symbol id="i-lapiz" viewBox="0 0 24 24"><path d="M4 20l1-4L16 5l3 3L8 19l-4 1z"/></symbol>
+    <symbol id="i-ojo" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-estrella" viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9L12 3z"/></symbol>
+  </svg>
+
+  <div class="prototipo sobre-tinta">
+    <span>Prototipo de diseño · datos de ejemplo · parte de lo que ves todavía no existe en el sitio</span>
+    <nav aria-label="Pantallas del prototipo">
+      <a href="#inicio">Portada</a>
+      <a href="#ficha">Ficha pública</a>
+      <a href="#mi-ficha">Mi ficha</a>
+    </nav>
+  </div>
+
+  <header class="cabecera">
+    <div class="contenedor cabecera-fila">
+      <a class="logo" href="#inicio" aria-label="ZASS!, ir a la portada">ZAS<em>S!</em></a>
+      <nav class="navegacion" aria-label="Principal">
+        <a class="enlace-largo" href="#barrios">Barrios</a>
+        <a class="enlace-largo" href="#oficios">Oficios</a>
+        <a class="enlace-largo" href="#profesionales">Para profesionales</a>
+        <a class="entrar" href="#mi-ficha">Entrar</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- =============================================================== PORTADA -->
+    <section class="vista" id="v-inicio">
+      <div class="hero">
+        <div class="contenedor hero-rejilla">
+          <div>
+            <h1 class="titular">Encuentra a quien sabe, en tu barrio.</h1>
+            <p class="bajada">Abogados, corredores, contadores, arquitectos y maestros de Temuco. Con títulos revisados por una persona y reseñas de vecinos que los contrataron.</p>
+
+            <form class="frase" onsubmit="return false">
+              <p class="frase-texto">
+                Busco a alguien de
+                <label class="elige"><span class="solo-lector">Rubro</span>
+                  <select>
+                    <option>corretaje</option><option>derecho</option><option>contabilidad</option>
+                    <option>arquitectura</option><option>oficios</option>
+                  </select>
+                </label>
+                en
+                <label class="elige"><span class="solo-lector">Barrio</span>
+                  <select>
+                    <option>el Centro</option><option>Pedro de Valdivia</option><option>Amanecer</option>
+                    <option>Labranza</option><option>Las Quilas</option>
+                  </select>
+                </label>.
+              </p>
+              <div class="frase-acciones">
+                <a class="boton boton--tinta" href="#ficha">Ver quiénes son <svg class="icono" aria-hidden="true"><use href="#i-flecha"/></svg></a>
+                <a class="enlace-ubicacion" href="#inicio"><svg class="icono" aria-hidden="true"><use href="#i-pin"/></svg>Usar mi ubicación</a>
+              </div>
+            </form>
+          </div>
+
+          <div class="mazo">
+          <div class="tarjeta-atras tarjeta-atras--2" aria-hidden="true">
+            <span class="monograma">CR</span><span>Carla Reyes<small>Contabilidad · Amanecer</small></span>
+          </div>
+          <div class="tarjeta-atras tarjeta-atras--1" aria-hidden="true">
+            <span class="monograma">JP</span><span>Jorge Pino<small>Gasfitería · Pedro de Valdivia</small></span>
+          </div>
+          <a class="tarjeta-mano" href="#ficha" style="text-decoration:none" aria-label="Ver la ficha de Marcela Soto, corredora de propiedades">
+            <div class="tarjeta-persona">
+              <span class="monograma monograma--m" aria-hidden="true">MS</span>
+              <div>
+                <p class="tarjeta-nombre">Marcela Soto</p>
+                <p class="tarjeta-detalle">Corretaje de propiedades · Centro</p>
+              </div>
+            </div>
+            <div class="fila-etiquetas">
+              <span class="sello"><svg class="icono" aria-hidden="true"><use href="#i-escudo"/></svg>Verificada</span>
+              <span class="dato"><svg class="icono" aria-hidden="true"><use href="#i-estrella"/></svg>4,6 · 12 vecinos</span>
+            </div>
+            <div class="tarjeta-servicios">
+              <span>Tasación comercial</span>
+              <span>Administración de arriendos</span>
+              <span>Venta de casa o departamento</span>
+            </div>
+            <div class="tarjeta-pie">
+              <span>Conecta con un toque</span>
+              <svg class="icono" aria-hidden="true"><use href="#i-toque"/></svg>
+            </div>
+          </a>
+          </div>
+        </div>
+      </div>
+
+      <section class="seccion" id="barrios">
+        <div class="contenedor">
+          <h2 class="seccion-titulo">Temuco, barrio por barrio</h2>
+          <p class="seccion-bajada">Elige el tuyo y mira quién trabaja ahí.</p>
+
+          <div class="barrios">
+            <div class="sector"><h3>Centro</h3>
+              <a class="barrio" href="#ficha">Centro <small>14 personas</small></a>
+            </div>
+            <div class="sector"><h3>Norte</h3>
+              <a class="barrio" href="#ficha">Pedro de Valdivia <small>11 personas</small></a>
+              <a class="barrio" href="#ficha">Caupolicán <small>4 personas</small></a>
+              <a class="barrio" href="#ficha">San José de Lanín <small>3 personas</small></a>
+              <a class="barrio" href="#ficha">Ñielol <small>2 personas</small></a>
+              <a class="barrio" href="#ficha">El Bosque <small>5 personas</small></a>
+              <a class="barrio" href="#ficha">Fundo El Carmen <small>2 personas</small></a>
+            </div>
+            <div class="sector"><h3>Poniente</h3>
+              <a class="barrio" href="#ficha">Amanecer <small>9 personas</small></a>
+              <a class="barrio" href="#ficha">Barrio Inglés <small>6 personas</small></a>
+              <a class="barrio" href="#ficha">Portal La Frontera <small>4 personas</small></a>
+              <a class="barrio" href="#ficha">Labranza <small>7 personas</small></a>
+            </div>
+            <div class="sector"><h3>Oriente</h3>
+              <a class="barrio" href="#ficha">Santa Rosa <small>5 personas</small></a>
+              <a class="barrio" href="#ficha">Parque Costanera <small>3 personas</small></a>
+              <a class="barrio" href="#ficha">Las Mariposas <small>2 personas</small></a>
+            </div>
+            <div class="sector"><h3>Sur</h3>
+              <a class="barrio" href="#ficha">Las Quilas <small>6 personas</small></a>
+              <a class="barrio" href="#ficha">Pichicautín <small>2 personas</small></a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="seccion" id="oficios" style="padding-top:0">
+        <div class="contenedor">
+          <h2 class="seccion-titulo">Lo que necesitas, con nombre y apellido</h2>
+          <div class="oficios">
+            <a class="oficio" href="#ficha">
+              <h3>Corretaje de propiedades</h3>
+              <p>Para vender, arrendar o tasar con alguien que conoce la cuadra.</p>
+              <span class="oficio-lado">14 personas <svg class="icono" aria-hidden="true"><use href="#i-flecha"/></svg></span>
+            </a>
+            <a class="oficio" href="#ficha">
+              <h3>Derecho</h3>
+              <p>Escrituras, herencias, contratos de arriendo y problemas laborales.</p>
+              <span class="oficio-lado">9 personas <svg class="icono" aria-hidden="true"><use href="#i-flecha"/></svg></span>
+            </a>
+            <a class="oficio" href="#ficha">
+              <h3>Contabilidad</h3>
+              <p>Renta, IVA, sueldos y el inicio de actividades de tu negocio.</p>
+              <span class="oficio-lado">11 personas <svg class="icono" aria-hidden="true"><use href="#i-flecha"/></svg></span>
+            </a>
+            <a class="oficio" href="#ficha">
+              <h3>Arquitectura y construcción</h3>
+              <p>Permisos, ampliaciones y proyectos que se pueden regularizar.</p>
+              <span class="oficio-lado">6 personas <svg class="icono" aria-hidden="true"><use href="#i-flecha"/></svg></span>
+            </a>
+            <a class="oficio" href="#ficha">
+              <h3>Técnicos y oficios</h3>
+              <p>Electricidad, gasfitería, pintura y lo que no puede esperar.</p>
+              <span class="oficio-lado">22 personas <svg class="icono" aria-hidden="true"><use href="#i-flecha"/></svg></span>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section class="seccion oscuro sobre-tinta">
+        <div class="contenedor">
+          <h2 class="seccion-titulo">Una comunidad se cuida entre todos</h2>
+          <div class="principios">
+            <div class="principio">
+              <svg class="icono" aria-hidden="true"><use href="#i-escudo"/></svg>
+              <h3>Cada sello lo revisa una persona</h3>
+              <p>Alguien de ZASS! mira el título o el certificado antes de que aparezca el sello Verificado.</p>
+            </div>
+            <div class="principio">
+              <svg class="icono" aria-hidden="true"><use href="#i-chat"/></svg>
+              <h3>Solo opina quien fue atendido</h3>
+              <p>Las reseñas las escriben vecinos que tuvieron una cita con el profesional. Nadie se califica a sí mismo.</p>
+            </div>
+            <div class="principio">
+              <svg class="icono" aria-hidden="true"><use href="#i-pin"/></svg>
+              <h3>Mostramos el barrio, no la casa</h3>
+              <p>Ves a cuántos kilómetros está alguien, redondeado. Su dirección y su ubicación exacta no se publican.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="seccion" id="profesionales">
+        <div class="contenedor profesionales">
+          <div>
+            <h2 class="seccion-titulo">¿Trabajas en Temuco? Arma tu ficha.</h2>
+            <p class="seccion-bajada">Tu ficha es tu presencia en el barrio: quién eres, qué haces, dónde atiendes y qué dicen de ti. La armas en pocos minutos y la ves tal como la verán los vecinos.</p>
+            <a class="boton boton--amarillo" href="#mi-ficha">Crear mi ficha <svg class="icono" aria-hidden="true"><use href="#i-flecha"/></svg></a>
+            <p class="letra-chica">Al publicarla empiezan tus 30 días de prueba gratis.</p>
+          </div>
+          <div class="guia" style="position:static">
+            <h2>Tu ficha está al 75 %</h2>
+            <div class="barra" role="progressbar" aria-valuenow="75" aria-valuemin="0" aria-valuemax="100" aria-label="Avance de tu ficha"><div style="width:75%"></div></div>
+            <ul class="pasos">
+              <li class="paso paso--hecho"><span class="marca"><svg class="icono" aria-hidden="true"><use href="#i-check"/></svg></span>Cómo te llamas y qué haces</li>
+              <li class="paso paso--hecho"><span class="marca"><svg class="icono" aria-hidden="true"><use href="#i-check"/></svg></span>Qué ofreces</li>
+              <li class="paso"><span class="marca"></span>Dónde atiendes</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <!-- =========================================================== FICHA PUBLICA -->
+    <section class="vista" id="v-ficha" hidden>
+      <div class="contenedor ficha-pagina">
+        <a class="volver" href="#inicio"><svg class="icono" aria-hidden="true"><use href="#i-flecha"/></svg>Volver a Centro</a>
+
+        <div class="ficha-rejilla">
+          <article>
+            <header class="persona">
+              <span class="monograma monograma--g" aria-hidden="true">MS</span>
+              <div>
+                <h1>Marcela Soto</h1>
+                <p class="persona-detalle">Corredora de propiedades · Centro</p>
+                <div class="fila-etiquetas">
+                  <span class="sello"><svg class="icono" aria-hidden="true"><use href="#i-escudo"/></svg>Verificada</span>
+                  <span class="dato"><svg class="icono" aria-hidden="true"><use href="#i-estrella"/></svg>4,6 · 12 vecinos</span>
+                  <span class="dato"><svg class="icono" aria-hidden="true"><use href="#i-pin"/></svg>a 2 km de ti</span>
+                </div>
+              </div>
+            </header>
+
+            <section class="bloque" aria-labelledby="h-sobre">
+              <h2 id="h-sobre">Sobre Marcela</h2>
+              <p class="bloque-texto">Soy corredora de propiedades en Temuco hace quince años. Trabajo sobre todo en el Centro y el poniente: casas para familias que parten, departamentos para arrendar y administración de arriendos para quienes viven fuera de la ciudad. Prefiero explicarte los números con calma antes de que firmes algo.</p>
+            </section>
+
+            <section class="bloque" aria-labelledby="h-hace">
+              <h2 id="h-hace">Lo que hace</h2>
+              <ul class="servicios">
+                <li class="servicio"><strong>Tasación comercial</strong><span>60 min · desde $35.000</span></li>
+                <li class="servicio"><strong>Administración de arriendos</strong><span>45 min · a convenir</span></li>
+                <li class="servicio"><strong>Venta de casa o departamento</strong><span>60 min · comisión según la propiedad</span></li>
+              </ul>
+            </section>
+
+            <section class="bloque" aria-labelledby="h-donde">
+              <h2 id="h-donde">Dónde atiende</h2>
+              <ul class="zonas">
+                <li class="zona zona--principal">Centro</li>
+                <li class="zona">Amanecer</li>
+                <li class="zona">Labranza</li>
+              </ul>
+            </section>
+
+            <section class="bloque" aria-labelledby="h-cred">
+              <h2 id="h-cred">Credenciales verificadas</h2>
+              <ul class="credenciales" style="margin-top:12px">
+                <li><svg class="icono" aria-hidden="true"><use href="#i-escudo"/></svg><div><strong>Técnico en Corretaje de Propiedades</strong><small>Revisado por ZASS! · 2020</small></div></li>
+                <li><svg class="icono" aria-hidden="true"><use href="#i-escudo"/></svg><div><strong>Registro de corredores de propiedades</strong><small>Revisado por ZASS! · vigente hasta 2027</small></div></li>
+              </ul>
+            </section>
+
+            <section class="bloque" aria-labelledby="h-vecinos">
+              <h2 id="h-vecinos">Lo que dicen los vecinos</h2>
+              <div class="nota">
+                <span class="nota-promedio">4,6</span>
+                <span class="nota-detalle">de 5 · 12 vecinos que fueron atendidos</span>
+              </div>
+              <div class="opiniones">
+                <blockquote class="opinion" style="margin:0"><p>Me explicó cada paso del arriendo y no me hizo sentir que estaba preguntando tonteras.</p><footer>Camila · Pedro de Valdivia</footer></blockquote>
+                <blockquote class="opinion" style="margin:0"><p>Tasó la casa de mi mamá y el precio quedó bastante cerca de lo que después se vendió.</p><footer>Jorge · Amanecer</footer></blockquote>
+                <blockquote class="opinion" style="margin:0"><p>Responde rápido y llega a la hora. Se agradece.</p><footer>Daniela · Labranza</footer></blockquote>
+              </div>
+              <p class="aclaracion">Solo opinan vecinos que tuvieron una cita con ella. Con menos de tres reseñas mostramos cuántas hay, no un promedio.</p>
+            </section>
+          </article>
+
+          <aside class="lateral" aria-labelledby="h-contacto">
+            <h2 id="h-contacto">Habla con Marcela</h2>
+            <div class="lateral-botones">
+              <a class="boton boton--amarillo boton--lleno" href="#ficha"><svg class="icono" aria-hidden="true"><use href="#i-chat"/></svg>Escribirle por WhatsApp</a>
+              <a class="boton boton--lleno" href="#ficha"><svg class="icono" aria-hidden="true"><use href="#i-fono"/></svg>Llamar</a>
+            </div>
+            <div class="lateral-enlaces">
+              <a href="#ficha"><svg class="icono" aria-hidden="true"><use href="#i-correo"/></svg>Escribirle por correo</a>
+              <a href="#ficha"><svg class="icono" aria-hidden="true"><use href="#i-web"/></svg>Su sitio web</a>
+            </div>
+            <p class="lateral-nota">Atiende en Centro, Amanecer y Labranza. Su dirección no se publica: coordinan por mensaje.</p>
+          </aside>
+        </div>
+      </div>
+
+      <div class="barra-contacto">
+        <a class="boton boton--amarillo" href="#ficha"><svg class="icono" aria-hidden="true"><use href="#i-chat"/></svg>WhatsApp</a>
+        <a class="boton" href="#ficha"><svg class="icono" aria-hidden="true"><use href="#i-fono"/></svg>Llamar</a>
+      </div>
+    </section>
+
+    <!-- ================================================================ MI FICHA -->
+    <section class="vista" id="v-mi-ficha" hidden>
+      <div class="contenedor ficha-pagina">
+
+        <div class="mi-cabecera">
+          <div>
+            <h1>Tu ficha</h1>
+            <p class="estado">Borrador · solo tú la ves</p>
+          </div>
+          <div class="mi-acciones">
+            <a class="boton" href="#ficha"><svg class="icono" aria-hidden="true"><use href="#i-ojo"/></svg>Verla como la ven los vecinos</a>
+            <button class="boton boton--tinta" type="button" disabled aria-describedby="aviso-publicar">Publicar mi ficha</button>
+          </div>
+        </div>
+        <p class="mi-aviso" id="aviso-publicar">Te falta una cosa para publicar: contar dónde atiendes. Al publicar empiezan tus 30 días de prueba gratis.</p>
+
+        <div class="ficha-rejilla">
+          <article>
+            <header class="persona">
+              <span class="monograma monograma--g" aria-hidden="true">MS</span>
+              <div>
+                <h1 style="font-size:clamp(2rem,5.4vw,3.5rem)">Marcela Soto</h1>
+                <p class="persona-detalle">Corredora de propiedades · Centro</p>
+                <div class="fila-etiquetas">
+                  <button class="editar" type="button"><svg class="icono" aria-hidden="true"><use href="#i-lapiz"/></svg>Cambiar nombre y rubro</button>
+                </div>
+              </div>
+            </header>
+
+            <section class="bloque" aria-labelledby="m-sobre">
+              <div class="bloque-cabeza">
+                <h2 id="m-sobre">Sobre ti</h2>
+              </div>
+              <!-- Se edita aqui mismo, sobre la ficha: no hay una pagina de formulario aparte -->
+              <div class="edicion">
+                <label class="solo-lector" for="sobre-ti">Cuéntales quién eres</label>
+                <textarea id="sobre-ti" maxlength="1500" aria-describedby="cuenta-sobre">Soy corredora de propiedades en Temuco hace quince años. Trabajo sobre todo en el Centro y el poniente: casas para familias que parten, departamentos para arrendar y administración de arriendos para quienes viven fuera de la ciudad.</textarea>
+                <div class="edicion-pie">
+                  <span class="contador" id="cuenta-sobre">0 de 1500</span>
+                  <div class="edicion-botones">
+                    <button class="boton" type="button">Cancelar</button>
+                    <button class="boton boton--tinta" type="button">Guardar</button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="bloque" aria-labelledby="m-hace">
+              <div class="bloque-cabeza">
+                <h2 id="m-hace">Lo que haces</h2>
+                <button class="editar" type="button"><svg class="icono" aria-hidden="true"><use href="#i-lapiz"/></svg>Editar</button>
+              </div>
+              <ul class="servicios">
+                <li class="servicio"><strong>Tasación comercial</strong><span>60 min · desde $35.000</span></li>
+                <li class="servicio"><strong>Administración de arriendos</strong><span>45 min · a convenir</span></li>
+                <li class="servicio"><strong>Venta de casa o departamento</strong><span>60 min · comisión según la propiedad</span></li>
+              </ul>
+            </section>
+
+            <section class="bloque" id="donde" aria-labelledby="m-donde">
+              <div class="bloque-cabeza"><h2 id="m-donde">Dónde atiendes</h2></div>
+              <div class="invitacion">
+                <strong>Cuéntales en qué barrios atiendes</strong>
+                <p>Elige los barrios donde sí vas. Así apareces cuando alguien de ahí te busca, y no cuando no puedes llegar.</p>
+                <div class="zonas" role="group" aria-label="Barrios donde atiendes">
+                  <button class="zona" type="button" aria-pressed="true">Centro</button>
+                  <button class="zona" type="button" aria-pressed="false">Amanecer</button>
+                  <button class="zona" type="button" aria-pressed="false">Labranza</button>
+                  <button class="zona" type="button" aria-pressed="false">Pedro de Valdivia</button>
+                  <button class="zona" type="button" aria-pressed="false">Barrio Inglés</button>
+                  <button class="zona" type="button" aria-pressed="false">Las Quilas</button>
+                </div>
+                <button class="boton boton--tinta" type="button">Guardar mis barrios</button>
+              </div>
+            </section>
+
+            <section class="bloque" aria-labelledby="m-cred">
+              <div class="bloque-cabeza"><h2 id="m-cred">Credenciales</h2></div>
+              <div class="invitacion">
+                <strong>Consigue el sello Verificado</strong>
+                <p>Sube tu título o tu certificado. Una persona de ZASS! lo revisa y, si está bien, aparece el sello en tu ficha.</p>
+                <button class="boton" type="button">Subir un documento</button>
+              </div>
+            </section>
+
+            <section class="bloque" aria-labelledby="m-vecinos">
+              <div class="bloque-cabeza"><h2 id="m-vecinos">Lo que dicen los vecinos</h2></div>
+              <p class="vacio-texto">Todavía no tienes reseñas. Aparecen cuando un vecino al que atendiste te deja la suya.</p>
+            </section>
+          </article>
+
+          <aside class="guia" aria-labelledby="g-titulo">
+            <h2 id="g-titulo">Tu ficha está al 75 %</h2>
+            <div class="barra" role="progressbar" aria-valuenow="75" aria-valuemin="0" aria-valuemax="100" aria-label="Avance de tu ficha"><div style="width:75%"></div></div>
+            <p class="guia-porcentaje">3 de 4 listo para publicar</p>
+            <ul class="pasos">
+              <li class="paso paso--hecho"><span class="marca"><svg class="icono" aria-hidden="true"><use href="#i-check"/></svg></span>Cómo te llamas y qué haces</li>
+              <li class="paso paso--hecho"><span class="marca"><svg class="icono" aria-hidden="true"><use href="#i-check"/></svg></span>Tu rubro</li>
+              <li class="paso paso--hecho"><span class="marca"><svg class="icono" aria-hidden="true"><use href="#i-check"/></svg></span>Lo que ofreces</li>
+              <li class="paso"><span class="marca"></span><span>Dónde atiendes</span><a href="#donde">Completar</a></li>
+            </ul>
+            <p class="lateral-nota">Después, cuando quieras: el sello Verificado y cómo te contactan.</p>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="pie sobre-tinta">
+    <div class="contenedor">
+      <div class="pie-fila">
+        <div>
+          <a class="logo" href="#inicio">ZAS<em>S!</em></a>
+          <p>Conecta con un toque. Hecho en Temuco, para Temuco.</p>
+        </div>
+        <ul>
+          <li><a href="#profesionales">Para profesionales</a></li>
+          <li><a href="#barrios">Barrios</a></li>
+          <li><a href="#inicio">Condiciones y privacidad</a></li>
+        </ul>
+      </div>
+      <p class="pie-final">Los barrios usan datos de <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer noopener">OpenStreetMap contributors</a>.</p>
+    </div>
+  </footer>
+
+  <script>
+    // Enrutador minimo del prototipo: una vista por hash.
+    const vistas = { inicio: 'v-inicio', ficha: 'v-ficha', 'mi-ficha': 'v-mi-ficha' };
+    function ir() {
+      const hash = location.hash.slice(1);
+      // Los anclajes internos (#barrios, #oficios...) se quedan en la portada.
+      const nombre = vistas[hash] ? hash : (hash === 'donde' ? 'mi-ficha' : 'inicio');
+      for (const [n, id] of Object.entries(vistas)) document.getElementById(id).hidden = n !== nombre;
+      document.body.dataset.vista = nombre;
+      if (vistas[hash]) window.scrollTo(0, 0);
+    }
+    addEventListener('hashchange', ir);
+    ir();
+
+    // Contador de la descripcion: 1500, que es el maximo real.
+    const caja = document.getElementById('sobre-ti');
+    const cuenta = document.getElementById('cuenta-sobre');
+    const actualizar = () => { cuenta.textContent = caja.value.length + ' de 1500'; };
+    caja.addEventListener('input', actualizar); actualizar();
+
+    // Los barrios se eligen como etiquetas, no como casillas en una lista.
+    document.querySelectorAll('button.zona').forEach((b) =>
+      b.addEventListener('click', () => b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') !== 'true')));
+  </script>
+</body>
+</html>

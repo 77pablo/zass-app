@@ -373,6 +373,63 @@ no existe subida de archivos, y una comunidad sin caras se ve vacía), y si la c
 incluye también al buscador como miembro con perfil. Sin eso se puede avanzar con una
 propuesta razonable, pero es una apuesta.
 
+### El prototipo de diseño (enviado a Pablo el 7-nov-2026)
+
+`diseno/prototipo-comunidad.html`: un HTML estático con tres pantallas (portada, ficha pública y
+**Mi ficha**), datos de ejemplo y la marca de siempre. Se abre en cualquier navegador. Las capturas
+quedan en `registros/capturas/diseno-*.png`.
+
+**Las decisiones, con su razón:**
+
+- **La búsqueda es una frase que se completa**: *"Busco a alguien de [corretaje] en [el Centro]"*,
+  con dos `<select>` reales con aspecto de pastilla, sobre un **amarillo de pared a pared**. Es el
+  único riesgo estético: la marca es amarilla y casi todos los directorios son blancos y azules.
+  Sigue siendo accesible (son selectores nativos con su etiqueta) y no es un formulario con campos.
+- **Una mano de tarjetas** en la portada: una persona no es un barrio, así que la tarjeta de
+  Marcela Soto va con otras dos de gente distinta asomando por detrás. Dice "comunidad" mejor que
+  una frase, y "Conecta con un toque" aparece como lo que es: la tarjeta que te da alguien.
+- **Los barrios son un índice por sector**, con cuánta gente hay en cada uno, en columnas que se
+  acomodan solas (los sectores tienen alturas muy distintas y una rejilla dejaba uno solo en una
+  segunda fila). **Los oficios son filas grandes**, no tarjetas iguales.
+- **Mi ficha es la ficha pública con la edición encima**, no una página de formularios: la
+  descripción se edita *sobre* la ficha (con el contador real de 1500), las secciones vacías son
+  invitaciones con borde punteado, y la guía lateral va completándose en vez de listar errores.
+- Montserrat y la paleta de la marca sin tocar. Lo único que se agrega es el verde del sello
+  "Verificado", que ya existía en la aplicación, y un amarillo suave para las invitaciones.
+
+**Lo que se midió** (con Playwright, no solo mirando): sin desborde horizontal a 390 px, todos los
+objetivos táctiles de al menos 44 px, Montserrat descargada de verdad (500, 600, 700 y 800) y sin
+errores de consola. **Y encontró tres fallos míos**: un `padding` en una clase que **pisaba los
+márgenes laterales** de otra (la ficha quedaba pegada a los bordes del celular: es justo el fallo de
+especificidad CSS que advierte la guía de diseño), el logo y un enlace que medían 34 y 22 px, y una
+tarjeta que era un `<a>` (inline) y rompía el apilado fuera de una rejilla.
+
+**LO QUE EL PROTOTIPO MUESTRA Y TODAVÍA NO EXISTE.** Esto importa: el sitio real no puede
+afirmar nada que no haga.
+
+| El prototipo dice o muestra | Estado real |
+|---|---|
+| "Con títulos revisados por una persona" y el sello Verificado | **MOD-02 Credenciales no existe.** Nadie puede emitir un sello hoy |
+| "Reseñas de vecinos que los contrataron", promedio y citas | **MOD-11 Reseñas no existe**, y depende de MOD-06 Agenda (solo opina quien tuvo una cita) |
+| "Conecta con un toque": la tarjeta NFC | **MOD-12 no existe**, y falta resolver la pregunta 4 de la sección 9 |
+| Cuántas personas hay por barrio y por oficio | **No hay endpoint.** API-04 devuelve zonas, no conteos. Hace falta uno público y agregado |
+| Fotos de las personas | **No existe subida de archivos.** El prototipo usa monogramas, que además es lo que se vería sin foto |
+| "Subir un documento" en Mi ficha | Depende de MOD-02 |
+| Nombre del rubro "Arquitectura y construcción", "Técnicos y oficios" | Existen en la base con esos nombres |
+| WhatsApp, llamar, correo y sitio web de la ficha | **Sí existen**: son los campos de contacto del perfil (API-18/19), con el formato de móvil chileno validado |
+| "Su dirección no se publica", "a 2 km de ti" | **Sí es cierto** (RN-S3-02 y RN-S3-03) |
+| "Al publicar empiezan tus 30 días de prueba gratis" | **Sí es cierto** (MOD-13, probado de punta a punta) |
+
+**Al construirlo de verdad, el texto de la portada no puede prometer lo primero de la tabla.** Las
+frases sobre títulos revisados y reseñas de vecinos solo entran cuando MOD-02 y MOD-11 existan; hasta
+entonces la portada tiene que hablar de lo que sí hay (gente de tu barrio, con nombre, que atiende
+donde tú estás, y a la que le escribes directo).
+
+**Orden propuesto para construirlo**, cuando Pablo lo apruebe: (1) la ficha pública, que es la pieza
+central y no necesita nada nuevo de backend; (2) Mi ficha, que reutiliza la ficha y ya tiene toda la
+capa de datos hecha; (3) la portada, que sí necesita el endpoint de conteos; (4) rehacer la búsqueda
+con este lenguaje.
+
 ### Interfaz — `frontend/`
 
 React 19 + TypeScript + Vite, con la marca aplicada (amarillo `#F6C81E`, Montserrat,
@@ -614,6 +671,8 @@ HECHO   MOD-05 Busqueda          7-nov-2026, con 74 pruebas nuevas
      del prestador iba a ser una sucesion de formularios, y se PARO antes de construirla
    - Lo que si se conserva, porque es independiente del diseno: toda la capa de datos
      (api/catalogo, funciones/perfil/servicio y validacion, 123 pruebas) y el backend
+   - PROPUESTA HECHA Y ENVIADA A PABLO: diseno/prototipo-comunidad.html (portada, ficha
+     publica y Mi ficha). Falta su reaccion ANTES de construirla de verdad en React
    - Ver "Direccion de diseno" mas abajo para lo que esto significa
    - Poner la atribucion a OpenStreetMap en el pie del mapa desde el dia uno
    - Verificar correo (API-14) y recuperar contrasena (API-15) van con estas
