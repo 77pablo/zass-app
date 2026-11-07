@@ -35,6 +35,6 @@ public sealed class ValidadorCambiarContrasena : AbstractValidator<CambiarContra
             .MinimumLength(Limites.ContrasenaMinima)
             .MaximumLength(Limites.ContrasenaMaxima)
             .NotEqual(x => x.ContrasenaActual)
-                .WithMessage("La contrasena nueva tiene que ser distinta de la actual.");
+                .WithMessage("La contraseña nueva tiene que ser distinta de la actual.");
     }
 }

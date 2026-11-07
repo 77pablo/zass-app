@@ -228,7 +228,7 @@ public class PerfilPruebas
         var aviso = Assert.Single(_cola.Encoladas);
         Assert.Equal(usuarioId, aviso.DestinatarioId);
         Assert.Equal(TipoNotificacion.PerfilPublicado, aviso.Tipo);
-        Assert.Contains("busquedas", aviso.Cuerpo);
+        Assert.Contains("búsquedas", aviso.Cuerpo);
     }
 
     [Fact]

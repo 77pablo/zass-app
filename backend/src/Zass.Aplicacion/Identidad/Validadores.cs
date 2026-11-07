@@ -40,7 +40,7 @@ public sealed class ValidadorRegistrarCuenta : AbstractValidator<RegistrarCuenta
         RuleFor(x => x.Contrasena)
             .NotEmpty()
             .MinimumLength(Limites.ContrasenaMinima)
-                .WithMessage($"La contrasena necesita al menos {Limites.ContrasenaMinima} caracteres.")
+                .WithMessage($"La contraseña necesita al menos {Limites.ContrasenaMinima} caracteres.")
             .MaximumLength(Limites.ContrasenaMaxima);
 
         RuleFor(x => x.Nombre)
@@ -83,7 +83,7 @@ public sealed class ValidadorEditarPerfilPrestador : AbstractValidator<EditarPer
     public ValidadorEditarPerfilPrestador()
     {
         RuleFor(x => x.NombrePublico)
-            .Must(n => !string.IsNullOrWhiteSpace(n)).WithMessage("Falta el nombre publico.")
+            .Must(n => !string.IsNullOrWhiteSpace(n)).WithMessage("Falta el nombre público.")
             .MaximumLength(Limites.NombrePublicoMaximo);
 
         RuleFor(x => x.Descripcion).MaximumLength(Limites.DescripcionMaxima);
@@ -91,11 +91,11 @@ public sealed class ValidadorEditarPerfilPrestador : AbstractValidator<EditarPer
         RuleFor(x => x.Version).GreaterThanOrEqualTo(0);
 
         RuleFor(x => x.TelefonoPublico)
-            .Must(EsMovilChileno).WithMessage("Ese telefono no parece un movil chileno.")
+            .Must(EsMovilChileno).WithMessage("Ese teléfono no parece un móvil chileno.")
             .When(x => !string.IsNullOrWhiteSpace(x.TelefonoPublico));
 
         RuleFor(x => x.Whatsapp)
-            .Must(EsMovilChileno).WithMessage("Ese WhatsApp no parece un movil chileno.")
+            .Must(EsMovilChileno).WithMessage("Ese WhatsApp no parece un móvil chileno.")
             .When(x => !string.IsNullOrWhiteSpace(x.Whatsapp));
 
         RuleFor(x => x.CorreoPublico)

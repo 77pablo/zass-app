@@ -31,7 +31,7 @@ public sealed class ServicioCuenta
     /// podria averiguar quien tiene cuenta en ZASS! probando correos.
     /// </summary>
     private const string RespuestaDeRecuperacion =
-        "Si ese correo tiene cuenta, le llegara un enlace para crear una contrasena nueva.";
+        "Si ese correo tiene cuenta, le llegará un enlace para crear una contraseña nueva.";
 
     private readonly IRepositorioUsuarios _usuarios;
     private readonly IRepositorioPerfiles _perfiles;
@@ -70,7 +70,7 @@ public sealed class ServicioCuenta
         if (usuario is null || usuario.TokenVerificacionExpiraEn is null
             || usuario.TokenVerificacionExpiraEn <= _reloj.Ahora)
             return Resultado.Falla(Fallas.NoEncontrado,
-                "Ese enlace de verificacion no sirve. Pide uno nuevo.");
+                "Ese enlace de verificación no sirve. Pide uno nuevo.");
 
         usuario.VerificarCorreo();
         usuario.TokenVerificacionExpiraEn = null;
@@ -109,7 +109,7 @@ public sealed class ServicioCuenta
                 ClaveIdempotencia = $"recuperacion:{usuario.Id}:{ahora:yyyyMMddHHmmss}",
                 Asunto = "Crear una contrasena nueva en ZASS!",
                 Cuerpo = $"Este codigo sirve por una hora: {token}. "
-                       + "Si no fuiste tu, ignora este correo: tu contrasena no ha cambiado.",
+                       + "Si no fuiste tú, ignora este correo: tu contraseña no ha cambiado.",
                 ProgramadaPara = ahora,
             });
 
@@ -134,7 +134,7 @@ public sealed class ServicioCuenta
         if (usuario is null || usuario.TokenRecuperacionExpiraEn is null
             || usuario.TokenRecuperacionExpiraEn <= _reloj.Ahora)
             return Resultado.Falla(Fallas.NoEncontrado,
-                "Ese enlace para cambiar la contrasena no sirve. Pide uno nuevo.");
+                "Ese enlace para cambiar la contraseña no sirve. Pide uno nuevo.");
 
         usuario.HashContrasena = _hash.Hash(contrasenaNueva);
         usuario.TokenRecuperacion = null;
@@ -163,7 +163,7 @@ public sealed class ServicioCuenta
             return Resultado.Falla(Fallas.NoEncontrado, "Esa cuenta no existe.");
 
         if (!_hash.Verifica(contrasenaActual, usuario.HashContrasena))
-            return Resultado.Falla(Fallas.NoAutorizado, "La contrasena actual no es esa.");
+            return Resultado.Falla(Fallas.NoAutorizado, "La contraseña actual no es esa.");
 
         usuario.HashContrasena = _hash.Hash(contrasenaNueva);
         usuario.ActualizadoEn = _reloj.Ahora;

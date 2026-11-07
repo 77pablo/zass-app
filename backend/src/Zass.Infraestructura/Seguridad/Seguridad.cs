@@ -169,10 +169,10 @@ public sealed class CifradoAesGcm : ICifradoDeDatos
     public string Descifrar(byte[] datos)
     {
         if (datos.Length < 1 + LargoNonce + LargoEtiqueta)
-            throw new CryptographicException("El dato cifrado esta truncado.");
+            throw new CryptographicException("El dato cifrado está truncado.");
         if (datos[0] != VersionDeClave)
             throw new CryptographicException(
-                $"Ese dato se cifro con la version de clave {datos[0]} y aqui esta la {VersionDeClave}.");
+                $"Ese dato se cifró con la versión de clave {datos[0]} y aquí está la {VersionDeClave}.");
 
         var nonce = datos.AsSpan(1, LargoNonce);
         var etiqueta = datos.AsSpan(1 + LargoNonce, LargoEtiqueta);

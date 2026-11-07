@@ -142,7 +142,7 @@ public class Cita
     public Resultado Confirmar()
     {
         if (Estado != EstadoCita.Solicitada)
-            return Resultado.Falla(Fallas.Conflicto, "Esta cita ya no esta pendiente.");
+            return Resultado.Falla(Fallas.Conflicto, "Esta cita ya no está pendiente.");
         Estado = EstadoCita.Confirmada;
         ExpiraEn = null;
         return Resultado.Ok();
@@ -151,7 +151,7 @@ public class Cita
     public Resultado Rechazar()
     {
         if (Estado != EstadoCita.Solicitada)
-            return Resultado.Falla(Fallas.Conflicto, "Esta cita ya no esta pendiente.");
+            return Resultado.Falla(Fallas.Conflicto, "Esta cita ya no está pendiente.");
         Estado = EstadoCita.Rechazada;
         return Resultado.Ok();
     }
@@ -170,7 +170,7 @@ public class Cita
     {
         if (Estado != EstadoCita.PendienteAsistencia)
             return Resultado.Falla(Fallas.Conflicto,
-                "Solo se registra asistencia despues de la hora de la cita.");
+                "Solo se registra asistencia después de la hora de la cita.");
         Estado = asistio ? EstadoCita.Realizada : EstadoCita.NoAsistio;
         return Resultado.Ok();
     }

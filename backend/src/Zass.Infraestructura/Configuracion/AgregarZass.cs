@@ -21,7 +21,7 @@ public sealed class OpcionesZass
 {
     public const string Seccion = "Zass";
 
-    [Required(ErrorMessage = "Falta la cadena de conexion a PostgreSQL.")]
+    [Required(ErrorMessage = "Falta la cadena de conexión a PostgreSQL.")]
     public string CadenaConexion { get; set; } = "";
 
     /// <summary>
@@ -43,7 +43,7 @@ public sealed class OpcionesZass
         {
             throw new OptionsValidationException(
                 Seccion, typeof(OpcionesZass),
-                new[] { "ClaveDireccionesBase64 no es Base64 valido." });
+                new[] { "ClaveDireccionesBase64 no es Base64 válido." });
         }
 
         if (clave.Length != 32)
@@ -104,7 +104,7 @@ public static class RegistroDeServicios
         // --- Validadores ---
         // Se registran por ensamblado a proposito: agregar un comando sin su validador
         // no deja un hueco silencioso, porque el filtro de Api rechaza lo que no tiene
-        // validador registrado (seguridad.md, seccion 3).
+        // validador registrado (seguridad.md, sección 3).
         servicios.AddValidatorsFromAssemblyContaining<ValidadorRegistrarCuenta>();
 
         return servicios;

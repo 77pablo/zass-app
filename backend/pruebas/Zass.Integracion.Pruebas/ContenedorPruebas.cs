@@ -95,7 +95,7 @@ public class ContenedorPruebas
         var error = Assert.Throws<OptionsValidationException>(
             () => proveedor.GetRequiredService<IOptions<OpcionesZass>>().Value);
 
-        Assert.Contains("cadena de conexion", string.Join(" ", error.Failures));
+        Assert.Contains("cadena de conexión", string.Join(" ", error.Failures));
     }
 
     [Theory]

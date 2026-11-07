@@ -49,9 +49,9 @@ public static class Respuestas
         Fallas.NoEncontrado => "No encontrado",
         Fallas.Conflicto => "Conflicto",
         Fallas.ReglaDeNegocio => "Regla de negocio",
-        Fallas.Validacion => "Datos invalidos",
-        Fallas.VersionDesactualizada => "Version desactualizada",
-        _ => "Peticion incorrecta",
+        Fallas.Validacion => "Datos inválidos",
+        Fallas.VersionDesactualizada => "Versión desactualizada",
+        _ => "Petición incorrecta",
     };
 }
 
@@ -71,13 +71,13 @@ public sealed class FiltroDeValidacion<T> : IEndpointFilter where T : class
         var cuerpo = contexto.Arguments.OfType<T>().FirstOrDefault();
         if (cuerpo is null)
             return Results.Problem(
-                title: "Datos invalidos", detail: "Falta el cuerpo de la peticion.",
+                title: "Datos inválidos", detail: "Falta el cuerpo de la petición.",
                 statusCode: StatusCodes.Status400BadRequest);
 
         var validador = contexto.HttpContext.RequestServices.GetService<IValidator<T>>()
             ?? throw new InvalidOperationException(
                 $"No hay validador registrado para {typeof(T).Name}. "
-                + "Todo endpoint tiene que declarar su esquema (seguridad.md, seccion 3).");
+                + "Todo endpoint tiene que declarar su esquema (seguridad.md, sección 3).");
 
         var resultado = await validador.ValidateAsync(cuerpo);
         if (resultado.IsValid) return await siguiente(contexto);
@@ -88,7 +88,7 @@ public sealed class FiltroDeValidacion<T> : IEndpointFilter where T : class
             resultado.Errors
                 .GroupBy(e => e.PropertyName)
                 .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray()),
-            title: "Datos invalidos");
+            title: "Datos inválidos");
     }
 }
 
@@ -137,7 +137,7 @@ public sealed class FiltroCsrf : IEndpointFilter
             // 403 y no 400: la peticion esta bien formada, lo que falta es la prueba de
             // que la origino la propia aplicacion.
             return Results.Problem(
-                title: "Peticion no verificada",
+                title: "Petición no verificada",
                 detail: "Falta o no corresponde el token de la cabecera X-CSRF-Token.",
                 statusCode: StatusCodes.Status403Forbidden);
         }

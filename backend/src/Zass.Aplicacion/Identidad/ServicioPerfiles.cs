@@ -112,7 +112,7 @@ public sealed class ServicioPerfiles
         // viaje y da un mensaje util en vez de una excepcion de EF Core.
         if (cmd.Version != perfil.Version)
             return Resultado.Falla(Fallas.VersionDesactualizada,
-                "Alguien edito este perfil mientras lo tenias abierto. Vuelve a cargarlo.");
+                "Alguien editó este perfil mientras lo tenías abierto. Vuelve a cargarlo.");
 
         perfil.NombrePublico = cmd.NombrePublico.Trim();
         perfil.Descripcion = cmd.Descripcion?.Trim();
@@ -173,7 +173,7 @@ public sealed class ServicioPerfiles
             Canal = CanalNotificacion.Correo,
             ClaveIdempotencia = $"perfil-publicado:{perfil.Id}:{perfil.PublicadoEn:yyyyMMddHHmmss}",
             Asunto = "Tu perfil ya esta publicado en ZASS!",
-            Cuerpo = "Tu perfil ya aparece en las busquedas de quienes buscan cerca de ti.",
+            Cuerpo = "Tu perfil ya aparece en las búsquedas de quienes buscan cerca de ti.",
             ProgramadaPara = _reloj.Ahora,
         });
 

@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
     <ProjectReference Include="..\Zass.Infraestructura\Zass.Infraestructura.csproj" />
@@ -12,6 +12,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>85245fad-e88c-4ddb-ad24-eb09ca184d22</UserSecretsId>
   </PropertyGroup>
 
 </Project>

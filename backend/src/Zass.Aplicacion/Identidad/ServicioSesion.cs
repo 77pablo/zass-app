@@ -31,7 +31,7 @@ public sealed class ServicioSesion
     /// Un mensaje unico para "no existe la cuenta" y para "la contrasena no es esa".
     /// Distinguirlos regalaria un verificador de correos registrados (seguridad.md 5).
     /// </summary>
-    private const string CredencialesInvalidas = "El correo o la contrasena no corresponden.";
+    private const string CredencialesInvalidas = "El correo o la contraseña no corresponden.";
 
     private readonly IRepositorioUsuarios _usuarios;
     private readonly IRepositorioSesiones _sesiones;
@@ -104,12 +104,12 @@ public sealed class ServicioSesion
         var sesion = await _sesiones.PorHashTokenAsync(_secretos.HashToken(tokenRefresco), ct);
         if (sesion is null || !sesion.EstaVigente(_reloj.Ahora))
             return Resultado.Falla<SesionAbiertaDto>(Fallas.NoAutorizado,
-                "La sesion no es valida. Vuelve a iniciar sesion.");
+                "La sesión no es válida. Vuelve a iniciar sesión.");
 
         var usuario = await _usuarios.PorIdAsync(sesion.UsuarioId, ct);
         if (usuario is null || usuario.Estado is EstadoCuenta.Suspendida or EstadoCuenta.Eliminada)
             return Resultado.Falla<SesionAbiertaDto>(Fallas.NoAutorizado,
-                "La sesion no es valida. Vuelve a iniciar sesion.");
+                "La sesión no es válida. Vuelve a iniciar sesión.");
 
         sesion.RevocadaEn = _reloj.Ahora;
         var dto = AbrirSesion(usuario, ip ?? sesion.IpOrigen, agente ?? sesion.AgenteUsuario);
@@ -123,7 +123,7 @@ public sealed class ServicioSesion
     {
         var sesion = await _sesiones.PorHashTokenAsync(_secretos.HashToken(tokenRefresco), ct);
         if (sesion is null)
-            return Resultado.Falla(Fallas.NoEncontrado, "Esa sesion no existe.");
+            return Resultado.Falla(Fallas.NoEncontrado, "Esa sesión no existe.");
 
         sesion.RevocadaEn ??= _reloj.Ahora;
         await _unidad.GuardarAsync(ct);

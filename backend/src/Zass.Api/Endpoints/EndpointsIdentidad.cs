@@ -70,7 +70,7 @@ public static class EndpointsIdentidad
                 var refresco = http.Request.Cookies[ConfiguracionDeSeguridad.CookieRefresco];
                 if (string.IsNullOrEmpty(refresco))
                     return Results.Problem(
-                        title: "No autorizado", detail: "No hay sesion que renovar.",
+                        title: "No autorizado", detail: "No hay sesión que renovar.",
                         statusCode: StatusCodes.Status401Unauthorized);
 
                 var r = await servicio.RenovarAsync(refresco, Ip(http), Agente(http));

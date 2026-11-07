@@ -53,7 +53,7 @@ public class Credencial
     {
         if (Estado is not (EstadoCredencial.Borrador or EstadoCredencial.Rechazada
             or EstadoCredencial.Vencida))
-            return Resultado.Falla(Fallas.Conflicto, "Esta credencial ya esta en revision.");
+            return Resultado.Falla(Fallas.Conflicto, "Esta credencial ya está en revisión.");
         if (!TieneRespaldo())
             return Resultado.Falla(Fallas.ReglaDeNegocio,
                 "Sube al menos un documento de respaldo antes de enviar a revision.");
