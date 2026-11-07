@@ -283,6 +283,7 @@ buenos mirando una captura.
 | Entrar | API-09 | **Funciona contra la base real** |
 | Salir | API-11 | Funciona |
 | Aviso de correo sin verificar | — | Funciona |
+| **Buscar** (rubro, zona o ubicación, filtros, ver más) | API-01, API-02, API-04 | **Construida y probada con `fetch` simulado (42 pruebas). Todavía NO está cableada en `App` y NO se ha visto en un navegador real** |
 
 Decisiones que quedaron fijadas en el código y tienen prueba:
 
@@ -468,7 +469,7 @@ guarda el avance en borrador antes de elegir rubro. Mandó el caso de uso.
 | `Zass.Api` | Filtro de idempotencia (`Idempotency-Key`), que se necesita desde API-36 |
 | Pruebas de arquitectura | Las 4 reglas de `paquetes-por-capas.md` §5 **no se verifican solas** todavía |
 | Datos de ejemplo | Prestadores y reseñas. Los roles, el plan de prueba, los rubros, los servicios y las **16 zonas** ya están, y como dato del esquema |
-| Frontend | Hechas las pantallas de **registro e ingreso**. Faltan: verificar correo, recuperar contraseña, perfil del prestador (ya tiene API-02, API-03, API-04, API-20 y API-21 detrás) y búsqueda (ya tiene API-01 detrás) |
+| Frontend | Hechas las pantallas de **registro e ingreso**. Faltan: verificar correo, recuperar contraseña, perfil del prestador (ya tiene API-02, API-03, API-04, API-20 y API-21 detrás) y cablear la búsqueda, que ya está construida |
 | Trabajos en segundo plano | Recordatorios, vencimientos, bloques, purgas |
 | Notificaciones | Se encolan en TBL-27; **nadie las despacha**. Decidido: buzón local `.eml` |
 | Suscripciones | Tablas sí, lógica y pasarela no |
@@ -505,6 +506,13 @@ HECHO   MOD-05 Busqueda          7-nov-2026, con 74 pruebas nuevas
 1. LAS PANTALLAS: perfil del prestador y busqueda                      <-- AQUI
    - Todo el backend que necesitan existe y esta probado: API-01 a API-05 y
      API-18 a API-23. Es lo que hace visible y tocable el producto
+   - ESTADO DE ESTE PASO: la pantalla de BUSQUEDA esta construida como componente
+     aislado (frontend/src/funciones/busqueda, 42 pruebas, 8 mutaciones y 8 rojos).
+     FALTA: (a) cablearla en App con navegacion, lo que obliga a cambiar la prueba
+     'abre en la pantalla de entrar' porque la portada pasa a ser la busqueda;
+     (b) VERLA en un navegador real: el CSS nuevo solo se ha comprobado con jsdom
+     y para medirlo hace falta la API y la base arriba; (c) la pantalla del perfil
+     del prestador, que no existe todavia
    - Perfil del prestador: rubro (API-02), servicios (API-03/20), zona
      (API-04/21), publicar (API-22) y ver su suscripcion de prueba
    - Busqueda: rubro, donde (zona, o ubicacion del navegador con el flujo 4A de
