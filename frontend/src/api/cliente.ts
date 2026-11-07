@@ -1,0 +1,144 @@
+/**
+ * Cliente HTTP de ZASS!. Un solo lugar que sabe de cookies, token CSRF y de como
+ * se ve un error de la API, para que ninguna pantalla lo repita a su manera.
+ *
+ * La API devuelve los errores en formato problem+json (RFC 7807), asi que aqui se
+ * traducen a algo que un componente pueda mostrar sin pensar.
+ */
+
+export class ErrorApi extends Error {
+  /** Codigo HTTP. Vale 0 cuando ni siquiera hubo respuesta (sin conexion). */
+  readonly estado: number
+  /** Texto listo para mostrarle a una persona. */
+  readonly mensaje: string
+  /** Errores por campo de una validacion, con el nombre del campo en minuscula. */
+  readonly campos: Record<string, string>
+
+  constructor(estado: number, mensaje: string, campos: Record<string, string> = {}) {
+    super(mensaje)
+    this.name = 'ErrorApi'
+    this.estado = estado
+    this.mensaje = mensaje
+    this.campos = campos
+  }
+}
+
+const RUTA_CSRF = '/api/auth/csrf'
+
+let ficha: string | null = null
+
+/**
+ * Borra el token guardado. Hay que llamarla al iniciar y al cerrar sesion: el
+ * token esta atado a la identidad, y el de antes no sirve despues.
+ */
+export function olvidarCsrf(): void {
+  ficha = null
+}
+
+async function tokenCsrf(renovar = false): Promise<string> {
+  if (ficha !== null && !renovar) return ficha
+  const r = await fetch(RUTA_CSRF, { credentials: 'include' })
+  const cuerpo = (await r.json()) as { token: string }
+  ficha = cuerpo.token
+  return ficha
+}
+
+/** Lee la respuesta: devuelve el cuerpo, o lanza ErrorApi si no salio bien. */
+async function leer<T>(r: Response): Promise<T> {
+  if (!r.ok) throw await fallo(r)
+
+  if (r.status === 204 || r.headers.get('content-length') === '0') {
+    return undefined as T
+  }
+  const texto = await r.text()
+  return (texto === '' ? undefined : JSON.parse(texto)) as T
+}
+
+async function fallo(r: Response): Promise<ErrorApi> {
+  // Un 500 puede llegar como pagina HTML. Si se asume JSON, el error real queda
+  // tapado por un "Unexpected token <" que no le dice nada a nadie.
+  let cuerpo: Record<string, unknown> = {}
+  try {
+    cuerpo = (await r.json()) as Record<string, unknown>
+  } catch {
+    cuerpo = {}
+  }
+
+  const campos: Record<string, string> = {}
+  const errores = cuerpo.errors as Record<string, string[]> | undefined
+  if (errores) {
+    for (const [campo, mensajes] of Object.entries(errores)) {
+      if (mensajes?.length) campos[campo.toLowerCase()] = mensajes[0]
+    }
+  }
+
+  const mensaje =
+    (cuerpo.detail as string | undefined) ??
+    (cuerpo.title as string | undefined) ??
+    generico(r.status)
+
+  return new ErrorApi(r.status, mensaje, campos)
+}
+
+function generico(estado: number): string {
+  if (estado >= 500) return 'El servidor tuvo un problema. Intenta de nuevo en un momento.'
+  if (estado === 404) return 'No encontramos lo que buscabas.'
+  return 'No se pudo completar la operación.'
+}
+
+async function llamar(ruta: string, opciones: RequestInit): Promise<Response> {
+  try {
+    return await fetch(ruta, opciones)
+  } catch {
+    // fetch solo rechaza cuando no hubo respuesta: sin red, servidor caido, DNS.
+    throw new ErrorApi(0, 'No se pudo conectar. Revisa tu conexión e intenta de nuevo.')
+  }
+}
+
+/** GET. No lleva token CSRF porque no cambia nada. */
+export async function obtener<T>(ruta: string): Promise<T> {
+  const r = await llamar(ruta, {
+    method: 'GET',
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  })
+  return leer<T>(r)
+}
+
+/**
+ * Cualquier metodo que cambia estado. Adjunta el token CSRF y, si la API lo
+ * rechaza con 403, pide uno nuevo y reintenta UNA vez.
+ *
+ * Ese reintento no es un parche: el token antifalsificacion queda atado a la
+ * identidad de quien lo pidio, asi que el obtenido en la pantalla de ingreso
+ * deja de valer en cuanto la persona entra. Sin el reintento, la primera accion
+ * despues de iniciar sesion falla siempre, y con un mensaje que no se entiende.
+ */
+export async function enviar<T>(
+  ruta: string,
+  cuerpo?: unknown,
+  metodo: 'POST' | 'PUT' | 'DELETE' = 'POST',
+): Promise<T> {
+  let r = await unIntento(ruta, cuerpo, metodo, await tokenCsrf())
+
+  if (r.status === 403) {
+    r = await unIntento(ruta, cuerpo, metodo, await tokenCsrf(true))
+  }
+
+  return leer<T>(r)
+}
+
+function unIntento(
+  ruta: string, cuerpo: unknown, metodo: string, token: string,
+): Promise<Response> {
+  return llamar(ruta, {
+    method: metodo,
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': token,
+    },
+    ...(cuerpo === undefined ? {} : { body: JSON.stringify(cuerpo) }),
+  })
+}
