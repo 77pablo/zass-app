@@ -1,0 +1,26 @@
+# --- Secretos. Nunca al repositorio ---
+.clave-pg.txt
+.env
+*.env
+!.env.example
+appsettings.Development.json
+appsettings.Production.json
+
+# --- La instancia local de PostgreSQL vive dentro del proyecto ---
+herramientas/
+datos-pg/
+registros/
+
+# --- .NET ---
+bin/
+obj/
+*.user
+
+# --- Node ---
+node_modules/
+dist/
+.vite/
+
+# --- Archivos subidos en desarrollo ---
+almacenamiento/
+buzon-correo/

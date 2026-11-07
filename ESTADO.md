@@ -1,0 +1,245 @@
+# ZASS! — estado del desarrollo
+
+**Última sesión:** 7 de noviembre de 2026.
+
+Este archivo existe para retomar sin reconstruir contexto. Dice **qué está hecho y
+comprobado**, **qué no**, y **el siguiente paso exacto**.
+
+---
+
+## 1. Qué es esto
+
+La plataforma ZASS! funcionando de verdad, construida sobre el diseño que está en
+`C:\Users\pdani\OneDrive\Desktop\Repositorio ZASS\zass-documentacion`.
+
+**Ese repositorio de documentación es la especificación.** Los identificadores que
+aparecen en el código (`CU-12`, `TBL-18`, `R-1`, `CC-01`, `RN-S4-05`) apuntan a él.
+
+### Modelo de negocio
+
+Quien **ofrece** paga una mensualidad. Quien **busca** no paga nunca. Subsistema **S7**
+con las tablas `planes`, `suscripciones` y `pagos`; la pasarela no existe todavía.
+
+---
+
+## 2. Resumen en una línea
+
+**MOD-01 Identidad está construido, con API y comprobado de punta a punta: 174 pruebas
+en verde** (103 de aplicación sin base de datos, 71 de integración contra PostgreSQL real
+y contra la API por HTTP).
+
+Lo que falta es MOD-02 a MOD-12, el frontend y los trabajos de fondo.
+
+---
+
+## 3. Lo que está hecho y comprobado
+
+### Infraestructura local
+
+| Pieza | Estado | Comprobado con |
+|---|---|---|
+| PostgreSQL 16.4 portable, puerto 5433 | **Funcionando** | `pg_isready`, `SELECT version()` |
+| PostGIS 3.6.2, `citext`, `pgcrypto` | Instaladas | `pg_extension` |
+| Base `zass`, usuario `zass` | Creada | conexión real |
+
+### Base de datos — 5 migraciones aplicadas
+
+| Migración | Qué hizo | Comprobado contra la base |
+|---|---|---|
+| `EsquemaInicial` | 31 tablas, R-1, 9 `CHECK`, índices únicos parciales | `pg_indexes`, `pg_constraint` |
+| `TokensSeparados` | Un vencimiento por token en `usuarios` | `information_schema.columns`: las 4 columnas, con su tipo |
+| `RolesDeCatalogo` | Los 5 roles de TBL-02 como datos del esquema | `SELECT * FROM roles` |
+| `RubroOpcionalEnBorrador` | `rubro_id` nulo mientras el perfil es borrador | el perfil en borrador ya se inserta |
+| `UbicacionFueraDelModelo` | **Índice GIST** en `ubicacion_exacta`, y la columna fuera del modelo de EF Core | `pg_indexes` muestra el GIST; la columna sigue `is_generated = ALWAYS` |
+
+### Backend
+
+| Proyecto | Estado |
+|---|---|
+| `Zass.Dominio` | Compila. **0 paquetes NuGet.** 31 entidades |
+| `Zass.Aplicacion` | **MOD-01 completo**: 9 puertos, 5 servicios, 5 validadores, `IServicioIdentidad` |
+| `Zass.Infraestructura` | Argon2id, AES-256-GCM, secretos, reloj, 3 repositorios EF Core, cola, auditor, y el registro `AgregarZass()` |
+| `Zass.Api` | **Funciona**: 16 endpoints de identidad, 4 grupos de límite de tasa, cookie de 15 min, CSRF exigido, las 7 cabeceras, `problem+json` |
+
+### Casos de uso que funcionan de verdad
+
+**CU-01** registro · **CU-02** sesión · **CU-03** editar y publicar perfil ·
+**CU-04** preferencias · **CS-01** verificar correo · **CS-02** recuperar contraseña ·
+**CS-03** revocar sesiones · **CS-04** eliminar cuenta.
+
+Endpoints: **API-05, 08-19, 22, 23**, más `GET /api/auth/csrf` y `GET /api/salud`.
+Faltan **API-20 y API-21** (servicios y cobertura) porque son de MOD-03 y MOD-04.
+
+### Las pruebas, y qué prueba cada grupo
+
+| Proyecto | Cuántas | Qué cubre |
+|---|---|---|
+| `Zass.Aplicacion.Pruebas` | **103** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02, RN-S5-11, CC-02 |
+| `Zass.Integracion.Pruebas` | **71** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTP |
+
+Escritas con TDD: cada prueba se vio fallar antes de que existiera el código.
+
+Cosas que **tienen prueba propia**, no solo un comentario:
+
+- Contraseña mala y correo inexistente devuelven **el mismo cuerpo byte a byte**.
+- El intento fallido audita el **hash** del correo, nunca el correo.
+- Renovar **rota** el token: el anterior no sirve dos veces.
+- Ningún DTO de perfil **tiene campos** de latitud ni longitud, ni el propio ni el público.
+- Las 7 cabeceras llegan **también en un 404**.
+- La CSP no lleva `unsafe-inline` ni `unsafe-eval`.
+- Un cambio sin `X-CSRF-Token` recibe 403; con él, pasa.
+- El sexto inicio de sesión en la ventana recibe **429 con `Retry-After`**, y el cuerpo no
+  dice cuántos intentos quedan.
+- El índice único de `correo` rechaza el duplicado **saltándose el servicio**.
+- La versión optimista la hace cumplir **la base**, moviendo la versión por detrás de EF Core.
+- `VigentesDeUsuarioAsync` en SQL devuelve lo mismo que `Sesion.EstaVigente` en memoria.
+- La aplicación **no arranca** sin la clave de cifrado, ni con una clave de largo erróneo.
+
+---
+
+## 4. Los seis fallos que encontraron las pruebas de verdad
+
+Ninguno se veía al compilar y ninguno lo habrían visto las pruebas en memoria. Van aquí
+porque son el argumento de por qué valió la pena la capa de integración.
+
+| # | Fallo | Qué habría pasado en producción |
+|---|---|---|
+| 1 | `Verifica` de Argon2id **reventaba** con contraseña vacía | Mandar la contraseña vacía devolvía **500** en vez de 401 |
+| 2 | El contexto de auditoría era texto plano y la columna es `jsonb` | **Toda** acción auditada fallaba contra la base real: nadie podía registrarse |
+| 3 | `rubro_id` era obligatorio, pero el perfil nace en borrador sin rubro | Violación de clave foránea: ningún prestador podía registrarse |
+| 4 | EF Core intentaba **leer de vuelta** la columna `geography` como texto | Fallaba todo `INSERT` y `UPDATE` de perfil |
+| 5 | **Faltaba el índice GIST** en `ubicacion_exacta` | CU-08 recorrería la tabla entera: la columna estaba pero no servía |
+| 6 | `AgregarZass` leía la configuración al **registrar**, no al resolver | Cualquier fuente agregada después quedaba ignorada; en producción, Key Vault |
+
+Además, un fallo latente encontrado leyendo: los dos tokens de un solo uso compartían una
+columna de vencimiento, así que pedir recuperación le acortaba en silencio el plazo al
+token de verificación de quien aún no confirmaba su correo.
+
+---
+
+## 5. El documento, ya corregido
+
+Las cinco discrepancias que había entre código y documento están resueltas **en el
+documento**, y el sitio se regeneró (`python sitio\construir.py`, 38 diagramas, ninguno
+desbalanceado).
+
+| Archivo | Qué se corrigió |
+|---|---|
+| `03-datos/diccionario-de-tablas.md` | TBL-01 declara las 4 columnas de token, con la nota de por qué cada una lleva su vencimiento y por qué se guarda el hash |
+| `03-datos/diccionario-de-tablas.md` | TBL-05: `rubro_id` nulo en borrador, y el índice GIST de `ubicacion_exacta` |
+| `02-clases/clases-03-agenda-y-citas.md` | `TipoNotificacion`: los 16 valores reales, no 8 |
+| `06-desarrollo/paquetes-por-capas.md` | No hay `Zass.Compartido`: `Resultado` vive en `Zass.Dominio.Comun`, con la explicación |
+
+En los cuatro casos **se movió el documento**, no el código, salvo `rubro_id`, donde el
+documento se contradecía consigo mismo: marcaba la columna obligatoria y a la vez CU-03
+guarda el avance en borrador antes de elegir rubro. Mandó el caso de uso.
+
+---
+
+## 6. Lo que NO está hecho
+
+| Capa | Falta |
+|---|---|
+| `Zass.Aplicacion` | **MOD-02 a MOD-12.** MOD-01 listo |
+| `Zass.Api` | Filtro de idempotencia (`Idempotency-Key`), que se necesita desde API-36 |
+| Pruebas de arquitectura | Las 4 reglas de `paquetes-por-capas.md` §5 **no se verifican solas** todavía |
+| Datos de ejemplo | Zonas, rubros, servicios, prestadores, reseñas. Los roles **sí** están |
+| Frontend | No existe la carpeta |
+| Trabajos en segundo plano | Recordatorios, vencimientos, bloques, purgas |
+| Notificaciones | Se encolan en TBL-27; **nadie las despacha**. Decidido: buzón local `.eml` |
+| Suscripciones | Tablas sí, lógica y pasarela no |
+| Repositorio git | **Sigue faltando `git init`.** Ya hay bastante trabajo que perder |
+
+### Un detalle honesto sobre el CSRF
+
+El token de antifalsificación de ASP.NET queda ligado a la identidad de la sesión, así
+que **un token pedido antes de iniciar sesión no sirve después**. El frontend tendrá que
+volver a pedir `GET /api/auth/csrf` justo después de entrar. Está probado que funciona
+pidiéndolo después; no está resuelto cómo lo manejará la interfaz.
+
+---
+
+## 7. El siguiente paso exacto
+
+```
+1. git init  (+ .gitignore ya existe)                      <-- 5 minutos, y deja de ser frágil
+2. MOD-03 Catalogo: rubros y servicios (TBL-07, 08, 09)
+   - IServicioCatalogo, API-02, API-03, API-20
+   - datos de ejemplo de rubros y servicios de Temuco
+3. MOD-04 Geolocalizacion: zonas y cobertura (TBL-10, 11)
+   - IServicioGeografia, API-04, API-21
+4. MOD-05 Busqueda: API-01, con FromSqlInterpolated y el indice GIST
+   - AQUI hace falta la respuesta a la pregunta 1 de la seccion 9
+5. MOD-02 Credenciales -> MOD-06 Agenda -> MOD-11 Resenas -> MOD-12 Tarjetas
+6. Pruebas de arquitectura (NetArchTest) y filtro de idempotencia
+7. Frontend
+```
+
+---
+
+## 8. Cómo levantar lo que hay
+
+```bat
+cd C:\Users\pdani\zass-app
+iniciar-postgres.bat
+```
+
+Conexión: `Host=127.0.0.1;Port=5433;Database=zass;Username=zass;Password=<.clave-pg.txt>`
+
+Pruebas (la base tiene que estar arriba):
+
+```bat
+cd backend
+dotnet test
+```
+
+La API necesita dos ajustes. En desarrollo van en User Secrets, nunca en el repositorio:
+
+```
+Zass:CadenaConexion            la de arriba
+Zass:ClaveDireccionesBase64    32 bytes en Base64
+```
+
+Al terminar: `detener-postgres.bat`.
+
+> **Sobre `iniciar-postgres.bat` y los scripts.** El script arranca la base en unos
+> segundos e imprime todo. Lo que puede parecer un cuelgue es otra cosa: el servidor
+> hereda el flujo de salida de quien lo lanzó y no lo suelta mientras viva, así que
+> **cualquier herramienta que espere a que ese flujo cierre espera para siempre**. No era
+> el `timeout` del script, como decía la nota anterior de este archivo: se cambió por
+> `ping` y se mandó la salida de `pg_ctl` a `registros\pg_ctl.log`, y aun así ocurre.
+>
+> Para automatizar, llamar a `pg_ctl` directamente:
+>
+> ```
+> herramientas\pgsql\bin\pg_ctl.exe -D datos-pg -l registros\postgres.log start
+> ```
+
+---
+
+## 9. Lo que falta confirmar con Pablo
+
+1. **Bloquea MOD-05, que es el paso 4.** Si un prestador **sin suscripción vigente**
+   desaparece de la búsqueda o solo aparece degradado.
+2. Precio y nombre de los planes.
+3. Pasarela simulada en el prototipo, o sin cobro hasta integrar Transbank, Flow o
+   Mercado Pago.
+4. `EsMismaPersona` hoy solo detecta la misma cuenta o el mismo correo. El modelo no
+   guarda nada que ligue dos cuentas distintas a una persona —no se pide RUT, por
+   minimización—, así que RN-S2-09 y RN-S5-09 tienen un **falso negativo conocido**: dos
+   cuentas de la misma persona pasan el control de conflicto de interés. Ampliarlo exige
+   decidir **qué dato** lo probaría, y esa decisión no está tomada.
+
+---
+
+## 10. Avisos
+
+| Aviso | Detalle |
+|---|---|
+| **`.clave-pg.txt` está en `.gitignore`** | Clave del superusuario local. Si se borra, hay que recrear el clúster |
+| **El puerto 5433 debe estar libre** | Si no, mirar `registros\postgres.log` |
+| **`herramientas/` pesa ~1,2 GB** | En `.gitignore`. Al clonar hay que volver a bajar PostgreSQL y PostGIS |
+| **La carpeta no está en OneDrive, a propósito** | Una base sincronizándose en vivo se corrompe |
+| **`CifradoAesGcm` exige 32 bytes y no tiene valor por omisión** | Revienta al construirse si falta. Deliberado: una clave de relleno cifraría direcciones reales con un secreto público |
+| **Las pruebas de integración escriben en la base real** | Las de aplicación deshacen su transacción; las de HTTP borran por correo al terminar. Si una se interrumpe, puede dejar filas `api-*@zass.local` |
+| **`DisableTestParallelization` está activo en integración** | Dos pruebas a la vez se bloquean en el índice único. Correr en serie cuesta segundos y evita rojos intermitentes |
