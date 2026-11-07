@@ -1,6 +1,6 @@
 # ZASS! — estado del desarrollo
 
-**Última sesión:** 7 de noviembre de 2026.
+**Última sesión:** 7 de noviembre de 2026 (madrugada: git, interfaz de identidad).
 
 Este archivo existe para retomar sin reconstruir contexto. Dice **qué está hecho y
 comprobado**, **qué no**, y **el siguiente paso exacto**.
@@ -24,11 +24,15 @@ con las tablas `planes`, `suscripciones` y `pagos`; la pasarela no existe todav�
 
 ## 2. Resumen en una línea
 
-**MOD-01 Identidad está construido, con API y comprobado de punta a punta: 174 pruebas
-en verde** (103 de aplicación sin base de datos, 71 de integración contra PostgreSQL real
-y contra la API por HTTP).
+**MOD-01 Identidad está construido de punta a punta — dominio, aplicación, API y ahora
+también pantalla — con 205 pruebas en verde** (103 de aplicación sin base de datos, 71 de
+integración contra PostgreSQL real, 31 de interfaz) más dos comprobaciones de navegador
+que crean una cuenta y entran contra la base de verdad.
 
-Lo que falta es MOD-02 a MOD-12, el frontend y los trabajos de fondo.
+**El proyecto ya está bajo git.** Cuatro commits, 98 archivos, 422 KB: la instancia
+portable de PostgreSQL y los secretos quedan fuera.
+
+Lo que falta es MOD-02 a MOD-12, el resto de las pantallas y los trabajos de fondo.
 
 ---
 
@@ -61,6 +65,30 @@ Lo que falta es MOD-02 a MOD-12, el frontend y los trabajos de fondo.
 | `Zass.Infraestructura` | Argon2id, AES-256-GCM, secretos, reloj, 3 repositorios EF Core, cola, auditor, y el registro `AgregarZass()` |
 | `Zass.Api` | **Funciona**: 16 endpoints de identidad, 4 grupos de límite de tasa, cookie de 15 min, CSRF exigido, las 7 cabeceras, `problem+json` |
 
+### Interfaz — `frontend/`
+
+React 19 + TypeScript + Vite, con la marca aplicada (amarillo `#F6C81E`, Montserrat,
+fondo crema `#FDF8E7`). Los colores **se midieron en el navegador**, no se dieron por
+buenos mirando una captura.
+
+| Pantalla | Endpoint | Estado |
+|---|---|---|
+| Crear cuenta, eligiendo buscador o prestador | API-08 | **Funciona contra la base real** |
+| Entrar | API-09 | **Funciona contra la base real** |
+| Salir | API-11 | Funciona |
+| Aviso de correo sin verificar | — | Funciona |
+
+Decisiones que quedaron fijadas en el código y tienen prueba:
+
+- **La pantalla de ingreso no valida el largo de la contraseña.** Decir “usa al menos 10”
+  ahí regala el mínimo del sistema. La de registro sí lo dice, porque sin saberlo no hay
+  forma de cumplirlo. Es la misma decisión que toma `ValidadorIniciarSesion`.
+- **Vite reenvía `/api` a la API.** El navegador ve un solo origen, así que la cookie de
+  sesión viaja como lo hará en producción. Apuntando directo al 5052 el navegador la
+  descarta y el fallo parece “la contraseña está mala”.
+- **Ningún token se guarda en JavaScript.** La sesión vive en una cookie `httpOnly`, y hay
+  prueba de navegador de que `document.cookie` no la ve.
+
 ### Casos de uso que funcionan de verdad
 
 **CU-01** registro · **CU-02** sesión · **CU-03** editar y publicar perfil ·
@@ -76,6 +104,8 @@ Faltan **API-20 y API-21** (servicios y cobertura) porque son de MOD-03 y MOD-04
 |---|---|---|
 | `Zass.Aplicacion.Pruebas` | **103** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02, RN-S5-11, CC-02 |
 | `Zass.Integracion.Pruebas` | **71** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTP |
+| `frontend` (Vitest) | **31** | Cliente HTTP y pantallas, con `fetch` simulado |
+| `frontend/pruebas-navegador` | 2 guiones | Navegador real contra la API real: que la página monta, los colores de marca, y el registro e ingreso completos |
 
 Escritas con TDD: cada prueba se vio fallar antes de que existiera el código.
 
@@ -117,6 +147,28 @@ token de verificación de quien aún no confirmaba su correo.
 
 ---
 
+## 4 bis. Lo que encontró construir la pantalla
+
+Cuatro cosas que el backend solío no mostraba:
+
+1. **El límite de tasa impide desarrollar.** El grupo A son 5 intentos por IP cada 15
+   minutos, correcto en producción. En desarrollo se agota en una sola vuelta de pruebas
+   y después **todo parece roto**, cuando en realidad es un 429. Se subió solo para el
+   entorno de desarrollo, en `appsettings.Development.json`; en producción siguen
+   mandando los valores por omisión del código.
+2. **35 mensajes salían sin tilde ni eñe.** “contrasena”, “La sesion no es valida”,
+   “Datos invalidos”. No eran comentarios: viajan en el cuerpo `problem+json` y la
+   interfaz los muestra tal cual, así que los leía la persona. Corregidos.
+3. **`vite.config.ts` importaba `defineConfig` de `vite`**, que no conoce la sección
+   `test`: toda la configuración de pruebas estaba **sin revisar por el compilador**.
+4. **Vitest no veía ningún archivo** porque busca `*.test.ts` y aquí se llaman
+   `*.prueba.ts`. Peor que fallar: decía “0 pruebas” y salía con éxito.
+
+Los dos últimos son el mismo patrón de siempre: la herramienta dice que todo está bien
+porque no está mirando.
+
+---
+
 ## 5. El documento, ya corregido
 
 Las cinco discrepancias que había entre código y documento están resueltas **en el
@@ -144,26 +196,32 @@ guarda el avance en borrador antes de elegir rubro. Mandó el caso de uso.
 | `Zass.Api` | Filtro de idempotencia (`Idempotency-Key`), que se necesita desde API-36 |
 | Pruebas de arquitectura | Las 4 reglas de `paquetes-por-capas.md` §5 **no se verifican solas** todavía |
 | Datos de ejemplo | Zonas, rubros, servicios, prestadores, reseñas. Los roles **sí** están |
-| Frontend | No existe la carpeta |
+| Frontend | Hechas las pantallas de **registro e ingreso**. Faltan: verificar correo, recuperar contraseña, perfil del prestador y búsqueda |
 | Trabajos en segundo plano | Recordatorios, vencimientos, bloques, purgas |
 | Notificaciones | Se encolan en TBL-27; **nadie las despacha**. Decidido: buzón local `.eml` |
 | Suscripciones | Tablas sí, lógica y pasarela no |
-| Repositorio git | **Sigue faltando `git init`.** Ya hay bastante trabajo que perder |
+| Repositorio git | **Hecho.** Falta decidir si se sube a GitHub, y si privado |
 
-### Un detalle honesto sobre el CSRF
+### El CSRF: resuelto
 
-El token de antifalsificación de ASP.NET queda ligado a la identidad de la sesión, así
-que **un token pedido antes de iniciar sesión no sirve después**. El frontend tendrá que
-volver a pedir `GET /api/auth/csrf` justo después de entrar. Está probado que funciona
-pidiéndolo después; no está resuelto cómo lo manejará la interfaz.
+Lo que antes era un pendiente ya está cerrado. El token de antifalsificación de ASP.NET
+queda ligado a la identidad de la sesión, así que **un token pedido antes de iniciar
+sesión no sirve después**.
+
+Se comprobó contra el servidor real, no de oídas: con el token de antes de entrar la API
+contesta **403**; pidiendo uno nuevo, **204**.
+
+`src/api/cliente.ts` lo resuelve así: ante un 403 pide un token nuevo y **reintenta una
+vez**, nunca más de una. Además, `iniciarSesion` y `cerrarSesion` olvidan el token
+guardado, porque la identidad cambió. Hay prueba de los dos caminos, incluido el de que
+no reintente sin fin.
 
 ---
 
 ## 7. El siguiente paso exacto
 
 ```
-1. git init  (+ .gitignore ya existe)                      <-- 5 minutos, y deja de ser frágil
-2. MOD-03 Catalogo: rubros y servicios (TBL-07, 08, 09)
+1. MOD-03 Catalogo: rubros y servicios (TBL-07, 08, 09)
    - IServicioCatalogo, API-02, API-03, API-20
    - datos de ejemplo de rubros y servicios de Temuco
 3. MOD-04 Geolocalizacion: zonas y cobertura (TBL-10, 11)
@@ -172,8 +230,13 @@ pidiéndolo después; no está resuelto cómo lo manejará la interfaz.
    - AQUI hace falta la respuesta a la pregunta 1 de la seccion 9
 5. MOD-02 Credenciales -> MOD-06 Agenda -> MOD-11 Resenas -> MOD-12 Tarjetas
 6. Pruebas de arquitectura (NetArchTest) y filtro de idempotencia
-7. Frontend
+7. Las pantallas que faltan, sobre el cliente que ya existe en frontend/src/api:
+   verificar correo (API-14), recuperar contrasena (API-15), perfil del
+   prestador (API-17/18) y busqueda (API-01)
 ```
+
+**La decision a tomar primero** es si MOD-03 o la pantalla de perfil del prestador. El
+perfil necesita la lista de rubros, que es MOD-03: por eso el catalogo va antes.
 
 ---
 
@@ -193,11 +256,37 @@ cd backend
 dotnet test
 ```
 
-La API necesita dos ajustes. En desarrollo van en User Secrets, nunca en el repositorio:
+La API necesita dos ajustes, y **ya están puestos** en User Secrets de esta máquina
+(`dotnet user-secrets list` dentro de `backend\src\Zass.Api`). Nunca en el repositorio:
 
 ```
 Zass:CadenaConexion            la de arriba
 Zass:ClaveDireccionesBase64    32 bytes en Base64
+```
+
+Por eso la API ya arranca sola, sin exportar nada:
+
+```bat
+dotnet run --project backend\src\Zass.Api        :: queda en http://localhost:5052
+```
+
+Y la interfaz, en otra consola:
+
+```bat
+cd frontend
+npm install        :: solo la primera vez
+npm run dev        :: queda en http://localhost:5173
+```
+
+**Se abre http://localhost:5173, no el 5052.** Vite reenvía `/api` a la API para que el
+navegador vea un solo origen; si no, descarta la cookie de sesión.
+
+Las pruebas de la interfaz:
+
+```bat
+cd frontend
+npm run prueba                            :: 31, con fetch simulado, no necesita nada
+node pruebas-navegador/flujo-real.mjs     :: registro e ingreso de verdad, necesita los 3 arriba
 ```
 
 Al terminar: `detener-postgres.bat`.
@@ -243,3 +332,7 @@ Al terminar: `detener-postgres.bat`.
 | **`CifradoAesGcm` exige 32 bytes y no tiene valor por omisión** | Revienta al construirse si falta. Deliberado: una clave de relleno cifraría direcciones reales con un secreto público |
 | **Las pruebas de integración escriben en la base real** | Las de aplicación deshacen su transacción; las de HTTP borran por correo al terminar. Si una se interrumpe, puede dejar filas `api-*@zass.local` |
 | **`DisableTestParallelization` está activo en integración** | Dos pruebas a la vez se bloquean en el índice único. Correr en serie cuesta segundos y evita rojos intermitentes |
+| **El límite de tasa está subido en desarrollo** | `appsettings.Development.json` pone los grupos A y S en 1000. **Ese archivo está en `.gitignore`**, así que producción usa los valores reales del código (5 y 10). Si alguna vez se versiona, revisar esto primero |
+| **La clave local de PostgreSQL quedó en el registro de una sesión** | `dotnet user-secrets set` imprime el valor que guarda. Es la clave de una instancia portable que solo escucha en `127.0.0.1:5433`, sin exposición de red, pero conviene rotarla: cambiarla con `ALTER USER`, actualizar `.clave-pg.txt` y volver a poner `Zass:CadenaConexion` en User Secrets |
+| **`node_modules` pesa ~300 MB** | En `.gitignore`. Al clonar hace falta `npm install` dentro de `frontend` |
+| **Playwright baja Chromium (~123 MB)** | Queda en `%LOCALAPPDATA%\ms-playwright`, fuera del proyecto. Al clonar: `npx playwright install chromium` |
