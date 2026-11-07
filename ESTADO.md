@@ -271,6 +271,45 @@ Decisiones con prueba detrás:
 | La **caché de 60 s** (Redis, N-06) | No existe |
 | **La meta de rendimiento** (menos de 1 s en el percentil 95 con 1.000 perfiles) | **No está medida.** Las pruebas usan decenas de filas, y con el centroide de respaldo el GIST ni se usa. Hay que medir con `EXPLAIN` y con volumen antes de decir que cumple |
 
+### Lo que encontró ver la búsqueda en un navegador real
+
+Se levantó la base, la API y la interfaz, se sembraron 8 prestadores de prueba (5 buscables
+y 3 que **no** deben salir: uno con suscripción vencida, uno en borrador y uno de otro rubro)
+y se recorrió con Playwright a 390 px y a 1280 px. Salieron **exactamente los 5 correctos**,
+que es RN-S3-01 y RN-S3-09 funcionando de punta a punta. Lo demás:
+
+| # | Hallazgo | Estado |
+|---|---|---|
+| 10 | **El orden usa un promedio que la pantalla esconde.** "Estudio Nuevo Temuco" (2 reseñas, promedio guardado 5,0, **no público** por RN-S5-11) sale PRIMERO, por encima de "Corretaje Araucanía" (4,6 con 12 reseñas y verificado). La consulta ordena por el promedio guardado sin mirar si es público: el orden delata un número que se oculta, y a quien mira le parece arbitrario | **Sin arreglar. Es el siguiente paso** |
+| 11 | **El orden no desempata como dice CU-08** ("por credencial verificada, reputación y completitud"). Hoy todos los prestadores de una zona están a la **misma** distancia (la de su centroide), así que el desempate es lo único que ordena, y hoy sale por `id`, que es un UUID: orden arbitrario | Sin arreglar |
+| 12 | `salir()` dejaba escapar la promesa rechazada (un *Uncaught in promise*) cuando la API fallaba al cerrar sesión | Arreglado, con prueba |
+| 13 | Mi comprobación de la fuente decía OK sin saber nada: `document.fonts.check()` devuelve `true` para una fuente que **ni existe** | Corregida: ahora mira las fuentes que el navegador descargó (400, 600 y 800) |
+| 14 | Los guiones `flujo-real.mjs` y `humo.mjs` asumían que la app abría en "Entrar", y `humo.mjs` habría medido **el botón de la búsqueda escondida** en vez del de la pantalla, sin avisar | Corregidos; pasan |
+
+**Sobre el 10 y el 11, la decisión que hay que tomar** (y que el documento no cierra del todo):
+CU-08 pide desempatar por "credencial verificada, reputación y completitud", y el flujo 4C.4
+dice "reputación y credencial verificada" sin fijar cuál va primero. La propuesta es
+**verificado primero, luego reputación pública, luego número de reseñas, luego `id`**, porque
+el sello es la señal de confianza que ZASS! da y la reputación de un prestador nuevo todavía
+no existe. Es una decisión de producto: si Pablo prefiere reputación primero, es cambiar el
+orden de tres columnas en el SQL.
+
+Hay además una consideración de privacidad que conviene tener presente al tocar ese orden:
+ordenar por la distancia **exacta** filtra más que la distancia redondeada que se muestra.
+Dos prestadores a "a 3 km" que cambian de orden según desde dónde se busca delatan en qué
+lado de una línea están, y con muchas búsquedas esas líneas se cruzan. Ordenar por el tramo
+que se muestra y desempatar por calidad lo evitaría.
+
+**Pendiente de decidir, que no es código:** Montserrat se carga desde **Google Fonts por
+red**. Cada visitante le manda su dirección IP a Google antes de ver la página. Conviene
+autoalojar la fuente, y más con una ley de protección de datos que empieza a regir en
+diciembre de 2026 (revisar si aplica, no lo asumo).
+
+**Repetirlo:** `frontend/pruebas-navegador/mirar-busqueda.mjs`, con los datos de
+`datos/sembrar-visual.sql` y, **sin falta**, `datos/limpiar-visual.sql` al terminar: los
+prestadores sembrados quedan publicados y hacen fallar las pruebas de integración de la
+búsqueda. Las instrucciones exactas están en la cabecera del guion.
+
 ### Interfaz — `frontend/`
 
 React 19 + TypeScript + Vite, con la marca aplicada (amarillo `#F6C81E`, Montserrat,
@@ -283,7 +322,7 @@ buenos mirando una captura.
 | Entrar | API-09 | **Funciona contra la base real** |
 | Salir | API-11 | Funciona |
 | Aviso de correo sin verificar | — | Funciona |
-| **Buscar** (rubro, zona o ubicación, filtros, ver más) | API-01, API-02, API-04 | **Construida y probada con `fetch` simulado (42 pruebas). Todavía NO está cableada en `App` y NO se ha visto en un navegador real** |
+| **Buscar** (rubro, zona o ubicación, filtros, ver más) | API-01, API-02, API-04 | **Es la portada. Probada con `fetch` simulado (42 pruebas) y VISTA en un navegador real contra la API y la base** (390 px y 1280 px): sin desborde horizontal, objetivos táctiles de 44 px, colores de marca y Montserrat medidos. **Pero el orden de los resultados tiene un fallo, ver más abajo** |
 
 Decisiones que quedaron fijadas en el código y tienen prueba:
 
@@ -506,13 +545,10 @@ HECHO   MOD-05 Busqueda          7-nov-2026, con 74 pruebas nuevas
 1. LAS PANTALLAS: perfil del prestador y busqueda                      <-- AQUI
    - Todo el backend que necesitan existe y esta probado: API-01 a API-05 y
      API-18 a API-23. Es lo que hace visible y tocable el producto
-   - ESTADO DE ESTE PASO: la pantalla de BUSQUEDA esta construida como componente
-     aislado (frontend/src/funciones/busqueda, 42 pruebas, 8 mutaciones y 8 rojos).
-     FALTA: (a) cablearla en App con navegacion, lo que obliga a cambiar la prueba
-     'abre en la pantalla de entrar' porque la portada pasa a ser la busqueda;
-     (b) VERLA en un navegador real: el CSS nuevo solo se ha comprobado con jsdom
-     y para medirlo hace falta la API y la base arriba; (c) la pantalla del perfil
-     del prestador, que no existe todavia
+   - ESTADO: HECHA la pantalla de BUSQUEDA, cableada como portada y vista en un
+     navegador real. FALTA: (a) EL ORDEN DE LOS RESULTADOS, que tiene un fallo y es
+     lo siguiente (ver "Lo que encontro verla en un navegador real"); (b) la
+     pantalla del perfil del prestador, que no existe todavia
    - Perfil del prestador: rubro (API-02), servicios (API-03/20), zona
      (API-04/21), publicar (API-22) y ver su suscripcion de prueba
    - Busqueda: rubro, donde (zona, o ubicacion del navegador con el flujo 4A de

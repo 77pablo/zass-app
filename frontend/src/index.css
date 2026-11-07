@@ -229,3 +229,20 @@ select.campo-entrada {
 .vacio .bajada { margin: 0; }
 
 .pie a { color: var(--tinta); font-weight: 600; }
+
+/* ---------------------------------------------------------------- Navegacion */
+
+.navegacion {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: -8px 0 12px;
+}
+/* El enlace de la barra es un objetivo tactil aparte, no una palabra dentro de una
+   frase: tiene que medir lo que mide un dedo. */
+.navegacion .enlace {
+  min-height: 44px;
+  padding: 0 18px;
+  display: inline-flex;
+  align-items: center;
+}

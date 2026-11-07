@@ -23,9 +23,15 @@ function comprobar(nombre, bien) {
   if (!bien) process.exitCode = 1
 }
 
+// La portada es la busqueda, no "Entrar": la busqueda no pide sesion (P1 de CU-08). Para
+// llegar al ingreso hay que pasar por el enlace de la barra.
+const irAEntrar = () =>
+  pagina.getByRole('navigation').getByRole('button', { name: /^entrar$/i }).click()
+
 await pagina.goto('https://localhost:5173/', { waitUntil: 'networkidle' })
 
 // --- Registro ---
+await irAEntrar()
 await pagina.getByRole('button', { name: /crear una/i }).click()
 await pagina.getByLabel(/nombre/i).fill('Pablo del Flujo')
 await pagina.getByLabel(/correo/i).fill(correo)
@@ -36,10 +42,11 @@ await pagina.getByRole('button', { name: /crear cuenta/i }).click()
 await pagina.getByRole('heading', { name: /revisa tu correo/i }).waitFor({ timeout: 15000 })
 comprobar('la cuenta se creo y pide verificar el correo', true)
 comprobar('muestra el correo al que escribio',
-  (await pagina.locator('.tarjeta').textContent()).includes(correo))
+  (await pagina.locator('.tarjeta:visible').textContent()).includes(correo))
 
 // --- Ingreso ---
 await pagina.reload({ waitUntil: 'networkidle' })
+await irAEntrar()
 await pagina.getByLabel(/correo/i).fill(correo)
 await pagina.getByLabel(/contrase/i).fill(clave)
 await pagina.getByRole('button', { name: /^entrar$/i }).click()
@@ -48,7 +55,7 @@ await pagina.getByRole('heading', { name: /ya estas dentro|ya estás dentro/i })
   .waitFor({ timeout: 15000 })
 comprobar('entro con la cuenta recien creada', true)
 
-const dentro = await pagina.locator('.tarjeta').textContent()
+const dentro = await pagina.locator('.tarjeta:visible').textContent()
 comprobar('reconoce el rol prestador', dentro.includes('prestador'))
 comprobar('avisa que el correo esta sin verificar', /sin verificar/i.test(dentro))
 
@@ -59,6 +66,8 @@ comprobar('la cookie de sesion es httpOnly (invisible a JS)',
 
 // --- Credenciales malas ---
 await pagina.getByRole('button', { name: /salir/i }).click()
+// Al salir se vuelve a la busqueda, no al ingreso.
+await irAEntrar()
 await pagina.getByLabel(/correo/i).fill(correo)
 await pagina.getByLabel(/contrase/i).fill('esta-no-es-la-clave')
 await pagina.getByRole('button', { name: /^entrar$/i }).click()
