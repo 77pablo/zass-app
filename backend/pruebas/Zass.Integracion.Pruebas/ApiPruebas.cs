@@ -56,6 +56,13 @@ public class ApiPruebas : IAsyncLifetime
         {
             HandleCookies = true,
             AllowAutoRedirect = false,
+
+            // https, no http. El servidor de pruebas no cifra nada de verdad, pero con
+            // esta direccion Request.IsHttps vale true, y entonces la aplicacion se
+            // comporta como en produccion: emite la cookie con Secure y no redirige.
+            // Con http las pruebas verian 307 en todas partes y una cookie sin Secure,
+            // es decir, probarian una aplicacion distinta de la que se despliega.
+            BaseAddress = new Uri("https://localhost"),
         });
         return Task.CompletedTask;
     }
@@ -162,6 +169,10 @@ public class ApiPruebas : IAsyncLifetime
         Assert.Contains(cookies, c => c.StartsWith("zass_sesion") && c.Contains("httponly", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(cookies, c => c.StartsWith("zass_refresco") && c.Contains("httponly", StringComparison.OrdinalIgnoreCase));
         Assert.All(cookies, c => Assert.Contains("samesite=lax", c.ToLowerInvariant()));
+
+        // Secure: la cookie no sale por una conexion en claro. Esto solo se puede
+        // comprobar porque el cliente de pruebas habla https.
+        Assert.All(cookies, c => Assert.Contains("secure", c.ToLowerInvariant()));
 
         var cuenta = await _cliente.GetAsync("/api/mi/cuenta");
         Assert.Equal(HttpStatusCode.OK, cuenta.StatusCode);
@@ -345,6 +356,71 @@ public class ApiPruebas : IAsyncLifetime
     }
 
     // ------------------------------------------------------------ auxiliares
+
+    // ------------------------------------------------------------ MOD-13 por HTTPS
+
+    [Fact]
+    public async Task Sin_sesion_la_suscripcion_responde_401()
+    {
+        var r = await _cliente.GetAsync("/api/mi/suscripcion");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode);
+    }
+
+    [Fact]
+    public async Task Una_cuenta_de_buscador_no_tiene_suscripcion_que_mirar()
+    {
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo);
+        await IniciarSesionAsync(correo);
+
+        var r = await _cliente.GetAsync("/api/mi/suscripcion");
+
+        Assert.Equal(HttpStatusCode.NotFound, r.StatusCode);
+    }
+
+    // No tener suscripcion todavia es normal, no un error: el perfil recien creado
+    // aun no publico. Si esto devolviera 404, la pantalla tendria que tratar el caso
+    // corriente como una excepcion.
+    [Fact]
+    public async Task Un_prestador_sin_publicar_ve_que_no_tiene_suscripcion()
+    {
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo, "prestador");
+        await IniciarSesionAsync(correo);
+
+        var r = await _cliente.GetAsync("/api/mi/suscripcion");
+
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        var json = (await r.Content.ReadFromJsonAsync<JsonDocument>())!.RootElement;
+        Assert.False(json.GetProperty("vigente").GetBoolean());
+        Assert.Equal(0, json.GetProperty("diasRestantes").GetInt32());
+    }
+
+    // El orden de la composicion de API-22: primero publicar, despues arrancar la
+    // prueba. Si se hiciera al reves, un perfil incompleto gastaria dias de prueba
+    // sin haber llegado nunca a aparecer en la busqueda.
+    [Fact]
+    public async Task Publicar_sin_el_minimo_no_arranca_la_prueba()
+    {
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo, "prestador");
+        await VerificarAsync(correo);
+        await IniciarSesionAsync(correo);
+
+        var peticion = new HttpRequestMessage(
+            HttpMethod.Post, "/api/mi/perfil-prestador/publicar");
+        peticion.Headers.Add("X-CSRF-Token", await TokenCsrfAsync());
+        var publicar = await _cliente.SendAsync(peticion);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, publicar.StatusCode);
+
+        var suscripcion = await _cliente.GetAsync("/api/mi/suscripcion");
+        var json = (await suscripcion.Content.ReadFromJsonAsync<JsonDocument>())!.RootElement;
+        Assert.False(json.GetProperty("vigente").GetBoolean());
+    }
+
+    // ------------------------------------------------------------
 
     private string NuevoCorreo()
     {

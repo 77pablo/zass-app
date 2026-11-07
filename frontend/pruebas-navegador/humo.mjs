@@ -2,13 +2,17 @@ import { chromium } from 'playwright'
 
 const salida = process.argv[2]
 const navegador = await chromium.launch()
-const pagina = await navegador.newPage({ viewport: { width: 420, height: 860 } })
+const pagina = await navegador.newPage({
+  viewport: { width: 420, height: 860 },
+  // Certificado de desarrollo, sin autoridad que lo firme. Solo para localhost.
+  ignoreHTTPSErrors: true,
+})
 
 const errores = []
 pagina.on('console', (m) => { if (m.type() === 'error') errores.push(m.text()) })
 pagina.on('pageerror', (e) => errores.push('pageerror: ' + e.message))
 
-await pagina.goto('http://localhost:5173/', { waitUntil: 'networkidle' })
+await pagina.goto('https://localhost:5173/', { waitUntil: 'networkidle' })
 
 // Lo que probaria una pantalla en blanco: el root existe pero esta vacio.
 const dentroDelRoot = await pagina.locator('#root').innerHTML()

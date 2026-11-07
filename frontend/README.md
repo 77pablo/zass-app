@@ -6,19 +6,48 @@ una sola regla de negocio. Todo lo que decide algo vive en la API.
 
 ## Levantarlo
 
-Hacen falta tres cosas, en este orden:
+De un solo clic, desde la raiz del proyecto:
+
+```bat
+ver-zass.bat        :: levanta base + API + interfaz y abre el navegador
+cerrar-zass.bat     :: apaga las tres
+```
+
+A mano, si se prefiere ver cada pieza por separado:
 
 ```bat
 cd C:\Users\pdani\zass-app
 iniciar-postgres.bat                            :: 1. la base, puerto 5433
-dotnet run --project backend\src\Zass.Api       :: 2. la API, puerto 5052
-cd frontend && npm run dev                      :: 3. la interfaz, puerto 5173
+dotnet run --project backend\src\Zass.Api       :: 2. la API, https://localhost:7277
+cd frontend && npm run dev                      :: 3. la interfaz, https://localhost:5173
 ```
 
-Se abre en http://localhost:5173. El navegador habla **solo** con 5173: Vite
-reenvia `/api` a 5052, asi el frontend y la API comparten origen y las cookies
-de sesion viajan como lo haran en produccion. Si se apuntara directo a 5052, el
+Se abre en **https://localhost:5173**. El navegador habla **solo** con 5173: Vite
+reenvia `/api` al 7277, asi el frontend y la API comparten origen y las cookies de
+sesion viajan como lo haran en produccion. Si se apuntara directo al 7277, el
 navegador descartaria la cookie y el fallo pareceria "la contrasena esta mala".
+
+## HTTPS, tambien aqui
+
+Las dos puntas usan el mismo certificado de desarrollo, el de `dotnet dev-certs`.
+Hay que confiarlo **una vez** en esta maquina:
+
+```bat
+dotnet dev-certs https --trust
+```
+
+Sin eso el navegador avisa de que el certificado no es de fiar. La pagina funciona
+igual aceptando el aviso, pero conviene quitarlo de en medio.
+
+Si falta el certificado exportado en `certificados/`, Vite lo dice y se levanta en
+HTTP. Para generarlo, desde la raiz del proyecto:
+
+```bat
+dotnet dev-certs https --export-path certificados/localhost.pem --format PEM --no-password
+```
+
+Esto es lo que permite que la cookie de sesion lleve la marca `Secure` tambien en
+desarrollo. Antes no la llevaba, y la unica forma de comprobarlo era desplegar.
 
 La API toma sus secretos de User Secrets (`dotnet user-secrets list` dentro de
 `backend\src\Zass.Api`). Si faltan, no arranca: es a proposito.

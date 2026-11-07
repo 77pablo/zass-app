@@ -1,6 +1,6 @@
 # ZASS! — estado del desarrollo
 
-**Última sesión:** 7 de noviembre de 2026 (madrugada: git, interfaz de identidad).
+**Última sesión:** 7 de noviembre de 2026 (git, interfaz de identidad, MOD-13, HTTPS local).
 
 Este archivo existe para retomar sin reconstruir contexto. Dice **qué está hecho y
 comprobado**, **qué no**, y **el siguiente paso exacto**.
@@ -24,10 +24,15 @@ con las tablas `planes`, `suscripciones` y `pagos`; la pasarela no existe todav�
 
 ## 2. Resumen en una línea
 
-**MOD-01 Identidad está construido de punta a punta — dominio, aplicación, API y ahora
-también pantalla — con 205 pruebas en verde** (103 de aplicación sin base de datos, 71 de
-integración contra PostgreSQL real, 31 de interfaz) más dos comprobaciones de navegador
-que crean una cuenta y entran contra la base de verdad.
+**MOD-01 Identidad y MOD-13 Suscripciones están construidos de punta a punta — dominio,
+aplicación, API y pantalla — con 247 pruebas en verde** (132 de aplicación sin base de
+datos, 84 de integración contra PostgreSQL real y la API por HTTPS, 31 de interfaz) más
+dos comprobaciones de navegador que crean una cuenta y entran contra la base de verdad.
+
+**Todo el entorno local va por HTTPS.** `https://localhost:5173` la interfaz y
+`https://localhost:7277` la API, con el certificado de `dotnet dev-certs`. Eso permitió
+activar la marca `Secure` en las cookies también en desarrollo, y ahora hay una prueba
+que la comprueba; antes solo se podía ver desplegando.
 
 **El proyecto ya está bajo git.** Cuatro commits, 98 archivos, 422 KB: la instancia
 portable de PostgreSQL y los secretos quedan fuera.
@@ -64,6 +69,39 @@ Lo que falta es MOD-02 a MOD-12, el resto de las pantallas y los trabajos de fon
 | `Zass.Aplicacion` | **MOD-01 completo**: 9 puertos, 5 servicios, 5 validadores, `IServicioIdentidad` |
 | `Zass.Infraestructura` | Argon2id, AES-256-GCM, secretos, reloj, 3 repositorios EF Core, cola, auditor, y el registro `AgregarZass()` |
 | `Zass.Api` | **Funciona**: 16 endpoints de identidad, 4 grupos de límite de tasa, cookie de 15 min, CSRF exigido, las 7 cabeceras, `problem+json` |
+
+### MOD-13 Suscripciones — lo que decide quien aparece
+
+Construido después de que la decisión de RN-S3-09 dejara al descubierto que las tres
+tablas de S7 no tenían dueño.
+
+| Pieza | Estado |
+|---|---|
+| `IServicioSuscripciones` | 9 operaciones. `VigentesEntreAsync` es la que usará la búsqueda |
+| Plan `prueba`, 30 días, gratis | **Sembrado con el esquema**, migración `PlanDePruebaSembrado` |
+| API-22 publicar | Ahora **compone** MOD-01 y MOD-13: publica y arranca la prueba |
+| `GET /api/mi/suscripcion` | Plan, estado y días restantes |
+
+Decisiones con prueba detrás:
+
+- **Vigente exige las dos cosas**: estado `Prueba` o `Activa` **y** fecha futura. Con solo
+  el estado, un impago seguiría apareciendo hasta que el trabajo de vencimiento corriera.
+- **`VigentesEntre` es una consulta, no veinte.** Hay una prueba que cuenta las idas al
+  repositorio: preguntar uno por uno serían 21 consultas por página de resultados, en la
+  ruta más caliente del producto.
+- **Iniciar la prueba es idempotente.** El índice único lo impediría igual, pero llegar
+  hasta él con un `23505` convertiría un doble clic en un error 500.
+- **Pagar antes de vencer suma al tiempo que quedaba.** Quien paga el día 25 de un mes de
+  30 no pierde los 5 restantes.
+- **El orden de API-22**: primero publicar, después arrancar la prueba. Al revés, un
+  perfil incompleto gastaría días sin haber aparecido nunca.
+- **`PorVencerAsync`** existe para avisar **antes**. Desaparecer de la búsqueda sin aviso
+  previo es lo que volvería cruel a RN-S3-09.
+
+**Lo que no se pudo probar todavía:** el camino completo publicar → prueba → visible
+**por HTTP**. Publicar exige rubro, servicio y zona, y no hay endpoints ni datos de
+ejemplo para ninguno hasta MOD-03 y MOD-04. Sí está probado que **publicar sin el mínimo
+NO arranca la prueba**, que es la mitad que puede fallar en silencio.
 
 ### Interfaz — `frontend/`
 
@@ -102,8 +140,8 @@ Faltan **API-20 y API-21** (servicios y cobertura) porque son de MOD-03 y MOD-04
 
 | Proyecto | Cuántas | Qué cubre |
 |---|---|---|
-| `Zass.Aplicacion.Pruebas` | **103** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02, RN-S5-11, CC-02 |
-| `Zass.Integracion.Pruebas` | **71** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTP |
+| `Zass.Aplicacion.Pruebas` | **132** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02, RN-S5-11, CC-02 |
+| `Zass.Integracion.Pruebas` | **84** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
 | `frontend` (Vitest) | **31** | Cliente HTTP y pantallas, con `fetch` simulado |
 | `frontend/pruebas-navegador` | 2 guiones | Navegador real contra la API real: que la página monta, los colores de marca, y el registro e ingreso completos |
 
@@ -192,7 +230,7 @@ guarda el avance en borrador antes de elegir rubro. Mandó el caso de uso.
 
 | Capa | Falta |
 |---|---|
-| `Zass.Aplicacion` | **MOD-02 a MOD-12.** MOD-01 listo |
+| `Zass.Aplicacion` | **MOD-02 a MOD-12.** MOD-01 y MOD-13 listos |
 | `Zass.Api` | Filtro de idempotencia (`Idempotency-Key`), que se necesita desde API-36 |
 | Pruebas de arquitectura | Las 4 reglas de `paquetes-por-capas.md` §5 **no se verifican solas** todavía |
 | Datos de ejemplo | Zonas, rubros, servicios, prestadores, reseñas. Los roles **sí** están |
@@ -221,24 +259,34 @@ no reintente sin fin.
 ## 7. El siguiente paso exacto
 
 ```
-1. MOD-03 Catalogo: rubros y servicios (TBL-07, 08, 09)
+HECHO   MOD-01 Identidad        dominio, API y pantalla
+HECHO   MOD-13 Suscripciones    7-nov-2026
+
+1. MOD-03 Catalogo: rubros y servicios (TBL-07, 08, 09)        <-- AQUI
    - IServicioCatalogo, API-02, API-03, API-20
    - datos de ejemplo de rubros y servicios de Temuco
-3. MOD-04 Geolocalizacion: zonas y cobertura (TBL-10, 11)
+   - DESBLOQUEA la prueba que hoy falta: publicar -> prueba -> visible
+
+2. MOD-04 Geolocalizacion: zonas y cobertura (TBL-10, 11)
    - IServicioGeografia, API-04, API-21
-4. MOD-13 Suscripciones (NUEVO): IServicioSuscripciones, TBL-29/30/31
-   - Las tablas YA existen en la base; falta el modulo que las gobierne
-   - EstaVigente y VigentesEntre, que es lo que la busqueda necesita
-   - Decidir los planes es la pregunta 2 de la seccion 9, pero NO bloquea:
-     se puede construir con un unico plan de prueba de 30 dias
-5. MOD-05 Busqueda: API-01, con FromSqlInterpolated y el indice GIST
+
+3. MOD-05 Busqueda: API-01, con FromSqlInterpolated y el indice GIST
    - Ya desbloqueado: RN-S3-09 dice que el impago DESAPARECE
-   - El filtro va dentro del SQL de la busqueda, no resultado por resultado
-6. MOD-02 Credenciales -> MOD-06 Agenda -> MOD-11 Resenas -> MOD-12 Tarjetas
-7. Pruebas de arquitectura (NetArchTest) y filtro de idempotencia
-8. Las pantallas que faltan, sobre el cliente que ya existe en frontend/src/api:
+   - El filtro de suscripcion va DENTRO del SQL, no resultado por resultado
+   - Llamar a IServicioSuscripciones.VigentesEntreAsync, nunca a EstaVigente
+
+4. MOD-02 Credenciales -> MOD-06 Agenda -> MOD-11 Resenas -> MOD-12 Tarjetas
+   - Antes de MOD-12 hace falta la respuesta a la pregunta 4 de la seccion 9
+
+5. Pruebas de arquitectura (NetArchTest) y filtro de idempotencia
+
+6. Las pantallas que faltan, sobre el cliente que ya existe en frontend/src/api:
    verificar correo (API-14), recuperar contrasena (API-15), perfil del
    prestador (API-17/18) y busqueda (API-01)
+
+7. Trabajos de fondo: vencer suscripciones y avisar antes de que venzan
+   - ServicioSuscripciones.VencerExpiradasAsync y PorVencerAsync ya existen
+   - Falta quien los llame cada dia
 ```
 
 **La decision a tomar primero** es si MOD-03 o la pantalla de perfil del prestador. El
@@ -353,5 +401,7 @@ Al terminar: `detener-postgres.bat`.
 | **`DisableTestParallelization` está activo en integración** | Dos pruebas a la vez se bloquean en el índice único. Correr en serie cuesta segundos y evita rojos intermitentes |
 | **El límite de tasa está subido en desarrollo** | `appsettings.Development.json` pone los grupos A y S en 1000. **Ese archivo está en `.gitignore`**, así que producción usa los valores reales del código (5 y 10). Si alguna vez se versiona, revisar esto primero |
 | **La clave local de PostgreSQL quedó en el registro de una sesión** | `dotnet user-secrets set` imprime el valor que guarda. Es la clave de una instancia portable que solo escucha en `127.0.0.1:5433`, sin exposición de red, pero conviene rotarla: cambiarla con `ALTER USER`, actualizar `.clave-pg.txt` y volver a poner `Zass:CadenaConexion` en User Secrets |
+| **El certificado de desarrollo hay que confiarlo** | `dotnet dev-certs https --trust`, una vez por maquina. Sin eso el navegador avisa en cada visita. La pagina funciona igual aceptando el aviso |
+| **`certificados/` tiene una clave privada** | En `.gitignore`. Se regenera con `dotnet dev-certs https --export-path certificados/localhost.pem --format PEM --no-password` |
 | **`node_modules` pesa ~300 MB** | En `.gitignore`. Al clonar hace falta `npm install` dentro de `frontend` |
 | **Playwright baja Chromium (~123 MB)** | Queda en `%LOCALAPPDATA%\ms-playwright`, fuera del proyecto. Al clonar: `npx playwright install chromium` |

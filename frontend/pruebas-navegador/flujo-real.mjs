@@ -11,7 +11,10 @@ const correo = `flujo.${Date.now()}@zass.cl`
 const clave = 'una-clave-bien-larga'
 
 const navegador = await chromium.launch()
-const pagina = await navegador.newPage({ viewport: { width: 420, height: 900 } })
+const pagina = await navegador.newPage({
+  viewport: { width: 420, height: 900 },
+  ignoreHTTPSErrors: true,
+})
 const errores = []
 pagina.on('pageerror', (e) => errores.push(e.message))
 
@@ -20,7 +23,7 @@ function comprobar(nombre, bien) {
   if (!bien) process.exitCode = 1
 }
 
-await pagina.goto('http://localhost:5173/', { waitUntil: 'networkidle' })
+await pagina.goto('https://localhost:5173/', { waitUntil: 'networkidle' })
 
 // --- Registro ---
 await pagina.getByRole('button', { name: /crear una/i }).click()

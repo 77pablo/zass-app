@@ -1,4 +1,8 @@
 # --- Secretos. Nunca al repositorio ---
+# Certificado de desarrollo exportado: localhost.key es una clave privada.
+# Se regenera cuando haga falta con:
+#   dotnet dev-certs https --export-path certificados/localhost.pem --format PEM --no-password
+certificados/
 .clave-pg.txt
 .env
 *.env

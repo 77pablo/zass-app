@@ -5,8 +5,15 @@ using Zass.Infraestructura.Configuracion;
 
 var constructor = WebApplication.CreateBuilder(args);
 
-// En desarrollo las cookies pueden viajar por http; en cualquier otro ambiente, no.
-var exigirHttps = !constructor.Environment.IsDevelopment();
+// Las cookies de sesion llevan la marca Secure SIEMPRE, tambien en desarrollo: el
+// entorno local tambien va por HTTPS (https://localhost:7277), con el certificado de
+// `dotnet dev-certs`. Antes se apagaba en desarrollo y eso dejaba un hueco feo: la
+// unica forma de probar que la cookie no viaja en claro era desplegar.
+//
+// Se puede apagar con Zass:ExigirHttps=false, y solo para eso: levantar en HTTP
+// pelado cuando no haya certificado. Con la marca puesta y sin HTTPS, el navegador
+// descarta la cookie y el fallo se ve como "no me deja entrar".
+var exigirHttps = constructor.Configuration.GetValue("Zass:ExigirHttps", true);
 
 constructor.Services
     .AgregarZass(constructor.Configuration)           // puertos, repositorios, MOD-01
@@ -25,7 +32,13 @@ app.UsarCabecerasDeSeguridad();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
-if (exigirHttps) app.UseHsts();
+if (exigirHttps)
+{
+    // HSTS le dice al navegador que no vuelva a intentar en claro. En desarrollo
+    // tambien: asi el comportamiento es el mismo que vera un usuario.
+    app.UseHsts();
+    app.UseHttpsRedirection();
+}
 
 app.UseRateLimiter();
 app.UseAuthentication();
