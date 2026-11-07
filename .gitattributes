@@ -1,0 +1,14 @@
+# Normaliza los fines de linea al guardar: el repositorio guarda LF siempre,
+# y en Windows se entrega CRLF al trabajar. Sin esto, cada archivo tocado desde
+# otro editor aparece como "cambiado entero" aunque no se haya movido una coma.
+* text=auto eol=lf
+
+# Binarios y lo que no debe normalizarse nunca.
+*.png binary
+*.jpg binary
+*.ico binary
+*.pdf binary
+
+# Los .bat los ejecuta cmd.exe de Windows: necesitan CRLF si o si.
+*.bat text eol=crlf
+*.cmd text eol=crlf
