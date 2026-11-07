@@ -260,7 +260,7 @@ promedio y el recuento de reseñas están escritos a mano, **no hay reseñas det
 
 | Falta | Por qué importa |
 |---|---|
-| **Página de verificar el correo** y de recuperar contraseña | El registro dice «revisa tu correo» pero no hay a dónde ir; el recorrido real lo verifica por SQL |
+| **Envío de correos** (verificación y recuperación) | Las páginas ya existen (`/verificar-correo?token=…`, `/recuperar-contrasena`, `/restablecer-contrasena?token=…`, API-13/14/15), pero **no hay quien mande el correo**: el servicio de avisos no está construido. Cuando exista, los enlaces tienen que apuntar a esas rutas. El recorrido real sigue verificando por SQL |
 | **Límite de la API pública: 100 peticiones por 15 min por IP** | Una portada hace ~3 (catálogo y comunidad se guardan en memoria). Detrás de una red compartida (café, datos móviles con NAT) varias personas comparten IP. **Hay que medir y decidir antes de salir a producción**; en desarrollo se sube con `Zass__Tasa__P` y `Zass__Tasa__G` |
 | `zass.cl` en línea | Solo Pablo: hosting, DNS y HTTPS. Falta decidir dónde corre la API, cookies `Secure`/`SameSite` para el dominio real y CORS |
 | Foto, títulos y dirección en Mi ficha | Dependen de subida de archivos y del geocodificador |
@@ -564,7 +564,7 @@ Endpoints: **API-01 a API-05, 08-23**, más `GET /api/auth/csrf` y `GET /api/sal
 |---|---|---|
 | `Zass.Aplicacion.Pruebas` | **275** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02 a RN-S3-08, RN-S5-11, CC-02, y MOD-03, MOD-04 y MOD-05 completos |
 | `Zass.Integracion.Pruebas` | **231** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
-| `frontend` (Vitest) | **96** | Cliente HTTP y pantallas, con `fetch` simulado |
+| `frontend` (Vitest) | **107** | Cliente HTTP y pantallas, con `fetch` simulado |
 | `frontend/pruebas-navegador` | 2 guiones | Navegador real contra la API real: que la página monta, los colores de marca, y el registro e ingreso completos |
 
 Escritas con TDD: cada prueba se vio fallar antes de que existiera el código.
@@ -753,7 +753,10 @@ HECHO   MOD-04 Geolocalizacion   7-nov-2026, con 64 pruebas nuevas
 HECHO   MOD-05 Busqueda          7-nov-2026, con 74 pruebas nuevas
                                  (falta BuscarAgregadoPorZona, ver su seccion)
 
-1. REDISENO: UN SITIO PROFESIONAL Y DE COMUNIDAD, NO FORMULARIOS     <-- AQUI
+1. HECHO (7-nov-2026): SITIO MULTIPAGINA PROFESIONAL Y DE COMUNIDAD, con verificar
+   correo y recuperar contrasena (ver "El sitio multipagina"). Lo que sigue pendiente de este
+   paso esta en su tabla "Lo que NO esta hecho": correos reales, foto, dominio zass.cl.
+   Lo de abajo es el historial de la decision, ya cumplida.
    - DIRECCION DE PABLO (7-nov-2026): "quiero que sea un sitio web profesional, que no
      sea un formulario, recuerda que es como una comunidad al fin al cabo". Aplica a TODO
      lo que se construya de aqui en adelante, y obliga a rehacer lo que ya existe

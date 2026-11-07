@@ -24,6 +24,8 @@ export function Entrar() {
         <Ingresar alEntrar={() => { void recargar() }} />
         <p className="formulario-pie">
           ¿No tienes cuenta? <Link to="/crear-cuenta">Crea una</Link>
+          <br />
+          <Link to="/recuperar-contrasena">Olvidé mi contraseña</Link>
         </p>
       </div>
     </div>

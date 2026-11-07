@@ -36,3 +36,18 @@ export async function cerrarSesion(): Promise<void> {
 export function miCuenta<T>(): Promise<T> {
   return obtener<T>('/api/mi/cuenta')
 }
+
+/** API-13. Consume el enlace de verificacion que llego por correo. */
+export async function verificarCorreo(token: string): Promise<void> {
+  await enviar('/api/auth/correo/verificar', { token })
+}
+
+/** API-14. Responde igual exista o no la cuenta. */
+export async function pedirRecuperacion(correo: string): Promise<void> {
+  await enviar('/api/auth/contrasena/recuperar', { correo })
+}
+
+/** API-15. Cambia la contrasena y la API cierra las demas sesiones. */
+export async function restablecerContrasena(token: string, contrasenaNueva: string): Promise<void> {
+  await enviar('/api/auth/contrasena/restablecer', { token, contrasenaNueva })
+}

@@ -10,6 +10,7 @@ import { Oficios } from './paginas/Oficios'
 import { PaginaBuscar } from './paginas/PaginaBuscar'
 import { Portada } from './paginas/Portada'
 import { Profesionales } from './paginas/Profesionales'
+import { RecuperarContrasena, RestablecerContrasena, VerificarCorreo } from './paginas/Recuperacion'
 
 /**
  * Un sitio de varias paginas, no una pagina larga: cada seccion vive en su propia ruta y se
@@ -28,6 +29,9 @@ export function App() {
         <Route path="entrar" element={<Entrar />} />
         <Route path="crear-cuenta" element={<CrearCuenta />} />
         <Route path="mi-ficha" element={<MiFicha />} />
+        <Route path="verificar-correo" element={<VerificarCorreo />} />
+        <Route path="recuperar-contrasena" element={<RecuperarContrasena />} />
+        <Route path="restablecer-contrasena" element={<RestablecerContrasena />} />
         <Route path="*" element={<NoEncontrada />} />
       </Route>
     </Routes>
