@@ -10,11 +10,11 @@
  *   herramientas\pgsql\bin\psql.exe -h 127.0.0.1 -p 5433 -U zass -d zass ^
  *       -f frontend\pruebas-navegador\datos\sembrar-visual.sql
  *   node pruebas-navegador/mirar-busqueda.mjs         (desde frontend/)
- *   herramientas\pgsql\bin\psql.exe ... -f frontend\pruebas-navegador\datos\limpiar-visual.sql
  *
- * *** NO TE OLVIDES DEL ULTIMO PASO. *** Los prestadores sembrados quedan publicados con
- * suscripcion vigente, y las pruebas de integracion de la busqueda esperan una base sin
- * prestadores visibles: con ellos ahi, fallan. Las capturas quedan en registros/capturas/.
+ * No hace falta limpiar despues: las pruebas de integracion tienen su propia base de datos
+ * (zass_pruebas), asi que los prestadores sembrados en la de desarrollo no las afectan.
+ * Para dejar la de desarrollo vacia: datos/limpiar-visual.sql. Las capturas quedan en
+ * registros/capturas/.
  */
 import { mkdirSync } from 'node:fs'
 import { resolve } from 'node:path'

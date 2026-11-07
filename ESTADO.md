@@ -375,9 +375,9 @@ autoalojar la fuente, y más con una ley de protección de datos que empieza a r
 diciembre de 2026 (revisar si aplica, no lo asumo).
 
 **Repetirlo:** `frontend/pruebas-navegador/mirar-busqueda.mjs`, con los datos de
-`datos/sembrar-visual.sql` y, **sin falta**, `datos/limpiar-visual.sql` al terminar: los
-prestadores sembrados quedan publicados y hacen fallar las pruebas de integración de la
-búsqueda. Las instrucciones exactas están en la cabecera del guion.
+`datos/sembrar-visual.sql`. **Ya no hace falta limpiar al terminar**: las pruebas de integración
+tienen su propia base (ver los avisos), así que los prestadores sembrados en la base de
+desarrollo no las afectan. `limpiar-visual.sql` queda para dejar la base de desarrollo vacía.
 
 ### Dirección de diseño — lo que dijo Pablo, y lo que implica
 
@@ -837,7 +837,7 @@ Al terminar: `detener-postgres.bat`.
 | **`herramientas/` pesa ~1,2 GB** | En `.gitignore`. Al clonar hay que volver a bajar PostgreSQL y PostGIS |
 | **La carpeta no está en OneDrive, a propósito** | Una base sincronizándose en vivo se corrompe |
 | **`CifradoAesGcm` exige 32 bytes y no tiene valor por omisión** | Revienta al construirse si falta. Deliberado: una clave de relleno cifraría direcciones reales con un secreto público |
-| **Las pruebas de integración escriben en la base real** | Las de aplicación deshacen su transacción; las de HTTP borran por correo al terminar. Si una se interrumpe, puede dejar filas `api-*@zass.local` |
+| **Las pruebas de integración tienen su propia base de datos, `zass_pruebas`** | La crea y la migra sola la primera vez (las migraciones traen roles, plan, rubros, servicios y zonas), y **se niega a correr contra `zass`**, la de desarrollo: lanza un error en vez de escribir y borrar filas ahí. Se comprobó con 7 prestadores publicados en `zass`: las 218 pasan, y apuntarlas a `zass` falla en 2 ms con un mensaje claro. Antes compartían la base de desarrollo, y cualquier dato de ejemplo hacía fallar las pruebas de la búsqueda: hubo que limpiar a mano varias veces. Se puede cambiar con `ZASS_CADENA_PRUEBAS` (no con `ZASS_CADENA_CONEXION`, que es la de desarrollo). Las de HTTP borran por correo al terminar; si una se interrumpe puede dejar filas `api-*@zass.local` en `zass_pruebas`, no en `zass` |
 | **`DisableTestParallelization` está activo en integración** | Dos pruebas a la vez se bloquean en el índice único. Correr en serie cuesta segundos y evita rojos intermitentes |
 | **El límite de tasa está subido en desarrollo** | `appsettings.Development.json` pone los grupos A y S en 1000. **Ese archivo está en `.gitignore`**, así que producción usa los valores reales del código (5 y 10). Si alguna vez se versiona, revisar esto primero |
 | **La clave local de PostgreSQL quedó en el registro de una sesión** | `dotnet user-secrets set` imprime el valor que guarda. Es la clave de una instancia portable que solo escucha en `127.0.0.1:5433`, sin exposición de red, pero conviene rotarla: cambiarla con `ALTER USER`, actualizar `.clave-pg.txt` y volver a poner `Zass:CadenaConexion` en User Secrets |
