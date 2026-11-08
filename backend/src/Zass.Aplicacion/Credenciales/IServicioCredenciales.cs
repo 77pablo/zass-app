@@ -30,6 +30,14 @@ public interface IServicioCredenciales
         Guid perfilPrestadorId, Guid credencialId, CancellationToken ct = default);
 
     /// <summary>
+    /// API-27. Envía a revisión. Exige un documento disponible (RN-S2-01), salvo que la decisión
+    /// de producto de lanzamiento `Zass:Verificacion:PermitirSinDocumentos` esté activa. También
+    /// es la respuesta a un "pedir antecedentes": devuelve la credencial a la cola.
+    /// </summary>
+    Task<Resultado> EnviarARevisionAsync(
+        Guid perfilPrestadorId, Guid credencialId, CancellationToken ct = default);
+
+    /// <summary>
     /// Lo que ve el público en la ficha. Nunca el estado interno ni los archivos (RN-S2-03):
     /// solo "Verificada" o "Declarada por el usuario", y ningún borrador.
     /// </summary>

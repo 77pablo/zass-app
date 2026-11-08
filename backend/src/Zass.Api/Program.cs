@@ -99,7 +99,7 @@ app.MapearSalud();                                    // /api/salud/lista (readi
 
 // ANCLAJE MOD-11 Resenas: su Mapear va en esta linea y en ninguna otra.
 
-// ANCLAJE MOD-02 Verificacion: su Mapear va en esta linea y en ninguna otra.
+app.MapearVerificacion();
 
 // Sonda de vida. Sin sesion y con el limite publico: tambien es un endpoint.
 app.MapGet("/api/salud", () => Results.Ok(new { estado = "vivo" }))

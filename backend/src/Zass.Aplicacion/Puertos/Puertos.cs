@@ -447,4 +447,42 @@ public interface IRepositorioCredenciales
     Task<EntidadCertificadora?> EntidadPorNombreAsync(string nombre, CancellationToken ct = default);
 
     void AgregarEntidad(EntidadCertificadora entidad);
+
+    // ---- Cola del Verificador (CU-06, CC-03) ----
+
+    /// <summary>
+    /// La cola: en revisión, sin esperar al prestador, que NO sean del propio verificador
+    /// (RN-S2-09) y sin las que otro tiene reservadas y vigentes. Más antigua primero. Con su
+    /// perfil, entidad y documentos.
+    /// </summary>
+    Task<IReadOnlyList<Credencial>> ColaAsync(
+        Guid verificadorId, DateTime ahora, CancellationToken ct = default);
+
+    /// <summary>La credencial con su perfil (para saber de quién es y cómo se llama).</summary>
+    Task<Credencial?> PorIdParaRevisionAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>
+    /// CC-03. Reserva ATÓMICA en una sola sentencia: gana quien la encuentre libre (o vencida, o
+    /// ya suya). Devuelve falso si perdió la carrera, no era revisable o es una cuenta propia. Es una
+    /// condición dentro del UPDATE y no un "leer y luego escribir": con dos verificadores a la vez,
+    /// PostgreSQL serializa por la fila y el segundo reevalúa la condición ya con la reserva puesta.
+    /// </summary>
+    Task<bool> ReservarAsync(
+        Guid credencialId, Guid verificadorId, DateTime ahora, DateTime hasta,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Consume la reserva vigente de este verificador, de forma atómica. Solo una llamada concurrente
+    /// puede ganarla: así dos resoluciones simultáneas de la misma credencial (dos pestañas) no
+    /// pueden ganar las dos.
+    /// </summary>
+    Task<bool> ConsumirReservaAsync(
+        Guid credencialId, Guid verificadorId, DateTime ahora, CancellationToken ct = default);
+
+    /// <summary>
+    /// Registra una decisión. Explícito y no "agregarla a la lista de la credencial": su Id ya viene
+    /// puesto, y EF toma un Guid con valor por una fila que YA existe (UPDATE de 0 filas y un error
+    /// de concurrencia en vez de un INSERT).
+    /// </summary>
+    void AgregarVerificacion(Verificacion verificacion);
 }

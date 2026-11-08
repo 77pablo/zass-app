@@ -49,4 +49,52 @@ public sealed class RepositorioCredencialesEnMemoria : IRepositorioCredenciales
             e => string.Equals(e.Nombre, nombre, StringComparison.OrdinalIgnoreCase)));
 
     public void AgregarEntidad(EntidadCertificadora entidad) => _base.Entidades.Add(entidad);
+
+    // ---- Cola del Verificador. Lo atomico de verdad se prueba contra PostgreSQL. ----
+
+    private bool EsPropia(Credencial c, Guid verificadorId) =>
+        _base.PerfilesPrestador.Any(p => p.Id == c.PerfilPrestadorId && p.UsuarioId == verificadorId);
+
+    public Task<IReadOnlyList<Credencial>> ColaAsync(Guid verificadorId, DateTime ahora, CancellationToken ct = default)
+    {
+        IReadOnlyList<Credencial> r = _base.Credenciales
+            .Where(c => c.Estado == EstadoCredencial.EnRevision && !c.EsperandoPrestador
+                && !EsPropia(c, verificadorId)
+                && (c.ReservadaHasta == null || c.ReservadaHasta < ahora || c.ReservadaPor == verificadorId))
+            .OrderBy(c => c.CreadaEn).ToList();
+        foreach (var c in r) c.PerfilPrestador = _base.PerfilesPrestador.FirstOrDefault(p => p.Id == c.PerfilPrestadorId);
+        return Task.FromResult(r);
+    }
+
+    public Task<Credencial?> PorIdParaRevisionAsync(Guid id, CancellationToken ct = default)
+    {
+        var c = _base.Credenciales.FirstOrDefault(x => x.Id == id);
+        if (c is not null)
+            c.PerfilPrestador = _base.PerfilesPrestador.FirstOrDefault(p => p.Id == c.PerfilPrestadorId);
+        return Task.FromResult(c);
+    }
+
+    public Task<bool> ReservarAsync(Guid credencialId, Guid verificadorId, DateTime ahora, DateTime hasta, CancellationToken ct = default)
+    {
+        var c = _base.Credenciales.FirstOrDefault(x => x.Id == credencialId);
+        if (c is null || c.Estado != EstadoCredencial.EnRevision || c.EsperandoPrestador
+            || EsPropia(c, verificadorId)
+            || !(c.ReservadaHasta == null || c.ReservadaHasta < ahora || c.ReservadaPor == verificadorId))
+            return Task.FromResult(false);
+        c.Reservar(verificadorId, hasta);
+        return Task.FromResult(true);
+    }
+
+    public void AgregarVerificacion(Verificacion verificacion) =>
+        _base.Credenciales.Single(c => c.Id == verificacion.CredencialId).Verificaciones.Add(verificacion);
+
+    public Task<bool> ConsumirReservaAsync(Guid credencialId, Guid verificadorId, DateTime ahora, CancellationToken ct = default)
+    {
+        var c = _base.Credenciales.FirstOrDefault(x => x.Id == credencialId);
+        if (c is null || c.Estado != EstadoCredencial.EnRevision || c.EsperandoPrestador
+            || c.ReservadaPor != verificadorId || !(c.ReservadaHasta >= ahora))
+            return Task.FromResult(false);
+        c.LiberarReserva();
+        return Task.FromResult(true);
+    }
 }
