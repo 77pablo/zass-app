@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using FluentValidation;
 using Zass.Api;
 using Zass.Api.Configuracion;
@@ -94,6 +94,12 @@ app.MapearBusqueda();
 app.MapearMapaDelSitio();
 app.MapearCredenciales();
 app.MapearSalud();                                    // /api/salud/lista (readiness)
+
+// ANCLAJE MOD-06 Agenda: su Mapear va en esta linea y en ninguna otra.
+
+// ANCLAJE MOD-11 Resenas: su Mapear va en esta linea y en ninguna otra.
+
+// ANCLAJE MOD-02 Verificacion: su Mapear va en esta linea y en ninguna otra.
 
 // Sonda de vida. Sin sesion y con el limite publico: tambien es un endpoint.
 app.MapGet("/api/salud", () => Results.Ok(new { estado = "vivo" }))

@@ -150,8 +150,19 @@ public static class RegistroDeServicios
         servicios.AddScoped<IRepositorioMapaDelSitio, RepositorioMapaDelSitioEfCore>();
         servicios.AddScoped<ServicioMapaDelSitio>();
 
+        // --- MOD-06 Agenda ---
+        // ANCLAJE: el agente de MOD-06 registra SOLO aqui. Existe vacio a proposito, para que
+        // cuatro agentes a la vez inserten en regiones separadas y git fusione sin conflicto.
+
+        // --- MOD-11 Resenas ---
+        // ANCLAJE: el agente de MOD-11 registra SOLO aqui.
+
         // --- MOD-13 Suscripciones ---
         servicios.AddScoped<IServicioSuscripciones, ServicioSuscripciones>();
+
+        // --- Trabajos de fondo ---
+        // ANCLAJE: el agente de los trabajos de fondo registra SOLO aqui (vencer suscripciones,
+        // avisar antes de vencer, despachar los avisos de TBL-27).
 
         // --- Correo transaccional ---
         // Con proveedor distinto de Ninguno y sin clave, la aplicacion se niega a arrancar
