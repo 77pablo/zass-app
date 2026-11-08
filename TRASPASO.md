@@ -90,7 +90,7 @@ Los archivos de `zass-secretos` ya contienen valores viejos hasta que se actuali
 
 ## 6. Trabajo de esta sesión que está COMMITEADO pero NO publicado
 
-Commit `b678b42` (+ merge `f21045b`), **7 commits locales sin subir a GitHub**. Contenido:
+Commit `b678b42` (+ merge `f21045b`), **commits ya subidos a GitHub (push hecho el 8-nov noche; falta Manual Deploy en Render)**. Contenido:
 - **Decisión de Pablo:** buscar y ver fichas no exige cuenta; **contactar sí**; y **una sola cuenta** sirve para buscar y ofrecer.
 - API-05 (ficha pública): sin sesión, `contacto` vacío y `contactoRequiereCuenta: true` (se quita en el servidor), con `Cache-Control: private, no-store`.
 - **CS-04** `POST /api/mi/activar-prestador` («Ofrecer mis servicios»): agrega el rol, crea el perfil en borrador, idempotente, renueva la sesión.
@@ -98,9 +98,9 @@ Commit `b678b42` (+ merge `f21045b`), **7 commits locales sin subir a GitHub**. 
 - Pantalla **Mis citas** (`/mis-citas`) y los cambios de rendimiento móvil.
 
 ### 🔴 Siguiente paso inmediato (orden obligatorio)
-1. Pablo sube los 7 commits con **GitHub Desktop → Push origin**. (Al cierre seguían sin subir: `git status -sb` decía «ahead 7».)
-2. Pablo hace **Render → zass-api → Manual Deploy → Deploy latest commit** (`autoDeploy: false` a propósito). **No hay migraciones nuevas.**
-3. Comprobar que el backend nuevo esté arriba: `POST https://zass-api.onrender.com/api/mi/activar-prestador` sin sesión debe dar **401** (hoy da 404 = código viejo).
+1. ~~Subir los commits~~ **HECHO** (push a `origin/main` el 8-nov noche, HEAD `b082e8a`). Ya está en GitHub.
+2. **PENDIENTE (lo hace Pablo):** **Render → zass-api → Manual Deploy → Deploy latest commit** (`autoDeploy: false` a propósito). **No hay migraciones nuevas.**
+3. **PENDIENTE:** comprobar que el backend nuevo esté arriba: `POST https://zass-api.onrender.com/api/mi/activar-prestador` sin sesión debe dar **401** (hoy da 404 = código viejo).
 4. **Solo entonces** publicar el sitio: `cd frontend && npm run build && npx wrangler pages deploy dist --project-name zass --branch main`
    (requiere `CLOUDFLARE_API_TOKEN` en el entorno). **Si el sitio sale antes que la API, «Ofrecer mis servicios» llama a un endpoint inexistente.**
 5. Probar en `zass.cl`: ficha sin sesión (sin teléfono, con botón de crear cuenta), crear cuenta, volver a la ficha con contacto, «Ofrecer mis servicios».
