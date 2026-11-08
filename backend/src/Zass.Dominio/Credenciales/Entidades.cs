@@ -67,13 +67,12 @@ public class Credencial
         // 4B.5: quien responde a un "pedir antecedentes" devuelve la credencial a la cola.
         if (Estado == EstadoCredencial.EnRevision && EsperandoPrestador)
         {
-            EsperandoPrestador = false;
             return Resultado.Ok();
         }
         if (Estado is not (EstadoCredencial.Borrador or EstadoCredencial.Rechazada
             or EstadoCredencial.Vencida))
             return Resultado.Falla(Fallas.Conflicto, "Esta credencial ya está en revisión.");
-        if (!TieneRespaldo() && !permitirSinDocumentos)
+        if (!TieneRespaldo())
             return Resultado.Falla(Fallas.ReglaDeNegocio,
                 "Sube al menos un documento de respaldo antes de enviar a revision.");
         Estado = EstadoCredencial.EnRevision;
@@ -85,7 +84,7 @@ public class Credencial
     {
         Estado = EstadoCredencial.Verificada;
         SelloPor = verificadorId;
-        SelloEn = ahora ?? DateTime.UtcNow;
+
         EsperandoPrestador = false;
         LiberarReserva();
     }
@@ -93,7 +92,6 @@ public class Credencial
     /// <summary>4B: sigue en revisión pero sale de la cola activa hasta que el prestador responda.</summary>
     public void PedirAntecedentes()
     {
-        EsperandoPrestador = true;
         LiberarReserva();
     }
 
@@ -113,7 +111,7 @@ public class Credencial
     }
 
     public bool ReservaVencida(DateTime ahora) =>
-        ReservadaHasta is null || ReservadaHasta < ahora;
+        ReservadaHasta is null || ReservadaHasta <= ahora;
 
     public void Reservar(Guid verificadorId, DateTime hasta)
     {

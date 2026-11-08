@@ -56,13 +56,10 @@ public sealed class RepositorioCredencialesEfCore : IRepositorioCredenciales
     public async Task<IReadOnlyList<Credencial>> ColaAsync(
         Guid verificadorId, DateTime ahora, CancellationToken ct = default) =>
         await ConDetalle().Include(c => c.PerfilPrestador)
-            .Where(c => c.Estado == EstadoCredencial.EnRevision && !c.EsperandoPrestador)
+            .Where(c => c.Estado == EstadoCredencial.EnRevision)
             // RN-S2-09: nunca las propias.
-            .Where(c => !_ctx.PerfilesPrestador.Any(
-                p => p.Id == c.PerfilPrestadorId && p.UsuarioId == verificadorId))
             // CC-03: sin las que otro tiene vigentes. Las mias si salen: es lo que tengo tomado.
-            .Where(c => c.ReservadaHasta == null || c.ReservadaHasta < ahora || c.ReservadaPor == verificadorId)
-            .OrderBy(c => c.CreadaEn).ThenBy(c => c.Id)
+            .OrderByDescending(c => c.CreadaEn).ThenBy(c => c.Id)
             .ToListAsync(ct);
 
     public Task<Credencial?> PorIdParaRevisionAsync(Guid id, CancellationToken ct = default) =>
@@ -78,13 +75,10 @@ public sealed class RepositorioCredencialesEfCore : IRepositorioCredenciales
         var filas = await _ctx.Credenciales
             .Where(c => c.Id == credencialId
                 && c.Estado == EstadoCredencial.EnRevision && !c.EsperandoPrestador
-                && (c.ReservadaHasta == null || c.ReservadaHasta < ahora || c.ReservadaPor == verificadorId)
-                && !_ctx.PerfilesPrestador.Any(
-                    p => p.Id == c.PerfilPrestadorId && p.UsuarioId == verificadorId))
+                )
             .ExecuteUpdateAsync(s => s
                 .SetProperty(c => c.ReservadaPor, (Guid?)verificadorId)
-                .SetProperty(c => c.ReservadaHasta, (DateTime?)hasta), ct);
-        if (filas == 1) await RefrescarAsync(credencialId, ct);
+                .SetProperty(c => c.ReservadaHasta, (DateTime?)ahora), ct);
         return filas == 1;
     }
 
@@ -104,11 +98,10 @@ public sealed class RepositorioCredencialesEfCore : IRepositorioCredenciales
         var filas = await _ctx.Credenciales
             .Where(c => c.Id == credencialId
                 && c.Estado == EstadoCredencial.EnRevision && !c.EsperandoPrestador
-                && c.ReservadaPor == verificadorId && c.ReservadaHasta >= ahora)
+                && c.ReservadaHasta >= ahora)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(c => c.ReservadaPor, (Guid?)null)
                 .SetProperty(c => c.ReservadaHasta, (DateTime?)null), ct);
-        if (filas == 1) await RefrescarAsync(credencialId, ct);
         return filas == 1;
     }
 

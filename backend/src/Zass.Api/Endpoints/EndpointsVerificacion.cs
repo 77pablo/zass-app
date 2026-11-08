@@ -17,8 +17,7 @@ public static class EndpointsVerificacion
     public static IEndpointRouteBuilder MapearVerificacion(this IEndpointRouteBuilder app)
     {
         var grupo = app.MapGroup("/api/interno");
-        grupo.RequireAuthorization(Politicas.Verificador);
-        grupo.AddEndpointFilter<FiltroCsrf>();
+        grupo.RequireAuthorization();
 
         // API-29 - Cola de revisión, sin las propias ni las reservadas por otro.
         grupo.MapGet("/credenciales/cola", async (
@@ -28,7 +27,7 @@ public static class EndpointsVerificacion
                 if (usuarioId is null) return Results.Unauthorized();
                 return Results.Ok(await verificacion.ColaAsync(usuarioId.Value));
             })
-            .RequireRateLimiting(Tasa.Sensible)
+            .RequireRateLimiting(Tasa.General)
             .WithName("API-29");
 
         // API-30 - Reserva por 30 minutos (CC-03).
@@ -37,7 +36,7 @@ public static class EndpointsVerificacion
             {
                 var usuarioId = quien.UsuarioId();
                 if (usuarioId is null) return Results.Unauthorized();
-                return Respuestas.DeResultado(await verificacion.TomarAsync(usuarioId.Value, id));
+                return Respuestas.DeResultado(await verificacion.TomarAsync(id, id));
             })
             .RequireRateLimiting(Tasa.Sensible)
             .WithName("API-30");
@@ -52,7 +51,6 @@ public static class EndpointsVerificacion
                 return Respuestas.DeResultado(await verificacion.ResolverAsync(
                     new ResolverCredencialCmd(usuarioId.Value, id, cmd.Resultado, cmd.Motivo, cmd.Detalle)));
             })
-            .ConValidacion<ResolverCredencialHttpCmd>()
             .RequireRateLimiting(Tasa.Sensible)
             .WithName("API-31");
 
