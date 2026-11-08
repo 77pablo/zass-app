@@ -1,4 +1,4 @@
-using Zass.Dominio.Catalogo;
+﻿using Zass.Dominio.Catalogo;
 using Zass.Dominio.Comun;
 using Zass.Dominio.Credenciales;
 using Zass.Dominio.Identidad;
@@ -62,6 +62,22 @@ public interface IAuditor
 public interface IUnidadDeTrabajo
 {
     Task<int> GuardarAsync(CancellationToken ct = default);
+}
+
+/// <summary>
+/// La sonda de disponibilidad de /api/salud/lista: ?responde la base de verdad?
+///
+/// Es un puerto y no una consulta dentro del endpoint porque los endpoints no hablan con la
+/// base (la prueba de arquitectura «los endpoints no tocan la base ni los repositorios» lo
+/// exige, y el motivo de fondo es que el dia que cambie como se comprueba la base se cambia
+/// en un solo sitio).
+///
+/// NUNCA lanza: devuelve false y deja el motivo en el registro. La ruta es publica y el texto
+/// de un error de Npgsql lleva el host y la cadena de conexion.
+/// </summary>
+public interface ISondaDeBase
+{
+    Task<bool> RespondeAsync(CancellationToken ct = default);
 }
 
 public interface IRepositorioUsuarios

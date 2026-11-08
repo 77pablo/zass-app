@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -106,6 +106,15 @@ public static class RegistroDeServicios
         servicios.AddSingleton<IGeocodificador, GeocodificadorNoDisponible>();
         servicios.AddScoped<INotificaciones, ColaNotificacionesEfCore>();
         servicios.AddScoped<IAuditor, AuditorEfCore>();
+
+        // La sonda de /api/salud/lista. Singleton: crea su propio ambito en cada consulta.
+        // AddLogging porque la sonda escribe en el registro el motivo de un 503, y es el
+        // unico servicio de este modulo que necesita ILoggerFactory: sin esto, AgregarZass
+        // declararia un servicio cuya dependencia no provee, y solo funcionaria dentro de
+        // una aplicacion de ASP.NET, que registra el sistema de registro por su cuenta.
+        // Es idempotente (usa TryAdd): no pisa la configuracion de registro de la API.
+        servicios.AddLogging();
+        servicios.AddSingleton<ISondaDeBase, SondaDeBase>();
 
         // --- MOD-01 Identidad ---
         servicios.AddScoped<IServicioIdentidad, ServicioIdentidad>();

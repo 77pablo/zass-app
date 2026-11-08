@@ -1,0 +1,16 @@
+# Fuera de la imagen: binarios locales, pruebas y todo lo que pueda llevar secretos.
+**/bin/
+**/obj/
+pruebas/
+.vs/
+.vscode/
+*.user
+**/appsettings.Development.json
+**/appsettings.Production.json
+**/secrets.json
+.env
+*.env
+.clave-pg.txt
+certificados/
+Dockerfile
+.dockerignore
