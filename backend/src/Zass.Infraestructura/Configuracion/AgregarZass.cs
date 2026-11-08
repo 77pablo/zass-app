@@ -13,6 +13,7 @@ using Zass.Aplicacion.Credenciales;
 using Zass.Aplicacion.Busqueda;
 using Zass.Aplicacion.Geografia;
 using Zass.Aplicacion.Suscripciones;
+using Zass.Aplicacion.Resenas;
 using Zass.Aplicacion.Puertos;
 using Zass.Infraestructura.Correo;
 using Zass.Infraestructura.Fondo;
@@ -172,7 +173,8 @@ public static class RegistroDeServicios
         // cuatro agentes a la vez inserten en regiones separadas y git fusione sin conflicto.
 
         // --- MOD-11 Resenas ---
-        // ANCLAJE: el agente de MOD-11 registra SOLO aqui.
+        servicios.AddScoped<IRepositorioResenas, RepositorioResenasEfCore>();
+        servicios.AddScoped<IServicioResenas, ServicioResenas>();
 
         // --- MOD-13 Suscripciones ---
         servicios.AddScoped<IServicioSuscripciones, ServicioSuscripciones>();

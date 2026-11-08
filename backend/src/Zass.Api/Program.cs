@@ -97,7 +97,7 @@ app.MapearSalud();                                    // /api/salud/lista (readi
 
 app.MapearAgenda();                                    // ANCLAJE MOD-06 Agenda
 
-// ANCLAJE MOD-11 Resenas: su Mapear va en esta linea y en ninguna otra.
+app.MapearResenas();
 
 app.MapearVerificacion();
 
