@@ -748,6 +748,53 @@ Cosas que **tienen prueba propia**, no solo un comentario:
 
 ---
 
+## 3 bis. Correo transaccional real (agente/correo)
+
+**Qué hay.** Los avisos de verificación de correo y recuperación de contraseña ya se envían de verdad
+(antes solo se encolaban en TBL-27). Sin columnas nuevas ni migraciones: `programada_para` hace de
+«próximo intento» y de reserva, y `intentos`/`ultimo_error` ya existían.
+
+- `TrabajoDeCorreo` (BackgroundService) llama a `ProcesadorDeCorreo`, que reserva un lote con
+  `UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED) RETURNING id` (estado `Enviando`, reserva de
+  120 s: si una réplica muere, otra retoma el aviso). Seguro con varias réplicas: hay prueba con dos
+  trabajadores y 40 avisos, un solo envío por aviso.
+- Fallo del proveedor: 5xx, 408, 425, 429, timeout y error de red se reintentan con espera 1 min, 2, 4... (tope 1 h);
+  otro 4xx queda `Fallida` sin reintentar. Máximo 5 intentos (`Zass:Correo:MaximoIntentos`).
+- Puerto `IEnviadorDeCorreo`; `EnviadorBrevo` (API v3) y `EnviadorResend`, por HTTP.
+- Higiene del token: la carga del aviso es JSON `{"token":"..."}` (`CargaDeAviso`). Al enviarse (o anularse) pasa a
+  `{"purgado":true}`; un aviso fallido se purga 24 h después del fallo. Asunto fijo, sin token ni nombre.
+- Logs: correo enmascarado (`a***@dominio.cl`), nunca token, clave ni cuerpo de respuesta del proveedor.
+- Si el usuario ya verificó su correo o la cuenta se eliminó, el aviso se anula sin enviar.
+- Pedir recuperación con un correo inexistente no encola nada y responde igual (prueba por HTTP).
+- Límite conocido: entrega «al menos una vez». Si el proveedor aceptó el correo y la base falla justo después, el aviso
+  se reenvía al vencer la reserva.
+- Un aviso pendiente (por ejemplo, sin `UrlPublica`) conserva el token en claro hasta que sale o se anula; no hay caducidad
+  automática de avisos pendientes.
+
+**Configuración (variables de entorno en Render; en Cloudflare solo si la API corre allí).**
+
+| Variable | Valor |
+|---|---|
+| `Zass__Correo__Proveedor` | `Brevo`, `Resend` o `Ninguno` (por omisión: no envía, los avisos quedan pendientes) |
+| `Zass__Correo__ApiKey` | clave de API del proveedor (secreto; nunca en el repositorio) |
+| `Zass__Correo__Remitente` | dirección de un dominio verificado, p. ej. `no-responder@zass.cl` |
+| `Zass__Correo__NombreRemitente` | opcional, por omisión `ZASS!` |
+| `Zass__UrlPublica` | `https://zass.cl`; sin ella no se envía nada y se registra una advertencia |
+
+Con proveedor distinto de `Ninguno` y sin clave o sin remitente, la aplicación se niega a arrancar con un mensaje claro.
+Ajustes opcionales: `Zass__Correo__MaximoIntentos`, `EsperaBaseSegundos`, `TamanoDeLote`, `SondeoSegundos`, `PurgaDeFallidasHoras`.
+
+**Límites del plan gratuito.** Brevo y Resend tienen cupos diarios/mensuales en su plan gratuito: verifícalo en la página del proveedor.
+La cuota agotada suele llegar como 429 (se reintenta con espera) o como un 4xx del proveedor (queda fallida): revísalo al elegir.
+
+**Verificar el dominio remitente (SPF/DKIM).** Sin esto los correos caen en spam o el proveedor los rechaza.
+1. En el panel del proveedor, agrega el dominio (p. ej. `zass.cl`) en la sección de dominios/remitentes.
+2. El proveedor muestra los registros DNS que debes crear (SPF como TXT, DKIM como TXT o CNAME, a veces DMARC). Copia exactamente los valores que te muestre.
+3. Créalos en el DNS donde está `zass.cl`, espera la propagación y pulsa «verificar» en el panel.
+4. Usa como `Remitente` una dirección de ese dominio. Si ya existe un SPF, no crees un segundo: se combinan en un único registro.
+
+**Pruebas:** ver el informe de la sesión; todo en `backend/pruebas/Zass.Integracion.Pruebas/Correo/` (HttpMessageHandler falso, sin red).
+
 ## 4. Los seis fallos que encontraron las pruebas de verdad
 
 Ninguno se veía al compilar y ninguno lo habrían visto las pruebas en memoria. Van aquí

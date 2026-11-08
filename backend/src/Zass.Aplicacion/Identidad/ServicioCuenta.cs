@@ -108,8 +108,8 @@ public sealed class ServicioCuenta
                 Canal = CanalNotificacion.Correo,
                 ClaveIdempotencia = $"recuperacion:{usuario.Id}:{ahora:yyyyMMddHHmmss}",
                 Asunto = "Crear una contrasena nueva en ZASS!",
-                Cuerpo = $"Este codigo sirve por una hora: {token}. "
-                       + "Si no fuiste tú, ignora este correo: tu contraseña no ha cambiado.",
+                // El token va en una carga estructurada que el enviador purga tras el envio.
+                Cuerpo = CargaDeAviso.ConToken(token),
                 ProgramadaPara = ahora,
             });
 
