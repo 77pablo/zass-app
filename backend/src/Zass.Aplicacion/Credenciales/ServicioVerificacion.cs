@@ -53,12 +53,12 @@ public sealed class ServicioVerificacion : IServicioVerificacion
         Guid verificadorId, Guid credencialId, CancellationToken ct = default)
     {
         var ahora = _reloj.Ahora;
-        var credencial = await _repo.PorIdParaRevisionAsync(credencialId, ct);
+        var enRevision = await _repo.PorIdParaRevisionAsync(credencialId, ct);
 
         var noEsRevisable = await NoRevisableAsync<CredencialEnColaDto>(
-            credencial, verificadorId, credencialId, "tomar", ct);
+            enRevision, verificadorId, credencialId, "tomar", ct);
         if (noEsRevisable is not null) return noEsRevisable;
-        credencial = credencial!;
+        var credencial = enRevision!;
 
         if (credencial.EsperandoPrestador)
             return Resultado.Falla<CredencialEnColaDto>(Fallas.Conflicto,
@@ -112,12 +112,12 @@ public sealed class ServicioVerificacion : IServicioVerificacion
                 $"Escribe qué falta, con al menos {LargoMinimoDetalle} caracteres.");
 
         var ahora = _reloj.Ahora;
-        var credencial = await _repo.PorIdParaRevisionAsync(cmd.CredencialId, ct);
+        var enRevision = await _repo.PorIdParaRevisionAsync(cmd.CredencialId, ct);
 
         var noEsRevisable = await NoRevisableAsync<ResolucionDto>(
-            credencial, cmd.VerificadorId, cmd.CredencialId, "resolver", ct);
+            enRevision, cmd.VerificadorId, cmd.CredencialId, "resolver", ct);
         if (noEsRevisable is not null) return noEsRevisable;
-        credencial = credencial!;
+        var credencial = enRevision!;
 
         if (credencial.EsperandoPrestador)
             return Resultado.Falla<ResolucionDto>(Fallas.Conflicto,

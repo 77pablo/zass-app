@@ -519,7 +519,10 @@ public class VerificacionSinDocumentosApiPruebas : IAsyncLifetime
             var aviso = await ctx.Notificaciones
                 .Where(n => n.DestinatarioId == usuario.Id && n.Tipo == TipoNotificacion.CorreoVerificacion)
                 .OrderByDescending(n => n.ProgramadaPara).FirstAsync();
-            var token = aviso.Cuerpo.Split(' ').Last().TrimEnd('.');
+            // El cuerpo del aviso es una carga estructurada desde que el correo se envia de
+            // verdad, no una frase que termina en el token: se lee con el mismo ayudante que usa
+            // el enviador. Partirlo por espacios funcionaba antes de esa rama y aqui daba 404.
+            var token = Zass.Aplicacion.Puertos.CargaDeAviso.LeerToken(aviso.Cuerpo)!;
             Assert.Equal(HttpStatusCode.NoContent,
                 (await _cliente.PostAsJsonAsync("/api/auth/correo/verificar", new { token })).StatusCode);
         }
@@ -608,7 +611,7 @@ public class VerificacionSinDocumentosApiPruebas : IAsyncLifetime
             var aviso = await ctx.Notificaciones
                 .Where(n => n.DestinatarioId == usuario.Id && n.Tipo == TipoNotificacion.CorreoVerificacion)
                 .OrderByDescending(n => n.ProgramadaPara).FirstAsync();
-            await _cliente.PostAsJsonAsync("/api/auth/correo/verificar", new { token = aviso.Cuerpo.Split(' ').Last().TrimEnd('.') });
+            await _cliente.PostAsJsonAsync("/api/auth/correo/verificar", new { token = Zass.Aplicacion.Puertos.CargaDeAviso.LeerToken(aviso.Cuerpo)! });
             ctx.UsuarioRoles.Add(new UsuarioRol { UsuarioId = usuario.Id, RolId = 3 });
             await ctx.SaveChangesAsync();
             verificadorId = usuario.Id;

@@ -109,14 +109,15 @@ public sealed class ServicioGeografia : IServicioGeografia
         // Chile: un punto en Padre Las Casas esta a pocos km de un barrio de Temuco y no por eso es de Temuco.
         if (elegida.Tipo == TipoDeZona.Comuna)
         {
-            var barrio = zonas
+            // Sin Cast a un tipo anulable: ese casteo pasa por boxing y el analizador lo marca
+            // (CA2021). Una lista ordenada dice lo mismo y se lee mejor.
+            var barrios = zonas
                 .Where(z => z.PadreId == elegida.Id)
                 .Select(z => (zona: z, metros: Geo.DistanciaEnMetros(punto, Centro(z))))
                 .OrderBy(x => x.metros)
-                .Cast<(Zona zona, double metros)?>()
-                .FirstOrDefault();
-            if (barrio is not null && barrio.Value.metros <= MaxKmHastaUnBarrio * 1000.0)
-                elegida = barrio.Value.zona;
+                .ToList();
+            if (barrios.Count > 0 && barrios[0].metros <= MaxKmHastaUnBarrio * 1000.0)
+                elegida = barrios[0].zona;
         }
 
         return Resultado.Ok(Describir(elegida));
