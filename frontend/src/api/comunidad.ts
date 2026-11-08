@@ -6,6 +6,8 @@ export interface ResumenDeComunidad {
   porZona: { zonaId: number; personas: number }[]
   porRubro: { rubroId: number; personas: number }[]
   recienLlegados: RecienLlegado[]
+  /** Personas por region, cada una contada una vez. */
+  porRegion: { region: string; personas: number }[]
 }
 
 export interface RecienLlegado {
@@ -28,4 +30,9 @@ export function personasEnZona(r: ResumenDeComunidad | null, zonaId: number): nu
 /** Cuantas personas hay en un rubro; 0 si el resumen no lo menciona (o aun no cargo). */
 export function personasEnRubro(r: ResumenDeComunidad | null, rubroId: number): number {
   return r?.porRubro.find((x) => x.rubroId === rubroId)?.personas ?? 0
+}
+
+/** Cuantas personas hay en una region; 0 si el resumen no la menciona (o aun no cargo). */
+export function personasEnRegion(r: ResumenDeComunidad | null, region: string): number {
+  return r?.porRegion?.find((x) => x.region === region)?.personas ?? 0
 }

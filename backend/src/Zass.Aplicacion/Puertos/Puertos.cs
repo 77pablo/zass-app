@@ -295,8 +295,8 @@ public interface IRepositorioBusqueda
 public sealed record CriteriosDeTexto(
     string[] Formas,
     int[] Grupos,
-    double Latitud,
-    double Longitud,
+    double? Latitud,
+    double? Longitud,
     int? ZonaId,
     string Orden,
     DateTime Ahora,
@@ -329,6 +329,8 @@ public class FilaDeTexto
 
 public sealed record ConteoCrudo(int Id, int Personas);
 
+public sealed record ConteoDeRegion(string Region, int Personas);
+
 public sealed record RecienLlegadoFila(
     string Slug, string NombrePublico, string? RubroNombre, string? ZonaPrincipal, bool Verificada);
 
@@ -336,7 +338,8 @@ public sealed record ResumenCrudo(
     int Total,
     IReadOnlyList<ConteoCrudo> PorZona,
     IReadOnlyList<ConteoCrudo> PorRubro,
-    IReadOnlyList<RecienLlegadoFila> Recientes);
+    IReadOnlyList<RecienLlegadoFila> Recientes,
+    IReadOnlyList<ConteoDeRegion>? PorRegion = null);
 
 /// <summary>
 /// Donde quedo la ultima fila servida. Es lo que viaja en el cursor, y es EXACTAMENTE la

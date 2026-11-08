@@ -6,7 +6,7 @@ import { Aparece } from '../marco/Aparece'
 import { BarraDeBusqueda } from '../marco/BarraDeBusqueda'
 import { Icono } from '../marco/Icono'
 import { Monograma } from '../marco/Monograma'
-import { Radar } from '../marco/Radar'
+import { MapaDeChile } from '../marco/MapaDeChile'
 import { TarjetaPersona } from '../marco/TarjetaPersona'
 import { capitalizar, EJEMPLOS, personas } from '../marco/texto'
 import { useContador } from '../marco/useContador'
@@ -40,6 +40,7 @@ export function Portada() {
 
   const rubros = catalogo.datos?.rubros ?? []
   const zonas = catalogo.datos?.zonas ?? []
+  const comunas = zonas.filter((z) => z.tipo === 'Comuna')
   const recientes = comunidad.datos?.recienLlegados ?? []
   const total = comunidad.datos?.total ?? 0
 
@@ -61,7 +62,7 @@ export function Portada() {
           <div className="hero-texto">
             <p className="sobretitulo sobretitulo--vivo entra" style={{ '--d': '0ms' } as React.CSSProperties}>
               <span className="pulso" aria-hidden="true" />
-              Temuco{total > 0 && <> · {personas(total)} conectadas</>}
+              Chile{total > 0 && <> · {personas(total)} conectadas</>}
             </p>
             <h1 className="titular entra" style={{ '--d': '90ms' } as React.CSSProperties}>
               Busca a alguien <span className="titular-brillo">de tu ciudad.</span>
@@ -100,8 +101,8 @@ export function Portada() {
           </div>
 
           {zonas.length > 0 && (
-            <div className="hero-radar entra entra--derecha" style={{ '--d': '300ms' } as React.CSSProperties}>
-              <Radar zonas={zonas} conteo={conteo} />
+            <div className="hero-mapa entra entra--derecha" style={{ '--d': '300ms' } as React.CSSProperties}>
+              <MapaDeChile zonas={zonas} conteo={conteo} />
             </div>
           )}
         </div>
@@ -126,7 +127,7 @@ export function Portada() {
         <section className="cifras" aria-label="ZASS! en cifras">
           <div className="contenedor cifras-fila">
             <Cifra valor={total} etiqueta="personas con ficha" />
-            <Cifra valor={zonas.length} etiqueta="barrios" />
+            <Cifra valor={comunas.length} etiqueta="comunas" />
             <Cifra valor={rubros.length} etiqueta="oficios" />
           </div>
         </section>
@@ -195,14 +196,14 @@ export function Portada() {
           <Aparece><h2 className="seccion-titulo">Entra por donde quieras</h2></Aparece>
           <div className="tiles">
             <Aparece orden={0}>
-              <Link to="/barrios" className="tile tile--amarillo">
+              <Link to="/comunas" className="tile tile--amarillo">
                 <Icono nombre="pin" />
-                <h3>Por barrio</h3>
+                <h3>Por comuna</h3>
                 <p>
-                  {zonas.length > 0 ? `${zonas.length} barrios` : 'Los barrios'} de Temuco y
-                  alrededores, y cuánta gente hay en cada uno.
+                  {comunas.length > 0 ? `${comunas.length} comunas` : 'Las comunas'} de todo Chile,
+                  y cuánta gente hay en cada una.
                 </p>
-                <span className="tile-ir">Ver los barrios<Icono nombre="flecha" /></span>
+                <span className="tile-ir">Ver las comunas<Icono nombre="flecha" /></span>
               </Link>
             </Aparece>
             <Aparece orden={1}>
@@ -221,7 +222,7 @@ export function Portada() {
               <Link to="/profesionales" className="tile tile--vidrio">
                 <Icono nombre="persona" />
                 <h3>Si eres profesional</h3>
-                <p>Tu ficha, tu barrio y tus servicios, a la vista de quien te busca cerca.</p>
+                <p>Tu ficha, tu comuna y tus servicios, a la vista de quien te busca cerca.</p>
                 <span className="tile-ir">Crear mi ficha<Icono nombre="flecha" /></span>
               </Link>
             </Aparece>

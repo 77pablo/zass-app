@@ -17,7 +17,7 @@ export function Oficios() {
           <p className="sobretitulo">Oficios</p>
           <h1 className="pagina-titulo">Quién sabe de lo tuyo.</h1>
           <p className="bajada">
-            Elige un oficio y mira a las personas de Temuco que lo ejercen.
+            Elige un oficio y mira a las personas de todo Chile que lo ejercen.
           </p>
         </div>
       </section>

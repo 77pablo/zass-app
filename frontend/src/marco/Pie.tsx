@@ -8,12 +8,12 @@ export function Pie() {
         <div className="pie-fila">
           <div>
             <Logo />
-            <p>Servicios de tu barrio, a un toque. Hecho en Temuco.</p>
+            <p>Servicios de tu zona, a un toque. Hecho en Chile.</p>
           </div>
           <nav aria-label="Secciones">
             <ul>
               <li><Link to="/buscar">Buscar a alguien</Link></li>
-              <li><Link to="/barrios">Barrios</Link></li>
+              <li><Link to="/comunas">Comunas</Link></li>
               <li><Link to="/oficios">Oficios</Link></li>
             </ul>
           </nav>

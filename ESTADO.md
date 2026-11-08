@@ -213,6 +213,58 @@ nadie dice "atiendo en Condominio Nueva Milano". Quedaron los 16 sectores con lo
 gente de Temuco dice dónde está. Ninguna coordenada está inventada, y eso importa: un
 centroide mal puesto manda al prestador al barrio de al lado sin que nada falle.
 
+### Chile entero: la comuna como unidad (8-nov-2026)
+
+Pablo quiere salir **a nivel nacional y gratis**. Hasta hoy todo estaba armado alrededor de los 16 barrios de Temuco.
+
+**Hecho y verificado:**
+- **346 comunas en 16 regiones**, bajadas de OpenStreetMap (Overpass) con su **capital comunal** (`admin_centre`) como punto;
+  cada región se validó contra la cifra oficial (RM 52, Biobío 33, Los Ríos 12…). Una sola comuna se usa con el centro de su
+  caja (Rengo) y **Antártica no existe como relación en OSM**: se usa el nodo de Villa Las Estrellas (su capital legal),
+  dicho en el archivo. Generado por `generar_zonas.py` → `Zass.Infraestructura/Datos/ZonasDeChile.cs` (no se edita a mano).
+- **Modelo:** `Zona` ahora tiene `Tipo` (Comuna|Barrio), `Region` y `PadreId`. Los 16 barrios quedaron como barrios de la comuna de
+  Temuco (id 377). La base lo exige (`ck_zona_tipo`, `ck_zona_padre`). Ids 101–446, fijos una vez migrados.
+- **Migración `ComunasDeChile`** (+ dos funciones SQL: `zonas_relacionadas` y `etiqueta_de_zona`). Ya aplicada en la base de desarrollo.
+- **La relación comuna–barrio manda en la búsqueda:** quien cubre «Temuco» aparece al buscar en «Centro, Temuco» y al revés; los
+  barrios hermanos y las comunas vecinas no se mezclan. El conteo de la portada usa la misma relación y **una prueba exige que
+  coincida con lo que la búsqueda devuelve en cada una de las 362 zonas**.
+- Un barrio se nombra con su comuna («Centro, Temuco»); sin ubicación de la persona **no se mide desde ningún centro** (antes, la Plaza de Temuco).
+- `ResolverZona` (un punto → zona) ahora devuelve la comuna más cercana y, si tiene barrios a menos de 8 km, el barrio.
+- **Pantallas:** mapa de Chile hecho de puntos en la portada (reemplaza el radar), página **Comunas** por región con filtro (`/barrios`
+  redirige), editor de cobertura de «Mi ficha» (se filtra escribiendo, máximo 10, la primera elegida queda de principal) y selector
+  de zona de la búsqueda por región.
+- **Se midió:** 372 pruebas de aplicación, 310 de integración y 174 de interfaz en verde; 10 mutantes de la relación y los
+  conteos (todos muertos); recorrido real en navegador completo (crear cuenta → armar ficha con una comuna → publicar → aparece en la búsqueda → salir).
+
+**Pendiente de pulir:** el «barrido» del mapa de Chile se ve como una franja rectangular; `ResolverZona` es por capital más cercana
+(en una metrópoli de comunas pegadas un punto en el límite puede caer en la vecina: sirve para ubicar, no para fijar límites);
+solo existen sinónimos de búsqueda para los 5 rubros actuales; límite de 10 comunas por prestador (decisión mía).
+
+### Trabajo en paralelo con agentes (8-nov-2026) — CÓMO RETOMAR
+
+Cinco agentes trabajan en copias del repositorio (git worktrees) en `C:\Users\pdani\zass-agentes\<nombre>`, cada uno en su rama
+`agente/<nombre>` y con **su propia base de pruebas** (`zass_pruebas_<nombre>`). **Ninguno ha hecho push ni merge.** Se cortaron una vez
+por el límite de uso de 5 horas; su trabajo parcial quedó guardado. Hay que REVISAR cada rama antes de fusionarla (correr sus pruebas, no fiarse del informe).
+
+| Rama | Qué es | Estado al traspasar |
+|---|---|---|
+| `agente/produccion` | ForwardedHeaders seguro, validación de configuración, salud, Dockerfile/`render.yaml`, migraciones en producción, `DESPLIEGUE-API.md` | Retomado; es lo que bloquea salir |
+| `agente/correo` | Envío real de correos (Brevo/Resend) con cola segura y purga del token | Retomado; sin esto nadie puede verificar su cuenta |
+| `agente/seo` | Meta tags por ficha (Pages Function), sitemap, robots, `useMeta`, imagen para compartir, páginas `/terminos` y `/privacidad` (con `BORRADOR_LEGAL`) | Retomado |
+| `agente/resenas` | MOD-11 Reseñas, solo backend | **En pausa** (cupo); trabajo parcial sin commit |
+| `agente/verificacion` | Verificación manual de credenciales (cola, tomar, resolver) con `Zass:Verificacion:PermitirSinDocumentos` | **En pausa** (cupo); 1 commit + cambios sin commit |
+
+Para fusionar: `git -C C:\Users\pdani\zass-app merge agente/<nombre>` (cuidar conflictos en `Program.cs`, `AgregarZass.cs`, `Puertos.cs`, `App.tsx`,
+`Pie.tsx`; ninguno trae migraciones de EF a propósito). Después, borrar el worktree con `git worktree remove`.
+
+### Lo que falta para PUBLICAR en Cloudflare (decisión de Pablo)
+
+1. **Dónde corre la API y la base:** Cloudflare Pages solo aloja el sitio. Propuesta gratis: **Render** (API) + **Neon** (PostgreSQL con PostGIS).
+2. Cuenta de Cloudflare con `zass.cl` y sesión de `wrangler` (`! npx wrangler login`), cuenta de Brevo o Resend para los correos.
+3. Fusionar `agente/produccion` y `agente/correo` (sin ellas no hay IP real detrás del proxy ni correos), y `agente/seo` si se quiere que Google vea las fichas.
+4. Reemplazar los datos de demostración por gente real antes de abrirlo (`limpiar-demo.sql`), y revisar los textos legales con un abogado.
+5. Pregunta 4 sigue sin responder: ficha pública y NFC con suscripción vencida.
+
 ### La barra de búsqueda y el segundo rediseño (7-nov-2026, noche)
 
 Pablo vio la página y dijo que **le faltaba mucho y se veía pobre**, que la frase fuera «busca a alguien de tu
@@ -643,9 +695,9 @@ Endpoints: **API-01 a API-05, 08-23**, más `GET /api/auth/csrf` y `GET /api/sal
 
 | Proyecto | Cuántas | Qué cubre |
 |---|---|---|
-| `Zass.Aplicacion.Pruebas` | **371** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02 a RN-S3-08, RN-S5-11, CC-02, y MOD-03, MOD-04 y MOD-05 completos |
-| `Zass.Integracion.Pruebas` | **300** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
-| `frontend` (Vitest) | **154** | Cliente HTTP y pantallas, con `fetch` simulado |
+| `Zass.Aplicacion.Pruebas` | **372** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02 a RN-S3-08, RN-S5-11, CC-02, y MOD-03, MOD-04 y MOD-05 completos |
+| `Zass.Integracion.Pruebas` | **310** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
+| `frontend` (Vitest) | **174** | Cliente HTTP y pantallas, con `fetch` simulado |
 | `frontend/pruebas-navegador` | 2 guiones | Navegador real contra la API real: que la página monta, los colores de marca, y el registro e ingreso completos |
 
 Escritas con TDD: cada prueba se vio fallar antes de que existiera el código.

@@ -21,7 +21,7 @@ const PAGINAS = [
   ['buscar', '/buscar'],
   ['buscar-abogado', '/buscar?q=abogado&orden=PrecioAsc'],
   ['ficha', '/prestadores/marcela-soto'],
-  ['barrios', '/barrios'],
+  ['comunas', '/comunas'],
   ['oficios', '/oficios'],
   ['profesionales', '/profesionales'],
   ['entrar', '/entrar'],

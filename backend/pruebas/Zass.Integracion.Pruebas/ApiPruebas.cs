@@ -616,7 +616,7 @@ public class ApiPruebas : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
         var zonas = await respuesta.Content.ReadFromJsonAsync<JsonDocument>();
-        Assert.Equal(16, zonas!.RootElement.GetArrayLength());
+        Assert.Equal(362, zonas!.RootElement.GetArrayLength());
     }
 
     [Fact]
@@ -727,7 +727,7 @@ public class ApiPruebas : IAsyncLifetime
         Assert.Equal(2, cobertura!.RootElement.GetArrayLength());
         // La principal va primero: es la que se muestra en la ficha (RN-S3-08).
         Assert.True(cobertura.RootElement[0].GetProperty("esPrincipal").GetBoolean());
-        Assert.Equal("Centro", cobertura.RootElement[0].GetProperty("nombre").GetString());
+        Assert.Equal("Centro, Temuco", cobertura.RootElement[0].GetProperty("nombre").GetString());
     }
 
     // --------------------------------------- el camino completo de CU-03, por HTTP
@@ -1115,9 +1115,9 @@ public class ApiPruebas : IAsyncLifetime
 
         // La zona principal va primero, aunque se mandara segunda.
         var zonas = ficha.GetProperty("zonas").EnumerateArray().ToList();
-        Assert.Equal("Centro", zonas[0].GetProperty("nombre").GetString());
+        Assert.Equal("Centro, Temuco", zonas[0].GetProperty("nombre").GetString());
         Assert.True(zonas[0].GetProperty("esPrincipal").GetBoolean());
-        Assert.Equal("Amanecer", zonas[1].GetProperty("nombre").GetString());
+        Assert.Equal("Amanecer, Temuco", zonas[1].GetProperty("nombre").GetString());
         Assert.False(zonas[1].GetProperty("esPrincipal").GetBoolean());
 
         var contacto = ficha.GetProperty("contacto");
@@ -1229,7 +1229,7 @@ public class ApiPruebas : IAsyncLifetime
         var mio = recientes.Single(r => r.GetProperty("slug").GetString() == slug);
         Assert.Equal("Marcela Soto", mio.GetProperty("nombrePublico").GetString());
         Assert.Equal("Corretaje de propiedades", mio.GetProperty("rubro").GetString());
-        Assert.Equal("Centro", mio.GetProperty("zona").GetString());
+        Assert.Equal("Centro, Temuco", mio.GetProperty("zona").GetString());
     }
 
     /// <summary>Sobre los BYTES: la comunidad es publica, asi que nada de la cuenta ni de la ubicacion.</summary>

@@ -171,7 +171,7 @@ export function Ficha() {
                 ))}
               </ul>
             ) : (
-              <p className="bloque-texto bloque-vacio">Todavía no indicó sus barrios.</p>
+              <p className="bloque-texto bloque-vacio">Todavía no indicó dónde atiende.</p>
             )}
           </section>
 

@@ -307,8 +307,24 @@ public class ZassDbContext : DbContext
         {
             e.HasKey(x => x.Id);
             e.Property(x => x.Nombre).HasMaxLength(120).IsRequired();
-            e.Property(x => x.Sector).HasMaxLength(60).IsRequired();
+            e.Property(x => x.Sector).HasMaxLength(80).IsRequired();
             e.HasIndex(x => x.Sector);
+            e.Property(x => x.Comuna).HasMaxLength(120).IsRequired();
+            e.Property(x => x.Tipo).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.Region).HasMaxLength(80).IsRequired();
+            e.HasIndex(x => x.Region);
+
+            // Un barrio es de una comuna. Restrict: borrar una comuna que tiene barrios no es algo que deba pasar
+            // por un descuido, y arrastrar las coberturas de la gente en cascada seria peor.
+            e.HasOne<Zona>().WithMany().HasForeignKey(x => x.PadreId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => x.PadreId);
+
+            // La jerarquia es de dos niveles y la base lo exige: una comuna no tiene padre, un barrio siempre.
+            e.ToTable(t =>
+            {
+                t.HasCheckConstraint("ck_zona_tipo", "tipo IN ('Comuna', 'Barrio')");
+                t.HasCheckConstraint("ck_zona_padre", "(tipo = 'Comuna' AND padre_id IS NULL) OR (tipo = 'Barrio' AND padre_id IS NOT NULL)");
+            });
 
             // Dos zonas con el mismo nombre en la misma comuna son la misma zona, y en
             // un selector serian indistinguibles. La comparacion es exacta a proposito:
@@ -335,22 +351,26 @@ public class ZassDbContext : DbContext
             // El administrador (A-06) gestiona las zonas, asi que esta lista es un punto
             // de partida y no una verdad fija.
             e.HasData(
-                new Zona { Id = 1, Nombre = "Centro", Sector = "centro", CentroLatitud = -38.7400362, CentroLongitud = -72.5903905, Comuna = "Temuco" },
-                new Zona { Id = 2, Nombre = "Santa Rosa", Sector = "oriente", CentroLatitud = -38.7394601, CentroLongitud = -72.5757387, Comuna = "Temuco" },
-                new Zona { Id = 3, Nombre = "Parque Costanera", Sector = "oriente", CentroLatitud = -38.7090893, CentroLongitud = -72.5457341, Comuna = "Temuco" },
-                new Zona { Id = 4, Nombre = "Las Mariposas", Sector = "oriente", CentroLatitud = -38.6929012, CentroLongitud = -72.5470631, Comuna = "Temuco" },
-                new Zona { Id = 5, Nombre = "Pedro de Valdivia", Sector = "norte", CentroLatitud = -38.7221498, CentroLongitud = -72.6171431, Comuna = "Temuco" },
-                new Zona { Id = 6, Nombre = "Caupolicán", Sector = "norte", CentroLatitud = -38.7221214, CentroLongitud = -72.6223782, Comuna = "Temuco" },
-                new Zona { Id = 7, Nombre = "San José de Lanín", Sector = "norte", CentroLatitud = -38.720374, CentroLongitud = -72.6079935, Comuna = "Temuco" },
-                new Zona { Id = 8, Nombre = "Ñielol", Sector = "norte", CentroLatitud = -38.7287777, CentroLongitud = -72.5989384, Comuna = "Temuco" },
-                new Zona { Id = 9, Nombre = "El Bosque", Sector = "norte", CentroLatitud = -38.7227428, CentroLongitud = -72.6327342, Comuna = "Temuco" },
-                new Zona { Id = 10, Nombre = "Fundo El Carmen", Sector = "norte", CentroLatitud = -38.7143385, CentroLongitud = -72.653094, Comuna = "Temuco" },
-                new Zona { Id = 11, Nombre = "Amanecer", Sector = "poniente", CentroLatitud = -38.7563283, CentroLongitud = -72.6241415, Comuna = "Temuco" },
-                new Zona { Id = 12, Nombre = "Barrio Inglés", Sector = "poniente", CentroLatitud = -38.7375952, CentroLongitud = -72.6436021, Comuna = "Temuco" },
-                new Zona { Id = 13, Nombre = "Portal La Frontera", Sector = "poniente", CentroLatitud = -38.7480501, CentroLongitud = -72.6465207, Comuna = "Temuco" },
-                new Zona { Id = 14, Nombre = "Labranza", Sector = "poniente", CentroLatitud = -38.7665376, CentroLongitud = -72.7534177, Comuna = "Temuco" },
-                new Zona { Id = 15, Nombre = "Las Quilas", Sector = "sur", CentroLatitud = -38.7489399, CentroLongitud = -72.6069585, Comuna = "Temuco" },
-                new Zona { Id = 16, Nombre = "Pichicautín", Sector = "sur", CentroLatitud = -38.7455569, CentroLongitud = -72.5985394, Comuna = "Temuco" });
+                new Zona { Id = 1, Nombre = "Centro", Sector = "centro", CentroLatitud = -38.7400362, CentroLongitud = -72.5903905, Comuna = "Temuco", Tipo = TipoDeZona.Barrio, Region = "La Araucanía", PadreId = ZonasDeChile.IdTemuco },
+                new Zona { Id = 2, Nombre = "Santa Rosa", Sector = "oriente", CentroLatitud = -38.7394601, CentroLongitud = -72.5757387, Comuna = "Temuco", Tipo = TipoDeZona.Barrio, Region = "La Araucanía", PadreId = ZonasDeChile.IdTemuco },
+                new Zona { Id = 3, Nombre = "Parque Costanera", Sector = "oriente", CentroLatitud = -38.7090893, CentroLongitud = -72.5457341, Comuna = "Temuco", Tipo = TipoDeZona.Barrio, Region = "La Araucanía", PadreId = ZonasDeChile.IdTemuco },
+                new Zona { Id = 4, Nombre = "Las Mariposas", Sector = "oriente", CentroLatitud = -38.6929012, CentroLongitud = -72.5470631, Comuna = "Temuco", Tipo = TipoDeZona.Barrio, Region = "La Araucanía", PadreId = ZonasDeChile.IdTemuco },
+                new Zona { Id = 5, Nombre = "Pedro de Valdivia", Sector = "norte", CentroLatitud = -38.7221498, CentroLongitud = -72.6171431, Comuna = "Temuco", Tipo = TipoDeZona.Barrio, Region = "La Araucanía", PadreId = ZonasDeChile.IdTemuco },
+                new Zona { Id = 6, Nombre = "Caupolicán", Sector = "norte", CentroLatitud = -38.7221214, CentroLongitud = -72.6223782, Comuna = "Temuco", Tipo = TipoDeZona.Barrio, Region = "La Araucanía", PadreId = ZonasDeChile.IdTemuco },
+                new Zona { Id = 7, Nombre = "San José de Lanín", Sector = "norte", CentroLatitud = -38.720374, CentroLongitud = -72.6079935, Comuna = "Temuco", Tipo = TipoDeZona.Barrio, Region = "La Araucanía", PadreId = ZonasDeChile.IdTemuco },
+                new Zona { Id = 8, Nombre = "Ñielol", Sector = "norte", CentroLatitud = -38.7287777, CentroLongitud = -72.5989384, Comuna = "Temuco", Tipo = TipoDeZona.Barrio, Region = "La Araucanía", PadreId = ZonasDeChile.IdTemuco },
+                new Zona { Id = 9, Nombre = "El Bosque", Sector = "norte", CentroLatitud = -38.7227428, CentroLongitud = -72.6327342, Comuna = "Temuco", Tipo = TipoDeZona.Barrio, Region = "La Araucanía", PadreId = ZonasDeChile.IdTemuco },
+                new Zona { Id = 10, Nombre = "Fundo El Carmen", Sector = "norte", CentroLatitud = -38.7143385, CentroLongitud = -72.653094, Comuna = "Temuco", Tipo = TipoDeZona.Barrio, Region = "La Araucanía", PadreId = ZonasDeChile.IdTemuco },
+                new Zona { Id = 11, Nombre = "Amanecer", Sector = "poniente", CentroLatitud = -38.7563283, CentroLongitud = -72.6241415, Comuna = "Temuco", Tipo = TipoDeZona.Barrio, Region = "La Araucanía", PadreId = ZonasDeChile.IdTemuco },
+                new Zona { Id = 12, Nombre = "Barrio Inglés", Sector = "poniente", CentroLatitud = -38.7375952, CentroLongitud = -72.6436021, Comuna = "Temuco", Tipo = TipoDeZona.Barrio, Region = "La Araucanía", PadreId = ZonasDeChile.IdTemuco },
+                new Zona { Id = 13, Nombre = "Portal La Frontera", Sector = "poniente", CentroLatitud = -38.7480501, CentroLongitud = -72.6465207, Comuna = "Temuco", Tipo = TipoDeZona.Barrio, Region = "La Araucanía", PadreId = ZonasDeChile.IdTemuco },
+                new Zona { Id = 14, Nombre = "Labranza", Sector = "poniente", CentroLatitud = -38.7665376, CentroLongitud = -72.7534177, Comuna = "Temuco", Tipo = TipoDeZona.Barrio, Region = "La Araucanía", PadreId = ZonasDeChile.IdTemuco },
+                new Zona { Id = 15, Nombre = "Las Quilas", Sector = "sur", CentroLatitud = -38.7489399, CentroLongitud = -72.6069585, Comuna = "Temuco", Tipo = TipoDeZona.Barrio, Region = "La Araucanía", PadreId = ZonasDeChile.IdTemuco },
+                new Zona { Id = 16, Nombre = "Pichicautín", Sector = "sur", CentroLatitud = -38.7455569, CentroLongitud = -72.5985394, Comuna = "Temuco", Tipo = TipoDeZona.Barrio, Region = "La Araucanía", PadreId = ZonasDeChile.IdTemuco });
+
+            // Las 346 comunas de Chile (ver ZonasDeChile). La comuna es la unidad nacional; los barrios de arriba
+            // son un nivel opcional dentro de la de Temuco.
+            e.HasData(ZonasDeChile.Comunas);
         });
 
         b.Entity<CoberturaPrestador>(e =>

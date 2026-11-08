@@ -1,6 +1,6 @@
-import { Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes } from 'react-router-dom'
 import { Marco } from './marco/Marco'
-import { Barrios } from './paginas/Barrios'
+import { Comunas } from './paginas/Comunas'
 import { CrearCuenta } from './paginas/CrearCuenta'
 import { Entrar } from './paginas/Entrar'
 import { Ficha } from './paginas/Ficha'
@@ -23,7 +23,9 @@ export function App() {
         <Route index element={<Portada />} />
         <Route path="buscar" element={<PaginaBuscar />} />
         <Route path="prestadores/:slug" element={<Ficha />} />
-        <Route path="barrios" element={<Barrios />} />
+        <Route path="comunas" element={<Comunas />} />
+        {/* La pagina se llamaba «barrios» cuando solo existia Temuco: los enlaces viejos siguen funcionando. */}
+        <Route path="barrios" element={<Navigate to="/comunas" replace />} />
         <Route path="oficios" element={<Oficios />} />
         <Route path="profesionales" element={<Profesionales />} />
         <Route path="entrar" element={<Entrar />} />

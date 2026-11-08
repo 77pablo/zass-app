@@ -79,7 +79,12 @@ public sealed record ZonaDto(
     string Sector,
     string Comuna,
     double CentroLatitud,
-    double CentroLongitud);
+    double CentroLongitud,
+    /// <summary>«Comuna» o «Barrio».</summary>
+    string Tipo,
+    string Region,
+    /// <summary>De que comuna es este barrio; nulo para una comuna.</summary>
+    int? PadreId);
 
 /// <summary>Una zona cubierta, con lo que distingue a la principal.</summary>
 public sealed record ZonaCubiertaDto(
@@ -87,7 +92,9 @@ public sealed record ZonaCubiertaDto(
     string Nombre,
     string Sector,
     bool EsPrincipal,
-    DateTime DesdeEn);
+    DateTime DesdeEn,
+    string Comuna = "",
+    string Region = "");
 
 public sealed record ZonaCubiertaCmd(int ZonaId, bool EsPrincipal);
 
