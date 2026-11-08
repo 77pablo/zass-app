@@ -1,0 +1,43 @@
+# Copia de seguridad periódica de la base de ZASS! (Neon) con pg_dump.
+# Ver DESPLIEGUE-API.md, sección «Copias de seguridad». NO PROBADO todavía: necesita los dos
+# secretos del repositorio (Settings > Secrets and variables > Actions):
+#   NEON_URL_COPIAS  URL postgresql://... de Neon (la de pg_dump, NO la de Npgsql de la API)
+#   FRASE_COPIAS     frase para cifrar el volcado (guárdala fuera de GitHub: sin ella no se restaura)
+name: Copia de la base de datos
+
+on:
+  schedule:
+    - cron: "17 6 * * *"      # una vez al día (hora UTC)
+  workflow_dispatch: {}        # y a mano desde la pestaña Actions
+
+permissions:
+  contents: read
+
+jobs:
+  volcar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Volcar y cifrar
+        env:
+          NEON_URL_COPIAS: ${{ secrets.NEON_URL_COPIAS }}
+          FRASE_COPIAS: ${{ secrets.FRASE_COPIAS }}
+        run: |
+          set -euo pipefail
+          test -n "$NEON_URL_COPIAS" && test -n "$FRASE_COPIAS"
+          # El cliente de pg_dump debe ser de la misma versión mayor que el servidor (o mayor).
+          # Cambia «17» si tu proyecto de Neon usa otra.
+          docker run --rm -e NEON_URL_COPIAS postgres:17 \
+            sh -c 'pg_dump --format=custom --no-owner --no-privileges "$NEON_URL_COPIAS"' \
+            > zass.dump
+          test -s zass.dump
+          # El volcado trae correos y datos personales: nunca en claro fuera de la base.
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$FRASE_COPIAS" \
+              --symmetric --cipher-algo AES256 -o "zass-$(date -u +%Y%m%d).dump.gpg" zass.dump
+          rm zass.dump
+      - name: Guardar fuera del servidor de la base
+        uses: actions/upload-artifact@v4
+        with:
+          name: copia-zass
+          path: zass-*.dump.gpg
+          retention-days: 30   # verifica los límites de artefactos de tu plan de GitHub

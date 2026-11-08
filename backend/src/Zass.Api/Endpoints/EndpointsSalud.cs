@@ -26,10 +26,15 @@ public static class EndpointsSalud
         rutas.MapGet("/api/salud/lista", async (ZassDbContext db, ILoggerFactory registros, CancellationToken ct) =>
         {
             using var limite = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            limite.CancelAfter(EsperaMaxima);
+            limite.CancelAfter(EsperaMaxima);   // corta la consulta si Npgsql colabora
             try
             {
-                await db.Database.ExecuteSqlRawAsync("SELECT 1", limite.Token);
+                // El token solo no basta: probado contra un servidor que acepta la conexion y
+                // calla, Npgsql no corta la espera al cancelarse y la sonda tardaba lo que
+                // dijera el Timeout de la cadena (30 s). WaitAsync devuelve el control a
+                // tiempo pase lo que pase con la consulta abandonada.
+                await db.Database.ExecuteSqlRawAsync("SELECT 1", limite.Token)
+                    .WaitAsync(EsperaMaxima, ct);
                 return Results.Ok(new { estado = "lista" });
             }
             catch (Exception ex)

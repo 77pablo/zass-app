@@ -1,0 +1,29 @@
+# Blueprint de Render para la API de ZASS!. Ver DESPLIEGUE-API.md.
+# Solo la API: el sitio va en Cloudflare Pages y la base en Neon.
+#
+# Las variables con `sync: false` NO llevan valor aquí: Render las pide en el panel al crear
+# el servicio. Ningún secreto vive en este archivo.
+services:
+  - type: web
+    name: zass-api
+    runtime: docker
+    plan: free              # verifica el plan gratuito vigente en la página de Render
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /api/salud/lista
+    autoDeploy: false       # desplegar a mano: primero se migra la base, después se despliega
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      # --- Secretos: se escriben en el panel de Render, nunca aquí ---
+      - key: Zass__CadenaConexion
+        sync: false         # formato Npgsql de Neon, con SSL Mode=Require
+      - key: Zass__ClaveDireccionesBase64
+        sync: false         # 32 bytes en Base64; GUÁRDALA fuera de Render también
+      # --- Configuración no secreta pero que depende de tu cuenta ---
+      - key: Zass__ProxiesDeConfianza
+        sync: false         # rangos de Cloudflare + red del balanceador de Render (ver guía)
+      - key: Zass__SaltosDeProxy
+        value: "2"
+      - key: Zass__ExigirHttps
+        value: "true"

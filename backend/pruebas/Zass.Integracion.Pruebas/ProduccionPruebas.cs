@@ -527,6 +527,32 @@ public class SaludPruebas
     }
 
     [Fact]
+    public async Task Una_base_que_acepta_la_conexion_pero_no_contesta_da_503_en_unos_segundos()
+    {
+        // Un servidor que acepta TCP y calla: la base «colgada», el caso de verdad peligroso
+        // para una sonda (una refusada falla al instante y no prueba nada). Sin el limite de
+        // espera, la sonda esperaria los 30 s de Timeout de la cadena.
+        var oyente = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+        oyente.Start();
+        try
+        {
+            var puerto = ((IPEndPoint)oyente.LocalEndpoint).Port;
+            using var app = new AplicacionConProxy(
+                cadena: $"Host=127.0.0.1;Port={puerto};Database=zass;Username=u;Password=p;Timeout=30;Command Timeout=30;SSL Mode=Disable");
+            using var c = app.Cliente();
+
+            var reloj = System.Diagnostics.Stopwatch.StartNew();
+            var r = await c.GetAsync("/api/salud/lista");
+            reloj.Stop();
+
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, r.StatusCode);
+            Assert.True(reloj.Elapsed < TimeSpan.FromSeconds(10),
+                $"La sonda tardo {reloj.Elapsed.TotalSeconds:F1} s: el limite de espera no corta.");
+        }
+        finally { oyente.Stop(); }
+    }
+
+    [Fact]
     public async Task La_sonda_de_vida_sigue_respondiendo_aunque_la_base_este_caida()
     {
         using var app = new AplicacionConProxy(cadena: "Host=127.0.0.1;Port=1;Database=zass;Username=u;Password=p;Timeout=2");
