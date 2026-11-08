@@ -23,18 +23,19 @@ public static class EndpointsSalud
     /// </summary>
     public static IEndpointRouteBuilder MapearSalud(this IEndpointRouteBuilder rutas)
     {
-        rutas.MapGet("/api/salud/lista", async (ZassDbContext db, ILoggerFactory registros, CancellationToken ct) =>
+        rutas.MapGet("/api/salud/lista", async (IServiceScopeFactory fabrica, ILoggerFactory registros, CancellationToken ct) =>
         {
             using var limite = CancellationTokenSource.CreateLinkedTokenSource(ct);
             limite.CancelAfter(EsperaMaxima);   // corta la consulta si Npgsql colabora
             try
             {
-                // El token solo no basta: probado contra un servidor que acepta la conexion y
-                // calla, Npgsql no corta la espera al cancelarse y la sonda tardaba lo que
-                // dijera el Timeout de la cadena (30 s). WaitAsync devuelve el control a
-                // tiempo pase lo que pase con la consulta abandonada.
-                await db.Database.ExecuteSqlRawAsync("SELECT 1", limite.Token)
-                    .WaitAsync(EsperaMaxima, ct);
+                // La consulta corre en SU PROPIO ambito y la espera se acota con WaitAsync.
+                // Probado contra un servidor que acepta la conexion y calla: cancelar el token
+                // no corta a Npgsql (la sonda tardaba el Timeout de la cadena, 30 s), y si la
+                // consulta abandonada usara el DbContext de la peticion, al cerrarse la
+                // peticion el contexto se liberaria con la conexion todavia «Connecting» y
+                // romperia la respuesta. Asi, la consulta colgada libera lo suyo cuando acabe.
+                await Consultar(fabrica, limite.Token).WaitAsync(EsperaMaxima, ct);
                 return Results.Ok(new { estado = "lista" });
             }
             catch (Exception ex)
@@ -44,8 +45,16 @@ public static class EndpointsSalud
                 return Results.Json(new { estado = "no-lista" },
                     statusCode: StatusCodes.Status503ServiceUnavailable);
             }
-        }).RequireRateLimiting(Tasa.Salud);
+        })
+        .RequireRateLimiting(Tasa.Salud);
 
         return rutas;
+    }
+
+    private static async Task Consultar(IServiceScopeFactory fabrica, CancellationToken ct)
+    {
+        await using var ambito = fabrica.CreateAsyncScope();
+        var db = ambito.ServiceProvider.GetRequiredService<ZassDbContext>();
+        await db.Database.ExecuteSqlRawAsync("SELECT 1", ct);
     }
 }

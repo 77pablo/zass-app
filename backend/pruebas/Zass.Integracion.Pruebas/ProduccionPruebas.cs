@@ -534,11 +534,17 @@ public class SaludPruebas
         // espera, la sonda esperaria los 30 s de Timeout de la cadena.
         var oyente = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
         oyente.Start();
+        var aceptadas = new List<System.Net.Sockets.TcpClient>();
+        _ = Task.Run(async () =>
+        {
+            try { while (true) { var cl = await oyente.AcceptTcpClientAsync(); lock (aceptadas) aceptadas.Add(cl); } }
+            catch { /* el oyente se paro */ }
+        });
+        var puerto = ((IPEndPoint)oyente.LocalEndpoint).Port;
+        var app = new AplicacionConProxy(
+            cadena: $"Host=127.0.0.1;Port={puerto};Database=zass;Username=u;Password=p;Timeout=30;Command Timeout=30;SSL Mode=Disable");
         try
         {
-            var puerto = ((IPEndPoint)oyente.LocalEndpoint).Port;
-            using var app = new AplicacionConProxy(
-                cadena: $"Host=127.0.0.1;Port={puerto};Database=zass;Username=u;Password=p;Timeout=30;Command Timeout=30;SSL Mode=Disable");
             using var c = app.Cliente();
 
             var reloj = System.Diagnostics.Stopwatch.StartNew();
@@ -549,7 +555,15 @@ public class SaludPruebas
             Assert.True(reloj.Elapsed < TimeSpan.FromSeconds(10),
                 $"La sonda tardo {reloj.Elapsed.TotalSeconds:F1} s: el limite de espera no corta.");
         }
-        finally { oyente.Stop(); }
+        finally
+        {
+            // Primero se cierran las conexiones colgadas y recien despues se libera la
+            // aplicacion: liberar el origen de datos de Npgsql con una conexion a medio abrir
+            // bloqueaba la prueba durante minutos (intermitente) y la dejaba sin terminar.
+            oyente.Stop();
+            lock (aceptadas) foreach (var cl in aceptadas) cl.Dispose();
+            app.Dispose();
+        }
     }
 
     [Fact]
