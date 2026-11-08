@@ -621,8 +621,8 @@ option { background: var(--panel-2); color: var(--texto); }
 /* Entrada escalonada de lo que se ve al cargar */
 .entra { animation: entra 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: var(--d, 0ms); }
 .entra--derecha { animation-name: entra-derecha; }
-@keyframes entra { from { opacity: 0; transform: translateY(26px); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
-@keyframes entra-derecha { from { opacity: 0; transform: translateX(40px) scale(0.96); filter: blur(8px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes entra { from { opacity: 0; transform: translateY(26px); } to { opacity: 1; transform: none; } }
+@keyframes entra-derecha { from { opacity: 0; transform: translateX(40px) scale(0.96); } to { opacity: 1; transform: none; } }
 
 /* Fondo vivo: foco que sigue al puntero y dos orbes que derivan */
 .hero-fondo::before { background: none; animation: none; }
@@ -827,3 +827,52 @@ option { background: var(--panel-2); color: var(--texto); }
   font-family: var(--mono); font-size: 1.25rem; font-weight: 700; background: var(--amarillo-suave); border: 1px solid var(--amarillo);
 }
 .agenda--lista { border-color: var(--neon); }
+
+/* ---------------------------------------------------------------- mis citas */
+.citas-lista { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 14px; }
+.cita { padding: 16px; border: 1px solid var(--linea); border-radius: 14px; background: var(--vidrio); }
+.cita-cabecera { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.cita-con { display: block; color: var(--suave); font-size: 0.9375rem; }
+.cita-cuando { margin: 10px 0 0; font-variant-numeric: tabular-nums; }
+.cita-codigo { margin-left: 12px; font-family: var(--mono); font-size: 0.875rem; color: var(--suave); }
+.cita-nota { margin: 8px 0 0; color: var(--suave); font-style: italic; }
+.cita-acciones { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.cita-formulario { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--linea); }
+.dato--apagado { opacity: 0.65; }
+
+
+/* Contacto que pide cuenta */
+.contacto-cuenta { display: grid; gap: 12px; }
+.contacto-cuenta p { margin: 0; }
+
+/* =============================================================== Celular: menos efectos caros
+   En un telefono lo que cuesta no es el JavaScript sino repintar: desenfoques (backdrop-filter y filter: blur),
+   fondos que se animan y bordes que giran se vuelven a dibujar en cada cuadro. Aqui se cambian por fondos
+   solidos casi iguales (el fondo del sitio ya es casi negro, asi que no se nota) y se quieta lo que solo adorna.
+   Sigue siendo animado lo que corre en el compositor (transform y opacity): cinta, flotante, entradas. */
+@media (max-width: 900px), (hover: none) {
+  *, *::before, *::after { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+
+  /* vidrio -> sombra solida casi igual */
+  .cabecera-fila, .barra-forma, .filtro-comunas { background: rgba(14, 14, 19, 0.97); }
+  .menu-movil { background: #0e0e13; }
+  .flotante, .tile--vidrio, .mapa-leyenda { background: #15151c; }
+  .tarjeta { background: #15151c; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4); }
+
+  /* fondo vivo: sin desenfoque de 70px ni deriva; queda el degradado, que ya es suave */
+  .orbe { filter: none; animation: none; opacity: 0.38; }
+  .hero-foco { transition: none; }
+
+  /* adornos que repintan cada cuadro: quietos */
+  .titular-brillo { animation: none; }
+  .barra--portada .barra-forma { animation: none; }
+  .barra-boton::after { animation: none; display: none; }
+  .titular, .titular-brillo { filter: none; }
+
+  /* las apariciones, mas cortas */
+  .entra { animation-duration: 0.5s; }
+  .aparece { transition-duration: 0.45s; transition-delay: calc(var(--orden, 0) * 50ms); }
+
+  /* lo que queda lejos de la pantalla no se calcula hasta que se acerca */
+  .seccion { content-visibility: auto; contain-intrinsic-size: auto 640px; }
+}

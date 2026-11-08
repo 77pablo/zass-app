@@ -5,7 +5,9 @@ import { CrearCuenta } from './paginas/CrearCuenta'
 import { Entrar } from './paginas/Entrar'
 import { Ficha } from './paginas/Ficha'
 import { MiFicha } from './paginas/MiFicha'
+import { MisCitas } from './paginas/MisCitas'
 import { NoEncontrada } from './paginas/NoEncontrada'
+import { OfrecerServicios } from './paginas/OfrecerServicios'
 import { Oficios } from './paginas/Oficios'
 import { PaginaBuscar } from './paginas/PaginaBuscar'
 import { Portada } from './paginas/Portada'
@@ -35,6 +37,8 @@ export function App() {
         <Route path="entrar" element={<Entrar />} />
         <Route path="crear-cuenta" element={<CrearCuenta />} />
         <Route path="mi-ficha" element={<MiFicha />} />
+        <Route path="mis-citas" element={<MisCitas />} />
+        <Route path="ofrecer-servicios" element={<OfrecerServicios />} />
         <Route path="verificar-correo" element={<VerificarCorreo />} />
         <Route path="recuperar-contrasena" element={<RecuperarContrasena />} />
         <Route path="restablecer-contrasena" element={<RestablecerContrasena />} />

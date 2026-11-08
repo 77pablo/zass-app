@@ -125,6 +125,48 @@ public sealed class ServicioRegistro
     }
 
     /// <summary>
+    /// «Ofrecer mis servicios»: quien ya tiene cuenta (como buscador) activa tambien el rol de prestador, sin
+    /// salir ni crear otra cuenta. Una persona busca hoy y ofrece manana; el registro no obliga a elegir una vez.
+    /// Mismas reglas que al registrarse (RN-S1-08: solo roles publicos). Es idempotente: si ya es prestador no
+    /// hace nada, asi un doble clic no deja dos perfiles.
+    /// </summary>
+    public async Task<Resultado> ActivarPrestadorAsync(
+        Guid usuarioId, string? ip = null, CancellationToken ct = default)
+    {
+        var usuario = await _usuarios.PorIdAsync(usuarioId, ct);
+        if (usuario is null || usuario.Estado is EstadoCuenta.Suspendida or EstadoCuenta.Eliminada)
+            return Resultado.Falla(Fallas.NoAutorizado, "La sesión no es válida. Vuelve a iniciar sesión.");
+
+        if (usuario.Roles.Any(r => r.Rol.Codigo == "prestador")) return Resultado.Ok();
+
+        var rol = await _usuarios.RolPorCodigoAsync("prestador", ct);
+        if (rol is null || rol.EsInterno || !RolesPublicos.Contains(rol.Codigo))
+            return Resultado.Falla(Fallas.NoAutorizado, "Ese rol no se puede activar.");
+
+        var ahora = _reloj.Ahora;
+        usuario.Roles.Add(new UsuarioRol { UsuarioId = usuario.Id, RolId = rol.Id, Rol = rol, AsignadoEn = ahora });
+        usuario.ActualizadoEn = ahora;
+
+        // Puede que el perfil ya exista (cuenta creada como prestador y con el rol quitado a mano): no se duplica.
+        if (await _perfiles.PrestadorDeUsuarioAsync(usuario.Id, ct) is null)
+            _perfiles.Agregar(new PerfilPrestador
+            {
+                UsuarioId = usuario.Id,
+                NombrePublico = usuario.Nombre,
+                Slug = await SlugLibreAsync(usuario.Nombre, ct),
+                Estado = EstadoPerfil.Borrador,
+                ActualizadoEn = ahora,
+            });
+
+        _auditor.Registrar(Auditar.Entrada(
+            "activar_prestador", "usuario", usuario.Id, ahora,
+            actorId: usuario.Id, contexto: new { rol = rol.Codigo }, ip: ip));
+
+        await _unidad.GuardarAsync(ct);
+        return Resultado.Ok();
+    }
+
+    /// <summary>
     /// El slug es unico en la base. Dos "Juan Perez" existen de verdad, asi que el segundo
     /// lleva sufijo en vez de un error que la persona no puede resolver.
     /// </summary>

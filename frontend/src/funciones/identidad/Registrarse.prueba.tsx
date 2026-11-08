@@ -19,17 +19,11 @@ async function llenar() {
 }
 
 describe('pantalla de registro', () => {
-  it('pide elegir entre buscar y ofrecer servicios', () => {
+  it('no pide elegir un rol: una sola cuenta sirve para buscar y para ofrecer', () => {
     render(<Registrarse alRegistrarse={vi.fn()} />)
 
-    expect(screen.getByRole('radio', { name: /busco/i })).toBeInTheDocument()
-    expect(screen.getByRole('radio', { name: /ofrezco/i })).toBeInTheDocument()
-  })
-
-  it('viene con buscador marcado: es el rol que no paga', () => {
-    render(<Registrarse alRegistrarse={vi.fn()} />)
-
-    expect(screen.getByRole('radio', { name: /busco/i })).toBeChecked()
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument()
+    expect(screen.getByText(/una sola cuenta/i)).toBeInTheDocument()
   })
 
   // Aqui SI se dice el minimo, al reves que al ingresar: sin el, la persona no
@@ -46,12 +40,23 @@ describe('pantalla de registro', () => {
     expect(await screen.findByText(/10 caracteres/i)).toBeInTheDocument()
   })
 
-  it('manda el rol elegido, no siempre buscador', async () => {
+  it('por defecto crea la cuenta como buscador: es el rol que no paga', async () => {
     registrarse.mockResolvedValueOnce(undefined)
     render(<Registrarse alRegistrarse={vi.fn()} />)
 
     await llenar()
-    await usuario.click(screen.getByRole('radio', { name: /ofrezco/i }))
+    await usuario.click(screen.getByRole('button', { name: /crear/i }))
+
+    await waitFor(() => expect(registrarse).toHaveBeenCalledWith(
+      'pablo@zass.cl', 'una-clave-larga', 'Pablo Espinoza', 'buscador'))
+  })
+
+  it('si llega desde «Para profesionales», la cuenta parte con la ficha lista', async () => {
+    registrarse.mockResolvedValueOnce(undefined)
+    render(<Registrarse alRegistrarse={vi.fn()} rolInicial="prestador" />)
+
+    expect(screen.getByText(/crear tu ficha/i)).toBeInTheDocument()
+    await llenar()
     await usuario.click(screen.getByRole('button', { name: /crear/i }))
 
     await waitFor(() => expect(registrarse).toHaveBeenCalledWith(

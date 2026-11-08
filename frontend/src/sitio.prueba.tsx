@@ -454,6 +454,23 @@ describe('el sitio de varias paginas', () => {
     expect(screen.getByText(/El promedio se muestra desde la tercera/)).toBeInTheDocument()
   })
 
+  it('sin sesion la ficha NO muestra el contacto: pide crear la cuenta y vuelve a la misma ficha', async () => {
+    const original = fetch
+    vi.stubGlobal('fetch', vi.fn(async (ruta: string) =>
+      ruta === '/api/prestadores/marcela-soto'
+        ? json({ ...FICHA, contacto: { telefono: null, whatsapp: null, correo: null, sitioWeb: null }, contactoRequiereCuenta: true })
+        : original(ruta)))
+    en('/prestadores/marcela-soto')
+
+    await screen.findByRole('heading', { level: 1, name: 'Marcela Soto' })
+    expect(screen.queryByRole('link', { name: /WhatsApp/ })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Esta persona todavía no publicó cómo contactarla/)).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Crear mi cuenta gratis/ })).toHaveAttribute('href', '/crear-cuenta')
+    expect(screen.getByText(/a quien busca nunca se le cobra/)).toBeInTheDocument()
+    // Se sigue pudiendo buscar, ver servicios y reseñas: lo unico que se pide es la cuenta para contactar.
+    expect(screen.getByText(/desde \$60\.000/)).toBeInTheDocument()
+  })
+
   it('la ficha muestra las credenciales con la etiqueta publica, sin estado interno', async () => {
     en('/prestadores/marcela-soto')
 

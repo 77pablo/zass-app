@@ -111,6 +111,8 @@ export interface FichaPublica {
     sitioWeb: string | null
   }
   publicadoEn: string | null
+  /** Verdadero si no hay sesion: buscar es publico, pero el contacto se ve solo con cuenta. */
+  contactoRequiereCuenta?: boolean
 }
 
 export function fichaPublica(slug: string): Promise<FichaPublica> {

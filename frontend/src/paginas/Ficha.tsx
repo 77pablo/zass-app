@@ -8,6 +8,7 @@ import { capitalizar, duracion, etiquetaDeTipo, pesos, reputacion } from '../mar
 import { descripcionDeFicha } from '../marco/seo'
 import { useMeta } from '../marco/useMeta'
 import { useTitulo } from '../marco/useTitulo'
+import { useSesion } from '../sesion/contexto'
 import { AgendarHora } from './AgendarHora'
 import { NoEncontrada } from './NoEncontrada'
 
@@ -32,6 +33,8 @@ export function Ficha() {
   const [busqueda] = useSearchParams()
   const [estado, setEstado] = useState<Estado | null>(null)
   const [intento, setIntento] = useState(0)
+  // El contacto depende de la sesion: al entrar o salir hay que pedir la ficha otra vez, o se quedaria el de antes.
+  const { estado: estadoSesion } = useSesion()
 
   useEffect(() => {
     let vigente = true
@@ -46,7 +49,7 @@ export function Ficha() {
         })
       })
     return () => { vigente = false }
-  }, [slug, intento])
+  }, [slug, intento, estadoSesion])
 
   // Un estado de otra ficha (acabas de navegar) cuenta como "cargando", no como la tuya.
   const actual = estado !== null && estado.slug === slug ? estado : null
@@ -216,7 +219,20 @@ export function Ficha() {
         <aside className="lateral" aria-label="Contacto">
           <div className="lateral-caja">
             <h2>Hablar con {ficha.nombrePublico.split(' ')[0]}</h2>
-            {hayContacto ? (
+            {ficha.contactoRequiereCuenta ? (
+              <div className="contacto-cuenta">
+                <p>
+                  Para hablar con {ficha.nombrePublico.split(' ')[0]} crea tu cuenta gratis.
+                  Toma un minuto y a quien busca nunca se le cobra.
+                </p>
+                <Link className="boton boton--amarillo boton--lleno" to="/crear-cuenta" state={{ despues: `/prestadores/${slug}` }}>
+                  <Icono nombre="mensaje" />Crear mi cuenta gratis
+                </Link>
+                <p className="letra-chica">
+                  ¿Ya tienes cuenta? <Link to="/entrar" state={{ despues: `/prestadores/${slug}` }}>Entrar</Link>
+                </p>
+              </div>
+            ) : hayContacto ? (
               <ul className="contacto">
                 {wasap && (
                   <li>

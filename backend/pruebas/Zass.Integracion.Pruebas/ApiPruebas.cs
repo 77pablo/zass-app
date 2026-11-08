@@ -1130,11 +1130,58 @@ public partial class ApiPruebas : IAsyncLifetime
         Assert.Equal("Amanecer, Temuco", zonas[1].GetProperty("nombre").GetString());
         Assert.False(zonas[1].GetProperty("esPrincipal").GetBoolean());
 
+        // Buscar y ver la ficha no exige cuenta, pero contactar si: sin sesion el contacto sale vacio y marcado.
+        var contacto = ficha.GetProperty("contacto");
+        Assert.Equal(JsonValueKind.Null, contacto.GetProperty("telefono").ValueKind);
+        Assert.Equal(JsonValueKind.Null, contacto.GetProperty("whatsapp").ValueKind);
+        Assert.Equal(JsonValueKind.Null, contacto.GetProperty("correo").ValueKind);
+        Assert.Equal(JsonValueKind.Null, contacto.GetProperty("sitioWeb").ValueKind);
+        Assert.True(ficha.GetProperty("contactoRequiereCuenta").GetBoolean());
+    }
+
+    [Fact]
+    public async Task El_contacto_no_sale_en_ningun_lugar_de_la_respuesta_de_un_visitante()
+    {
+        // No basta con que el campo "contacto" venga vacio: el numero no puede estar en NINGUNA parte del texto
+        // que recibe quien no ha entrado (es lo que leeria un script que recorre todas las fichas).
+        var slug = await UnaFichaCompletaAsync();
+        using var visitante = UnVisitante();
+
+        var texto = await (await visitante.GetAsync($"/api/prestadores/{slug}")).Content.ReadAsStringAsync();
+
+        Assert.DoesNotContain("1234 5678", texto);
+        Assert.DoesNotContain("912345678", texto);
+        Assert.DoesNotContain("contacto@soto.cl", texto);
+        Assert.DoesNotContain("soto.cl", texto);
+    }
+
+    [Fact]
+    public async Task Con_sesion_la_ficha_publica_trae_el_contacto_completo()
+    {
+        var slug = await UnaFichaCompletaAsync();   // _cliente ya tiene sesion abierta
+
+        var respuesta = await _cliente.GetAsync($"/api/prestadores/{slug}");
+
+        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
+        var ficha = (await respuesta.Content.ReadFromJsonAsync<JsonDocument>())!.RootElement;
         var contacto = ficha.GetProperty("contacto");
         Assert.Equal("+56 9 1234 5678", contacto.GetProperty("telefono").GetString());
         Assert.Equal("912345678", contacto.GetProperty("whatsapp").GetString());
         Assert.Equal("contacto@soto.cl", contacto.GetProperty("correo").GetString());
         Assert.Equal("https://soto.cl", contacto.GetProperty("sitioWeb").GetString());
+        Assert.False(ficha.GetProperty("contactoRequiereCuenta").GetBoolean());
+    }
+
+    [Fact]
+    public async Task La_ficha_no_se_guarda_en_caches_compartidos_porque_depende_de_la_sesion()
+    {
+        var slug = await UnaFichaCompletaAsync();
+        using var visitante = UnVisitante();
+
+        var respuesta = await visitante.GetAsync($"/api/prestadores/{slug}");
+
+        Assert.Contains("no-store", respuesta.Headers.CacheControl?.ToString() ?? "");
+        Assert.Contains("private", respuesta.Headers.CacheControl?.ToString() ?? "");
     }
 
     /// <summary>
@@ -1715,6 +1762,69 @@ public partial class ApiPruebas : IAsyncLifetime
         };
         peticion.Headers.Add("X-CSRF-Token", await TokenCsrfAsync());
         return await _cliente.SendAsync(peticion);
+    }
+
+    // ------------------------------------------- una cuenta, buscar y ofrecer
+
+    private async Task<HttpResponseMessage> ActivarPrestadorAsync(bool conCsrf = true)
+    {
+        var peticion = new HttpRequestMessage(HttpMethod.Post, "/api/mi/activar-prestador");
+        if (conCsrf) peticion.Headers.Add("X-CSRF-Token", await TokenCsrfAsync());
+        return await _cliente.SendAsync(peticion);
+    }
+
+    private async Task<string[]> RolesDeMiCuentaAsync()
+    {
+        var cuenta = (await _cliente.GetFromJsonAsync<JsonDocument>("/api/mi/cuenta"))!.RootElement;
+        return cuenta.GetProperty("roles").EnumerateArray().Select(r => r.GetString()!).ToArray();
+    }
+
+    [Fact]
+    public async Task Una_cuenta_de_buscador_puede_ofrecer_servicios_sin_crear_otra_cuenta()
+    {
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo);            // como buscador, sin elegir mas
+        await VerificarAsync(correo);
+        await IniciarSesionAsync(correo);
+        Assert.DoesNotContain("prestador", await RolesDeMiCuentaAsync());
+        // Aun no es prestador: no tiene perfil que editar.
+        Assert.NotEqual(HttpStatusCode.OK, (await _cliente.GetAsync("/api/mi/perfil-prestador")).StatusCode);
+
+        var activar = await ActivarPrestadorAsync();
+
+        Assert.Equal(HttpStatusCode.NoContent, activar.StatusCode);
+        var roles = await RolesDeMiCuentaAsync();
+        Assert.Contains("buscador", roles);      // no pierde lo que ya era
+        Assert.Contains("prestador", roles);
+        // La sesion se renovo: los roles viajan en la cookie y el perfil se abre de inmediato, sin volver a entrar.
+        Assert.Equal(HttpStatusCode.OK, (await _cliente.GetAsync("/api/mi/perfil-prestador")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Activar_el_rol_de_prestador_dos_veces_no_duplica_nada()
+    {
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo); await VerificarAsync(correo); await IniciarSesionAsync(correo);
+
+        Assert.Equal(HttpStatusCode.NoContent, (await ActivarPrestadorAsync()).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await ActivarPrestadorAsync()).StatusCode);   // doble clic
+
+        Assert.Equal(1, (await RolesDeMiCuentaAsync()).Count(r => r == "prestador"));
+        Assert.Equal(HttpStatusCode.OK, (await _cliente.GetAsync("/api/mi/perfil-prestador")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Activar_el_rol_de_prestador_exige_sesion_y_token_csrf()
+    {
+        // Sin sesion: 401, no un rol regalado a nadie.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await ActivarPrestadorAsync()).StatusCode);
+
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo); await VerificarAsync(correo); await IniciarSesionAsync(correo);
+
+        // Con sesion pero sin el token: otra pagina no puede activarlo en tu nombre.
+        Assert.Equal(HttpStatusCode.Forbidden, (await ActivarPrestadorAsync(conCsrf: false)).StatusCode);
+        Assert.DoesNotContain("prestador", await RolesDeMiCuentaAsync());
     }
 
     private string NuevoCorreo()

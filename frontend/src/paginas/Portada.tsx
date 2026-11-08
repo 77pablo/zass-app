@@ -49,6 +49,8 @@ export function Portada() {
 
   // El foco de luz de la portada sigue al puntero. Es adorno: sin puntero se queda donde esta.
   function seguir(e: PointerEvent<HTMLElement>) {
+    // Solo con raton: con el dedo el evento se dispara al hacer scroll y repinta el fondo para nada.
+    if (e.pointerType !== 'mouse') return
     const r = e.currentTarget.getBoundingClientRect()
     e.currentTarget.style.setProperty('--mx', `${e.clientX - r.left}px`)
     e.currentTarget.style.setProperty('--my', `${e.clientY - r.top}px`)

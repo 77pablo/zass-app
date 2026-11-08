@@ -26,6 +26,11 @@ export async function registrarse(
   await enviar('/api/auth/registro', { correo, contrasena, nombre, rol })
 }
 
+/** CS-04. «Ofrecer mis servicios»: agrega el rol de prestador a la cuenta que ya tienes. */
+export async function activarPrestador(): Promise<void> {
+  await enviar('/api/mi/activar-prestador', undefined)
+}
+
 /** API-11. */
 export async function cerrarSesion(): Promise<void> {
   await enviar('/api/auth/sesion', undefined, 'DELETE')

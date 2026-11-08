@@ -187,6 +187,28 @@ public static class EndpointsIdentidad
             .RequireRateLimiting(Tasa.Sensible)
             .WithName("API-17");
 
+        // «Ofrecer mis servicios»: agrega el rol de prestador a la cuenta que ya existe. Los roles viajan en la
+        // cookie de acceso, asi que se renueva la sesion para que la persona los vea de inmediato.
+        grupo.MapPost("/activar-prestador", async (
+                ServicioRegistro registro, ServicioSesion sesiones, HttpContext http, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+
+                var r = await registro.ActivarPrestadorAsync(usuarioId.Value, Ip(http));
+                if (!r.Exito) return Respuestas.Problema(r);
+
+                var refresco = http.Request.Cookies[ConfiguracionDeSeguridad.CookieRefresco];
+                if (!string.IsNullOrEmpty(refresco))
+                {
+                    var nueva = await sesiones.RenovarAsync(refresco, Ip(http), Agente(http));
+                    if (nueva.Exito) await AbrirCookiesAsync(http, nueva.Valor!);
+                }
+                return Results.NoContent();
+            })
+            .RequireRateLimiting(Tasa.General)
+            .WithName("CS-04");
+
         // Cambio de contrasena desde la sesion (RN-S1-04).
         grupo.MapPost("/contrasena", async (
                 CambiarContrasenaCmd cmd, ServicioCuenta servicio,
@@ -323,11 +345,28 @@ public static class EndpointsIdentidad
         //
         // La arma MOD-05 (CU-09), que consume MOD-01, MOD-03 y MOD-04: el perfil es de MOD-01,
         // pero los servicios son de MOD-03 y las zonas de MOD-04, y ninguno puede armarla solo.
+        //
+        // Buscar y abrir una ficha NO exige cuenta; contactar si. Por eso el telefono, el WhatsApp, el correo y el
+        // sitio solo salen con sesion: se quitan AQUI, en el servidor. Esconder los botones en la pantalla no
+        // bastaria, porque el dato seguiria en la respuesta para quien abra las herramientas del navegador, y
+        // seria la lista de contactos de todos los prestadores a un script de distancia.
         grupo.MapGet("/prestadores/{slug}", async (
-                string slug, IServicioBusqueda busqueda) =>
+                string slug, IServicioBusqueda busqueda, HttpContext http) =>
             {
                 var ficha = await busqueda.FichaPublicaAsync(slug);
-                return ficha is null ? Results.NotFound() : Results.Ok(ficha);
+                if (ficha is null) return Results.NotFound();
+
+                if (http.User.Identity?.IsAuthenticated != true)
+                    ficha = ficha with
+                    {
+                        Contacto = new ContactoPublicoDto(null, null, null, null),
+                        ContactoRequiereCuenta = true,
+                    };
+
+                // La respuesta depende de la sesion: que ningun cache compartido guarde la version con contacto.
+                http.Response.Headers.CacheControl = "private, no-store";
+                http.Response.Headers.Vary = "Cookie";
+                return Results.Ok(ficha);
             })
             .RequireRateLimiting(Tasa.Publico)
             .WithName("API-05");

@@ -1348,3 +1348,55 @@ Al terminar: `detener-postgres.bat`.
 3. Llevar `Terminos.tsx` y `Privacidad.tsx` a un abogado. Cuando los apruebe, cambiar `BORRADOR_LEGAL` a `false` en `legal.ts` (desaparece el aviso «Borrador: pendiente de revisión legal») y actualizar `ULTIMA_ACTUALIZACION`.
 4. Los textos dicen que hoy no hay cobro de la mensualidad, ni credenciales revisadas, ni pagos ni agenda: si eso cambia, hay que actualizarlos.
 5. Anotado para el backend: reservar el slug `mapa` al generar slugs (choca con `/api/prestadores/mapa`).
+
+---
+
+## Publicación en línea (8-nov-2026, noche) — QUÉ ESTÁ Y QUÉ FALTA
+
+**En línea y comprobado desde fuera:** sitio en Cloudflare Pages (`https://zass-59w.pages.dev`, proyecto `zass`),
+API en Render (`https://zass-api.onrender.com`, servicio `zass-api`, plan gratis: se duerme), base en Neon
+(US East, PostGIS 3.6). Las 13 migraciones aplicadas y consultadas en la base (362 zonas, 1 plan, 103 índices).
+`/api/salud/lista`, `/api/zonas`, `/api/buscar` responden 200 **a través de Cloudflare**; registro e inicio de
+sesión probados contra la base real (la cuenta de prueba se borró).
+
+**Secretos:** viven en `C:\Users\pdani\zass-secretos\` (fuera del repo y de OneDrive) y en el panel de Render.
+La clave AES de direcciones **debe tener copia en un gestor de contraseñas**; si se pierde, no se descifran.
+La contraseña de Neon y el token de Cloudflare pasaron por el chat: **hay que rotarlos**.
+
+**Lo que se midió y NO es lo que decía la guía:** en Render, `Zass__SaltosDeProxy` =3 y `Zass__ProxiesDeConfianza`
+= rangos de Cloudflare + `::1`, `127.0.0.1`, `10.0.0.0/8` (el balanceador llega desde 10.x). `render.yaml` aún dice 2.
+**Defecto abierto:** por el sitio de Cloudflare la API ve una IP de Cloudflare, no la del visitante (la función de
+Pages → Render pierde `X-Forwarded-For`). Directo a Render sí registra la IP real e ignora las falsas. Arreglo:
+cabecera propia desde la función + `ForwardedForHeaderName` en la API, con prueba por HTTP. Sin riesgo de seguridad,
+pero el límite de peticiones se cuenta por salida de Cloudflare.
+
+**Dominio zass.cl:** comprado en NIC Chile; zona agregada a Cloudflare (nameservers `doug`/`monroe`.ns.cloudflare.com
+guardados en NIC); registros CNAME `@` y `www` → `zass-59w.pages.dev` creados por Pablo; dominios añadidos al
+proyecto Pages. **A la espera de que NIC propague** (zona "pending"). Al activarse: comprobar HTTPS, www, rutas, API, sitemap.
+
+**Falta:** correos reales (Brevo/Resend; sin eso nadie verifica cuenta), Render gratis se duerme, textos legales en
+borrador, datos de demostración, y decidir pasarela/precio. Los commits locales siguen sin subir a GitHub.
+
+### Dominio zass.cl ACTIVO (8-nov-2026, noche) — comprobado
+- Zona Cloudflare `active`; 1.1.1.1 y 8.8.8.8 devuelven los nameservers `doug`/`monroe`.
+- Pages: `zass.cl` y `www.zass.cl` en `active`, certificado `active` (emisor Google Trust Services, vence 6-feb-2027).
+- HTTPS real, 200 y verificación de certificado correcta: `/`, `www`, `/buscar`, `/api/salud/lista`, `/api/zonas` (datos de Neon),
+  `/robots.txt`, `/sitemap.xml` (todas las URL son `https://zass.cl`, ninguna `pages.dev`).
+- Resend: dominio `zass.cl` **verified** (DKIM, SPF `rsend` y `send` verified).
+- **NO comprobado:** envío real de un correo; las 5 variables de correo aún NO están cargadas en Render
+  (`Zass__Correo__Proveedor=Resend`, `__ApiKey`, `__Remitente=no-responder@zass.cl`, `__NombreRemitente=ZASS!`,
+  `Zass__UrlPublica=https://zass.cl`). Sin ellas nadie recibe el correo de verificación.
+- Sigue abierto: IP del visitante vista como IP de Cloudflare; rotar contraseña de Neon, token de Cloudflare y clave de Resend.
+
+---
+
+## Una sola cuenta y contacto con cuenta (8-nov-2026, noche) — HECHO Y PROBADO LOCAL, SIN PUBLICAR
+
+Decisión de Pablo: **buscar y ver fichas no exige cuenta; contactar sí**, y **una sola cuenta** sirve para buscar y para ofrecer.
+
+- **API-05 (ficha pública):** sin sesión el contacto (teléfono, WhatsApp, correo, sitio) sale **vacío** y con `contactoRequiereCuenta: true`; con sesión sale completo. Se quita en el servidor (`EndpointsIdentidad.cs`), no solo en pantalla. La respuesta lleva `Cache-Control: private, no-store` y `Vary: Cookie`.
+- **CS-04 `POST /api/mi/activar-prestador`:** agrega el rol de prestador a la cuenta existente, crea el perfil en borrador, es idempotente y renueva la sesión para que los roles se vean al instante. `ServicioRegistro.ActivarPrestadorAsync`.
+- **Pantalla:** el registro ya no pregunta el rol (queda buscador; desde «Para profesionales» parte como prestador). Nueva página `/ofrecer-servicios` y enlace «Ofrecer mis servicios» en la cabecera. La ficha muestra «Crea tu cuenta gratis para contactar» y vuelve a la misma ficha tras entrar.
+- **Comprobado:** 654 + 16 + 597 pruebas de backend y 326 de interfaz en verde. **Se mutó** el filtro del contacto (cayeron 2 pruebas) y el caso de uso de activar (cayeron 2).
+- **NO hecho / ojo:** el contacto sigue sin registrar quién contactó a quién (TBL-21), así que contactar por WhatsApp no habilita reseña; solo agendar lo hace. **Esto NO está en producción**: el backend tiene que desplegarse ANTES que el frontend, porque `Ofrecer mis servicios` llama a un endpoint nuevo. Falta además actualizar el documento de especificación (CS-04 es nuevo y API-05 cambió).
+- **Rendimiento en celular:** se publicó (desactivar blur, orbes y brillos en pantallas chicas). No se pudo medir en un teléfono real.

@@ -17,7 +17,9 @@ export function Registrarse({
   const [nombre, setNombre] = useState('')
   const [correo, setCorreo] = useState('')
   const [contrasena, setContrasena] = useState('')
-  const [rol, setRol] = useState<RolPublico>(rolInicial)
+  // No se pregunta: una sola cuenta sirve para buscar y para ofrecer. Quien llega desde «Para profesionales» parte
+  // con la ficha lista; todos los demas empiezan buscando y activan «Ofrecer mis servicios» cuando quieran.
+  const rol: RolPublico = rolInicial
   const [campos, setCampos] = useState<Record<string, string>>({})
   const [aviso, setAviso] = useState<string>()
   const [listo, setListo] = useState(false)
@@ -77,35 +79,16 @@ export function Registrarse({
   return (
     <form className="tarjeta" onSubmit={alEnviar} noValidate>
       <h1 className="titulo">Crear cuenta</h1>
-      <p className="bajada">Conecta con un toque</p>
+      <p className="bajada">Una sola cuenta para buscar y para ofrecer servicios.</p>
 
       {aviso && <Aviso>{aviso}</Aviso>}
 
-      <fieldset className="eleccion">
-        <legend className="campo-etiqueta">En ZASS! vengo a…</legend>
-        <label className={rol === 'buscador' ? 'opcion opcion--puesta' : 'opcion'}>
-          <input
-            type="radio" name="rol" value="buscador"
-            checked={rol === 'buscador'}
-            onChange={() => setRol('buscador')}
-          />
-          <span>
-            <strong>Busco un servicio</strong>
-            <small>Gratis, siempre</small>
-          </span>
-        </label>
-        <label className={rol === 'prestador' ? 'opcion opcion--puesta' : 'opcion'}>
-          <input
-            type="radio" name="rol" value="prestador"
-            checked={rol === 'prestador'}
-            onChange={() => setRol('prestador')}
-          />
-          <span>
-            <strong>Ofrezco un servicio</strong>
-            <small>Aparece ante quien te busca cerca</small>
-          </span>
-        </label>
-      </fieldset>
+      {rol === 'prestador' && (
+        <p className="bajada">
+          Vas a crear tu ficha para que te encuentren. Con la misma cuenta también puedes buscar.
+        </p>
+      )}
+
 
       <Campo
         id="nombre" etiqueta="Nombre" autoComplete="name" maximo={NOMBRE_MAXIMO}

@@ -32,8 +32,11 @@ export function Cabecera() {
 
   const accion = estado === 'dentro' ? (
     <>
-      {esPrestador && (
+      <NavLink to="/mis-citas" className="nav-enlace">Mis citas</NavLink>
+      {esPrestador ? (
         <NavLink to="/mi-ficha" className="nav-enlace">Mi ficha</NavLink>
+      ) : (
+        <NavLink to="/ofrecer-servicios" className="nav-enlace">Ofrecer mis servicios</NavLink>
       )}
       <button type="button" className="nav-enlace nav-boton" onClick={() => void salir()}>
         Salir
@@ -71,9 +74,19 @@ export function Cabecera() {
               {e.texto}<Icono nombre="flecha" />
             </NavLink>
           ))}
+          {estado === 'dentro' && (
+            <NavLink to="/mis-citas" className="menu-enlace">
+              Mis citas<Icono nombre="flecha" />
+            </NavLink>
+          )}
           {estado === 'dentro' && esPrestador && (
             <NavLink to="/mi-ficha" className="menu-enlace">
               Mi ficha<Icono nombre="flecha" />
+            </NavLink>
+          )}
+          {estado === 'dentro' && !esPrestador && (
+            <NavLink to="/ofrecer-servicios" className="menu-enlace">
+              Ofrecer mis servicios<Icono nombre="flecha" />
             </NavLink>
           )}
           {estado === 'dentro' && (

@@ -201,7 +201,13 @@ public sealed record FichaPublicaDto(
     decimal? PromedioCalificacion,
     int TotalResenas,
     ContactoPublicoDto Contacto,
-    DateTime? PublicadoEn);
+    DateTime? PublicadoEn,
+    /// <summary>
+    /// Verdadero cuando quien pregunta NO tiene sesion y por eso <see cref="Contacto"/> viene vacio. Buscar y ver
+    /// fichas es publico; contactar exige cuenta gratis. Lo pone el endpoint, que es quien conoce la sesion: el
+    /// servicio de busqueda no sabe quien pregunta.
+    /// </summary>
+    bool ContactoRequiereCuenta = false);
 
 /// <summary>Una zona que cubre. La principal es la que se muestra primero (RN-S3-08).</summary>
 public sealed record ZonaPublicaDto(
