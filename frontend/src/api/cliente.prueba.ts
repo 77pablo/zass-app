@@ -254,3 +254,53 @@ describe('renovar la sesion ante un 401', () => {
     expect(repetido.headers['X-CSRF-Token']).toBe('nuevo')
   })
 })
+
+describe('enviar con cabeceras propias', () => {
+  it('manda la Idempotency-Key junto al token CSRF', async () => {
+    fetchFalso
+      .mockResolvedValueOnce(respuesta(200, { token: 'csrf-1' }))
+      .mockResolvedValueOnce(respuesta(201, { id: 'c1' }))
+
+    await enviar('/api/citas', { bloqueId: 'b1' }, 'POST', { 'Idempotency-Key': 'intencion-1' })
+
+    const [, opciones] = fetchFalso.mock.calls[1]
+    expect(opciones.headers['Idempotency-Key']).toBe('intencion-1')
+    expect(opciones.headers['X-CSRF-Token']).toBe('csrf-1')
+  })
+
+  it('repite la MISMA clave cuando reintenta por un 403 de CSRF', async () => {
+    fetchFalso
+      .mockResolvedValueOnce(respuesta(200, { token: 'viejo' }))
+      .mockResolvedValueOnce(respuesta(403, { title: 'no verificada' }))
+      .mockResolvedValueOnce(respuesta(200, { token: 'nuevo' }))
+      .mockResolvedValueOnce(respuesta(201, { id: 'c1' }))
+
+    await enviar('/api/citas', {}, 'POST', { 'Idempotency-Key': 'intencion-2' })
+
+    const intentos = fetchFalso.mock.calls.filter(([ruta]) => ruta === '/api/citas')
+    expect(intentos).toHaveLength(2)
+    expect(intentos[0][1].headers['Idempotency-Key']).toBe('intencion-2')
+    expect(intentos[1][1].headers['Idempotency-Key']).toBe('intencion-2')
+    expect(intentos[1][1].headers['X-CSRF-Token']).toBe('nuevo')
+  })
+
+  it('no deja que una cabecera propia pise el token CSRF', async () => {
+    fetchFalso
+      .mockResolvedValueOnce(respuesta(200, { token: 'real' }))
+      .mockResolvedValueOnce(respuesta(204, null))
+
+    await enviar('/api/algo', {}, 'POST', { 'X-CSRF-Token': 'falso' })
+
+    expect(fetchFalso.mock.calls[1][1].headers['X-CSRF-Token']).toBe('real')
+  })
+
+  it('sin cabeceras propias se comporta como siempre', async () => {
+    fetchFalso
+      .mockResolvedValueOnce(respuesta(200, { token: 't' }))
+      .mockResolvedValueOnce(respuesta(204, null))
+
+    await enviar('/api/algo', {})
+
+    expect(fetchFalso.mock.calls[1][1].headers['Idempotency-Key']).toBeUndefined()
+  })
+})

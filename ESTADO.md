@@ -409,10 +409,12 @@ cuenta. Se actualizó el tipo `FichaPublica` del frontend.
 16 de arquitectura + 591 de integración (1.261). **Las pruebas de interfaz (283) no se corrieron**: solo se tocó
 el tipo `FichaPublica`, pero no se comprobó que compile el frontend ni que sus pruebas sigan pasando.
 
-**Siguiente paso exacto: la pantalla de la agenda** (el backend está completo, falta todo el frontend):
-1. `frontend/src/funciones/agenda/servicio.ts`: llamadas a API-35 (calendario), API-36 (agendar) y API-37 (mis citas).
-   `enviar` de `api/cliente.ts` **no admite cabeceras propias**: hay que extenderlo para mandar `Idempotency-Key`
-   (una por intención, generada al abrir el formulario, no por clic) y añadir su prueba en `cliente.prueba.ts`.
+**Siguiente paso exacto: la pantalla de la agenda** (el backend está completo, falta casi todo el frontend):
+0. **HECHO**: `enviar` ya admite cabeceras propias (4º parámetro) y repite la MISMA `Idempotency-Key` en sus
+   reintentos internos; 4 pruebas, y se mutó el reintento para ver que caen. **Las 287 pruebas de interfaz pasan y
+   `tsc -b` compila limpio** (esto cierra el hueco anotado arriba).
+1. `frontend/src/funciones/agenda/servicio.ts`: llamadas a API-35 (calendario), API-36 (agendar) y API-37 (mis
+   citas). La clave de idempotencia se genera UNA vez al abrir el formulario, no por clic.
 2. En `Ficha.tsx`: elegir servicio → calendario de bloques → confirmar. Si el servicio es `Manual`, avisar ANTES
    de elegir hora que el prestador debe confirmar (flujo 4C). Un visitante sin cuenta pasa por registrarse y
    vuelve con el bloque elegido (flujo 4G). Los bloques vienen en UTC: mostrarlos en hora de Chile con

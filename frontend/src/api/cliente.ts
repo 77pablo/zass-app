@@ -161,11 +161,17 @@ export async function enviar<T>(
   ruta: string,
   cuerpo?: unknown,
   metodo: 'POST' | 'PUT' | 'DELETE' = 'POST',
+  /**
+   * Cabeceras propias. La unica que hoy se usa es `Idempotency-Key` (CC-04). Se REPITEN tal cual
+   * en cada reintento interno (el 403 de CSRF y el 401 de renovar sesion): son la misma
+   * intencion, y una clave nueva por reintento haria que el servidor la tomara por otra.
+   */
+  cabeceras: Record<string, string> = {},
 ): Promise<T> {
   const r = await conRenovacion(ruta, async () => {
-    let intento = await unIntento(ruta, cuerpo, metodo, await tokenCsrf())
+    let intento = await unIntento(ruta, cuerpo, metodo, await tokenCsrf(), cabeceras)
     if (intento.status === 403) {
-      intento = await unIntento(ruta, cuerpo, metodo, await tokenCsrf(true))
+      intento = await unIntento(ruta, cuerpo, metodo, await tokenCsrf(true), cabeceras)
     }
     return intento
   })
@@ -175,6 +181,7 @@ export async function enviar<T>(
 
 function unIntento(
   ruta: string, cuerpo: unknown, metodo: string, token: string,
+  cabeceras: Record<string, string> = {},
 ): Promise<Response> {
   return llamar(ruta, {
     method: metodo,
@@ -182,6 +189,8 @@ function unIntento(
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
+      // Antes que las propias: nadie puede pisar el token CSRF desde fuera.
+      ...cabeceras,
       'X-CSRF-Token': token,
     },
     ...(cuerpo === undefined ? {} : { body: JSON.stringify(cuerpo) }),
