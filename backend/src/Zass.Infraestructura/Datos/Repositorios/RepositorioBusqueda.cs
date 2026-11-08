@@ -60,7 +60,7 @@ public sealed class RepositorioBusquedaEfCore : IRepositorioBusqueda
                     p.descripcion                               AS descripcion,
                     p.url_foto                                  AS url_foto,
                     p.rubro_id                                  AS rubro_id,
-                    zp.nombre                                   AS zona_principal,
+                    etiqueta_de_zona(zp.nombre, zp.comuna, zp.tipo)       AS zona_principal,
                     p.promedio_calificacion                     AS promedio_calificacion,
                     CASE WHEN p.total_resenas >= 3
                          THEN COALESCE(p.promedio_calificacion, -1)
@@ -104,7 +104,7 @@ public sealed class RepositorioBusquedaEfCore : IRepositorioBusqueda
                   AND EXISTS (
                         SELECT 1 FROM coberturas cz
                         WHERE cz.perfil_prestador_id = p.id
-                          AND cz.zona_id = {c.ZonaId}
+                          AND cz.zona_id IN (SELECT id FROM zonas_relacionadas({c.ZonaId}))
                   )
                   AND ({c.ServicioId}::int IS NULL OR EXISTS (
                         SELECT 1 FROM prestador_servicios ps
@@ -159,11 +159,30 @@ public sealed class RepositorioBusquedaEfCore : IRepositorioBusqueda
 
         var total = await visibles.CountAsync(ct);
 
-        // Una cobertura por (prestador, zona) es unica, asi que contar filas es contar personas.
-        var porZona = await _ctx.Coberturas
-            .Where(c => visibles.Any(p => p.Id == c.PerfilPrestadorId))
-            .GroupBy(c => c.ZonaId)
+        // Cuanta gente hay en una zona, con la MISMA relacion que usa la busqueda (ver zonas_relacionadas):
+        // quien cubre una comuna cuenta en sus barrios, y quien cubre un barrio cuenta en su comuna. Si
+        // aqui se contara distinto, la portada diria «14 personas en Temuco» y al entrar aparecerian 9.
+        // Se cuenta POR PERSONA: alguien que cubre dos barrios de Temuco cuenta una vez en Temuco.
+        var cobertura = _ctx.Coberturas.Where(c => visibles.Any(p => p.Id == c.PerfilPrestadorId));
+        var directas = cobertura.Select(c => new { c.PerfilPrestadorId, ZonaId = c.ZonaId });
+        var haciaLaComuna = cobertura
+            .Join(_ctx.Zonas, c => c.ZonaId, z => z.Id, (c, z) => new { c.PerfilPrestadorId, z.PadreId })
+            .Where(x => x.PadreId != null)
+            .Select(x => new { x.PerfilPrestadorId, ZonaId = x.PadreId!.Value });
+        var haciaLosBarrios = cobertura
+            .Join(_ctx.Zonas, c => c.ZonaId, z => z.PadreId, (c, z) => new { c.PerfilPrestadorId, ZonaId = z.Id });
+        var porZona = await directas.Concat(haciaLaComuna).Concat(haciaLosBarrios)
+            .Distinct()
+            .GroupBy(x => x.ZonaId)
             .Select(g => new ConteoCrudo(g.Key, g.Count()))
+            .ToListAsync(ct);
+
+        // Por region, una vez por persona aunque cubra varias comunas de la misma.
+        var porRegion = await cobertura
+            .Join(_ctx.Zonas, c => c.ZonaId, z => z.Id, (c, z) => new { c.PerfilPrestadorId, z.Region })
+            .Distinct()
+            .GroupBy(x => x.Region)
+            .Select(g => new ConteoDeRegion(g.Key, g.Count()))
             .ToListAsync(ct);
 
         var porRubro = await visibles
@@ -184,14 +203,15 @@ public sealed class RepositorioBusquedaEfCore : IRepositorioBusqueda
                 _ctx.Rubros.Where(r => r.Id == p.RubroId).Select(r => r.Nombre).FirstOrDefault(),
                 _ctx.Coberturas
                     .Where(c => c.PerfilPrestadorId == p.Id && c.EsPrincipal)
-                    .Select(c => c.Zona!.Nombre)
+                    .Select(c => c.Zona!.Tipo == Zass.Dominio.Catalogo.TipoDeZona.Barrio
+                        ? c.Zona!.Nombre + ", " + c.Zona!.Comuna : c.Zona!.Nombre)
                     .FirstOrDefault(),
                 _ctx.Credenciales.Any(cr =>
                     cr.PerfilPrestadorId == p.Id
                     && cr.Estado == Zass.Dominio.Comun.EstadoCredencial.Verificada)))
             .ToListAsync(ct);
 
-        return new ResumenCrudo(total, porZona, porRubro, recientesFilas);
+        return new ResumenCrudo(total, porZona, porRubro, recientesFilas, porRegion);
     }
 
     /// <summary>
@@ -209,7 +229,9 @@ public sealed class RepositorioBusquedaEfCore : IRepositorioBusqueda
     {
         return await _ctx.Set<FilaDeTexto>().FromSqlInterpolated($"""
             WITH punto AS (
-                SELECT ST_SetSRID(ST_MakePoint({c.Longitud}, {c.Latitud}), 4326)::geography AS g
+                SELECT CASE WHEN {c.Latitud}::float8 IS NULL OR {c.Longitud}::float8 IS NULL THEN NULL
+                            ELSE ST_SetSRID(ST_MakePoint({c.Longitud}::float8, {c.Latitud}::float8), 4326)::geography
+                       END AS g
             ),
             base AS (
                 SELECT
@@ -219,7 +241,7 @@ public sealed class RepositorioBusquedaEfCore : IRepositorioBusqueda
                     p.descripcion                               AS descripcion,
                     p.url_foto                                  AS url_foto,
                     r.nombre                                    AS rubro_nombre,
-                    zp.nombre                                   AS zona_principal,
+                    etiqueta_de_zona(zp.nombre, zp.comuna, zp.tipo)       AS zona_principal,
                     d.metros                                    AS metros,
                     tramo_de_distancia(d.metros)                AS tramo,
                     EXISTS (
@@ -258,7 +280,7 @@ public sealed class RepositorioBusquedaEfCore : IRepositorioBusqueda
                 WHERE p.estado = 'Publicado'
                   AND ({c.ZonaId}::int IS NULL OR EXISTS (
                         SELECT 1 FROM coberturas cz
-                        WHERE cz.perfil_prestador_id = p.id AND cz.zona_id = {c.ZonaId}
+                        WHERE cz.perfil_prestador_id = p.id AND cz.zona_id IN (SELECT id FROM zonas_relacionadas({c.ZonaId}))
                   ))
                   -- Todos los grupos tienen que cumplirse. Sin texto no hay grupos: entra todo el mundo.
                   AND NOT EXISTS (
@@ -323,7 +345,7 @@ public sealed class RepositorioBusquedaEfCore : IRepositorioBusqueda
                     p.descripcion                               AS descripcion,
                     p.url_foto                                  AS url_foto,
                     p.rubro_id                                  AS rubro_id,
-                    zp.nombre                                   AS zona_principal,
+                    etiqueta_de_zona(zp.nombre, zp.comuna, zp.tipo)       AS zona_principal,
                     p.promedio_calificacion                     AS promedio_calificacion,
                     CASE WHEN p.total_resenas >= 3
                          THEN COALESCE(p.promedio_calificacion, -1)
@@ -349,7 +371,7 @@ public sealed class RepositorioBusquedaEfCore : IRepositorioBusqueda
                   AND EXISTS (
                         SELECT 1 FROM coberturas cz
                         WHERE cz.perfil_prestador_id = p.id
-                          AND cz.zona_id = {c.ZonaId}
+                          AND cz.zona_id IN (SELECT id FROM zonas_relacionadas({c.ZonaId}))
                   )
                   AND ({c.ServicioId}::int IS NULL OR EXISTS (
                         SELECT 1 FROM prestador_servicios ps

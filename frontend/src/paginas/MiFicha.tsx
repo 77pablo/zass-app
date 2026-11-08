@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { ErrorApi } from '../api/cliente'
-import { serviciosDeRubro, type Rubro, type ServicioDeCatalogo, type Zona } from '../api/catalogo'
+import { serviciosDeRubro, type Rubro, type ServicioDeCatalogo } from '../api/catalogo'
 import { useCatalogo } from '../api/useCargado'
 import { Campo } from '../componentes/Campo'
 import {
-  despublicar, guardarCobertura, guardarDatos, guardarServicios, miCobertura, miPerfil,
+  despublicar, guardarDatos, guardarServicios, miCobertura, miPerfil,
   misServicios, miSuscripcion, publicar, misCredenciales,
   type MiCredencial, type MiPerfil, type ServicioOfrecido, type ServicioParaGuardar, type Suscripcion, type ZonaCubierta,
 } from '../funciones/perfil/servicio'
@@ -15,6 +15,7 @@ import { Monograma } from '../marco/Monograma'
 import { capitalizar, duracion, pesos } from '../marco/texto'
 import { useTitulo } from '../marco/useTitulo'
 import { useSesion } from '../sesion/contexto'
+import { EditorDeZonas } from './EditorDeZonas'
 import { MisCredenciales } from './MisCredenciales'
 
 interface Todo {
@@ -176,7 +177,7 @@ export function MiFicha() {
           ) : (
             <>
               <h2>Tu ficha está lista.</h2>
-              <p>Cuando la publiques, empieza tu período de prueba y la verán en las búsquedas de tus barrios.</p>
+              <p>Cuando la publiques, empieza tu período de prueba y la verán en las búsquedas de tus comunas.</p>
             </>
           )}
         </section>
@@ -256,7 +257,7 @@ export function MiFicha() {
             ))}
           </ul>
         ) : (
-          <Invitacion texto="Elige los barrios donde atiendes y cuál es el principal." accion="Elegir mis barrios" alPulsar={() => setEditando('zonas')} />
+          <Invitacion texto="Elige las comunas donde atiendes y cuál es la principal." accion="Elegir mis comunas" alPulsar={() => setEditando('zonas')} />
         )}
       </section>
 
@@ -480,80 +481,6 @@ function EditorDeServicios({
 
       <div className="editor-acciones">
         <button className="boton boton--tinta" type="submit" disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar servicios'}</button>
-        <button className="boton" type="button" onClick={alCancelar} disabled={guardando}>Cancelar</button>
-      </div>
-    </form>
-  )
-}
-
-/* -------------------------------------------------------------------- Barrios */
-
-function EditorDeZonas({
-  zonas, actuales, alGuardar, alCancelar,
-}: { zonas: Zona[]; actuales: ZonaCubierta[]; alGuardar: () => void; alCancelar: () => void }) {
-  const [elegidas, setElegidas] = useState<Set<number>>(() => new Set(actuales.map((z) => z.zonaId)))
-  const [principal, setPrincipal] = useState<number | null>(() => actuales.find((z) => z.esPrincipal)?.zonaId ?? null)
-  const [aviso, setAviso] = useState<string>()
-  const [guardando, setGuardando] = useState(false)
-
-  function alternar(id: number) {
-    setElegidas((a) => {
-      const n = new Set(a)
-      if (n.has(id)) n.delete(id)
-      else n.add(id)
-      return n
-    })
-    // Si se desmarca la principal, deja de haberla: hay que elegir otra.
-    setPrincipal((p) => (p === id ? null : p))
-  }
-
-  async function enviar(e: FormEvent) {
-    e.preventDefault()
-    setAviso(undefined)
-    if (elegidas.size === 0) { setAviso('Elige al menos un barrio.'); return }
-    const cual = principal !== null && elegidas.has(principal) ? principal : null
-    if (cual === null) { setAviso('Marca cuál es tu barrio principal.'); return }
-
-    setGuardando(true)
-    try {
-      await guardarCobertura([...elegidas].map((zonaId) => ({ zonaId, esPrincipal: zonaId === cual })))
-      alGuardar()
-    } catch (err) {
-      setAviso(mensajeDe(err, 'No pudimos guardar tus barrios.'))
-    } finally {
-      setGuardando(false)
-    }
-  }
-
-  const sectores = [...new Set(zonas.map((z) => z.sector))]
-
-  return (
-    <form className="editor" onSubmit={(e) => void enviar(e)} noValidate>
-      {aviso && <p className="aviso-linea" role="alert">{aviso}</p>}
-      <p className="campo-ayuda">Marca donde atiendes y elige uno como principal: es el que se muestra primero.</p>
-      {sectores.map((sector) => (
-        <fieldset key={sector} className="editor-sector">
-          <legend>{capitalizar(sector)}</legend>
-          <ul className="editor-barrios">
-            {zonas.filter((z) => z.sector === sector).map((z) => (
-              <li key={z.id} className="editor-barrio">
-                <label className="casilla">
-                  <input type="checkbox" checked={elegidas.has(z.id)} onChange={() => alternar(z.id)} />
-                  <span>{z.nombre}</span>
-                </label>
-                {elegidas.has(z.id) && (
-                  <label className="casilla casilla--principal">
-                    <input type="radio" name="principal" checked={principal === z.id} onChange={() => setPrincipal(z.id)} />
-                    <span>Principal</span>
-                  </label>
-                )}
-              </li>
-            ))}
-          </ul>
-        </fieldset>
-      ))}
-      <div className="editor-acciones">
-        <button className="boton boton--tinta" type="submit" disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar barrios'}</button>
         <button className="boton" type="button" onClick={alCancelar} disabled={guardando}>Cancelar</button>
       </div>
     </form>

@@ -16,6 +16,11 @@ export interface Zona {
   comuna: string
   centroLatitud: number
   centroLongitud: number
+  /** La comuna es la unidad nacional; el barrio es un nivel opcional dentro de una comuna grande. */
+  tipo: 'Comuna' | 'Barrio'
+  region: string
+  /** De que comuna es este barrio; nulo para una comuna. */
+  padreId: number | null
 }
 
 /** API-03. Un servicio que ZASS! sugiere dentro de un rubro. */

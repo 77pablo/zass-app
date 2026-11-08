@@ -294,7 +294,7 @@ public class BusquedaIntegracionPruebas : IDisposable
         var encontrado = Assert.Single(filas);
         Assert.Equal(perfil.Id, encontrado.Id);
         // La ficha muestra su zona PRINCIPAL, que es otra: Labranza.
-        Assert.Equal("Labranza", encontrado.ZonaPrincipal);
+        Assert.Equal("Labranza, Temuco", encontrado.ZonaPrincipal);
     }
 
     [Fact]
@@ -993,6 +993,158 @@ public class BusquedaIntegracionPruebas : IDisposable
         Assert.Equal(new[] { "Abogada con sello" }, Nombres(await TextoAsync("abogado", "precio_asc", soloVerificados: true)));
     }
 
+    // ------------------------------------------------- Chile: comunas y barrios
+
+    private async Task<int> ComunaAsync(string nombre) =>
+        (await _prueba.Ctx.Zonas.SingleAsync(z => z.Tipo == TipoDeZona.Comuna && z.Nombre == nombre)).Id;
+
+    /// <summary>
+    /// Quien cubre toda la comuna de Temuco atiende en sus barrios, aunque no haya marcado ninguno. Sin esto, buscar en
+    /// «Centro, Temuco» no encontraria a quien dijo «atiendo en Temuco», que es lo que dice casi todo el mundo.
+    /// </summary>
+    [Fact]
+    public async Task Quien_cubre_la_comuna_aparece_al_buscar_en_uno_de_sus_barrios()
+    {
+        var temuco = await ComunaAsync("Temuco");
+        await UnPrestadorBuscableAsync(nombre: "Cubre la comuna entera", zonaId: temuco);
+        await UnPrestadorBuscableAsync(nombre: "Cubre solo Labranza", zonaId: Labranza);
+
+        var enCentro = Nombres(await TextoAsync(null, zona: Centro));
+
+        Assert.Equal(new[] { "Cubre la comuna entera" }, enCentro);
+    }
+
+    /// <summary>Y al revés: quien solo marcó un barrio aparece al buscar en su comuna.</summary>
+    [Fact]
+    public async Task Quien_cubre_un_barrio_aparece_al_buscar_en_su_comuna()
+    {
+        var temuco = await ComunaAsync("Temuco");
+        await UnPrestadorBuscableAsync(nombre: "Solo el Centro", zonaId: Centro);
+        await UnPrestadorBuscableAsync(nombre: "Solo Labranza", zonaId: Labranza);
+
+        var enTemuco = Nombres(await TextoAsync(null, zona: temuco));
+
+        Assert.Equal(new[] { "Solo Labranza", "Solo el Centro" }.OrderBy(x => x), enTemuco.OrderBy(x => x));
+    }
+
+    /// <summary>Un barrio no es de la comuna de al lado: lo de Temuco no aparece al buscar en Padre Las Casas.</summary>
+    [Fact]
+    public async Task Buscar_en_otra_comuna_no_trae_a_la_gente_de_Temuco()
+    {
+        var plc = await ComunaAsync("Padre Las Casas");
+        var arica = await ComunaAsync("Arica");
+        await UnPrestadorBuscableAsync(nombre: "De Temuco", zonaId: Centro);
+        await UnPrestadorBuscableAsync(nombre: "De Padre Las Casas", zonaId: plc);
+
+        Assert.Equal(new[] { "De Padre Las Casas" }, Nombres(await TextoAsync(null, zona: plc)));
+        Assert.Empty(await TextoAsync(null, zona: arica));
+    }
+
+    /// <summary>Dos barrios hermanos no se relacionan entre si: buscar en Labranza no trae a quien solo cubre el Centro.</summary>
+    [Fact]
+    public async Task Dos_barrios_de_la_misma_comuna_no_se_mezclan()
+    {
+        await UnPrestadorBuscableAsync(nombre: "Solo el Centro", zonaId: Centro);
+
+        Assert.Empty(await TextoAsync(null, zona: Labranza));
+    }
+
+    [Fact]
+    public async Task La_zona_principal_de_un_barrio_se_dice_con_su_comuna_y_la_de_una_comuna_va_sola()
+    {
+        var plc = await ComunaAsync("Padre Las Casas");
+        await UnPrestadorBuscableAsync(nombre: "En un barrio", zonaId: Centro);
+        await UnPrestadorBuscableAsync(nombre: "En una comuna", zonaId: plc);
+
+        var filas = (await TextoAsync(null)).ToDictionary(f => f.NombrePublico);
+
+        Assert.Equal("Centro, Temuco", filas["En un barrio"].ZonaPrincipal);
+        Assert.Equal("Padre Las Casas", filas["En una comuna"].ZonaPrincipal);
+    }
+
+    /// <summary>
+    /// A nivel nacional una comuna lejana tambien se mide: sin ubicacion de la persona la distancia no se calcula (no hay
+    /// ningun «centro» de Chile), y con ella, la de Arica queda a miles de km de quien busca en Temuco.
+    /// </summary>
+    [Fact]
+    public async Task Sin_ubicacion_no_hay_distancia_y_con_ella_una_comuna_lejana_queda_lejos()
+    {
+        var arica = await ComunaAsync("Arica");
+        await UnPrestadorBuscableAsync(nombre: "En Arica", zonaId: arica);
+
+        var con = (await TextoAsync(null, lat: CentroLat, lon: CentroLon)).Single();
+        var sin = (await _repo.PorTextoAsync(new CriteriosDeTexto(
+            Array.Empty<string>(), Array.Empty<int>(), null, null, null, "recomendados", _reloj.Ahora, 50, 0))).Single();
+
+        Assert.True(con.Metros > 1_800_000, $"Arica a {con.Metros / 1000:0} km de Temuco");
+        Assert.Null(sin.Metros);
+        Assert.Null(sin.Tramo);
+    }
+
+    // ------------------------------------------------- el resumen por zona y por region
+
+    /// <summary>
+    /// La portada cuenta en LINQ y la busqueda filtra en SQL (zonas_relacionadas). Esta prueba exige que digan lo mismo para
+    /// cada una de las 362 zonas: si no, la portada diria «9 personas en Temuco» y al entrar aparecerian 7.
+    /// </summary>
+    [Fact]
+    public async Task El_conteo_de_la_portada_coincide_con_lo_que_la_busqueda_devuelve_en_cada_zona()
+    {
+        var temuco = await ComunaAsync("Temuco");
+        var plc = await ComunaAsync("Padre Las Casas");
+        var arica = await ComunaAsync("Arica");
+        await UnPrestadorBuscableAsync(nombre: "A", zonaId: temuco);
+        await UnPrestadorBuscableAsync(nombre: "B", zonaId: Centro);
+        await UnPrestadorBuscableAsync(nombre: "C", zonaId: Labranza);
+        await UnPrestadorBuscableAsync(nombre: "D", zonaId: plc);
+        var e = await UnPrestadorBuscableAsync(nombre: "E", zonaId: arica);
+        _prueba.Ctx.Coberturas.Add(new CoberturaPrestador { PerfilPrestadorId = e.Id, ZonaId = Centro, EsPrincipal = false, DesdeEn = _reloj.Ahora });
+        await _prueba.Ctx.SaveChangesAsync();
+
+        var resumen = await _repo.ResumenAsync(_reloj.Ahora, 6);
+        var contadas = resumen.PorZona.ToDictionary(c => c.Id, c => c.Personas);
+
+        foreach (var zona in await _prueba.Ctx.Zonas.ToListAsync())
+        {
+            var buscadas = (await TextoAsync(null, zona: zona.Id)).Count;
+            Assert.Equal(buscadas, contadas.GetValueOrDefault(zona.Id));
+        }
+        Assert.Equal(4, contadas[temuco]);        // A, B, C y E (que tambien cubre el Centro)
+        Assert.Equal(3, contadas[Centro]);        // A por su comuna, B, y E
+    }
+
+    [Fact]
+    public async Task Quien_cubre_dos_barrios_de_una_comuna_cuenta_una_sola_vez_en_ella()
+    {
+        var temuco = await ComunaAsync("Temuco");
+        var p = await UnPrestadorBuscableAsync(nombre: "En dos barrios", zonaId: Centro);
+        _prueba.Ctx.Coberturas.Add(new CoberturaPrestador { PerfilPrestadorId = p.Id, ZonaId = Labranza, EsPrincipal = false, DesdeEn = _reloj.Ahora });
+        await _prueba.Ctx.SaveChangesAsync();
+
+        var resumen = await _repo.ResumenAsync(_reloj.Ahora, 6);
+
+        Assert.Equal(1, resumen.PorZona.Single(c => c.Id == temuco).Personas);
+        Assert.Equal(1, resumen.Total);
+    }
+
+    [Fact]
+    public async Task El_conteo_por_region_cuenta_a_cada_persona_una_vez_aunque_cubra_varias_comunas_de_ella()
+    {
+        var plc = await ComunaAsync("Padre Las Casas");
+        var arica = await ComunaAsync("Arica");
+        var p = await UnPrestadorBuscableAsync(nombre: "Dos comunas de La Araucanía", zonaId: Centro);
+        _prueba.Ctx.Coberturas.Add(new CoberturaPrestador { PerfilPrestadorId = p.Id, ZonaId = plc, EsPrincipal = false, DesdeEn = _reloj.Ahora });
+        await UnPrestadorBuscableAsync(nombre: "De Arica", zonaId: arica);
+        await _prueba.Ctx.SaveChangesAsync();
+
+        var resumen = await _repo.ResumenAsync(_reloj.Ahora, 6);
+        var porRegion = resumen.PorRegion!.ToDictionary(r => r.Region, r => r.Personas);
+
+        Assert.Equal(1, porRegion["La Araucanía"]);
+        Assert.Equal(1, porRegion["Arica y Parinacota"]);
+        Assert.Equal(2, resumen.Total);
+    }
+
     // ------------------------------------------------- zona y paginas
 
     [Fact]
@@ -1119,7 +1271,7 @@ public class BusquedaIntegracionPruebas : IDisposable
 
         Assert.Equal(new[] { "El mas nuevo", "El mas viejo" }, resumen.Recientes.Select(r => r.NombrePublico).ToArray());
         var primero = resumen.Recientes[0];
-        Assert.Equal("Centro", primero.ZonaPrincipal);
+        Assert.Equal("Centro, Temuco", primero.ZonaPrincipal);
         Assert.Equal("Corretaje de propiedades", primero.RubroNombre);
         Assert.True(primero.Verificada);
         Assert.False(resumen.Recientes[1].Verificada);
@@ -1145,7 +1297,7 @@ public class BusquedaIntegracionPruebas : IDisposable
 
         var resumen = await _repo.ResumenAsync(_reloj.Ahora, 6);
 
-        Assert.Equal("Labranza", Assert.Single(resumen.Recientes).ZonaPrincipal);
+        Assert.Equal("Labranza, Temuco", Assert.Single(resumen.Recientes).ZonaPrincipal);
     }
 
     /// <summary>El sello es solo de lo verificado: una credencial en revision, rechazada o vencida no lo da.</summary>

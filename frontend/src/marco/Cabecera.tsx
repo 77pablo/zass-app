@@ -5,7 +5,7 @@ import { Icono } from './Icono'
 
 const ENLACES = [
   { a: '/buscar', texto: 'Buscar' },
-  { a: '/barrios', texto: 'Barrios' },
+  { a: '/comunas', texto: 'Comunas' },
   { a: '/oficios', texto: 'Oficios' },
   { a: '/profesionales', texto: 'Para profesionales' },
 ]

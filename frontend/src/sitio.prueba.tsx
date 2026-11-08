@@ -13,13 +13,19 @@ const RUBROS = [
   { id: 1, codigo: 'corretaje', nombre: 'Corretaje de propiedades', icono: null },
   { id: 2, codigo: 'derecho', nombre: 'Derecho', icono: null },
 ]
+const zona = (id: number, nombre: string, comuna: string, tipo: 'Comuna' | 'Barrio', region: string, lat: number, padreId: number | null = null) =>
+  ({ id, nombre, sector: tipo === 'Comuna' ? region : 'centro', comuna, centroLatitud: lat, centroLongitud: -72.6, tipo, region, padreId })
 const ZONAS = [
-  { id: 1, nombre: 'Centro', sector: 'centro', comuna: 'Temuco', centroLatitud: -38.7, centroLongitud: -72.6 },
-  { id: 5, nombre: 'Pedro de Valdivia', sector: 'norte', comuna: 'Temuco', centroLatitud: -38.7, centroLongitud: -72.6 },
+  zona(100, 'Arica', 'Arica', 'Comuna', 'Arica y Parinacota', -18.5),
+  zona(200, 'Temuco', 'Temuco', 'Comuna', 'La Araucanía', -38.7),
+  zona(201, 'Villarrica', 'Villarrica', 'Comuna', 'La Araucanía', -39.3),
+  zona(1, 'Centro', 'Temuco', 'Barrio', 'La Araucanía', -38.7, 200),
+  zona(5, 'Pedro de Valdivia', 'Temuco', 'Barrio', 'La Araucanía', -38.7, 200),
 ]
 const COMUNIDAD = {
   total: 3,
-  porZona: [{ zonaId: 1, personas: 2 }],
+  porZona: [{ zonaId: 200, personas: 3 }, { zonaId: 1, personas: 2 }],
+  porRegion: [{ region: 'La Araucanía', personas: 3 }],
   porRubro: [{ rubroId: 1, personas: 3 }],
   recienLlegados: [
     { slug: 'marcela-soto', nombrePublico: 'Marcela Soto', rubro: 'Corretaje de propiedades', zona: 'Centro', verificada: true },
@@ -427,14 +433,14 @@ describe('el sitio de varias paginas', () => {
     expect(await screen.findByRole('link', { name: /Marcela Soto/ })).toBeInTheDocument()
   })
 
-  it('un barrio filtra la busqueda', async () => {
+  it('una comuna filtra la busqueda y el selector las agrupa por region', async () => {
     const u = userEvent.setup()
     en('/buscar?q=corredor')
     await screen.findByRole('link', { name: /Marcela Soto/ })
 
-    await u.selectOptions(screen.getByRole('combobox', { name: 'Barrio' }), '5')
+    await u.selectOptions(screen.getByRole('combobox', { name: 'Comuna' }), '200')
 
-    await vi.waitFor(() => expect(llamadas).toContain('/api/buscar?q=corredor&orden=Recomendados&zona=5'))
+    await vi.waitFor(() => expect(llamadas).toContain('/api/buscar?q=corredor&orden=Recomendados&zona=200'))
   })
 
   it('la ficha muestra servicios con precio y contacto, y no vuelve enlace un javascript:', async () => {
@@ -476,12 +482,70 @@ describe('el sitio de varias paginas', () => {
     expect(screen.getAllByRole('link', { name: /Buscar a alguien/ }).length).toBeGreaterThan(0)
   })
 
-  it('los barrios muestran cuanta gente hay, y "Aun nadie" donde no hay', async () => {
+  it('las comunas se agrupan por region, de norte a sur, con cuanta gente hay en cada una', async () => {
+    en('/comunas')
+
+    const regiones = await screen.findAllByText(/Arica y Parinacota|La Araucanía/, { selector: '.region-nombre' })
+    expect(regiones.map((r) => r.textContent)).toEqual(['Arica y Parinacota', 'La Araucanía'])    // el norte primero
+    const temuco = screen.getByRole('link', { name: /^Temuco/ })
+    expect(within(temuco).getByText('3 personas')).toBeInTheDocument()
+    expect(temuco).toHaveAttribute('href', '/buscar?zona=200')
+    expect(within(screen.getByRole('link', { name: /^Villarrica/ })).getByText('Aún nadie')).toBeInTheDocument()
+  })
+
+  it('los barrios cuelgan de su comuna y llevan a su propia busqueda', async () => {
+    en('/comunas')
+
+    const lista = await screen.findByRole('list', { name: 'Barrios de Temuco' })
+    const centro = within(lista).getByRole('link', { name: /Centro/ })
+    expect(centro).toHaveAttribute('href', '/buscar?zona=1')
+    expect(within(centro).getByText('2 personas')).toBeInTheDocument()
+  })
+
+  it('una region sin gente empieza cerrada y la que tiene gente, abierta', async () => {
+    en('/comunas')
+
+    const arica = (await screen.findByText('Arica y Parinacota', { selector: '.region-nombre' })).closest('details')!
+    const araucania = screen.getByText('La Araucanía', { selector: '.region-nombre' }).closest('details')!
+    expect(arica.open).toBe(false)
+    expect(araucania.open).toBe(true)
+  })
+
+  it('el filtro de comunas no distingue tildes ni mayusculas y abre lo que encuentra', async () => {
+    const u = userEvent.setup()
+    en('/comunas')
+
+    await u.type(await screen.findByRole('searchbox', { name: 'Buscar una comuna' }), 'ARICA')
+
+    expect(screen.getByRole('link', { name: /^Arica/ })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /^Temuco/ })).not.toBeInTheDocument()
+    expect(screen.getByText('Arica y Parinacota', { selector: '.region-nombre' }).closest('details')!.open).toBe(true)
+  })
+
+  it('encontrar un barrio por su nombre deja ver su comuna', async () => {
+    const u = userEvent.setup()
+    en('/comunas')
+
+    await u.type(await screen.findByRole('searchbox', { name: 'Buscar una comuna' }), 'pedro de valdivia')
+
+    expect(screen.getByRole('link', { name: /^Temuco/ })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /^Villarrica/ })).not.toBeInTheDocument()
+  })
+
+  it('una comuna que no existe lo dice', async () => {
+    const u = userEvent.setup()
+    en('/comunas')
+
+    await u.type(await screen.findByRole('searchbox', { name: 'Buscar una comuna' }), 'zzzz')
+
+    expect(screen.getByText(/No hay ninguna comuna que se llame así/)).toBeInTheDocument()
+  })
+
+  it('el enlace viejo /barrios lleva a las comunas', async () => {
     en('/barrios')
 
-    const centro = await screen.findByRole('link', { name: /Centro/ })
-    expect(within(centro).getByText('2 personas')).toBeInTheDocument()
-    expect(within(screen.getByRole('link', { name: /Pedro de Valdivia/ })).getByText('Aún nadie')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Tu comuna, con nombre y apellido.' })).toBeInTheDocument()
+    expect(screen.getByTestId('url').textContent).toBe('/comunas')
   })
 
   it('los oficios enlazan a la busqueda de ese oficio', async () => {

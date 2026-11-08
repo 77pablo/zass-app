@@ -17,7 +17,13 @@ public static class Tasa
     public const string General = "G";
     public const string Sensible = "S";
 
-    public static readonly string[] Todos = { Publico, Autenticacion, General, Sensible };
+    /// <summary>
+    /// Sondas de disponibilidad (/api/salud/lista). Grupo aparte del documento: la plataforma
+    /// de alojamiento la consulta sola cada pocos segundos y no puede gastar el cupo publico.
+    /// </summary>
+    public const string Salud = "Salud";
+
+    public static readonly string[] Todos = { Publico, Autenticacion, General, Sensible, Salud };
 }
 
 public static class ConfiguracionDeSeguridad
@@ -64,6 +70,10 @@ public static class ConfiguracionDeSeguridad
             Ventana(opciones, Tasa.Autenticacion, Limite(Tasa.Autenticacion, 5));
             Ventana(opciones, Tasa.General, Limite(Tasa.General, 100));
             Ventana(opciones, Tasa.Sensible, Limite(Tasa.Sensible, 10));
+
+            // Mas holgado a proposito: ver EndpointsSalud. Sigue siendo un tope, para que la
+            // ruta no sirva de martillo contra la base.
+            Ventana(opciones, Tasa.Salud, Limite(Tasa.Salud, 2000));
         });
 
         return servicios;
@@ -73,6 +83,10 @@ public static class ConfiguracionDeSeguridad
     /// Particionado por IP, 15 minutos de ventana. En produccion los contadores van en
     /// N-06 Redis, porque la API corre en varias replicas y un contador por proceso
     /// multiplicaria el limite por el numero de replicas.
+    ///
+    /// La IP es RemoteIpAddress, que UseForwardedHeaders reescribe SOLO si la conexion directa
+    /// viene de un proxy de confianza (ProxiesDeConfianza). Aqui no se lee X-Forwarded-For a
+    /// mano a proposito: seria volver a creerle a cualquiera.
     /// </summary>
     private static void Ventana(RateLimiterOptions opciones, string nombre, int permitidas) =>
         opciones.AddPolicy(nombre, contexto => RateLimitPartition.GetFixedWindowLimiter(
@@ -121,6 +135,13 @@ public static class ConfiguracionDeSeguridad
             opciones.Cookie.Name = "zass_csrf";
             opciones.Cookie.HttpOnly = false;   // el cliente tiene que poder leerla
             opciones.Cookie.SameSite = SameSiteMode.Lax;
+
+            // Por omision es SameAsRequest, y detras de un proxy que termina TLS la API ve
+            // http: la cookie saldria sin Secure si el proxy no es de confianza. Igual que la
+            // de sesion: Secure siempre salvo que se haya apagado ExigirHttps.
+            opciones.Cookie.SecurePolicy = exigirHttps
+                ? CookieSecurePolicy.Always
+                : CookieSecurePolicy.SameAsRequest;
         });
 
         return servicios;

@@ -1,14 +1,16 @@
 import { Link } from 'react-router-dom'
 import { Icono } from '../marco/Icono'
+import { useMeta } from '../marco/useMeta'
 import { useTitulo } from '../marco/useTitulo'
 
 /**
  * La invitacion a ofrecer un servicio. Lo que promete es lo que la aplicacion ya hace hoy:
- * armar la ficha, elegir barrios y aparecer en la busqueda. Nada de sellos revisados ni de
+ * armar la ficha, elegir comunas y aparecer en la busqueda. Nada de sellos revisados ni de
  * agenda: eso no existe todavia y no se anuncia.
  */
 export function Profesionales() {
   useTitulo('Para profesionales')
+  useMeta({ descripcion: 'Ofrece tu servicio en ZASS!: crea tu ficha, aparece ante quien te busca cerca y paga una mensualidad. Buscar es gratis para tus clientes.' })
   return (
     <div className="pagina">
       <section className="pagina-cabeza pagina-cabeza--tinta">
@@ -16,7 +18,7 @@ export function Profesionales() {
           <p className="sobretitulo">Para profesionales</p>
           <h1 className="pagina-titulo">Que te encuentre el que vive a cuadras de ti.</h1>
           <p className="bajada">
-            Arma tu ficha en unos minutos: quién eres, qué ofreces y en qué barrios atiendes. Quien
+            Arma tu ficha en unos minutos: quién eres, qué ofreces y en qué comunas atiendes. Quien
             busca en tu zona te ve, y te escribe directo.
           </p>
           <p className="seccion-cierre">
@@ -41,7 +43,7 @@ export function Profesionales() {
               <h3>Arma tu ficha</h3>
               <p>
                 Tu presentación, tu oficio, tus servicios con duración y precio de referencia, y
-                los barrios donde atiendes.
+                las comunas donde atiendes.
               </p>
             </li>
             <li>
@@ -49,7 +51,7 @@ export function Profesionales() {
               <h3>Publícala</h3>
               <p>
                 Al publicar empieza tu período de prueba y apareces en las búsquedas de tus
-                barrios. Puedes pausarla cuando quieras.
+                comunas. Puedes pausarla cuando quieras.
               </p>
             </li>
           </ol>
@@ -63,7 +65,7 @@ export function Profesionales() {
             <div className="principio">
               <Icono nombre="pin" />
               <h3>Tu dirección no se publica</h3>
-              <p>Se muestra tu barrio y una distancia redondeada. Nadie ve dónde vives.</p>
+              <p>Se muestra tu comuna y una distancia redondeada. Nadie ve dónde vives.</p>
             </div>
             <div className="principio">
               <Icono nombre="mensaje" />

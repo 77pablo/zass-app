@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ErrorApi } from '../api/cliente'
 import { useCatalogo } from '../api/useCargado'
@@ -11,6 +11,7 @@ import { TarjetaPersona } from '../marco/TarjetaPersona'
 import { capitalizar, personas, reputacion } from '../marco/texto'
 import { guardarUbicacion, olvidarUbicacion, ubicacionGuardada } from '../marco/ubicacion'
 import { useTitulo } from '../marco/useTitulo'
+import { agruparPorRegion, etiquetaDeZona } from '../marco/zonas'
 
 const ORDENES: { valor: OrdenDeTexto; texto: string; icono: 'estrella' | 'pin' | 'mas' }[] = [
   { valor: 'Recomendados', texto: 'Más recomendados', icono: 'estrella' },
@@ -43,7 +44,7 @@ function desdePagina(clave: string, p: PaginaDeTexto, antes: ResultadoDeTexto[] 
 
 /**
  * La pagina de busqueda: una barra arriba, el orden como botones y la lista debajo. Todo lo que se
- * pide esta en la URL (texto, orden, barrio), asi que se comparte, se recarga y el boton Atras funciona.
+ * pide esta en la URL (texto, orden, comuna), asi que se comparte, se recarga y el boton Atras funciona.
  * Sin texto muestra a toda la comunidad.
  */
 export function PaginaBuscar() {
@@ -68,8 +69,9 @@ export function PaginaBuscar() {
 
   const zonas = catalogo.datos?.zonas
   const zonaElegida = zonas?.find((z) => String(z.id) === zona)
+  const grupos = useMemo(() => agruparPorRegion(zonas ?? []), [zonas])
 
-  useTitulo(q !== '' ? capitalizar(q) : zonaElegida ? `Gente en ${zonaElegida.nombre}` : 'Buscar')
+  useTitulo(q !== '' ? capitalizar(q) : zonaElegida ? `Gente en ${etiquetaDeZona(zonaElegida)}` : 'Buscar')
 
   // Con la ubicacion puesta y el orden «cerca» se mide desde la persona; sin ella no se manda nada.
   const criterios: CriteriosDeTexto = {
@@ -129,7 +131,7 @@ export function PaginaBuscar() {
       },
       () => {
         // Flujo 4A de CU-08: si la persona la niega no se insiste. Solo se pide al pulsar un boton.
-        setAvisoUbicacion('No pudimos usar tu ubicación. Puedes elegir un barrio en vez de eso.')
+        setAvisoUbicacion('No pudimos usar tu ubicación. Puedes elegir una comuna en vez de eso.')
         setPidiendo(false)
       },
       { timeout: 10_000, maximumAge: 60_000 },
@@ -164,7 +166,7 @@ export function PaginaBuscar() {
 
   const titulo = q !== ''
     ? `«${q}»`
-    : zonaElegida ? `Gente en ${zonaElegida.nombre}` : 'Toda la comunidad'
+    : zonaElegida ? `Gente en ${etiquetaDeZona(zonaElegida)}` : 'Toda la comunidad'
 
   return (
     <div className="pagina">
@@ -208,10 +210,17 @@ export function PaginaBuscar() {
           </button>
 
           <label className="orden-zona">
-            <span className="solo-lector">Barrio</span>
-            <select value={zona} onChange={(e) => cambiar({ zona: e.target.value })} aria-label="Barrio">
-              <option value="">Toda la ciudad</option>
-              {(zonas ?? []).map((z) => <option key={z.id} value={z.id}>{z.nombre}</option>)}
+            <span className="solo-lector">Comuna</span>
+            <select value={zona} onChange={(e) => cambiar({ zona: e.target.value })} aria-label="Comuna">
+              <option value="">Todo Chile</option>
+              {grupos.map((g) => (
+                <optgroup key={g.region} label={g.region}>
+                  {g.comunas.flatMap(({ comuna, barrios }) => [
+                    <option key={comuna.id} value={comuna.id}>{comuna.nombre}</option>,
+                    ...barrios.map((b) => <option key={b.id} value={b.id}>{`${comuna.nombre} · ${b.nombre}`}</option>),
+                  ])}
+                </optgroup>
+              ))}
             </select>
           </label>
 
@@ -239,11 +248,11 @@ export function PaginaBuscar() {
             <div className="vacio">
               <h2 className="vacio-titulo">Todavía no encontramos a nadie para {titulo}.</h2>
               <p>
-                {soloVerificados || cuatroEstrellas ? 'Prueba quitando los filtros: «4 estrellas» solo cuenta a quienes ya tienen 3 reseñas.' : zona !== '' ? 'Prueba en toda la ciudad, o con otra palabra.' : 'Prueba con otra palabra: un oficio («abogado»), un servicio («divorcio») o un nombre.'}
+                {soloVerificados || cuatroEstrellas ? 'Prueba quitando los filtros: «4 estrellas» solo cuenta a quienes ya tienen 3 reseñas.' : zona !== '' ? 'Prueba en todo Chile, o con otra palabra.' : 'Prueba con otra palabra: un oficio («abogado»), un servicio («divorcio») o un nombre.'}
               </p>
               <p className="vacio-acciones">
                 {(soloVerificados || cuatroEstrellas) && <button type="button" className="boton" onClick={() => cambiar({ verificados: null, cal: null })}>Quitar los filtros</button>}
-                {zona !== '' && <button type="button" className="boton" onClick={() => cambiar({ zona: null })}>Buscar en toda la ciudad</button>}
+                {zona !== '' && <button type="button" className="boton" onClick={() => cambiar({ zona: null })}>Buscar en todo Chile</button>}
                 <Link to="/profesionales" className="enlace">¿Eres de este oficio? Súmate</Link>
               </p>
             </div>

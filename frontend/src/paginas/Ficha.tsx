@@ -5,6 +5,8 @@ import { fichaPublica, type FichaPublica } from '../funciones/busqueda/servicio'
 import { Icono } from '../marco/Icono'
 import { Monograma } from '../marco/Monograma'
 import { capitalizar, duracion, etiquetaDeTipo, pesos, reputacion } from '../marco/texto'
+import { descripcionDeFicha } from '../marco/seo'
+import { useMeta } from '../marco/useMeta'
 import { useTitulo } from '../marco/useTitulo'
 import { NoEncontrada } from './NoEncontrada'
 
@@ -48,6 +50,11 @@ export function Ficha() {
   const ficha = actual?.tipo === 'ok' ? actual.ficha : null
 
   useTitulo(ficha ? ficha.nombrePublico : actual?.tipo === 'no-existe' ? 'Ficha no encontrada' : 'Ficha')
+  // Al navegar dentro de la app el servidor no interviene: la misma descripcion que pone la Function de la ficha.
+  useMeta({
+    descripcion: ficha ? descripcionDeFicha(ficha) : undefined,
+    noindex: actual?.tipo === 'no-existe',
+  })
 
   if (actual?.tipo === 'no-existe') {
     return (
@@ -171,7 +178,7 @@ export function Ficha() {
                 ))}
               </ul>
             ) : (
-              <p className="bloque-texto bloque-vacio">Todavía no indicó sus barrios.</p>
+              <p className="bloque-texto bloque-vacio">Todavía no indicó dónde atiende.</p>
             )}
           </section>
 

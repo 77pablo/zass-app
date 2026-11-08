@@ -193,12 +193,14 @@ public class BusquedaPorTextoPruebas
     }
 
     [Fact]
-    public async Task Sin_ubicacion_se_mide_desde_el_centro_de_temuco_solo_para_ordenar()
+    public async Task Sin_ubicacion_no_se_mide_desde_ninguna_parte()
     {
         await _servicio.BuscarPorTextoAsync(C());
 
-        Assert.Equal(ServicioBusqueda.CentroDeTemuco.Latitud, _repo.UltimosCriteriosDeTexto!.Latitud);
-        Assert.Equal(ServicioBusqueda.CentroDeTemuco.Longitud, _repo.UltimosCriteriosDeTexto.Longitud);
+        // A nivel nacional no hay un «centro» con sentido: un origen inventado ordenaria a la gente de
+        // Arica segun su cercania a un lugar que no es el de nadie.
+        Assert.Null(_repo.UltimosCriteriosDeTexto!.Latitud);
+        Assert.Null(_repo.UltimosCriteriosDeTexto.Longitud);
     }
 
     // ------------------------------------------------------------- RN-S3-03: la distancia

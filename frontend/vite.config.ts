@@ -63,7 +63,7 @@ export default defineConfig({
     // Los archivos de prueba se llaman *.prueba.ts(x), en espanol como el
     // resto del proyecto. Sin esta linea Vitest busca *.test.ts y no encuentra nada,
     // que es peor que fallar: dice "0 pruebas" y sale con exito.
-    include: ['src/**/*.prueba.{ts,tsx}'],
+    include: ['src/**/*.prueba.{ts,tsx,js}'],
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/configuracion-pruebas.ts'],
