@@ -65,6 +65,7 @@ public class ZassDbContext : DbContext
     // Transversal
     public DbSet<Notificacion> Notificaciones => Set<Notificacion>();
     public DbSet<RegistroAuditoria> Auditoria => Set<RegistroAuditoria>();
+    public DbSet<TrabajoDeFondo> TrabajosDeFondo => Set<TrabajoDeFondo>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -724,6 +725,15 @@ public class ZassDbContext : DbContext
             e.HasIndex(x => new { x.DestinatarioId, x.EnviadaEn });
             e.HasOne(x => x.Destinatario).WithMany()
                 .HasForeignKey(x => x.DestinatarioId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // A-09 · CC-08. El horario y la reserva del planificador, en la base y no en el proceso:
+        // con varias replicas de la API, la memoria de una no sabe lo que hizo la otra.
+        b.Entity<TrabajoDeFondo>(e =>
+        {
+            e.HasKey(x => x.Nombre);
+            e.Property(x => x.Nombre).HasMaxLength(60);
+            e.Property(x => x.UltimoResumen).HasMaxLength(300);
         });
 
         b.Entity<RegistroAuditoria>(e =>

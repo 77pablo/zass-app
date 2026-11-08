@@ -5189,6 +5189,40 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.ToTable("auditoria");
                 });
 
+            modelBuilder.Entity("Zass.Dominio.Comun.TrabajoDeFondo", b =>
+                {
+                    b.Property<string>("Nombre")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("nombre");
+
+                    b.Property<int>("Corridas")
+                        .HasColumnType("integer")
+                        .HasColumnName("corridas");
+
+                    b.Property<DateTime>("ProximaCorridaEn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("proxima_corrida_en");
+
+                    b.Property<DateTime>("ReservadoHasta")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reservado_hasta");
+
+                    b.Property<DateTime?>("UltimaCorridaEn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ultima_corrida_en");
+
+                    b.Property<string>("UltimoResumen")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("ultimo_resumen");
+
+                    b.HasKey("Nombre")
+                        .HasName("p_k_trabajos_de_fondo");
+
+                    b.ToTable("trabajos_de_fondo");
+                });
+
             modelBuilder.Entity("Zass.Dominio.Credenciales.Credencial", b =>
                 {
                     b.Property<Guid>("Id")
