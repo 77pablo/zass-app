@@ -126,6 +126,8 @@ public static class RegistroDeServicios
 
         // --- MOD-05 Busqueda ---
         servicios.AddScoped<IServicioBusqueda, ServicioBusqueda>();
+        servicios.AddScoped<IRepositorioMapaDelSitio, RepositorioMapaDelSitioEfCore>();
+        servicios.AddScoped<ServicioMapaDelSitio>();
 
         // --- MOD-13 Suscripciones ---
         servicios.AddScoped<IServicioSuscripciones, ServicioSuscripciones>();

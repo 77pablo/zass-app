@@ -76,6 +76,7 @@ app.MapearIdentidad();
 app.MapearCatalogo();
 app.MapearGeografia();
 app.MapearBusqueda();
+app.MapearMapaDelSitio();
 app.MapearCredenciales();
 
 // Sonda de vida. Sin sesion y con el limite publico: tambien es un endpoint.

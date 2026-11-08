@@ -1245,6 +1245,72 @@ public class ApiPruebas : IAsyncLifetime
             Assert.DoesNotContain(prohibido, texto, StringComparison.OrdinalIgnoreCase);
     }
 
+    // ------------------------------------------------- API-64, el mapa del sitio por HTTP
+
+    [Fact]
+    public async Task El_mapa_del_sitio_lista_las_fichas_publicadas_sin_sesion_y_no_choca_con_la_ficha()
+    {
+        var slug = await UnaFichaCompletaAsync();
+        using var visitante = UnVisitante();
+
+        var respuesta = await visitante.GetAsync("/api/prestadores/mapa?limite=1000");
+
+        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
+        var raiz = (await respuesta.Content.ReadFromJsonAsync<JsonDocument>())!.RootElement;
+        var slugs = raiz.GetProperty("prestadores").EnumerateArray()
+            .Select(p => p.GetProperty("slug").GetString()).ToList();
+        Assert.Contains(slug, slugs);
+        Assert.NotNull(raiz.GetProperty("prestadores")[0].GetProperty("publicadoEn").GetString());
+    }
+
+    [Fact]
+    public async Task El_mapa_del_sitio_no_lista_a_quien_no_esta_publicado_y_el_cursor_recorre_todo()
+    {
+        var slug = await UnaFichaCompletaAsync();
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo, rol: "prestador");
+        await IniciarSesionAsync(correo);
+        var borrador = (await _cliente.GetFromJsonAsync<JsonDocument>("/api/mi/perfil-prestador"))!
+            .RootElement.GetProperty("slug").GetString()!;
+        using var visitante = UnVisitante();
+
+        var vistos = new List<string?>();
+        string? cursor = null;
+        for (var paginas = 0; paginas < 10_000; paginas++)
+        {
+            var url = "/api/prestadores/mapa?limite=1" + (cursor is null ? "" : $"&cursor={Uri.EscapeDataString(cursor)}");
+            var raiz = (await visitante.GetFromJsonAsync<JsonDocument>(url))!.RootElement;
+            vistos.AddRange(raiz.GetProperty("prestadores").EnumerateArray().Select(p => p.GetProperty("slug").GetString()));
+            if (raiz.GetProperty("cursorSiguiente").ValueKind == JsonValueKind.Null) break;
+            cursor = raiz.GetProperty("cursorSiguiente").GetString();
+        }
+
+        Assert.Contains(slug, vistos);
+        Assert.DoesNotContain(borrador, vistos);
+        Assert.Equal(vistos.Count, vistos.Distinct().Count());
+    }
+
+    /// <summary>Sobre los BYTES: lo unico que sale es slug y fecha de publicacion, ya publicos en la ficha.</summary>
+    [Fact]
+    public async Task El_mapa_del_sitio_no_filtra_ubicacion_ni_datos_de_la_cuenta()
+    {
+        await UnaFichaCompletaAsync();
+        using var visitante = UnVisitante();
+
+        var texto = await (await visitante.GetAsync("/api/prestadores/mapa?limite=1000")).Content.ReadAsStringAsync();
+
+        foreach (var prohibido in new[] { "latitud", "longitud", "direccion", "usuarioId", "@zass.local", "telefono", "whatsapp", "correo", "hash", "nombrePublico" })
+            Assert.DoesNotContain(prohibido, texto, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task El_mapa_del_sitio_corrige_un_limite_absurdo_en_vez_de_fallar()
+    {
+        using var visitante = UnVisitante();
+        Assert.Equal(HttpStatusCode.OK, (await visitante.GetAsync("/api/prestadores/mapa?limite=-4")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await visitante.GetAsync("/api/prestadores/mapa?limite=99999999")).StatusCode);
+    }
+
     // ------------------------------------------------- MOD-02 Credenciales por HTTP
 
     private const string PrefijoDeEntidad = "api-entidad-";
