@@ -1,5 +1,6 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using FluentValidation;
+using Zass.Api;
 using Zass.Api.Configuracion;
 using Zass.Api.Endpoints;
 using Zass.Infraestructura.Configuracion;
@@ -18,7 +19,8 @@ var exigirHttps = constructor.Configuration.GetValue("Zass:ExigirHttps", true);
 
 constructor.Services
     .AgregarZass(constructor.Configuration)           // puertos, repositorios, MOD-01
-    .AgregarLimiteDeTasa(constructor.Configuration)                            // los 4 grupos P, A, G, S
+    .AgregarLimiteDeTasa(constructor.Configuration)                            // los 4 grupos P, A, G, S (+ Salud)
+    .AgregarProxiesDeConfianza()                      // X-Forwarded-*: solo desde redes listadas
     .AgregarAutenticacion(exigirHttps)                // cookie de 15 min + CSRF
     .AddValidatorsFromAssemblyContaining<ValidadorVerificarCorreo>()
     .AddProblemDetails()                              // RFC 7807 en todos los errores
@@ -46,6 +48,19 @@ constructor.Services.Configure<Microsoft.AspNetCore.Routing.RouteHandlerOptions>
     opciones => opciones.ThrowOnBadRequest = false);
 
 var app = constructor.Build();
+
+// Se valida DESPUES de Build y con app.Configuration: ahi ya estan todas las fuentes
+// (variables de entorno, Key Vault, y los ajustes que inyectan las pruebas). Falla antes de
+// abrir ningun puerto. Todo lo que no sea Development se trata como produccion.
+ValidacionDeArranque.Exigir(app.Configuration, esProductivo: !app.Environment.IsDevelopment());
+
+// `dotnet Zass.Api.dll --migrar`: aplica migraciones y termina (ver Migrador).
+if (Migrador.Solicitado(args))
+    return await Migrador.AplicarAsync(app.Services, app.Logger);
+
+// Lo PRIMERO: el HSTS, la redireccion a HTTPS y el limitador de tasa tienen que ver ya la IP
+// y el esquema reales del visitante. Sin proxies configurados no hace nada.
+app.UsarProxiesDeConfianza(app.Configuration);
 
 // El orden importa: las cabeceras primero, para que acompanen incluso a una respuesta
 // de error o de limite de tasa.
@@ -76,13 +91,22 @@ app.MapearIdentidad();
 app.MapearCatalogo();
 app.MapearGeografia();
 app.MapearBusqueda();
+app.MapearMapaDelSitio();
 app.MapearCredenciales();
+app.MapearSalud();                                    // /api/salud/lista (readiness)
+
+app.MapearAgenda();                                    // ANCLAJE MOD-06 Agenda
+
+app.MapearResenas();
+
+app.MapearVerificacion();
 
 // Sonda de vida. Sin sesion y con el limite publico: tambien es un endpoint.
 app.MapGet("/api/salud", () => Results.Ok(new { estado = "vivo" }))
    .RequireRateLimiting(Tasa.Publico);
 
 app.Run();
+return 0;
 
 /// <summary>
 /// Publico para que las pruebas puedan levantar la aplicacion entera con

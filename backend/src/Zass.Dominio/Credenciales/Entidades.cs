@@ -49,12 +49,31 @@ public class Credencial
         ? "Verificada"
         : "Declarada por el usuario";
 
-    public Resultado EnviarARevision()
+    /// <summary>
+    /// Una credencial "sin documentos" está en revisión sin respaldo en la plataforma: el
+    /// Verificador tiene que comprobarla por otra vía. Se deduce, no se guarda: la columna no
+    /// existe y, el día que MOD-08 suba archivos, una credencial pasará a tener respaldo sola.
+    /// </summary>
+    public bool EnRevisionSinDocumentos() =>
+        Estado == EstadoCredencial.EnRevision && !TieneRespaldo();
+
+    /// <summary>
+    /// API-27. `permitirSinDocumentos` es la decisión de producto de la etapa de lanzamiento
+    /// (Zass:Verificacion:PermitirSinDocumentos): sin MOD-08 nadie puede tener un documento
+    /// `Disponible`, y RN-S2-01 bloquearía todo. Con la bandera en falso rige la regla tal cual.
+    /// </summary>
+    public Resultado EnviarARevision(bool permitirSinDocumentos = false)
     {
+        // 4B.5: quien responde a un "pedir antecedentes" devuelve la credencial a la cola.
+        if (Estado == EstadoCredencial.EnRevision && EsperandoPrestador)
+        {
+            EsperandoPrestador = false;
+            return Resultado.Ok();
+        }
         if (Estado is not (EstadoCredencial.Borrador or EstadoCredencial.Rechazada
             or EstadoCredencial.Vencida))
             return Resultado.Falla(Fallas.Conflicto, "Esta credencial ya está en revisión.");
-        if (!TieneRespaldo())
+        if (!TieneRespaldo() && !permitirSinDocumentos)
             return Resultado.Falla(Fallas.ReglaDeNegocio,
                 "Sube al menos un documento de respaldo antes de enviar a revision.");
         Estado = EstadoCredencial.EnRevision;
@@ -62,17 +81,26 @@ public class Credencial
         return Resultado.Ok();
     }
 
-    public void Verificar(Guid verificadorId)
+    public void Verificar(Guid verificadorId, DateTime? ahora = null)
     {
         Estado = EstadoCredencial.Verificada;
         SelloPor = verificadorId;
-        SelloEn = DateTime.UtcNow;
+        SelloEn = ahora ?? DateTime.UtcNow;
+        EsperandoPrestador = false;
+        LiberarReserva();
+    }
+
+    /// <summary>4B: sigue en revisión pero sale de la cola activa hasta que el prestador responda.</summary>
+    public void PedirAntecedentes()
+    {
+        EsperandoPrestador = true;
         LiberarReserva();
     }
 
     public void Rechazar()
     {
         Estado = EstadoCredencial.Rechazada;
+        EsperandoPrestador = false;
         SelloPor = null;
         SelloEn = null;
         LiberarReserva();

@@ -19,6 +19,9 @@ public sealed class RepositorioSuscripcionesEnMemoria : IRepositorioSuscripcione
     /// <summary>Cuantas veces se pidio el lote. Lo usa la prueba del N+1.</summary>
     public int ConsultasEnLote { get; private set; }
 
+    /// <summary>Lo mismo para los duenos: el trabajo diario tampoco debe preguntar uno por uno.</summary>
+    public int ConsultasDeDuenos { get; private set; }
+
     private static bool Vigente(Suscripcion s, DateTime ahora) =>
         s.Estado is EstadoSuscripcion.Prueba or EstadoSuscripcion.Activa
         && s.VigenteHasta > ahora;
@@ -102,6 +105,17 @@ public sealed class RepositorioSuscripcionesEnMemoria : IRepositorioSuscripcione
     public Task<bool> ExistePerfilPrestadorAsync(
         Guid perfilPrestadorId, CancellationToken ct = default) =>
         Task.FromResult(_base.PerfilesPrestador.Any(p => p.Id == perfilPrestadorId));
+
+    public Task<IReadOnlyDictionary<Guid, Guid>> UsuariosDePerfilesAsync(
+        IReadOnlyCollection<Guid> perfilPrestadorIds, CancellationToken ct = default)
+    {
+        ConsultasDeDuenos++;
+        var ids = perfilPrestadorIds.ToHashSet();
+        IReadOnlyDictionary<Guid, Guid> r = _base.PerfilesPrestador
+            .Where(p => ids.Contains(p.Id))
+            .ToDictionary(p => p.Id, p => p.UsuarioId);
+        return Task.FromResult(r);
+    }
 
     public void Agregar(Suscripcion suscripcion) => _base.Suscripciones.Add(suscripcion);
     public void AgregarPago(Pago pago) => _base.Pagos.Add(pago);

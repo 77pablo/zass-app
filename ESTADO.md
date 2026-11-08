@@ -1,6 +1,12 @@
 # ZASS! — estado del desarrollo
 
-**Última sesión:** 7 de noviembre de 2026, tarde (MOD-03 Catálogo, MOD-04 Geolocalización, MOD-05 Búsqueda, y el repositorio ya está en GitHub).
+**Última sesión:** 9 de noviembre de 2026 (se rescataron las dos ramas de agentes que habían quedado sin
+verificar —`verificacion` y `fondo`—, se construyó el planificador A-09 y **MOD-06 Agenda** entero en el
+backend, sin la pantalla). **Lo que sigue pendiente está en «Sesión del 9-nov» más abajo.**
+
+**Sesiones anteriores:** 8-nov noche (tres fusiones, anclajes, segunda tanda de agentes que se cayó) ·
+8-nov mañana (Chile entero por comunas, pruebas de arquitectura) · 7-nov tarde (MOD-03, MOD-04, MOD-05,
+repositorio en GitHub).
 
 Este archivo existe para retomar sin reconstruir contexto. Dice **qué está hecho y
 comprobado**, **qué no**, y **el siguiente paso exacto**.
@@ -25,9 +31,15 @@ con las tablas `planes`, `suscripciones` y `pagos`; la pasarela no existe todav�
 ## 2. Resumen en una línea
 
 **MOD-01 Identidad, MOD-03 Catálogo, MOD-04 Geolocalización, MOD-05 Búsqueda y MOD-13 Suscripciones
-están construidos, con 612 pruebas en verde** (271 de aplicación sin base de datos, 218 de
-integración contra PostgreSQL real y la API por HTTPS, 123 de interfaz) más dos
-comprobaciones de navegador que crean una cuenta y entran contra la base de verdad.
+están construidos, y a eso se sumó lo de tres ramas de agentes ya fusionadas: la API lista para
+producción, el envío real de correos y el SEO.** En total **836 pruebas de backend en verde**
+(381 de aplicación sin base de datos, 15 de arquitectura, 440 de integración contra PostgreSQL
+real y la API por HTTPS) más **283 de interfaz**, y dos comprobaciones de navegador que crean una
+cuenta y entran contra la base de verdad.
+
+La cifra de la que se partió esta sesión era 706. Las tres fusiones la llevaron a 836, y **ninguna
+entró sin revisarla a mano**: las tres necesitaron arreglo, y dos tenían defectos que no existían
+en ninguna de las dos ramas por separado y nacieron al juntarlas (ver «Las tres fusiones»).
 
 MOD-01 llega hasta la pantalla. MOD-03, MOD-04, MOD-05 y MOD-13 están completos de dominio a API y
 **todavía sin pantalla**.
@@ -249,22 +261,189 @@ repositorio** (los demás lo consumen por su servicio). Más controles de que la
 inyectadas, 4 cazadas; la que no (un `typeof` suelto) es un límite de la herramienta y está anotada en el archivo.
 Atención al fusionar `agente/produccion`: su `/api/salud/lista` consulta la base; si lo hace desde `Zass.Api.Endpoints` esta prueba fallará y la solución es un puerto.
 
-### Trabajo en paralelo con agentes (8-nov-2026) — CÓMO RETOMAR
+### Las tres fusiones (8-nov-2026, noche) — y lo que enseñaron
 
-Cinco agentes trabajan en copias del repositorio (git worktrees) en `C:\Users\pdani\zass-agentes\<nombre>`, cada uno en su rama
-`agente/<nombre>` y con **su propia base de pruebas** (`zass_pruebas_<nombre>`). **Ninguno ha hecho push ni merge.** Se cortaron una vez
-por el límite de uso de 5 horas; su trabajo parcial quedó guardado. Hay que REVISAR cada rama antes de fusionarla (correr sus pruebas, no fiarse del informe).
+`main` ya tiene **produccion, seo y correo**. Ninguna entró por su informe: las tres se revisaron
+corriendo sus pruebas aquí, y las tres necesitaron arreglo.
 
-| Rama | Qué es | Estado al traspasar |
+| Rama | Qué aportó | Qué hubo que arreglar al fusionar |
 |---|---|---|
-| `agente/produccion` | ForwardedHeaders seguro, validación de configuración, salud, Dockerfile/`render.yaml`, migraciones en producción, `DESPLIEGUE-API.md` | **TERMINÓ** (4 commits, informe: 348 integración, 24 mutantes). **Por revisar antes de fusionar**: su `/api/salud/lista` consulta la base y puede romper la prueba de arquitectura «endpoints sin base» (solución: un puerto); una prueba suya fue intermitente una vez; Docker no se probó (no está instalado) |
-| `agente/correo` | Envío real de correos (Brevo/Resend) con cola segura y purga del token | Retomado, **aún sin informe final**; sin esto nadie puede verificar su cuenta |
-| `agente/seo` | Meta tags por ficha (Pages Function), sitemap, robots, `useMeta`, imagen para compartir, páginas `/terminos` y `/privacidad` (con `BORRADOR_LEGAL`) | **TERMINÓ** (3 commits, informe: 263 frontend, 30 mutantes). Añade API-64 `/api/prestadores/mapa` (reservar el slug `mapa`). **Por revisar antes de fusionar**; faltan líneas de `useMeta` en `Portada`, `PaginaBuscar`, `Comunas` (aún sin meta y fuera del sitemap) y `MiFicha`: están en su informe y en su rama |
-| `agente/resenas` | MOD-11 Reseñas, solo backend | **En pausa** (cupo); trabajo parcial sin commit |
-| `agente/verificacion` | Verificación manual de credenciales (cola, tomar, resolver) con `Zass:Verificacion:PermitirSinDocumentos` | **En pausa** (cupo); 1 commit + cambios sin commit |
+| `agente/produccion` | Proxies de confianza para `X-Forwarded-For` (rechaza `/0`, limpia los valores por omisión de ASP.NET, solo `For` y `Proto`, 2 saltos), validación de configuración al arrancar, `/api/salud/lista` con grupo de límite propio, modo `--migrar`, Dockerfile, `render.yaml`, `DESPLIEGUE-API.md`, copia de la base por GitHub Actions | La prueba de arquitectura **cazó su endpoint consultando la base**. Se movió detrás del puerto `ISondaDeBase` (`SondaDeBase` en Infraestructura). Eso puso rojas 17 pruebas de `ContenedorPruebas`: `AgregarZass` declaraba un servicio cuya dependencia (`ILoggerFactory`) no provee. Se añadió `AddLogging()` |
+| `agente/seo` | Meta por ficha del lado del servidor (Pages Function), sitemap paginado, `robots.txt`, `useMeta`, imagen para compartir, `/terminos` y `/privacidad` (BORRADOR), API-64 `/api/prestadores/mapa` | Conflicto en `Barrios.tsx`, que main borró al pasar a comunas: su `useMeta` se llevó a `Comunas.tsx`. Y un defecto **que nació en la fusión**: el sitemap publicaba `/barrios`, que ya solo es una redirección a `/comunas` — Google habría quedado apuntado al redirect y la página real nunca se habría listado |
+| `agente/correo` | Envío real (Brevo/Resend), cola con `FOR UPDATE SKIP LOCKED` y reserva de 120 s, reintento con espera creciente, purga del token, correo enmascarado en los registros | Había chocado con el **mismo** problema del registro y lo resolvió en la PRUEBA (`AddLogging()` en `ContenedorPruebas`). Pero esa prueba existe para descubrir registros que faltan: si ella provee la dependencia, deja de demostrar que el módulo se basta solo. Se quitó de la prueba y queda el de `AgregarZass` |
 
-Para fusionar: `git -C C:\Users\pdani\zass-app merge agente/<nombre>` (cuidar conflictos en `Program.cs`, `AgregarZass.cs`, `Puertos.cs`, `App.tsx`,
-`Pie.tsx`; ninguno trae migraciones de EF a propósito). Después, borrar el worktree con `git worktree remove`.
+**Un agente dejó un mutante vivo en el árbol** al cortarse por el límite de uso: `TrabajoDeCorreo`
+tenía `if (false)` en vez de la guarda del proveedor. Revertido. **Lección: al retomar una rama de
+agente, lo primero es buscar mutantes**, no suponer que el árbol está limpio.
+
+**Lo que se comprobó, y no se dio por bueno:**
+- La regla de arquitectura se vio **fallar con la violación real** antes de arreglarla.
+- El candado del sitemap se vio **ponerse rojo** al cambiar `RUTAS_ESTATICAS` en el origen.
+- Mutante del límite de espera de la sonda (3 s → 60 s): la prueba de la base que acepta la
+  conexión y calla se pone roja. El límite está vigilado de verdad.
+- `ContenedorPruebas` resuelve todo el correo **sin** `AddLogging` en la prueba.
+
+**Lo que NO se pudo comprobar:**
+- La guarda `Proveedor == Ninguno` no se pudo matar con un mutante: con `if (false)` el trabajo de
+  fondo no termina y la suite se **cuelga**, así que la señal no es un rojo limpio. Falta una prueba propia.
+- **Docker no se probó**: no está instalado en esta máquina.
+- No se envió ningún correo real: no hay cuenta de Brevo ni de Resend.
+
+### Los anclajes de registro (8-nov-2026, noche)
+
+`AgregarZass.cs` y `Program.cs` tienen **secciones vacías a propósito**, una por módulo pendiente
+(MOD-06, MOD-11, MOD-02, trabajos de fondo) y separadas entre sí. Un agente registra **solo en su
+anclaje**. Así cuatro a la vez insertan en regiones distintas y git fusiona sin conflicto.
+
+Primero se pensó en descubrimiento por reflexión, y se descartó: las tres fusiones de hoy
+fusionaron esos dos archivos **solas**. Pero al poner al día las ramas en pausa, el WIP de MOD-11 y
+el de MOD-02 **sí** conflictuaron ahí, porque los dos habían registrado al final de la misma lista.
+Los anclajes son exactamente para eso, y ya se usaron para resolver esos dos conflictos.
+
+### Sesión del 9-nov-2026 — lo hecho, lo comprobado y lo que NO
+
+**Backend: 1.261 pruebas en verde** (654 aplicación + 16 arquitectura + 591 integración), desde 836.
+Las de interfaz (283) **no se corrieron esta sesión**: no se tocó el frontend.
+
+| Qué | Estado | Cómo se comprobó |
+|---|---|---|
+| `agente/verificacion` (MOD-02: cola, tomar, resolver, API-27/29/30/31) | **Fusionada** | Compilaba, pero **3 pruebas rojas nacieron de juntarla con `correo`**: leía el token del aviso partiendo el cuerpo por espacios, y desde `correo` es una carga JSON. Se arregló con `CargaDeAviso.LeerToken` |
+| `agente/fondo` (tabla `trabajos_de_fondo`) | **Fusionada y terminada** | Migración aplicada; tabla y PK consultadas en `information_schema`/`pg_constraint`; `has-pending-model-changes` limpio |
+| Planificador A-09 (`TrabajoDiario`, `CoordinadorDeTrabajos`) | **Hecho** | 7 pruebas contra PostgreSQL con una réplica por contexto. Se **mutó** la guarda de CC-08 y 3 se pusieron rojas |
+| Avisos de suscripción (7 y 1 día, y vencida) con plantilla | **Hecho** | La clave lleva el umbral, no la fecha; el segundo intento choca con R-18 (23505) y queda un aviso |
+| MOD-06 Agenda, backend completo (API-32 a API-42) | **Hecho** | Ver abajo |
+| Pantalla de la agenda | **NO hecha** | — |
+| MOD-11 Reseñas (backend: API-46 a API-53) | **Fusionado, verde, REVISADO SOLO EN PARTE** | Ver abajo |
+
+**Documento corregido (se movió el documento, no el código), con fecha puesta en cada uno:**
+
+- **CC-08** prescribía `pg_try_advisory_lock` «sin tabla de bloqueos». El bloqueo impide que dos corran a la
+  vez pero **no recuerda que ya corrió hoy**; un despliegue a media mañana repite el trabajo. Se cambió a
+  una fila por trabajo con reserva que vence. La tabla es **TBL-32** (Parte 5 · Operación; el total pasa a 32).
+- **TBL-18** no listaba `perfil_prestador_id` ni `clave_idempotencia`, que existían en el esquema.
+- **TBL-16**: las horas son **locales de Chile**, no UTC (ver el defecto de abajo).
+- El sitio se regeneró tras cada cambio y se comprobó en el HTML, no solo en el `.md`.
+
+**El defecto más caro de la sesión: la agenda salía corrida 3-4 horas.** El generador de bloques tomaba
+`hora_inicio` como UTC: «lunes 09:00» llegaba a las 06:00 de Chile. **Las 36 pruebas de la agenda estaban verdes**
+porque contaban cuántos bloques salían y ninguna miraba a qué hora. Corregido con `HoraDeChile`
+(`America/Santiago`, con respaldo al nombre de Windows; la hora que el horario de verano se salta no genera
+bloque). 10 pruebas nuevas; **se revirtió el generador a UTC y 5 cayeron**.
+
+**MOD-06, lo que importa:**
+
+- `IUnidadDeTrabajo.EnTransaccionAsync` es nuevo y CC-01 lo exige: el `FOR UPDATE` solo sirve si el INSERT y el
+  UPDATE viven en la misma transacción que el bloqueo.
+- El contacto de TBL-21 se deja por un puerto de salida, `IContactos`. `MOD-06 → MOD-11` está prohibido
+  (ciclo), pero el contacto debe quedar dentro de la transacción. Mismo patrón que `INotificaciones`.
+- `FiltroIdempotencia`: 400 sin `Idempotency-Key`, y también con dos cabeceras distintas.
+- `version` de la cita **sube** en cada transición; antes era token de concurrencia que nadie incrementaba.
+- Quien no es parte de una cita recibe el mismo 404 que si no existiera.
+
+**La lección de verificación, otra vez, dos veces:**
+
+1. «Diez personas sobre el mismo bloque» **pasaba igual con el `FOR UPDATE` quitado**: las llamadas no se
+   solapaban. Con `Task.Run` + `Barrier` sí mide; sin el bloqueo cae.
+2. CC-06 se probó con dos reprogramaciones cruzadas y se **mutó el orden de bloqueo**: cae con
+   `40P01: deadlock detected`, exactamente lo que el documento describe.
+
+Además, dos afirmaciones mías resultaron falsas al mutar y se corrigieron: un comentario que decía que el orden
+«vencer y luego avisar» importaba (no importa, `PorVencerAsync` solo mira vigentes) y una prueba de
+idempotencia que no vigilaba nada porque el reloj de prueba no avanzaba.
+
+**MOD-11 Reseñas: qué se verificó y qué no (leer antes de fiarse del verde).**
+
+Se fusionó `agente/resenas` (4.400 líneas, la mayoría pruebas del agente: 115 de aplicación y 66 de
+integración, todas verdes). **Yo no las revisé línea por línea ni les hice mutaciones**: confío en ellas lo
+que confiaría en cualquier WIP de agente, que esta sesión demostró que es poco. Lo que sí se hizo:
+
+- Falló la compilación por mi `EnTransaccionAsync` nuevo en `IUnidadDeTrabajo` (un doble de prueba del agente
+  no lo implementaba) y **las 17 `ResenasApiPruebas` cayeron juntas**: el mismo defecto del token del aviso
+  (`Split(' ')`), **la cuarta vez que pasa al fusionar una rama escrita antes de `correo`**.
+- **Defecto de la unión, probado y corregido**: el contacto de una cita apunta a la PRIMERA de la cadena
+  (RN-S4-05) y esa queda `Reprogramada`; la regla de reseñas la trataba como «la cita no llegó a realizarse».
+  **Quien reprograma y luego era atendido perdía el derecho a reseñar.** Ninguna rama podía verlo sola. Hay un
+  par de pruebas de punta a punta en `AgendaIntegracionPruebas` (agendar → reprogramar → pasar la hora →
+  marcar asistencia → `EsElegible`): el caso base pasa y el de reprogramar **cayó con «CitaSinRealizar» antes
+  del arreglo**. Ahora reseñas sigue el salto de `cita_origen_id` (`SeguirLaCadenaAsync`).
+- **La sección 4.1 del documento decía que reseñas no toca la tabla `cita`**, pero la elegibilidad la lee a
+  través de `Contacto.Cita`. Se dejó escrito en 4.1 por qué difiere y qué costaría cumplirla al pie de la
+  letra. `IServicioAgenda.CitaRealizadaAsync` existe y **nadie la usa todavía**.
+
+Abierto en reseñas: la cita `NoAsistio` hoy **no** habilita reseña (el agente lo dejó como «decisión pendiente»);
+`estados-cita.md` dice que si faltó el prestador sí, pero la cita no guarda **quién** faltó. Es una decisión de
+Pablo o un campo nuevo. Sin pantalla de reseñas.
+
+**Cosas que conviene saber y que quedan abiertas:**
+
+- **Un rojo intermitente sin resolver**: `Dos_reservas_simultaneas_reciben_filas_distintas` (correo) falló una
+  vez en la suite completa y pasa sola y en las siguientes corridas. Probable causa: otra prueba deja avisos
+  `Programada` en `zass_pruebas` en ese instante (el `InitializeAsync` de esa clase los borra, pero la carrera
+  existe). **No se investigó a fondo.** Si reaparece, mirar `notificaciones` en `zass_pruebas`.
+- **HECHAS las tres transiciones que dispara el tiempo** (T5, T8, T11), en `Planificador` (reemplaza a
+  `TrabajoDiario`; dos filas en `trabajos_de_fondo`: `suscripciones-diario` y `citas-periodico`, esta cada 15 min).
+  Cada cita se procesa en SU transacción y se relee el estado dentro de ella. **Comprobado**: contra la base, una
+  cita llega de confirmada a realizada y el prestador marca asistencia; y se mutó la releída de estado, que
+  **al principio sobrevivió** (ninguna prueba secuencial puede provocar esa carrera): se añadió un doble con lista
+  obsoleta y ahora cae. Las transiciones del tiempo se anotan en TBL-19 como `Asistencia`/`Rechazo` con
+  `realizado_por` nulo; el documento no tiene un tipo propio para «venció el plazo», y no se inventó uno.
+  **Lo que NO se probó**: el `Planificador` entero corriendo con su temporizador (se apaga en las pruebas de la
+  API); solo se probaron sus piezas y el servicio que llama.
+- Recordatorios de cita (RN-S4-07) y avisos de cita (confirmada, cancelada…): **no hechos**. `TienePlantilla`
+  solo cubre verificación, recuperación y los dos de suscripción.
+- `appsettings.Development.json` **ahora se versiona a propósito** (sin secretos). Estaba en `.gitignore`
+  pero la fusión de `verificacion` lo trajo igual, quedando rastreado e ignorado a la vez. La nota vieja de
+  esta sección 10 que dice que está ignorado **ya no es cierta**.
+- **Muchos commits sin subir** (más de 30). Pablo los sube con GitHub Desktop; comprobar con `git log --oneline origin/main..main`.
+- `ver-zass.bat` figura modificado en los worktrees de agentes; no es de `main`.
+
+### Segunda tanda de agentes (8-nov-2026, noche) — CÓMO RETOMAR
+
+Cuatro agentes en worktrees bajo `C:\Users\pdani\zass-agentes\<nombre>`, cada uno en su rama
+`agente/<nombre>` y con **su propia base de pruebas** (`zass_pruebas_<nombre>`). **Hay que REVISAR
+cada rama antes de fusionarla: correr sus pruebas aquí, no fiarse del informe.** Las tres fusiones
+de hoy demuestran por qué.
+
+> **ACTUALIZACIÓN 9-nov: `verificacion` y `fondo` ya están fusionadas y terminadas (ver arriba). Siguen sin fusionar `resenas` y `agenda`; esta última queda obsoleta porque MOD-06 se hizo directamente en `main`. Sus worktrees se pueden borrar.**
+>
+> ### LOS CUATRO SE CAYERON AL ARRANCAR. NO ESTAN CORRIENDO.
+>
+> Los cuatro murieron al primer o segundo paso con el **límite de 5 horas agotado** (se reiniciaba
+> a las 6:30 AM de Santiago). **Ninguno llegó a terminar nada.**
+>
+> **La causa fue lanzar cuatro agentes en paralelo sobre Opus**, más las fusiones que se estaban
+> haciendo en la misma ventana. Cada agente consume del mismo presupuesto. El techo no era la
+> capacidad de revisión, era el presupuesto de la ventana de 5 horas.
+>
+> **Recomendación para la próxima tanda:** o **dos agentes** en vez de cuatro, o **los cuatro sobre
+> Sonnet** y dejar Opus para revisar y fusionar, que es donde se encontraron los defectos de hoy.
+> Los prompts que se les dio eran muy específicos, y para trabajo así especificado Sonnet rinde.
+>
+> **Lo que SI quedó guardado** (se buscaron mutantes en los cuatro worktrees y **no hay ninguno**):
+>
+> | Rama | Qué dejó |
+> |---|---|
+> | `agente/fondo` | Un commit WIP con lo difícil ya diseñado: `TrabajoDeFondo` (una fila por trabajo programado, con próxima corrida y **reserva que vence**), su migración y el mapeo en `ZassDbContext`. Resuelve que el planificador corre en todas las réplicas y avisar dos veces mandaría dos correos. **Sin verificar: no se sabe si compila, la migración no se aplicó a ninguna base, y nadie llama todavía a `VencerExpiradasAsync` ni a `PorVencerAsync`, que era la tarea.** Hay que comprobar contra el documento los identificadores A-09 y CC-08 que cita |
+> | `agente/verificacion` | Un commit WIP con cinco archivos que dejó preparados. **Sin verificar** |
+> | `agente/resenas` | Nada nuevo. Sigue en su WIP anterior, al día con main, y **compila** |
+> | `agente/agenda` | Nada. Limpio, partiendo de `main` |
+>
+> Si se relanzan, vale la pena rehacer los prompts con el mismo nivel de detalle: incluían la base
+> de pruebas propia de cada uno, su anclaje de registro, las reglas de arquitectura que vigila
+> NetArchTest, y cómo se verifica en este proyecto (mutar la guarda y verla en rojo).
+
+| Rama | Qué es | Punto de partida |
+|---|---|---|
+| `agente/resenas` | MOD-11 Reseñas: backend + pantalla | Su WIP, ya commiteado y al día con main. **Compila** |
+| `agente/verificacion` | MOD-02 Verificación manual de credenciales + MOD-08 | Su WIP, ya commiteado y al día con main. **Compila** |
+| `agente/agenda` | MOD-06 Agenda (CU-12, R-1 doble reserva, CC-01 bloqueo de fila) + el filtro de idempotencia que API-36 necesita | Desde `main`, limpio |
+| `agente/fondo` | Trabajos de fondo: vencer suscripciones, avisar antes, y despachar los avisos de TBL-27 (que ahora sí pueden salir, porque el correo existe) | Desde `main`, limpio |
+
+Las ramas ya fusionadas (`agente/produccion`, `agente/seo`, `agente/correo`) siguen teniendo su
+worktree en disco. No molestan, pero se pueden borrar con `git worktree remove --force`: su trabajo
+está en `main` y lo único que tienen sin commitear es un espacio en blanco en `ver-zass.bat`.
+
+Para fusionar: `git -C C:\Users\pdani\zass-app merge agente/<nombre>`.
 
 ### Lo que falta para PUBLICAR en Cloudflare (decisión de Pablo)
 
@@ -508,7 +687,7 @@ asunto que la tarjeta NFC y conviene resolverlo antes de MOD-12.
 
 | Falta | Por qué importa |
 |---|---|
-| **`BuscarAgregadoPorZona`** y registrar la búsqueda de forma agregada (paso 13 de CU-08) | Es el dato que se le entrega al municipio, el segundo valor del producto para la postulación |
+| **`BuscarAgregadoPorZona`** y registrar la búsqueda de forma agregada (paso 13 de CU-08) | Era el dato que se le entregaba al municipio. **Con la postulación municipal cancelada (8-nov-2026) baja de prioridad**, pero sigue siendo el paso 13 de CU-08 |
 | Flujos 4B (sugerencias sin resultados), 4D (reducir el radio si hay más de 200) y 4E (texto libre sin coincidencia) | Hoy sin resultados se devuelve una lista vacía y nada más |
 | **Desempate por completitud** (paso 7 de CU-08) | No existe ninguna medida de completitud del perfil. Hoy desempata verificado, reputación pública, reseñas e id |
 | El resto del flujo 4B de CU-08 | Hoy sin resultados se sugiere ampliar el radio, quitar los filtros u otra zona. Falta "buscar en un rubro cercano" y "avísame cuando haya alguien" (que necesita cuenta) |
@@ -748,6 +927,53 @@ Cosas que **tienen prueba propia**, no solo un comentario:
 
 ---
 
+## 3 bis. Correo transaccional real (agente/correo)
+
+**Qué hay.** Los avisos de verificación de correo y recuperación de contraseña ya se envían de verdad
+(antes solo se encolaban en TBL-27). Sin columnas nuevas ni migraciones: `programada_para` hace de
+«próximo intento» y de reserva, y `intentos`/`ultimo_error` ya existían.
+
+- `TrabajoDeCorreo` (BackgroundService) llama a `ProcesadorDeCorreo`, que reserva un lote con
+  `UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED) RETURNING id` (estado `Enviando`, reserva de
+  120 s: si una réplica muere, otra retoma el aviso). Seguro con varias réplicas: hay prueba con dos
+  trabajadores y 40 avisos, un solo envío por aviso.
+- Fallo del proveedor: 5xx, 408, 425, 429, timeout y error de red se reintentan con espera 1 min, 2, 4... (tope 1 h);
+  otro 4xx queda `Fallida` sin reintentar. Máximo 5 intentos (`Zass:Correo:MaximoIntentos`).
+- Puerto `IEnviadorDeCorreo`; `EnviadorBrevo` (API v3) y `EnviadorResend`, por HTTP.
+- Higiene del token: la carga del aviso es JSON `{"token":"..."}` (`CargaDeAviso`). Al enviarse (o anularse) pasa a
+  `{"purgado":true}`; un aviso fallido se purga 24 h después del fallo. Asunto fijo, sin token ni nombre.
+- Logs: correo enmascarado (`a***@dominio.cl`), nunca token, clave ni cuerpo de respuesta del proveedor.
+- Si el usuario ya verificó su correo o la cuenta se eliminó, el aviso se anula sin enviar.
+- Pedir recuperación con un correo inexistente no encola nada y responde igual (prueba por HTTP).
+- Límite conocido: entrega «al menos una vez». Si el proveedor aceptó el correo y la base falla justo después, el aviso
+  se reenvía al vencer la reserva.
+- Un aviso pendiente (por ejemplo, sin `UrlPublica`) conserva el token en claro hasta que sale o se anula; no hay caducidad
+  automática de avisos pendientes.
+
+**Configuración (variables de entorno en Render; en Cloudflare solo si la API corre allí).**
+
+| Variable | Valor |
+|---|---|
+| `Zass__Correo__Proveedor` | `Brevo`, `Resend` o `Ninguno` (por omisión: no envía, los avisos quedan pendientes) |
+| `Zass__Correo__ApiKey` | clave de API del proveedor (secreto; nunca en el repositorio) |
+| `Zass__Correo__Remitente` | dirección de un dominio verificado, p. ej. `no-responder@zass.cl` |
+| `Zass__Correo__NombreRemitente` | opcional, por omisión `ZASS!` |
+| `Zass__UrlPublica` | `https://zass.cl`; sin ella no se envía nada y se registra una advertencia |
+
+Con proveedor distinto de `Ninguno` y sin clave o sin remitente, la aplicación se niega a arrancar con un mensaje claro.
+Ajustes opcionales: `Zass__Correo__MaximoIntentos`, `EsperaBaseSegundos`, `TamanoDeLote`, `SondeoSegundos`, `PurgaDeFallidasHoras`.
+
+**Límites del plan gratuito.** Brevo y Resend tienen cupos diarios/mensuales en su plan gratuito: verifícalo en la página del proveedor.
+La cuota agotada suele llegar como 429 (se reintenta con espera) o como un 4xx del proveedor (queda fallida): revísalo al elegir.
+
+**Verificar el dominio remitente (SPF/DKIM).** Sin esto los correos caen en spam o el proveedor los rechaza.
+1. En el panel del proveedor, agrega el dominio (p. ej. `zass.cl`) en la sección de dominios/remitentes.
+2. El proveedor muestra los registros DNS que debes crear (SPF como TXT, DKIM como TXT o CNAME, a veces DMARC). Copia exactamente los valores que te muestre.
+3. Créalos en el DNS donde está `zass.cl`, espera la propagación y pulsa «verificar» en el panel.
+4. Usa como `Remitente` una dirección de ese dominio. Si ya existe un SPF, no crees un segundo: se combinan en un único registro.
+
+**Pruebas:** ver el informe de la sesión; todo en `backend/pruebas/Zass.Integracion.Pruebas/Correo/` (HttpMessageHandler falso, sin red).
+
 ## 4. Los seis fallos que encontraron las pruebas de verdad
 
 Ninguno se veía al compilar y ninguno lo habrían visto las pruebas en memoria. Van aquí
@@ -886,6 +1112,20 @@ no reintente sin fin.
 
 ## 7. El siguiente paso exacto
 
+### Lo primero, al retomar (estado al cierre del 8-nov-2026, noche)
+
+1. **Los cuatro agentes NO están corriendo.** Se cayeron al arrancar por el límite de 5 horas. Ver
+   «Segunda tanda de agentes» más arriba: dice qué dejó cada uno y por qué conviene relanzar con
+   **dos agentes, o cuatro sobre Sonnet**, no cuatro sobre Opus.
+2. **Hay commits sin subir en `main`.** Pablo los sube con GitHub Desktop. Comprobar con
+   `git log --oneline origin/main..main`.
+3. **`main` está en verde y limpio:** 381 aplicación + 15 arquitectura + 440 integración, más 283
+   de interfaz. Es un buen punto de partida, y ya trae la API lista para producción, el envío real
+   de correos y el SEO.
+4. Lo que sigue bloqueado por Pablo, y solo por él: **precio y nombre de los planes**, y **pasarela
+   simulada o esperar a Transbank, Flow o Mercado Pago**.
+
+
 ```
 HECHO   MOD-01 Identidad        dominio, API y pantalla
 HECHO   MOD-13 Suscripciones    7-nov-2026
@@ -934,6 +1174,10 @@ lo que convierte 549 pruebas en algo que se le puede ensenar a un municipio.
 Despues siguen MOD-02 Credenciales (hoy el sello de verificado no lo puede dar nadie, aunque
 la busqueda ya lo lee) y MOD-06 Agenda. `BuscarAgregadoPorZona` conviene antes de la
 postulacion municipal, porque es el dato que ese documento va a prometer.
+
+**CANCELADO (8-nov-2026, decision de Pablo): el documento de postulacion + municipio ya no va.**
+Con eso, `BuscarAgregadoPorZona` pierde su motivo principal (era el dato que se le entregaba al
+municipio) y baja de prioridad. No se borra: sigue siendo el paso 13 de CU-08 y esta en el documento.
 
 ---
 
@@ -1011,9 +1255,14 @@ Al terminar: `detener-postgres.bat`.
 2. Precio y nombre de los planes.
 3. Pasarela simulada en el prototipo, o sin cobro hasta integrar Transbank, Flow o
    Mercado Pago.
-4. **Nueva, y la abrió la respuesta anterior.** Desaparecer de la búsqueda está decidido,
-   pero no qué pasa con la **ficha pública por enlace directo y por tarjeta NFC** cuando
-   la suscripción vence. La tarjeta es un objeto físico que ya está en manos de alguien:
+4. ~~Qué pasa con la ficha pública por enlace directo y por tarjeta NFC cuando la
+   suscripción vence.~~ **RESPONDIDA el 8 de noviembre de 2026: la tarjeta SÍ abre la ficha,
+   con un aviso, pero SIN los botones de contactar ni de agendar.** Escrita en el documento
+   como **RN-S6-10** en `docs/01-casos-de-uso/subsistema-6-tarjetas-nfc.md`, distinguida de
+   RN-S6-09 (que es el perfil despublicado por el propio prestador, un caso distinto). El
+   sitio se regeneró y se comprobó que la regla llegó al HTML. **Ya no bloquea MOD-12.**
+
+   El razonamiento que quedó registrado, por si alguna vez se reabre:
    - Si **deja de funcionar**, el producto que se vendió se apaga al dejar de pagar. Es
      coherente con el modelo, pero quien la tiene en la mano no entiende por qué.
    - Si **sigue funcionando**, hay una puerta al perfil que no pasa por la búsqueda, y el
@@ -1041,6 +1290,7 @@ Al terminar: `detener-postgres.bat`.
 | **La carpeta no está en OneDrive, a propósito** | Una base sincronizándose en vivo se corrompe |
 | **`CifradoAesGcm` exige 32 bytes y no tiene valor por omisión** | Revienta al construirse si falta. Deliberado: una clave de relleno cifraría direcciones reales con un secreto público |
 | **Las pruebas de integración tienen su propia base de datos, `zass_pruebas`** | La crea y la migra sola la primera vez (las migraciones traen roles, plan, rubros, servicios y zonas), y **se niega a correr contra `zass`**, la de desarrollo: lanza un error en vez de escribir y borrar filas ahí. Se comprobó con 7 prestadores publicados en `zass`: las 218 pasan, y apuntarlas a `zass` falla en 2 ms con un mensaje claro. Antes compartían la base de desarrollo, y cualquier dato de ejemplo hacía fallar las pruebas de la búsqueda: hubo que limpiar a mano varias veces. Se puede cambiar con `ZASS_CADENA_PRUEBAS` (no con `ZASS_CADENA_CONEXION`, que es la de desarrollo). Las de HTTP borran por correo al terminar; si una se interrumpe puede dejar filas `api-*@zass.local` en `zass_pruebas`, no en `zass` |
+| **Nunca correr DOS suites de integración a la vez** | Pasó el 8-nov: se lanzó una en segundo plano y, creyendo que había terminado, otra en primer plano. Las dos fueron contra `zass_pruebas` y una prueba de búsqueda se puso roja. **No era un fallo del código**: la de segundo plano terminó en verde. Si aparece un rojo raro en integración, lo primero es comprobar que no haya otra suite corriendo (`Get-Process dotnet, testhost`) |
 | **`DisableTestParallelization` está activo en integración** | Dos pruebas a la vez se bloquean en el índice único. Correr en serie cuesta segundos y evita rojos intermitentes |
 | **El límite de tasa está subido en desarrollo** | `appsettings.Development.json` pone los grupos A y S en 1000. **Ese archivo está en `.gitignore`**, así que producción usa los valores reales del código (5 y 10). Si alguna vez se versiona, revisar esto primero |
 | **La clave local de PostgreSQL quedó en el registro de una sesión** | `dotnet user-secrets set` imprime el valor que guarda. Es la clave de una instancia portable que solo escucha en `127.0.0.1:5433`, sin exposición de red, pero conviene rotarla: cambiarla con `ALTER USER`, actualizar `.clave-pg.txt` y volver a poner `Zass:CadenaConexion` en User Secrets |
@@ -1051,3 +1301,17 @@ Al terminar: `detener-postgres.bat`.
 | **Las coordenadas de las zonas son de OpenStreetMap (ODbL)** | La licencia pide atribuir a *OpenStreetMap contributors* allá donde se muestren. Son 16 puntos y nombres de barrio, pero conviene poner la atribución en el pie del mapa desde el primer día en vez de acordarse después |
 | **El clúster local se creó con locale `C`** | `lower()` y `upper()` solo pliegan ASCII. Ninguna regla puede apoyarse en ellas: por eso `servicio` lleva `nombre_normalizado` calculado en C#. Si alguna vez se recrea el clúster, **no** cambia nada de esto, y es a propósito: en Azure el locale será otro |
 | **Subir al repositorio exige revisar la historia, no solo `.gitignore`** | Antes del primer `push` se revisaron los nombres de archivo de **todos** los commits buscando claves, `.env`, certificados y `appsettings.Development.json`. No había ninguno. Un `.gitignore` correcto no dice nada de lo que ya se versionó |
+
+---
+
+## Nota de la rama `agente/seo` (7-nov-2026): SEO y páginas legales
+
+**Hecho (probado, sin Cloudflare real):** Function `/prestadores/:slug` con meta por ficha, `/sitemap.xml` (+ índice si pasa de 50 000), `robots.txt`, `GET /api/prestadores/mapa` (API-64) en el backend, hook `useMeta`, imagen `public/og-zass.png`, y las páginas `/terminos` y `/privacidad` enlazadas desde el pie y desde el registro. Detalle de despliegue en `frontend/DESPLIEGUE-CLOUDFLARE.md`.
+
+**PENDIENTE PARA PABLO: las páginas legales son un BORRADOR, no asesoría legal.**
+
+1. Llenar en `frontend/src/paginas/legal.ts`: `RESPONSABLE` (razón social y RUT), `CORREO_PRIVACIDAD` (casilla para ejercer derechos de la Ley 21.719), `PROVEEDORES` (alojamiento, base de datos, correo) y `PLAZO_REGISTROS_DE_SEGURIDAD`. Mientras estén entre corchetes se ven resaltados en la página.
+2. **Decidir el plazo de los registros de seguridad (IP y fecha de acciones, tabla de auditoría y sesiones) y construir su borrado: hoy el sistema NO los borra solo.**
+3. Llevar `Terminos.tsx` y `Privacidad.tsx` a un abogado. Cuando los apruebe, cambiar `BORRADOR_LEGAL` a `false` en `legal.ts` (desaparece el aviso «Borrador: pendiente de revisión legal») y actualizar `ULTIMA_ACTUALIZACION`.
+4. Los textos dicen que hoy no hay cobro de la mensualidad, ni credenciales revisadas, ni pagos ni agenda: si eso cambia, hay que actualizarlos.
+5. Anotado para el backend: reservar el slug `mapa` al generar slugs (choca con `/api/prestadores/mapa`).

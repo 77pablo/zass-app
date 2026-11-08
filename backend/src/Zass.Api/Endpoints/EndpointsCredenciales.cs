@@ -75,6 +75,22 @@ public static class EndpointsCredenciales
             .RequireRateLimiting(Tasa.General)
             .WithName("API-28");
 
+        // API-27 - Envia a revision. La de otra persona responde igual que una inexistente.
+        grupo.MapPost("/credenciales/{id:guid}/enviar", async (
+                Guid id,
+                IServicioCredenciales credenciales, ServicioPerfiles perfiles, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+
+                var mio = await perfiles.MiPerfilPrestadorAsync(usuarioId.Value);
+                if (!mio.Exito) return Respuestas.Problema(mio);
+
+                return Respuestas.DeResultado(await credenciales.EnviarARevisionAsync(mio.Valor!.Id, id));
+            })
+            .RequireRateLimiting(Tasa.General)
+            .WithName("API-27");
+
         return app;
     }
 }

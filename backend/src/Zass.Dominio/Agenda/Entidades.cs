@@ -30,6 +30,13 @@ public class Disponibilidad
     /// <summary>
     /// Genera las instancias concretas. La disponibilidad es la regla; el bloque, la
     /// instancia. Cambiar la regla no destruye las citas ya confirmadas (RN-S4-09).
+    ///
+    /// <para>
+    /// Los dias y las horas de aqui son CHILENOS, no UTC: «lunes de 09:00 a 11:00» es el
+    /// reloj de la pared del prestador. La conversion la hace <see cref="HoraDeChile"/>, y
+    /// la columna guarda UTC como todo lo demas. Antes se tomaban como UTC y la agenda salia
+    /// corrida tres o cuatro horas, segun el horario de verano.
+    /// </para>
     /// </summary>
     public List<BloqueHorario> GenerarBloques(DateOnly desde, DateOnly hasta)
     {
@@ -45,16 +52,19 @@ public class Disponibilidad
             var cursor = HoraInicio;
             while (cursor.AddMinutes(DuracionBloqueMin) <= HoraFin)
             {
-                var inicio = dia.ToDateTime(cursor, DateTimeKind.Utc);
-                bloques.Add(new BloqueHorario
-                {
-                    DisponibilidadId = Id,
-                    PerfilPrestadorId = PerfilPrestadorId,
-                    PrestadorServicioId = PrestadorServicioId,
-                    InicioEn = inicio,
-                    FinEn = inicio.AddMinutes(DuracionBloqueMin),
-                    Estado = EstadoBloque.Libre
-                });
+                // Null el dia que entra el horario de verano: esa hora de pared no ocurre, y
+                // un bloque que no llega nunca no se puede reservar.
+                var inicio = HoraDeChile.AUtc(dia, cursor);
+                if (inicio is not null)
+                    bloques.Add(new BloqueHorario
+                    {
+                        DisponibilidadId = Id,
+                        PerfilPrestadorId = PerfilPrestadorId,
+                        PrestadorServicioId = PrestadorServicioId,
+                        InicioEn = inicio.Value,
+                        FinEn = inicio.Value.AddMinutes(DuracionBloqueMin),
+                        Estado = EstadoBloque.Libre
+                    });
                 cursor = cursor.AddMinutes(DuracionBloqueMin);
             }
         }
@@ -165,6 +175,31 @@ public class Cita
     }
 
     public void MarcarReprogramada() => Estado = EstadoCita.Reprogramada;
+
+    /// <summary>
+    /// T8. Pasó la hora de la cita. Es lo que abre la puerta de CS-12: sin este paso nadie
+    /// podría marcar asistencia, y se podría marcar «realizada» una cita futura y reseñar sin
+    /// que el servicio hubiera ocurrido.
+    /// </summary>
+    public Resultado PasarAPendienteAsistencia()
+    {
+        if (Estado != EstadoCita.Confirmada)
+            return Resultado.Falla(Fallas.Conflicto, "Solo una cita confirmada pasa a esperar asistencia.");
+        Estado = EstadoCita.PendienteAsistencia;
+        return Resultado.Ok();
+    }
+
+    /// <summary>
+    /// T11. Pasaron 72 h sin que el prestador marcara nada. Se asume realizada: lo contrario
+    /// dejaría al buscador sin poder reseñar por una omisión que no es suya.
+    /// </summary>
+    public Resultado AsumirRealizada()
+    {
+        if (Estado != EstadoCita.PendienteAsistencia)
+            return Resultado.Falla(Fallas.Conflicto, "Solo se asume realizada una cita que esperaba asistencia.");
+        Estado = EstadoCita.Realizada;
+        return Resultado.Ok();
+    }
 
     public Resultado RegistrarAsistencia(bool asistio)
     {

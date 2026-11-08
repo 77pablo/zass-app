@@ -22,6 +22,8 @@ export function Pie() {
               <li><Link to="/profesionales">Para profesionales</Link></li>
               <li><Link to="/entrar">Entrar</Link></li>
               <li><Link to="/crear-cuenta">Crear una cuenta</Link></li>
+              <li><Link to="/terminos">Términos de uso</Link></li>
+              <li><Link to="/privacidad">Privacidad</Link></li>
             </ul>
           </nav>
         </div>

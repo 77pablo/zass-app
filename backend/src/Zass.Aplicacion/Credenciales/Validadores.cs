@@ -32,3 +32,29 @@ public sealed class ValidadorCrearCredencial : AbstractValidator<CrearCredencial
             .WithMessage("El vencimiento tiene que ser posterior a la fecha de obtención.");
     }
 }
+
+/// <summary>
+/// La forma del cuerpo de API-31. Las reglas que dependen de la credencial (cuántos caracteres
+/// exige una verificación sin documentos) las aplica el servicio, que además repite estas.
+/// </summary>
+public sealed class ValidadorResolverCredencial : AbstractValidator<ResolverCredencialHttpCmd>
+{
+    public ValidadorResolverCredencial()
+    {
+        RuleFor(x => x.Resultado).IsInEnum().WithMessage("Elige qué hacer con la credencial.");
+
+        // RN-S2-06: un rechazo exige motivo escrito.
+        RuleFor(x => x.Motivo)
+            .NotNull().WithMessage("Un rechazo necesita un motivo.")
+            .IsInEnum().WithMessage("Ese motivo no existe.")
+            .When(x => x.Resultado == Dominio.Comun.ResultadoVerificacion.Rechazada);
+
+        RuleFor(x => x.Detalle).MaximumLength(ServicioVerificacion.LargoMaximoDetalle);
+
+        RuleFor(x => x.Detalle)
+            .NotEmpty().WithMessage("Escribe el detalle.")
+            .MinimumLength(ServicioVerificacion.LargoMinimoDetalle)
+            .When(x => x.Resultado is Dominio.Comun.ResultadoVerificacion.Rechazada
+                or Dominio.Comun.ResultadoVerificacion.AntecedentesSolicitados);
+    }
+}

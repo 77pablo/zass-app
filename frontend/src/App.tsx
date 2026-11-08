@@ -9,7 +9,9 @@ import { NoEncontrada } from './paginas/NoEncontrada'
 import { Oficios } from './paginas/Oficios'
 import { PaginaBuscar } from './paginas/PaginaBuscar'
 import { Portada } from './paginas/Portada'
+import { Privacidad } from './paginas/Privacidad'
 import { Profesionales } from './paginas/Profesionales'
+import { Terminos } from './paginas/Terminos'
 import { RecuperarContrasena, RestablecerContrasena, VerificarCorreo } from './paginas/Recuperacion'
 
 /**
@@ -28,6 +30,8 @@ export function App() {
         <Route path="barrios" element={<Navigate to="/comunas" replace />} />
         <Route path="oficios" element={<Oficios />} />
         <Route path="profesionales" element={<Profesionales />} />
+        <Route path="terminos" element={<Terminos />} />
+        <Route path="privacidad" element={<Privacidad />} />
         <Route path="entrar" element={<Entrar />} />
         <Route path="crear-cuenta" element={<CrearCuenta />} />
         <Route path="mi-ficha" element={<MiFicha />} />

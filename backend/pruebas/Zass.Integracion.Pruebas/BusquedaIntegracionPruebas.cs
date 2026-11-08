@@ -48,7 +48,8 @@ public class BusquedaIntegracionPruebas : IDisposable
 
         _repo = new RepositorioBusquedaEfCore(ctx);
         _suscripciones = new ServicioSuscripciones(
-            new RepositorioSuscripcionesEfCore(ctx), trabajo, _reloj, auditor);
+            new RepositorioSuscripcionesEfCore(ctx), trabajo, _reloj, auditor,
+            new ColaNotificacionesEfCore(ctx));
 
         _servicio = new ServicioBusqueda(
             _repo,

@@ -7,7 +7,8 @@ certificados/
 .env
 *.env
 !.env.example
-appsettings.Development.json
+# appsettings.Development.json SI se versiona: son decisiones de producto para
+# desarrollo, sin secretos. Los secretos van en User Secrets.
 appsettings.Production.json
 
 # --- La instancia local de PostgreSQL vive dentro del proyecto ---

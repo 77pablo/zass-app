@@ -1,7 +1,9 @@
+﻿using Zass.Dominio.Agenda;
 using Zass.Dominio.Catalogo;
 using Zass.Dominio.Comun;
 using Zass.Dominio.Credenciales;
 using Zass.Dominio.Identidad;
+using Zass.Dominio.Reputacion;
 using Zass.Dominio.Suscripciones;
 
 namespace Zass.Aplicacion.Puertos;
@@ -62,6 +64,38 @@ public interface IAuditor
 public interface IUnidadDeTrabajo
 {
     Task<int> GuardarAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Corre el cuerpo dentro de UNA transaccion y la confirma solo si termina bien. Si
+    /// lanza, se deshace todo: no puede quedar un bloque reservado sin cita, ni una cita sin
+    /// bloque (postcondicion de fallo de CU-12).
+    ///
+    /// Existe porque CC-01 lo exige: el <c>SELECT ... FOR UPDATE</c> sobre el bloque solo
+    /// sirve si el INSERT de la cita y el UPDATE del bloque viven en la misma transaccion que
+    /// ese bloqueo. Con el <c>GuardarAsync</c> suelto, EF abriria una transaccion propia por
+    /// cada SaveChanges y el bloqueo se habria liberado antes de insertar.
+    ///
+    /// Si ya hay una transaccion abierta (las pruebas de integracion abren una y la
+    /// deshacen), se reutiliza en vez de anidar: PostgreSQL no anida transacciones.
+    /// </summary>
+    Task<T> EnTransaccionAsync<T>(
+        Func<CancellationToken, Task<T>> cuerpo, CancellationToken ct = default);
+}
+
+/// <summary>
+/// La sonda de disponibilidad de /api/salud/lista: ?responde la base de verdad?
+///
+/// Es un puerto y no una consulta dentro del endpoint porque los endpoints no hablan con la
+/// base (la prueba de arquitectura «los endpoints no tocan la base ni los repositorios» lo
+/// exige, y el motivo de fondo es que el dia que cambie como se comprueba la base se cambia
+/// en un solo sitio).
+///
+/// NUNCA lanza: devuelve false y deja el motivo en el registro. La ruta es publica y el texto
+/// de un error de Npgsql lleva el host y la cadena de conexion.
+/// </summary>
+public interface ISondaDeBase
+{
+    Task<bool> RespondeAsync(CancellationToken ct = default);
 }
 
 public interface IRepositorioUsuarios
@@ -130,6 +164,16 @@ public interface IRepositorioSuscripciones
 
     /// <summary>Comprueba el perfil sin traerlo entero ni depender del repositorio de MOD-01.</summary>
     Task<bool> ExistePerfilPrestadorAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+
+    /// <summary>
+    /// A quien pertenece cada perfil, para poder avisarle. UNA consulta, por el mismo motivo
+    /// que <see cref="VigentesEntreAsync"/>: el trabajo diario puede tener cientos de
+    /// suscripciones por vencer y preguntar una por una serian cientos de idas a la base.
+    ///
+    /// Los perfiles que no existan simplemente no aparecen en el resultado.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, Guid>> UsuariosDePerfilesAsync(
+        IReadOnlyCollection<Guid> perfilPrestadorIds, CancellationToken ct = default);
 
     void Agregar(Suscripcion suscripcion);
     void AgregarPago(Pago pago);
@@ -431,4 +475,192 @@ public interface IRepositorioCredenciales
     Task<EntidadCertificadora?> EntidadPorNombreAsync(string nombre, CancellationToken ct = default);
 
     void AgregarEntidad(EntidadCertificadora entidad);
+
+    // ---- Cola del Verificador (CU-06, CC-03) ----
+
+    /// <summary>
+    /// La cola: en revisión, sin esperar al prestador, que NO sean del propio verificador
+    /// (RN-S2-09) y sin las que otro tiene reservadas y vigentes. Más antigua primero. Con su
+    /// perfil, entidad y documentos.
+    /// </summary>
+    Task<IReadOnlyList<Credencial>> ColaAsync(
+        Guid verificadorId, DateTime ahora, CancellationToken ct = default);
+
+    /// <summary>La credencial con su perfil (para saber de quién es y cómo se llama).</summary>
+    Task<Credencial?> PorIdParaRevisionAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>
+    /// CC-03. Reserva ATÓMICA en una sola sentencia: gana quien la encuentre libre (o vencida, o
+    /// ya suya). Devuelve falso si perdió la carrera, no era revisable o es una cuenta propia. Es una
+    /// condición dentro del UPDATE y no un "leer y luego escribir": con dos verificadores a la vez,
+    /// PostgreSQL serializa por la fila y el segundo reevalúa la condición ya con la reserva puesta.
+    /// </summary>
+    Task<bool> ReservarAsync(
+        Guid credencialId, Guid verificadorId, DateTime ahora, DateTime hasta,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Consume la reserva vigente de este verificador, de forma atómica. Solo una llamada concurrente
+    /// puede ganarla: así dos resoluciones simultáneas de la misma credencial (dos pestañas) no
+    /// pueden ganar las dos.
+    /// </summary>
+    Task<bool> ConsumirReservaAsync(
+        Guid credencialId, Guid verificadorId, DateTime ahora, CancellationToken ct = default);
+
+    /// <summary>
+    /// Registra una decisión. Explícito y no "agregarla a la lista de la credencial": su Id ya viene
+    /// puesto, y EF toma un Guid con valor por una fila que YA existe (UPDATE de 0 filas y un error
+    /// de concurrencia en vez de un INSERT).
+    /// </summary>
+    void AgregarVerificacion(Verificacion verificacion);
+}
+
+/// <summary>
+/// El buzón de contactos (TBL-21). **Es un puerto de salida, no el repositorio de MOD-11.**
+///
+/// TBL-21 es tabla propia de MOD-11 Reseñas, y `MOD-06 → MOD-11` está prohibido
+/// (dependencias-entre-modulos.md, sección 5): sería un ciclo. Pero el paso 11 de CU-12 exige
+/// dejar el registro de contacto **dentro de la misma transacción** que crea la cita, porque
+/// es la única puerta a la elegibilidad de reseña y perderlo la perdería en silencio.
+///
+/// Se resuelve igual que TBL-27: <see cref="INotificaciones"/> deja avisos en la tabla de
+/// MOD-07 sin que nadie dependa de MOD-07. Esto es lo mismo, de salida y de una sola
+/// dirección: quien escribe no sabe quién lee, y MOD-11 sigue sin conocer la tabla `cita`
+/// (pregunta por <c>IServicioAgenda.CitaRealizadaAsync</c>, sección 4.1).
+/// </summary>
+public interface IContactos
+{
+    void Registrar(Contacto contacto);
+}
+
+/// <summary>
+/// MOD-06. Lo que la agenda necesita de la base: TBL-16 a TBL-20.
+///
+/// Es el puerto más grande del sistema, y eso es consecuencia del diseño, no un descuido:
+/// «toda la complejidad de CC-01, CC-02, CC-04 y CC-06 vive adentro y no se filtra a la
+/// interfaz» (tabla-de-modulos.md, MOD-06). Los tres métodos que bloquean filas están aquí
+/// porque solo PostgreSQL puede darlos; el resto de la regla vive en la capa de aplicación.
+/// </summary>
+public interface IRepositorioAgenda
+{
+    // ------------------------------------------------------- TBL-16 disponibilidad (CU-11)
+
+    Task<IReadOnlyList<Disponibilidad>> DisponibilidadesDeServicioAsync(
+        Guid prestadorServicioId, CancellationToken ct = default);
+
+    Task<IReadOnlyList<Disponibilidad>> DisponibilidadesDePrestadorAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default);
+
+    void AgregarDisponibilidad(Disponibilidad disponibilidad);
+
+    // ------------------------------------------------------- TBL-17 bloque_horario
+
+    /// <summary>Los bloques de un servicio en una ventana, para pintar el calendario (API-35).</summary>
+    Task<IReadOnlyList<BloqueHorario>> BloquesDeServicioAsync(
+        Guid prestadorServicioId, DateTime desde, DateTime hasta, CancellationToken ct = default);
+
+    /// <summary>
+    /// Los inicios que YA existen en la ventana. Generar bloques es idempotente gracias a
+    /// esto: el Planificador extiende la ventana cada noche y no debe duplicar lo de ayer.
+    /// </summary>
+    Task<IReadOnlyCollection<DateTime>> IniciosYaGeneradosAsync(
+        Guid prestadorServicioId, DateTime desde, DateTime hasta, CancellationToken ct = default);
+
+    void AgregarBloques(IEnumerable<BloqueHorario> bloques);
+
+    /// <summary>
+    /// Quita los bloques futuros que esa regla generó y que **nadie reservó**. Es RN-S4-09:
+    /// cambiar la disponibilidad no toca las citas ya confirmadas. Devuelve cuántos quitó.
+    /// </summary>
+    Task<int> QuitarBloquesLibresDeAsync(
+        Guid disponibilidadId, DateTime desde, CancellationToken ct = default);
+
+    // ------------------------------------------------------- TBL-20 bloqueo_agenda (CS-11)
+
+    Task<IReadOnlyList<BloqueoAgenda>> BloqueosDePrestadorAsync(
+        Guid perfilPrestadorId, DateTime desde, DateTime hasta, CancellationToken ct = default);
+
+    void AgregarBloqueo(BloqueoAgenda bloqueo);
+
+    // ------------------------------------------------------- CC-01: el bloqueo de fila
+
+    /// <summary>
+    /// <c>SELECT ... FOR UPDATE</c> sobre la fila del bloque. La segunda transacción que
+    /// llega **espera** aquí; cuando el bloqueo se libera lee el estado ya actualizado y se
+    /// retira limpiamente con un 409 (CC-01).
+    ///
+    /// Solo tiene sentido dentro de <see cref="IUnidadDeTrabajo.EnTransaccionAsync{T}"/>:
+    /// fuera de una transacción el bloqueo se suelta al terminar la consulta y no protege nada.
+    /// </summary>
+    Task<BloqueHorario?> TomarBloqueAsync(Guid bloqueId, CancellationToken ct = default);
+
+    /// <summary>Si existe cita activa sobre ese bloque. La última palabra la tiene R-1.</summary>
+    Task<bool> TieneCitaActivaAsync(Guid bloqueId, CancellationToken ct = default);
+
+    // ------------------------------------------------------- TBL-18 cita, TBL-19 cambio_cita
+
+    Task<Cita?> CitaPorIdAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>
+    /// La cita que creó esta clave, si ya existe (CC-04, flujo 4B de CU-12). Devolverla es lo
+    /// que convierte un doble envío en la misma respuesta en vez de una segunda cita.
+    /// </summary>
+    Task<Cita?> CitaPorClaveAsync(string claveIdempotencia, CancellationToken ct = default);
+
+    /// <summary>Cuántas activas tiene ese buscador con ese prestador (RN-S4-06, tope de 3).</summary>
+    Task<int> CitasActivasEntreAsync(
+        Guid buscadorId, Guid perfilPrestadorId, CancellationToken ct = default);
+
+    /// <summary>
+    /// La consulta de elegibilidad que usa MOD-11 (sección 4.1). Un `bool`: reseñas no sabe
+    /// que existe una tabla `cita` ni cuántos estados tiene.
+    /// </summary>
+    Task<bool> HuboCitaRealizadaAsync(
+        Guid buscadorId, Guid perfilPrestadorId, CancellationToken ct = default);
+
+    /// <summary>Las citas de alguien, de los dos lados. Con el bloque y el servicio incluidos.</summary>
+    Task<IReadOnlyList<Cita>> CitasDeBuscadorAsync(
+        Guid buscadorId, CancellationToken ct = default);
+
+    Task<IReadOnlyList<Cita>> CitasDePrestadorAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default);
+
+    // ------------------------------------------------------- lo que dispara el tiempo (A-09)
+
+    /// <summary>T5. Solicitadas cuyo plazo de 24 h ya venció. Solo los ids: cada una se procesa en su transacción.</summary>
+    Task<IReadOnlyList<Guid>> CitasPorExpirarAsync(DateTime ahora, int maximo, CancellationToken ct = default);
+
+    /// <summary>T8. Confirmadas cuya hora ya terminó.</summary>
+    Task<IReadOnlyList<Guid>> CitasTerminadasAsync(DateTime ahora, int maximo, CancellationToken ct = default);
+
+    /// <summary>T11. Pendientes de asistencia cuya hora terminó antes de <paramref name="limite"/>.</summary>
+    Task<IReadOnlyList<Guid>> CitasSinAsistenciaAsync(DateTime limite, int maximo, CancellationToken ct = default);
+
+    /// <summary>
+    /// La cita RASTREADA, con su bloque, para poder cambiarle el estado. Separada de
+    /// <see cref="CitaPorIdAsync"/> porque esa es de lectura y puede venir sin rastreo.
+    /// </summary>
+    Task<Cita?> CitaParaCambioAsync(Guid id, CancellationToken ct = default);
+
+    // ------------------------------------------------------- CC-06: el abrazo mortal
+
+    /// <summary>
+    /// Los dos bloques de una reprogramación, bloqueados **ordenados por id**. Con un orden
+    /// global el ciclo no puede formarse: dos reprogramaciones cruzadas piden X antes que Y
+    /// las dos, una espera a la otra y las dos terminan (CC-06).
+    ///
+    /// Devuelve los que existan, de uno o de dos en dos: quien llama comprueba cuáles faltan.
+    /// </summary>
+    Task<IReadOnlyList<BloqueHorario>> TomarDosBloquesAsync(
+        Guid unoId, Guid otroId, CancellationToken ct = default);
+
+    /// <summary>
+    /// <c>SET LOCAL lock_timeout</c>. CC-06 lo pide: si algo imprevisto hace esperar más de
+    /// unos segundos, mejor fallar rápido con un mensaje claro que dejar a alguien mirando
+    /// una pantalla que no responde. `LOCAL` significa «solo en esta transacción».
+    /// </summary>
+    Task FijarEsperaDeBloqueoAsync(TimeSpan limite, CancellationToken ct = default);
+
+    void AgregarCita(Cita cita);
+    void AgregarCambio(CambioCita cambio);
 }

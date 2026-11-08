@@ -1,16 +1,22 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Zass.Aplicacion.Identidad;
+using Zass.Aplicacion.Agenda;
 using Zass.Aplicacion.Catalogo;
 using Zass.Aplicacion.Credenciales;
 using Zass.Aplicacion.Busqueda;
 using Zass.Aplicacion.Geografia;
 using Zass.Aplicacion.Suscripciones;
+using Zass.Aplicacion.Resenas;
 using Zass.Aplicacion.Puertos;
+using Zass.Infraestructura.Correo;
+using Zass.Infraestructura.Fondo;
 using Zass.Infraestructura.Datos;
 using Zass.Infraestructura.Datos.Repositorios;
 using Zass.Infraestructura.Seguridad;
@@ -36,6 +42,12 @@ public sealed class OpcionesZass
     /// </summary>
     [Required(ErrorMessage = "Falta la clave de cifrado de direcciones.")]
     public string ClaveDireccionesBase64 { get; set; } = "";
+
+    /// <summary>
+    /// Dirección pública del sitio (p. ej. https://zass.cl). Con ella se arman los enlaces de
+    /// los correos. Opcional al arrancar: sin ella los correos no se envían (y se registra).
+    /// </summary>
+    public string? UrlPublica { get; set; }
 
     public byte[] ClaveDirecciones()
     {
@@ -107,6 +119,18 @@ public static class RegistroDeServicios
         servicios.AddScoped<INotificaciones, ColaNotificacionesEfCore>();
         servicios.AddScoped<IAuditor, AuditorEfCore>();
 
+        // AddLogging aqui y no en quien llama: varios servicios de este modulo escriben en
+        // el registro (la sonda de abajo, y los enviadores y el procesador de correo). Sin
+        // esto, AgregarZass declararia servicios cuya dependencia no provee y solo
+        // funcionaria dentro de una aplicacion de ASP.NET, que trae el registro por su
+        // cuenta; ContenedorPruebas construye un ServiceCollection DESNUDO a proposito,
+        // justo para que eso no pase inadvertido. Es idempotente (usa TryAdd): no pisa la
+        // configuracion de registro de la API.
+        servicios.AddLogging();
+
+        // La sonda de /api/salud/lista. Singleton: crea su propio ambito en cada consulta.
+        servicios.AddSingleton<ISondaDeBase, SondaDeBase>();
+
         // --- MOD-01 Identidad ---
         servicios.AddScoped<IServicioIdentidad, ServicioIdentidad>();
         servicios.AddScoped<ServicioRegistro>();
@@ -117,6 +141,16 @@ public static class RegistroDeServicios
         // --- MOD-02 Credenciales ---
         servicios.AddScoped<IRepositorioCredenciales, RepositorioCredencialesEfCore>();
         servicios.AddScoped<IServicioCredenciales, ServicioCredenciales>();
+        servicios.AddScoped<IServicioVerificacion, ServicioVerificacion>();
+
+        // DECISION DE PRODUCTO REVISABLE (etapa de lanzamiento, sin MOD-08): permite enviar a
+        // revision sin documentos. Falso por omision. Se lee al RESOLVER, no al registrar, por la
+        // misma razon que las opciones de arriba (fuentes agregadas despues).
+        servicios.AddSingleton(sp => new OpcionesVerificacion
+        {
+            PermitirSinDocumentos = sp.GetRequiredService<IConfiguration>()
+                .GetValue(OpcionesVerificacion.ClaveDeConfiguracion, false),
+        });
 
         // --- MOD-03 Catalogo ---
         servicios.AddScoped<IServicioCatalogo, ServicioCatalogo>();
@@ -124,11 +158,59 @@ public static class RegistroDeServicios
         // --- MOD-04 Geolocalizacion ---
         servicios.AddScoped<IServicioGeografia, ServicioGeografia>();
 
+        // --- MOD-06 Agenda ---
+        servicios.AddScoped<IRepositorioAgenda, RepositorioAgendaEfCore>();
+        servicios.AddScoped<IContactos, ContactosEfCore>();
+        servicios.AddScoped<IServicioAgenda, ServicioAgenda>();
+
         // --- MOD-05 Busqueda ---
         servicios.AddScoped<IServicioBusqueda, ServicioBusqueda>();
+        servicios.AddScoped<IRepositorioMapaDelSitio, RepositorioMapaDelSitioEfCore>();
+        servicios.AddScoped<ServicioMapaDelSitio>();
+
+        // --- MOD-06 Agenda ---
+        // ANCLAJE: el agente de MOD-06 registra SOLO aqui. Existe vacio a proposito, para que
+        // cuatro agentes a la vez inserten en regiones separadas y git fusione sin conflicto.
+
+        // --- MOD-11 Resenas ---
+        servicios.AddScoped<IRepositorioResenas, RepositorioResenasEfCore>();
+        servicios.AddScoped<IServicioResenas, ServicioResenas>();
 
         // --- MOD-13 Suscripciones ---
         servicios.AddScoped<IServicioSuscripciones, ServicioSuscripciones>();
+
+        // --- Trabajos de fondo ---
+        // ANCLAJE: el agente de los trabajos de fondo registra SOLO aqui (vencer suscripciones,
+        // avisar antes de vencer, despachar los avisos de TBL-27).
+
+        // --- Correo transaccional ---
+        // Con proveedor distinto de Ninguno y sin clave, la aplicacion se niega a arrancar
+        // (ValidadorOpcionesCorreo + ValidateOnStart), igual que con la clave de cifrado.
+        servicios.AddOptions<OpcionesCorreo>()
+            .Bind(configuracion.GetSection(OpcionesCorreo.Seccion))
+            .ValidateOnStart();
+        servicios.AddSingleton<IValidateOptions<OpcionesCorreo>, ValidadorOpcionesCorreo>();
+        servicios.AddSingleton<IEnviadorDeCorreo>(sp =>
+        {
+            var o = sp.GetRequiredService<IOptions<OpcionesCorreo>>().Value;
+            if (o.Proveedor == ProveedorDeCorreo.Ninguno) return new EnviadorNulo();
+
+            // Un solo HttpClient con vida de conexion acotada (para que el DNS se renueve).
+            var http = new HttpClient(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) })
+            {
+                Timeout = TimeSpan.FromSeconds(o.TiempoLimiteHttpSegundos),
+            };
+            return o.Proveedor == ProveedorDeCorreo.Brevo
+                ? new EnviadorBrevo(http, Options.Create(o), sp.GetRequiredService<ILogger<EnviadorBrevo>>())
+                : new EnviadorResend(http, Options.Create(o), sp.GetRequiredService<ILogger<EnviadorResend>>());
+        });
+        servicios.AddScoped<ProcesadorDeCorreo>();
+        servicios.AddHostedService<TrabajoDeCorreo>();
+
+        // --- A-09 Planificador (trabajos de fondo) ---
+        servicios.AddOptions<OpcionesFondo>().Bind(configuracion.GetSection(OpcionesFondo.Seccion));
+        servicios.AddScoped<CoordinadorDeTrabajos>();
+        servicios.AddHostedService<Planificador>();
 
         // --- Validadores ---
         // Se registran por ensamblado a proposito: agregar un comando sin su validador
