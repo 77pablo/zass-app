@@ -625,6 +625,31 @@ public interface IRepositorioAgenda
     Task<IReadOnlyList<Cita>> CitasDePrestadorAsync(
         Guid perfilPrestadorId, CancellationToken ct = default);
 
+    /// <summary>
+    /// La cita RASTREADA, con su bloque, para poder cambiarle el estado. Separada de
+    /// <see cref="CitaPorIdAsync"/> porque esa es de lectura y puede venir sin rastreo.
+    /// </summary>
+    Task<Cita?> CitaParaCambioAsync(Guid id, CancellationToken ct = default);
+
+    // ------------------------------------------------------- CC-06: el abrazo mortal
+
+    /// <summary>
+    /// Los dos bloques de una reprogramación, bloqueados **ordenados por id**. Con un orden
+    /// global el ciclo no puede formarse: dos reprogramaciones cruzadas piden X antes que Y
+    /// las dos, una espera a la otra y las dos terminan (CC-06).
+    ///
+    /// Devuelve los que existan, de uno o de dos en dos: quien llama comprueba cuáles faltan.
+    /// </summary>
+    Task<IReadOnlyList<BloqueHorario>> TomarDosBloquesAsync(
+        Guid unoId, Guid otroId, CancellationToken ct = default);
+
+    /// <summary>
+    /// <c>SET LOCAL lock_timeout</c>. CC-06 lo pide: si algo imprevisto hace esperar más de
+    /// unos segundos, mejor fallar rápido con un mensaje claro que dejar a alguien mirando
+    /// una pantalla que no responde. `LOCAL` significa «solo en esta transacción».
+    /// </summary>
+    Task FijarEsperaDeBloqueoAsync(TimeSpan limite, CancellationToken ct = default);
+
     void AgregarCita(Cita cita);
     void AgregarCambio(CambioCita cambio);
 }

@@ -172,6 +172,37 @@ public sealed class RepositorioAgendaEnMemoria : IRepositorioAgenda
         return Task.FromResult(r);
     }
 
+    public Task<Cita?> CitaParaCambioAsync(Guid id, CancellationToken ct = default) =>
+        CitaPorIdAsync(id, ct);
+
+    /// <summary>Cuántas veces se pidió el bloqueo ordenado de CC-06.</summary>
+    public int BloqueosDeDosFilas { get; private set; }
+
+    /// <summary>
+    /// Devuelve los dos bloques ORDENADOS POR ID, como el real. El orden se respeta aquí
+    /// aunque en memoria no sirva de nada: si el doble devolviera otro orden, una prueba
+    /// podría depender del orden equivocado y pasar contra la base por casualidad.
+    /// </summary>
+    public Task<IReadOnlyList<BloqueHorario>> TomarDosBloquesAsync(
+        Guid unoId, Guid otroId, CancellationToken ct = default)
+    {
+        BloqueosDeDosFilas++;
+        IReadOnlyList<BloqueHorario> r = _base.Bloques
+            .Where(b => b.Id == unoId || b.Id == otroId)
+            .OrderBy(b => b.Id)
+            .ToList();
+        return Task.FromResult(r);
+    }
+
+    /// <summary>Cuánto se pidió esperar por un bloqueo. Null si nadie lo fijó.</summary>
+    public TimeSpan? EsperaFijada { get; private set; }
+
+    public Task FijarEsperaDeBloqueoAsync(TimeSpan limite, CancellationToken ct = default)
+    {
+        EsperaFijada = limite;
+        return Task.CompletedTask;
+    }
+
     public void AgregarCita(Cita cita) => _base.Citas.Add(cita);
     public void AgregarCambio(CambioCita cambio) => _base.CambiosCita.Add(cambio);
 }

@@ -24,8 +24,17 @@ public static class EndpointsAgenda
         MapearLoDelPrestador(app);
         MapearElCalendarioPublico(app);
         MapearCitas(app);
+        MapearElCicloDeLaCita(app);
         return app;
     }
+
+    /// <summary>
+    /// Quién actúa, sacado de la SESIÓN y nunca del cuerpo. Es lo que impide que alguien
+    /// mande el perfil de otro y confirme sus citas.
+    /// </summary>
+    private static async Task<AutorDeCambio> AutorAsync(
+        ClaimsPrincipal quien, IServicioIdentidad identidad, Guid usuarioId) =>
+        new(usuarioId, await identidad.PerfilPrestadorIdAsync(usuarioId));
 
     // ------------------------------------------------------------- CU-11 y CS-11
 
@@ -158,12 +167,7 @@ public static class EndpointsAgenda
                 var usuarioId = quien.UsuarioId();
                 if (usuarioId is null) return Results.Unauthorized();
 
-                var clave = http.ClaveIdempotencia();
-                if (clave is null)
-                    return Results.Problem(
-                        title: "Falta la clave de idempotencia",
-                        detail: $"Falta la cabecera {FiltroIdempotencia.Cabecera}.",
-                        statusCode: StatusCodes.Status400BadRequest);
+                if (http.ClaveIdempotencia() is not { } clave) return FaltaLaClave();
 
                 var r = await agenda.AgendarAsync(new AgendarCmd(
                     usuarioId.Value, cmd.BloqueId, clave, cmd.NotaBuscador));
@@ -180,4 +184,110 @@ public static class EndpointsAgenda
             .RequireRateLimiting(Tasa.Sensible)
             .WithName("API-36");
     }
+
+    // ------------------------------------------------------------- CU-13, CU-14 y CS-12
+
+    /// <summary>
+    /// Lo que se le hace a una cita que ya existe. Las tres acciones que tocan bloques
+    /// —cancelar y reprogramar— llevan `Idempotency-Key`, porque un reintento podría dejar un
+    /// bloque libre y otro reservado, o mandar dos avisos de cancelación (api-rest.md).
+    ///
+    /// Confirmar, rechazar y marcar asistencia no la llevan: repetirlas es inofensivo, porque
+    /// la segunda encuentra la cita en un estado desde el que la transición no existe.
+    /// </summary>
+    private static void MapearElCicloDeLaCita(IEndpointRouteBuilder app)
+    {
+        var grupo = app.MapGroup("/api/citas/{id:guid}");
+        grupo.RequireAuthorization();
+        grupo.AddEndpointFilter<FiltroCsrf>();
+
+        // API-38 - El prestador confirma una solicitada (T3).
+        grupo.MapPost("/confirmar", async (
+                Guid id, IServicioAgenda agenda, IServicioIdentidad identidad, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+
+                return Respuestas.DeResultado(await agenda.ConfirmarAsync(
+                    id, await AutorAsync(quien, identidad, usuarioId.Value)));
+            })
+            .RequireRateLimiting(Tasa.General)
+            .WithName("API-38");
+
+        // API-39 - El prestador rechaza (T4). El motivo es opcional.
+        grupo.MapPost("/rechazar", async (
+                Guid id, MotivoHttpCmd cmd,
+                IServicioAgenda agenda, IServicioIdentidad identidad, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+
+                return Respuestas.DeResultado(await agenda.RechazarAsync(
+                    id, await AutorAsync(quien, identidad, usuarioId.Value), cmd.Motivo));
+            })
+            .ConValidacion<MotivoHttpCmd>()
+            .RequireRateLimiting(Tasa.General)
+            .WithName("API-39");
+
+        // API-40 - Cancela. Cualquiera de los dos, y con menos de 12 h queda marcada tardía.
+        grupo.MapPost("/cancelar", async (
+                Guid id, MotivoHttpCmd cmd, HttpContext http,
+                IServicioAgenda agenda, IServicioIdentidad identidad, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+                if (http.ClaveIdempotencia() is not { } clave) return FaltaLaClave();
+
+                return Respuestas.DeResultado(await agenda.CancelarAsync(new CancelarCitaCmd(
+                    id, await AutorAsync(quien, identidad, usuarioId.Value), clave, cmd.Motivo)));
+            })
+            .AddEndpointFilter<FiltroIdempotencia>()
+            .ConValidacion<MotivoHttpCmd>()
+            .RequireRateLimiting(Tasa.Sensible)
+            .WithName("API-40");
+
+        // API-41 - Reprograma: cancela y crea con vínculo a la primera de la cadena. CC-06.
+        grupo.MapPost("/reprogramar", async (
+                Guid id, ReprogramarHttpCmd cmd, HttpContext http,
+                IServicioAgenda agenda, IServicioIdentidad identidad, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+                if (http.ClaveIdempotencia() is not { } clave) return FaltaLaClave();
+
+                var r = await agenda.ReprogramarAsync(new ReprogramarCitaCmd(
+                    id, cmd.BloqueNuevoId, await AutorAsync(quien, identidad, usuarioId.Value),
+                    clave, cmd.Motivo));
+                if (!r.Exito) return Respuestas.Problema(r);
+
+                // La cita nueva es un recurso nuevo: 201 la primera vez, 200 en el reintento.
+                return r.Valor!.Nueva
+                    ? Results.Created($"/api/citas/{r.Valor.Id}", r.Valor)
+                    : Results.Ok(r.Valor);
+            })
+            .AddEndpointFilter<FiltroIdempotencia>()
+            .ConValidacion<ReprogramarHttpCmd>()
+            .RequireRateLimiting(Tasa.Sensible)
+            .WithName("API-41");
+
+        // API-42 - CS-12: solo el prestador, y solo despues de la hora.
+        grupo.MapPost("/asistencia", async (
+                Guid id, AsistenciaHttpCmd cmd,
+                IServicioAgenda agenda, IServicioIdentidad identidad, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+
+                return Respuestas.DeResultado(await agenda.RegistrarAsistenciaAsync(
+                    id, await AutorAsync(quien, identidad, usuarioId.Value), cmd.Asistio));
+            })
+            .ConValidacion<AsistenciaHttpCmd>()
+            .RequireRateLimiting(Tasa.General)
+            .WithName("API-42");
+    }
+
+    private static IResult FaltaLaClave() => Results.Problem(
+        title: "Falta la clave de idempotencia",
+        detail: $"Falta la cabecera {FiltroIdempotencia.Cabecera}.",
+        statusCode: StatusCodes.Status400BadRequest);
 }

@@ -78,3 +78,33 @@ public sealed class ValidadorAgendar : AbstractValidator<AgendarHttpCmd>
         RuleFor(x => x.NotaBuscador).MaximumLength(ServicioAgenda.LargoMaximoNota);
     }
 }
+
+/// <summary>
+/// API-39 y API-40. El motivo es opcional en el rechazo y en la cancelación con tiempo; que
+/// sea OBLIGATORIO en una cancelación tardía (RN-S4-04) no se puede decidir aquí, porque
+/// depende de la hora de la cita: lo aplica <see cref="ServicioAgenda"/>.
+/// </summary>
+public sealed class ValidadorMotivo : AbstractValidator<MotivoHttpCmd>
+{
+    public ValidadorMotivo() =>
+        RuleFor(x => x.Motivo).MaximumLength(ServicioAgenda.LargoMaximoMotivo);
+}
+
+/// <summary>API-41. Que la hora nueva exista y sea reservable lo resuelve el servicio.</summary>
+public sealed class ValidadorReprogramar : AbstractValidator<ReprogramarHttpCmd>
+{
+    public ValidadorReprogramar()
+    {
+        RuleFor(x => x.BloqueNuevoId).NotEmpty().WithMessage("Elige la hora nueva.");
+        RuleFor(x => x.Motivo).MaximumLength(ServicioAgenda.LargoMaximoMotivo);
+    }
+}
+
+/// <summary>
+/// API-42. No tiene nada que validar —un booleano es un booleano— pero el validador existe
+/// igual: el filtro de la API rechaza lo que no tiene validador registrado, a propósito, para
+/// que agregar un comando sin el suyo no deje un hueco silencioso (seguridad.md, sección 3).
+/// </summary>
+public sealed class ValidadorAsistencia : AbstractValidator<AsistenciaHttpCmd>
+{
+}

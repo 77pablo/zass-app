@@ -349,6 +349,117 @@ public class AgendaIntegracionPruebas : IAsyncLifetime
         Assert.False(await ctx.Citas.AnyAsync(c => c.BloqueHorarioId == elCuarto));
     }
 
+    // ========================================================= CC-06
+
+    /// <summary>
+    /// El abrazo mortal al reprogramar. Dos citas que intentan intercambiarse la hora a la
+    /// vez: la A quiere pasar de X a Y y la B de Y a X.
+    ///
+    /// <para>
+    /// Sin un orden de bloqueo, A toma X y pide Y mientras B toma Y y pide X: PostgreSQL
+    /// detecta el ciclo y **mata una transacción** con <c>40P01</c>. Funciona —la base no se
+    /// corrompe— pero quien reprogramó recibe un error 500 que no debería existir. Con los
+    /// bloques pedidos ORDENADOS POR ID, el ciclo no se puede formar: las dos transacciones
+    /// piden la misma fila primero, una espera a la otra y las dos terminan.
+    /// </para>
+    ///
+    /// Lo que se afirma es eso: **ninguna muere**. Que las dos acaben en 409 es lo correcto
+    /// de paso (no se pueden intercambiar dos horas ya reservadas), pero lo que esta prueba
+    /// vigila es que el fallo sea el del negocio y no el del motor.
+    /// </summary>
+    [Fact]
+    public async Task Dos_reprogramaciones_cruzadas_no_se_matan_entre_ellas()
+    {
+        var x = await UnBloqueLibreAsync(_reloj.Ahora.AddDays(3));
+        var y = await UnBloqueLibreAsync(_reloj.Ahora.AddDays(4));
+
+        var preparar = UnaReplica();
+        var citaX = await preparar.Agenda.AgendarAsync(new AgendarCmd(
+            _usuarioBuscador, x, $"cc06-x-{Guid.NewGuid():N}", null));
+        var citaY = await preparar.Agenda.AgendarAsync(new AgendarCmd(
+            _usuarioBuscador, y, $"cc06-y-{Guid.NewGuid():N}", null));
+        Assert.True(citaX.Exito, citaX.Mensaje);
+        Assert.True(citaY.Exito, citaY.Mensaje);
+
+        var a = UnaReplica();
+        var b = UnaReplica();
+        var autor = new AutorDeCambio(_usuarioBuscador, null);
+
+        // Las dos empiezan juntas, y cada una pide el bloque que la otra tiene.
+        using var partida = new Barrier(2);
+        var tareas = new[]
+        {
+            Task.Run(() =>
+            {
+                partida.SignalAndWait();
+                return a.Agenda.ReprogramarAsync(new ReprogramarCitaCmd(
+                    citaX.Valor!.Id, y, autor, $"cc06-ra-{Guid.NewGuid():N}", null));
+            }),
+            Task.Run(() =>
+            {
+                partida.SignalAndWait();
+                return b.Agenda.ReprogramarAsync(new ReprogramarCitaCmd(
+                    citaY.Valor!.Id, x, autor, $"cc06-rb-{Guid.NewGuid():N}", null));
+            }),
+        };
+
+        // Si una muriera por el ciclo, esto lanzaría en vez de devolver un Resultado.
+        var resultados = await Task.WhenAll(tareas);
+
+        Assert.All(resultados, r =>
+            Assert.True(r.Codigo is Fallas.Conflicto or Fallas.Validacion or Fallas.NoEncontrado
+                        || r.Exito,
+                $"terminó con {r.Codigo}: {r.Mensaje}"));
+
+        // Y la base queda consistente: cada bloque con su cita activa, ninguno suelto.
+        using var ctx = ContextoDePrueba.Crear();
+        foreach (var bloque in new[] { x, y })
+        {
+            var estado = (await ctx.Bloques.SingleAsync(bl => bl.Id == bloque)).Estado;
+            var activas = await ctx.Citas.CountAsync(
+                c => c.BloqueHorarioId == bloque
+                     && (c.Estado == EstadoCita.Solicitada || c.Estado == EstadoCita.Confirmada));
+            Assert.Equal(estado == EstadoBloque.Reservado ? 1 : 0, activas);
+        }
+    }
+
+    /// <summary>
+    /// Reprogramar de verdad, contra la base: la vieja queda cerrada, la nueva nace ligada a
+    /// la primera de la cadena y los dos bloques cambian de estado en la misma transacción.
+    /// </summary>
+    [Fact]
+    public async Task Reprogramar_mueve_las_dos_horas_y_conserva_el_vinculo()
+    {
+        var viejo = await UnBloqueLibreAsync(_reloj.Ahora.AddDays(3));
+        var nuevo = await UnBloqueLibreAsync(_reloj.Ahora.AddDays(5));
+        var replica = UnaReplica();
+
+        var original = await replica.Agenda.AgendarAsync(new AgendarCmd(
+            _usuarioBuscador, viejo, $"rp-{Guid.NewGuid():N}", null));
+        Assert.True(original.Exito, original.Mensaje);
+
+        var r = await replica.Agenda.ReprogramarAsync(new ReprogramarCitaCmd(
+            original.Valor!.Id, nuevo, new AutorDeCambio(_usuarioBuscador, null),
+            $"rp2-{Guid.NewGuid():N}", "Me surgió un viaje"));
+
+        Assert.True(r.Exito, r.Mensaje);
+
+        using var ctx = ContextoDePrueba.Crear();
+        Assert.Equal(EstadoBloque.Libre, (await ctx.Bloques.SingleAsync(b => b.Id == viejo)).Estado);
+        Assert.Equal(EstadoBloque.Reservado, (await ctx.Bloques.SingleAsync(b => b.Id == nuevo)).Estado);
+
+        var vieja = await ctx.Citas.SingleAsync(c => c.Id == original.Valor.Id);
+        var nacida = await ctx.Citas.SingleAsync(c => c.Id == r.Valor!.Id);
+        Assert.Equal(EstadoCita.Reprogramada, vieja.Estado);
+        Assert.Equal(EstadoCita.Confirmada, nacida.Estado);
+        Assert.Equal(vieja.Id, nacida.CitaOrigenId);
+
+        // R-1 no se queja: la vieja ya no es activa, así que el bloque viejo queda libre de
+        // verdad y la nueva es la única activa sobre el bloque nuevo.
+        Assert.Equal(1, await ctx.Citas.CountAsync(
+            c => c.BloqueHorarioId == nuevo && c.Estado == EstadoCita.Confirmada));
+    }
+
     /// <summary>
     /// El camino completo de CU-11: definir el horario genera bloques de verdad, y el
     /// calendario público los muestra. Es lo que convierte la regla en horas reservables.
@@ -357,7 +468,10 @@ public class AgendaIntegracionPruebas : IAsyncLifetime
     public async Task Definir_el_horario_genera_bloques_y_el_calendario_los_muestra()
     {
         var replica = UnaReplica();
-        var manana = _reloj.Ahora.AddDays(1);
+
+        // El dia de la semana se toma del calendario CHILENO: con el UTC, una franja nocturna
+        // caeria en el dia siguiente y esta prueba no encontraria sus propios bloques.
+        var manana = HoraDeChile.DiaLocal(_reloj.Ahora).AddDays(1);
         var dia = (short)(((int)manana.DayOfWeek + 6) % 7 + 1);
 
         var r = await replica.Agenda.DefinirDisponibilidadAsync(new DefinirDisponibilidadCmd(
@@ -365,7 +479,8 @@ public class AgendaIntegracionPruebas : IAsyncLifetime
             new[] { new FranjaCmd(dia, new TimeOnly(9, 0), new TimeOnly(11, 0), 30) }));
 
         Assert.True(r.Exito, r.Mensaje);
-        Assert.Equal(4 * ServicioAgenda.SemanasDeVentana, r.Valor);
+        Assert.True(r.Valor >= 4 * (ServicioAgenda.SemanasDeVentana - 1),
+            $"se generaron {r.Valor} bloques, muy pocos para 8 semanas");
 
         var calendario = await replica.Agenda.BloquesLibresAsync(
             _servicioAutomatico, _reloj.Ahora, _reloj.Ahora.AddDays(14));
@@ -373,5 +488,10 @@ public class AgendaIntegracionPruebas : IAsyncLifetime
         Assert.True(calendario.Exito, calendario.Mensaje);
         Assert.NotEmpty(calendario.Valor!.Bloques);
         Assert.All(calendario.Valor.Bloques, b => Assert.Equal("libre", b.Estado));
+
+        // Y a la hora que el prestador publico, no tres horas corrido.
+        Assert.All(calendario.Valor.Bloques, b => Assert.InRange(
+            TimeOnly.FromDateTime(HoraDeChile.ALocal(b.InicioEn)),
+            new TimeOnly(9, 0), new TimeOnly(10, 30)));
     }
 }

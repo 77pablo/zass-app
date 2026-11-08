@@ -62,6 +62,45 @@ public interface IServicioAgenda
     Task<IReadOnlyList<CitaDto>> MisCitasAsync(
         Guid usuarioId, Guid? perfilPrestadorId, CancellationToken ct = default);
 
+    // ------------------------------------------------------------- CU-13: responder
+
+    /// <summary>API-38. El prestador confirma una cita solicitada (T3).</summary>
+    Task<Resultado<CitaDto>> ConfirmarAsync(
+        Guid citaId, AutorDeCambio autor, CancellationToken ct = default);
+
+    /// <summary>
+    /// API-39. El prestador rechaza (T4). El motivo es opcional, pero si lo escribe se
+    /// guarda: quien recibe un «no» merece saber por qué cuando hay un por qué.
+    /// </summary>
+    Task<Resultado<CitaDto>> RechazarAsync(
+        Guid citaId, AutorDeCambio autor, string? motivo, CancellationToken ct = default);
+
+    // ------------------------------------------------------------- CU-14: cambiar el plan
+
+    /// <summary>
+    /// API-40. Cancela (T6). Cualquiera de los dos puede, y con menos de 12 horas queda
+    /// marcado como cancelación tardía en el historial (RN-S4-04), con motivo obligatorio.
+    /// </summary>
+    Task<Resultado<CitaDto>> CancelarAsync(CancelarCitaCmd cmd, CancellationToken ct = default);
+
+    /// <summary>
+    /// API-41. Reprogramar es **cancelar y crear** (RN-S4-05, T7): la cita vieja queda
+    /// cerrada y nace una nueva ligada a la PRIMERA de la cadena, para no perder la
+    /// elegibilidad de reseña. Toca dos bloques, así que encapsula CC-06.
+    /// </summary>
+    Task<Resultado<CitaDto>> ReprogramarAsync(
+        ReprogramarCitaCmd cmd, CancellationToken ct = default);
+
+    // ------------------------------------------------------------- CS-12: asistencia
+
+    /// <summary>
+    /// API-42. Solo el prestador, y solo después de la hora (T9, T10). Es la defensa que
+    /// cierra CU-16: si el buscador pudiera marcarla, bastaría agendar y automarcar para
+    /// fabricar elegibilidad de reseña.
+    /// </summary>
+    Task<Resultado<CitaDto>> RegistrarAsistenciaAsync(
+        Guid citaId, AutorDeCambio autor, bool asistio, CancellationToken ct = default);
+
     // ------------------------------------------------------------- lo que consume MOD-11
 
     /// <summary>
@@ -119,6 +158,35 @@ public sealed record AgendarCmd(
 
 /// <summary>Lo que llega por HTTP. El buscador sale de la sesión; la clave, de la cabecera.</summary>
 public sealed record AgendarHttpCmd(Guid BloqueId, string? NotaBuscador);
+
+/// <summary>
+/// Quién actúa sobre una cita. Lleva las dos cosas porque de una cita se puede ser buscador o
+/// prestador, y de eso depende lo que se permite: el prestador puede reprogramar dentro de las
+/// 2 horas y el buscador no (estados-cita.md, sección 5).
+///
+/// <paramref name="PerfilPrestadorId"/> es nulo cuando quien actúa no tiene perfil de
+/// prestador. Lo pone quien compone a partir de la sesión, **nunca el cuerpo de la solicitud**.
+/// </summary>
+public sealed record AutorDeCambio(Guid UsuarioId, Guid? PerfilPrestadorId);
+
+public sealed record CancelarCitaCmd(
+    Guid CitaId,
+    AutorDeCambio Autor,
+    string ClaveIdempotencia,
+    string? Motivo);
+
+public sealed record ReprogramarCitaCmd(
+    Guid CitaId,
+    Guid BloqueNuevoId,
+    AutorDeCambio Autor,
+    string ClaveIdempotencia,
+    string? Motivo);
+
+public sealed record MotivoHttpCmd(string? Motivo);
+
+public sealed record ReprogramarHttpCmd(Guid BloqueNuevoId, string? Motivo);
+
+public sealed record AsistenciaHttpCmd(bool Asistio);
 
 // ----------------------------------------------------------------------- Lo que sale
 

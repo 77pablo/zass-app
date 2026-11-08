@@ -134,18 +134,45 @@ public class AgendaPruebas
 
     // ========================================================= CU-11 disponibilidad
 
+    /// <summary>
+    /// Lunes de 09:00 a 11:00 en bloques de 30 minutos. Lo que se afirma es la REGLA —son
+    /// lunes chilenos, a esas cuatro horas de pared, dentro de la ventana y todos libres— y
+    /// no un total: el total depende de cuántos lunes caen en las 8 semanas y de cuántos
+    /// bloques de hoy ya pasaron, y escribirlo a mano solo congela el almanaque de un día.
+    ///
+    /// Antes decía 32 y pasaba por el motivo equivocado: las horas se tomaban como UTC, los
+    /// cuatro bloques de hoy caían ANTES de «ahora» y se descartaban los cuatro.
+    /// </summary>
     [Fact]
     public async Task Definir_disponibilidad_genera_los_bloques_de_la_ventana()
     {
-        // Lunes de 09:00 a 11:00, bloques de 30 minutos: 4 por semana, 8 semanas.
         var r = await _servicio.DefinirDisponibilidadAsync(new DefinirDisponibilidadCmd(
             _prestador.Id, _automatico.Id,
             new[] { new FranjaCmd(1, new TimeOnly(9, 0), new TimeOnly(11, 0), 30) }));
 
         Assert.True(r.Exito, r.Mensaje);
-        Assert.Equal(4 * ServicioAgenda.SemanasDeVentana, r.Valor);
-        Assert.All(_base.Bloques, b => Assert.Equal(EstadoBloque.Libre, b.Estado));
-        Assert.All(_base.Bloques, b => Assert.Equal(DayOfWeek.Monday, b.InicioEn.DayOfWeek));
+        Assert.Equal(_base.Bloques.Count, r.Valor);
+        Assert.NotEmpty(_base.Bloques);
+
+        var horasLocales = _base.Bloques
+            .Select(b => TimeOnly.FromDateTime(HoraDeChile.ALocal(b.InicioEn)))
+            .Distinct().OrderBy(h => h).ToList();
+        Assert.Equal(
+            new[] { new TimeOnly(9, 0), new TimeOnly(9, 30), new TimeOnly(10, 0), new TimeOnly(10, 30) },
+            horasLocales);
+
+        Assert.All(_base.Bloques, b =>
+        {
+            Assert.Equal(EstadoBloque.Libre, b.Estado);
+            Assert.Equal(DayOfWeek.Monday, HoraDeChile.ALocal(b.InicioEn).DayOfWeek);
+            Assert.True(b.InicioEn > Ahora, $"{b.InicioEn:O} no es futuro");
+            Assert.True(b.InicioEn <= Ahora.AddDays(ServicioAgenda.SemanasDeVentana * 7));
+        });
+
+        // Hoy ES lunes y «ahora» son las 09:00 de Chile (12:00 UTC): el bloque de las 09:00
+        // ya empezó y el primero que queda es el de las 09:30 de hoy.
+        Assert.Equal(new TimeOnly(9, 30),
+            TimeOnly.FromDateTime(HoraDeChile.ALocal(_base.Bloques.Min(b => b.InicioEn))));
     }
 
     [Fact]

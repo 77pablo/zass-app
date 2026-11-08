@@ -34,6 +34,12 @@ public sealed class ServicioAgenda : IServicioAgenda
     public const int LargoMaximoNota = 500;
     public const int LargoMaximoMotivo = 300;
 
+    /// <summary>
+    /// CC-06. Si una reprogramación espera más que esto por un bloqueo, falla rápido con un
+    /// mensaje claro en vez de dejar a alguien mirando una pantalla que no responde.
+    /// </summary>
+    public static readonly TimeSpan EsperaDeBloqueo = TimeSpan.FromSeconds(3);
+
     private readonly IRepositorioAgenda _repo;
     private readonly IUnidadDeTrabajo _trabajo;
     private readonly IRelojSistema _reloj;
@@ -117,7 +123,7 @@ public sealed class ServicioAgenda : IServicioAgenda
                 HoraInicio = f.HoraInicio,
                 HoraFin = f.HoraFin,
                 DuracionBloqueMin = f.DuracionBloqueMin,
-                VigenteDesde = DateOnly.FromDateTime(_reloj.Ahora),
+                VigenteDesde = HoraDeChile.DiaLocal(_reloj.Ahora),
             })
             .ToList();
 
@@ -141,7 +147,7 @@ public sealed class ServicioAgenda : IServicioAgenda
             foreach (var vieja in anteriores.Where(d => d.Activa))
             {
                 vieja.Activa = false;
-                vieja.VigenteHasta = DateOnly.FromDateTime(ahora);
+                vieja.VigenteHasta = HoraDeChile.DiaLocal(ahora);
                 await _repo.QuitarBloquesLibresDeAsync(vieja.Id, ahora, t);
             }
 
@@ -172,10 +178,17 @@ public sealed class ServicioAgenda : IServicioAgenda
         var yaEstan = (await _repo.IniciosYaGeneradosAsync(prestadorServicioId, desde, hasta, ct))
             .ToHashSet();
 
+        // Los dias se recorren en el calendario CHILENO, no en el UTC: a las 02:00 UTC del
+        // martes en Chile todavia es lunes, y «lunes» es lo que el prestador publico.
         var nuevos = reglas
             .SelectMany(r => r.GenerarBloques(
-                DateOnly.FromDateTime(desde), DateOnly.FromDateTime(hasta)))
-            .Where(b => b.InicioEn > desde && !yaEstan.Contains(b.InicioEn))
+                HoraDeChile.DiaLocal(desde), HoraDeChile.DiaLocal(hasta)))
+            // Los dos bordes, y el de arriba hace falta: el generador recorre DIAS locales
+            // completos, asi que el ultimo dia de la ventana entrega tambien los bloques
+            // posteriores a la hora de corte. Sin este filtro, «8 semanas» eran 8 semanas y
+            // tres bloques, y el numero crecia o no segun la hora a la que se guardara.
+            .Where(b => b.InicioEn > desde && b.InicioEn <= hasta
+                        && !yaEstan.Contains(b.InicioEn))
             .ToList();
 
         if (nuevos.Count == 0) return 0;
@@ -405,6 +418,313 @@ public sealed class ServicioAgenda : IServicioAgenda
             .Select(c => ADto(c, nueva: false))
             .ToList();
     }
+
+    // ------------------------------------------------------------- CU-13: responder
+
+    public Task<Resultado<CitaDto>> ConfirmarAsync(
+        Guid citaId, AutorDeCambio autor, CancellationToken ct = default) =>
+        _trabajo.EnTransaccionAsync(async t =>
+        {
+            var (cita, falla) = await ParaResponderAsync(citaId, autor, t);
+            if (falla is not null) return falla;
+
+            var ahora = _reloj.Ahora;
+            if (cita!.ExpiraEn is { } limite && ahora > limite)
+                return Resultado.Falla<CitaDto>(Fallas.Conflicto,
+                    "El plazo de 24 horas para responder ya pasó y la hora se liberó.");
+
+            var anterior = cita.Estado;
+            var r = cita.Confirmar();
+            if (!r.Exito) return Resultado.Falla<CitaDto>(r.Codigo!, r.Mensaje!);
+
+            await CerrarCambioAsync(cita, anterior, TipoCambio.Confirmacion, autor, null, false, ahora, t);
+            return Resultado.Ok(ADto(cita, nueva: false));
+        }, ct);
+
+    public Task<Resultado<CitaDto>> RechazarAsync(
+        Guid citaId, AutorDeCambio autor, string? motivo, CancellationToken ct = default) =>
+        _trabajo.EnTransaccionAsync(async t =>
+        {
+            var limpio = Limpiar(motivo);
+            if (limpio is { Length: > LargoMaximoMotivo })
+                return Resultado.Falla<CitaDto>(Fallas.Validacion,
+                    $"El motivo no puede superar los {LargoMaximoMotivo} caracteres.");
+
+            var (cita, falla) = await ParaResponderAsync(citaId, autor, t);
+            if (falla is not null) return falla;
+
+            var anterior = cita!.Estado;
+            var r = cita.Rechazar();
+            if (!r.Exito) return Resultado.Falla<CitaDto>(r.Codigo!, r.Mensaje!);
+
+            // T4: la hora vuelve a estar disponible para quien sea.
+            cita.BloqueHorario?.Liberar();
+            await CerrarCambioAsync(
+                cita, anterior, TipoCambio.Rechazo, autor, limpio, false, _reloj.Ahora, t);
+            return Resultado.Ok(ADto(cita, nueva: false));
+        }, ct);
+
+    // ------------------------------------------------------------- CU-14: cambiar el plan
+
+    public async Task<Resultado<CitaDto>> CancelarAsync(
+        CancelarCitaCmd cmd, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(cmd.ClaveIdempotencia))
+            return Resultado.Falla<CitaDto>(Fallas.Validacion,
+                "Falta la clave de idempotencia de la solicitud.");
+
+        var motivo = Limpiar(cmd.Motivo);
+        if (motivo is { Length: > LargoMaximoMotivo })
+            return Resultado.Falla<CitaDto>(Fallas.Validacion,
+                $"El motivo no puede superar los {LargoMaximoMotivo} caracteres.");
+
+        return await _trabajo.EnTransaccionAsync(async t =>
+        {
+            var cita = await _repo.CitaParaCambioAsync(cmd.CitaId, t);
+            var quien = QuienEs(cita, cmd.Autor);
+            if (quien is Papel.Ninguno)
+                return Resultado.Falla<CitaDto>(Fallas.NoEncontrado, "Esa cita no existe.");
+
+            // CC-04 contra el DATO y no con una tabla aparte: si ya quedó cancelada, el
+            // reintento devuelve lo mismo en vez de un conflicto. Un reintento de red no debe
+            // producir un segundo aviso de cancelación (RN-S4-08).
+            if (cita!.Estado == EstadoCita.Cancelada)
+                return Resultado.Ok(ADto(cita, nueva: false));
+
+            var ahora = _reloj.Ahora;
+            var tardia = cita.EsTardia(ahora);
+
+            // RN-S4-04 y TBL-19: en una cancelación tardía el motivo es obligatorio. Quien se
+            // queda con la hora vacía a última hora merece saber por qué.
+            if (tardia && motivo is null)
+                return Resultado.Falla<CitaDto>(Fallas.ReglaDeNegocio,
+                    "Faltan menos de 12 horas: escribe el motivo de la cancelación.");
+
+            var anterior = cita.Estado;
+            var r = cita.Cancelar();
+            if (!r.Exito) return Resultado.Falla<CitaDto>(r.Codigo!, r.Mensaje!);
+
+            cita.BloqueHorario?.Liberar();
+            await CerrarCambioAsync(
+                cita, anterior, TipoCambio.Cancelacion, cmd.Autor, motivo, tardia, ahora, t);
+            return Resultado.Ok(ADto(cita, nueva: false));
+        }, ct);
+    }
+
+    public async Task<Resultado<CitaDto>> ReprogramarAsync(
+        ReprogramarCitaCmd cmd, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(cmd.ClaveIdempotencia))
+            return Resultado.Falla<CitaDto>(Fallas.Validacion,
+                "Falta la clave de idempotencia de la solicitud.");
+
+        // El reintento devuelve la cita que ya nació de esta misma intención. Va fuera de la
+        // transacción para no abrir una por un doble clic.
+        if (await _repo.CitaPorClaveAsync(cmd.ClaveIdempotencia, ct) is { } yaExiste)
+            return Resultado.Ok(ADto(yaExiste, nueva: false));
+
+        return await _trabajo.EnTransaccionAsync(async t =>
+        {
+            // CC-06: si algo imprevisto hace esperar, fallar rápido y con un mensaje claro.
+            await _repo.FijarEsperaDeBloqueoAsync(EsperaDeBloqueo, t);
+
+            var cita = await _repo.CitaParaCambioAsync(cmd.CitaId, t);
+            var quien = QuienEs(cita, cmd.Autor);
+            if (quien is Papel.Ninguno)
+                return Resultado.Falla<CitaDto>(Fallas.NoEncontrado, "Esa cita no existe.");
+            if (cita!.BloqueHorarioId == cmd.BloqueNuevoId)
+                return Resultado.Falla<CitaDto>(Fallas.Validacion, "Esa es la misma hora que ya tienes.");
+
+            if (await _repo.CitaPorClaveAsync(cmd.ClaveIdempotencia, t) is { } carrera)
+                return Resultado.Ok(ADto(carrera, nueva: false));
+
+            if (cita.Estado != EstadoCita.Confirmada)
+                return Resultado.Falla<CitaDto>(Fallas.Conflicto,
+                    "Solo se puede reprogramar una cita confirmada.");
+
+            var ahora = _reloj.Ahora;
+
+            // Sección 5 de estados-cita.md: el prestador puede mover su hora dentro de las 2
+            // horas y el buscador no. Es la agenda del prestador, y si le surge un imprevisto
+            // impedirle moverla solo produce una inasistencia; del lado del buscador el
+            // límite protege al prestador de un cambio que ya no alcanza a llenar.
+            if (quien is Papel.Buscador
+                && cita.BloqueHorario is { } viejo
+                && viejo.AnticipacionHoras(ahora) < AnticipacionMinimaHoras)
+                return Resultado.Falla<CitaDto>(Fallas.ReglaDeNegocio,
+                    $"Faltan menos de {AnticipacionMinimaHoras:0} horas: ya no puedes mover esta hora. "
+                    + "Puedes cancelarla explicando el motivo.");
+
+            // CC-06: los dos bloques, bloqueados ORDENADOS POR ID. El orden global es lo que
+            // hace imposible el ciclo entre dos reprogramaciones cruzadas.
+            var bloques = await _repo.TomarDosBloquesAsync(cita.BloqueHorarioId, cmd.BloqueNuevoId, t);
+            var nuevoBloque = bloques.FirstOrDefault(b => b.Id == cmd.BloqueNuevoId);
+            var bloqueActual = bloques.FirstOrDefault(b => b.Id == cita.BloqueHorarioId);
+            if (nuevoBloque is null)
+                return Resultado.Falla<CitaDto>(Fallas.NoEncontrado,
+                    "Esa hora ya no existe. Vuelve a cargar el calendario.");
+
+            if (nuevoBloque.PrestadorServicioId != cita.PrestadorServicioId)
+                return Resultado.Falla<CitaDto>(Fallas.Validacion,
+                    "La hora nueva tiene que ser del mismo servicio.");
+            if (nuevoBloque.Estado == EstadoBloque.Bloqueado)
+                return Resultado.Falla<CitaDto>(Fallas.Conflicto, "El prestador bloqueó ese horario.");
+            if (nuevoBloque.Estado != EstadoBloque.Libre)
+                return Resultado.Falla<CitaDto>(Fallas.Conflicto,
+                    "Alguien tomó esa hora recién. Elige otra, por favor.");
+            if (nuevoBloque.AnticipacionHoras(ahora) < AnticipacionMinimaHoras)
+                return Resultado.Falla<CitaDto>(Fallas.Validacion,
+                    $"Las horas se toman con al menos {AnticipacionMinimaHoras:0} horas de anticipación.");
+
+            var bloqueos = await _repo.BloqueosDePrestadorAsync(
+                cita.PerfilPrestadorId, nuevoBloque.InicioEn, nuevoBloque.FinEn, t);
+            if (bloqueos.Any(x => x.DesdeEn < nuevoBloque.FinEn && nuevoBloque.InicioEn < x.HastaEn))
+                return Resultado.Falla<CitaDto>(Fallas.Conflicto, "El prestador bloqueó ese horario.");
+
+            // T7: la vieja se cierra y su bloque vuelve a estar libre.
+            var anterior = cita.Estado;
+            var eraTardia = cita.EsTardia(ahora);
+            cita.MarcarReprogramada();
+            cita.Version++;
+            bloqueActual?.Liberar();
+            _repo.AgregarCambio(new CambioCita
+            {
+                CitaId = cita.Id,
+                Tipo = TipoCambio.Reprogramacion,
+                EstadoAnterior = anterior,
+                EstadoNuevo = cita.Estado,
+                RealizadoPor = cmd.Autor.UsuarioId,
+                Motivo = Limpiar(cmd.Motivo),
+                EsTardio = eraTardia,
+                OcurridoEn = ahora,
+            });
+
+            // RN-S4-05: el vínculo apunta a la PRIMERA de la cadena, nunca a la anterior. Así
+            // la elegibilidad de reseña está a un salto y ningún eslabón intermedio la puede
+            // romper (estados-cita.md, sección 4).
+            var nacida = new Cita
+            {
+                Codigo = Cita.GenerarCodigo(),
+                BloqueHorarioId = nuevoBloque.Id,
+                BuscadorId = cita.BuscadorId,
+                PrestadorServicioId = cita.PrestadorServicioId,
+                PerfilPrestadorId = cita.PerfilPrestadorId,
+                CitaOrigenId = cita.CitaOrigenId ?? cita.Id,
+                Estado = EstadoCita.Confirmada,
+                Modo = cita.Modo,
+                NotaBuscador = cita.NotaBuscador,
+                ClaveIdempotencia = cmd.ClaveIdempotencia,
+                CreadaEn = ahora,
+            };
+            nuevoBloque.Reservar();
+            _repo.AgregarCita(nacida);
+            _repo.AgregarCambio(new CambioCita
+            {
+                CitaId = nacida.Id,
+                Tipo = TipoCambio.Creacion,
+                EstadoAnterior = null,
+                EstadoNuevo = nacida.Estado,
+                RealizadoPor = cmd.Autor.UsuarioId,
+                OcurridoEn = ahora,
+            });
+
+            _auditor.Registrar(Auditar.Entrada(
+                "reprogramar_cita", "cita", cita.Id, ahora, actorId: cmd.Autor.UsuarioId,
+                contexto: new { hacia = nuevoBloque.Id, codigoNuevo = nacida.Codigo, tardio = eraTardia }));
+            await _trabajo.GuardarAsync(t);
+
+            nacida.BloqueHorario = nuevoBloque;
+            nacida.PrestadorServicio = cita.PrestadorServicio;
+            nacida.PerfilPrestador = cita.PerfilPrestador;
+            return Resultado.Ok(ADto(nacida, nueva: true));
+        }, ct);
+    }
+
+    // ------------------------------------------------------------- CS-12: asistencia
+
+    public Task<Resultado<CitaDto>> RegistrarAsistenciaAsync(
+        Guid citaId, AutorDeCambio autor, bool asistio, CancellationToken ct = default) =>
+        _trabajo.EnTransaccionAsync(async t =>
+        {
+            var cita = await _repo.CitaParaCambioAsync(citaId, t);
+
+            // Solo el prestador, y el buscador recibe el MISMO 404 que un desconocido. Es la
+            // defensa que cierra CU-16: si el buscador pudiera marcarla, bastaría agendar y
+            // automarcar para fabricar elegibilidad de reseña.
+            if (QuienEs(cita, autor) is not Papel.Prestador)
+                return Resultado.Falla<CitaDto>(Fallas.NoEncontrado, "Esa cita no existe.");
+
+            var anterior = cita!.Estado;
+            var r = cita.RegistrarAsistencia(asistio);
+            if (!r.Exito) return Resultado.Falla<CitaDto>(r.Codigo!, r.Mensaje!);
+
+            // T9/T10: el bloque pasa a vencido, no vuelve a estar libre: la hora ya ocurrió.
+            cita.BloqueHorario?.Vencer();
+            await CerrarCambioAsync(
+                cita, anterior, TipoCambio.Asistencia, autor, null, false, _reloj.Ahora, t);
+            return Resultado.Ok(ADto(cita, nueva: false));
+        }, ct);
+
+    // ------------------------------------------------------------- lo compartido
+
+    private enum Papel { Ninguno, Buscador, Prestador }
+
+    /// <summary>
+    /// Qué es quien actúa respecto de esta cita. <c>Ninguno</c> también cuando la cita no
+    /// existe: quien llama responde 404 en los dos casos, y así probar identificadores no
+    /// dice de quién es una cita.
+    /// </summary>
+    private static Papel QuienEs(Cita? cita, AutorDeCambio autor)
+    {
+        if (cita is null) return Papel.Ninguno;
+        if (autor.PerfilPrestadorId is { } perfil && cita.PerfilPrestadorId == perfil)
+            return Papel.Prestador;
+        return cita.BuscadorId == autor.UsuarioId ? Papel.Buscador : Papel.Ninguno;
+    }
+
+    /// <summary>Confirmar y rechazar son del prestador, y solo desde `solicitada`.</summary>
+    private async Task<(Cita? Cita, Resultado<CitaDto>? Falla)> ParaResponderAsync(
+        Guid citaId, AutorDeCambio autor, CancellationToken ct)
+    {
+        var cita = await _repo.CitaParaCambioAsync(citaId, ct);
+        return QuienEs(cita, autor) is Papel.Prestador
+            ? (cita, null)
+            : (null, Resultado.Falla<CitaDto>(Fallas.NoEncontrado, "Esa cita no existe."));
+    }
+
+    /// <summary>
+    /// El historial inmutable de TBL-19 y la versión optimista, en un solo sitio: cada
+    /// transición deja su fila, y olvidarse de una dejaría un cambio de estado sin rastro.
+    /// </summary>
+    private async Task CerrarCambioAsync(
+        Cita cita, EstadoCita anterior, TipoCambio tipo, AutorDeCambio autor,
+        string? motivo, bool tardio, DateTime ahora, CancellationToken ct)
+    {
+        cita.Version++;
+        _repo.AgregarCambio(new CambioCita
+        {
+            CitaId = cita.Id,
+            Tipo = tipo,
+            EstadoAnterior = anterior,
+            EstadoNuevo = cita.Estado,
+            RealizadoPor = autor.UsuarioId,
+            Motivo = motivo,
+            EsTardio = tardio,
+            OcurridoEn = ahora,
+        });
+
+        // El motivo puede ser privado: al registro de auditoría va el QUÉ y no el por qué. Si
+        // fue tardía sí va, porque es un hecho de la cita y no una explicación de nadie.
+        _auditor.Registrar(Auditar.Entrada(
+            $"cita_{tipo.ToString().ToLowerInvariant()}", "cita", cita.Id, ahora,
+            actorId: autor.UsuarioId,
+            contexto: new { estado = cita.Estado.ToString(), tardio }));
+
+        await _trabajo.GuardarAsync(ct);
+    }
+
+    private static string? Limpiar(string? texto) =>
+        string.IsNullOrWhiteSpace(texto) ? null : texto.Trim();
 
     // ------------------------------------------------------------- lo que consume MOD-11
 

@@ -157,6 +157,52 @@ public sealed class RepositorioAgendaEfCore : IRepositorioAgenda
         Guid perfilPrestadorId, CancellationToken ct = default) =>
         await Completa().Where(c => c.PerfilPrestadorId == perfilPrestadorId).ToListAsync(ct);
 
+    /// <summary>
+    /// Rastreada y con el bloque, para poder cambiarle el estado y liberar o vencer la hora
+    /// en la misma transacción.
+    /// </summary>
+    public Task<Cita?> CitaParaCambioAsync(Guid id, CancellationToken ct = default) =>
+        _ctx.Citas
+            .Include(c => c.BloqueHorario)
+            .Include(c => c.PrestadorServicio).ThenInclude(ps => ps!.Servicio)
+            .Include(c => c.PerfilPrestador)
+            .AsTracking()
+            .FirstOrDefaultAsync(c => c.Id == id, ct);
+
+    // ------------------------------------------------------- CC-06
+
+    /// <summary>
+    /// <c>ORDER BY id FOR UPDATE</c>, y el ORDER BY es la técnica entera: con un orden global
+    /// dos reprogramaciones cruzadas piden el mismo bloque primero, una espera a la otra y
+    /// las dos terminan. Sin él, PostgreSQL detecta el ciclo y mata una transacción, que
+    /// funciona pero le entrega al usuario un error que no debería existir.
+    ///
+    /// Si los dos identificadores son el mismo, <c>IN</c> devuelve una fila: quien llama ya
+    /// comprueba que origen y destino sean distintos.
+    /// </summary>
+    public async Task<IReadOnlyList<BloqueHorario>> TomarDosBloquesAsync(
+        Guid unoId, Guid otroId, CancellationToken ct = default) =>
+        await _ctx.Bloques
+            .FromSqlInterpolated(
+                $"SELECT * FROM bloques WHERE id IN ({unoId}, {otroId}) ORDER BY id FOR UPDATE")
+            .AsTracking()
+            .ToListAsync(ct);
+
+    /// <summary>
+    /// Local a la transacción, no a la conexión: la conexión vuelve al grupo y la reutiliza
+    /// otra solicitud, que no tiene por qué heredar este límite.
+    ///
+    /// Va por <c>set_config(..., is_local =&gt; true)</c> y no por <c>SET LOCAL</c> porque
+    /// <c>SET</c> no admite parámetros y habría que interpolar el valor en el SQL. Siendo una
+    /// función, el valor viaja como parámetro y no hay nada que interpolar.
+    /// </summary>
+    public Task FijarEsperaDeBloqueoAsync(TimeSpan limite, CancellationToken ct = default)
+    {
+        var ms = $"{Math.Max(1, (int)limite.TotalMilliseconds)}ms";
+        return _ctx.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT set_config('lock_timeout', {ms}, true)", ct);
+    }
+
     public void AgregarCita(Cita cita) => _ctx.Citas.Add(cita);
     public void AgregarCambio(CambioCita cambio) => _ctx.CambiosCita.Add(cambio);
 }
