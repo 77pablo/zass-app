@@ -240,6 +240,15 @@ Pablo quiere salir **a nivel nacional y gratis**. Hasta hoy todo estaba armado a
 (en una metrópoli de comunas pegadas un punto en el límite puede caer en la vecina: sirve para ubicar, no para fijar límites);
 solo existen sinónimos de búsqueda para los 5 rubros actuales; límite de 10 comunas por prestador (decisión mía).
 
+### Pruebas de arquitectura (8-nov-2026)
+
+Proyecto nuevo `Zass.Arquitectura.Pruebas` (NetArchTest, 15 pruebas): las capas van de adentro hacia afuera (Dominio no conoce a nadie,
+Aplicación no conoce Infraestructura ni Api, Infraestructura no conoce Api), el Dominio no usa marcos ni declara paquetes NuGet, la
+Aplicación no usa EF Core/Npgsql/ASP.NET, los **endpoints no tocan la base ni los repositorios**, y **cada módulo solo habla con su propio
+repositorio** (los demás lo consumen por su servicio). Más controles de que las reglas pueden fallar. **Se midió:** 5 violaciones reales
+inyectadas, 4 cazadas; la que no (un `typeof` suelto) es un límite de la herramienta y está anotada en el archivo.
+Atención al fusionar `agente/produccion`: su `/api/salud/lista` consulta la base; si lo hace desde `Zass.Api.Endpoints` esta prueba fallará y la solución es un puerto.
+
 ### Trabajo en paralelo con agentes (8-nov-2026) — CÓMO RETOMAR
 
 Cinco agentes trabajan en copias del repositorio (git worktrees) en `C:\Users\pdani\zass-agentes\<nombre>`, cada uno en su rama
