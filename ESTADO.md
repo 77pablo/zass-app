@@ -416,10 +416,14 @@ el tipo `FichaPublica`, pero no se comprobó que compile el frontend ni que sus 
 1. **HECHO** `frontend/src/funciones/agenda/servicio.ts` (+10 pruebas): las siete llamadas (API-35 a API-42), la
    clave de idempotencia (`nuevaClaveDeIdempotencia`, UNA por intención) y los ayudantes de hora de Chile
    (`horaDeChile`, `porDia`). **Falta la pantalla que lo use.** Los bloques se agrupan por día CHILENO, no UTC.
-2. En `Ficha.tsx`: elegir servicio → calendario de bloques → confirmar. Si el servicio es `Manual`, avisar ANTES
-   de elegir hora que el prestador debe confirmar (flujo 4C). Un visitante sin cuenta pasa por registrarse y
-   vuelve con el bloque elegido (flujo 4G). Los bloques vienen en UTC: mostrarlos en hora de Chile con
-   `Intl.DateTimeFormat('es-CL', { timeZone: 'America/Santiago' })`.
+2. **HECHO** `AgendarHora.tsx`, montado en `Ficha.tsx` (12 pruebas): elegir servicio → días y horas libres en hora de
+   Chile aviso de modo manual ANTES de elegir (4C) → nota → confirmar. Sin cuenta lleva a entrar/crear cuenta con
+   `state.despues` = la ficha con `?servicio=&bloque=` y vuelve con la hora elegida (4G, sin inventar mecanismo). La
+   clave de idempotencia nace al elegir la hora; reintentar reusa la misma y otra hora es otra intención. Un 409
+   suelta la elección, recarga el calendario y deja el aviso visible: **un defecto real que cazó su propia prueba**
+   (el aviso vivía dentro del panel que desaparecía; se reintrodujo y la prueba cae). **Falta verlo en un navegador:
+   no se abrió el sitio, solo pruebas con fetch simulado.** El enlace «Ver mis citas» apunta a `/mis-citas`, que
+   **todavía no existe** (paso 3).
 3. Página «Mis citas» (API-37) con cancelar/reprogramar y, para el prestador, confirmar/rechazar/asistencia.
 4. Después, la pantalla de reseñas (API-46 a API-53).
 Mantener la línea de diseño de `diseno/prototipo-comunidad.html`: sitio de comunidad, no formulario.

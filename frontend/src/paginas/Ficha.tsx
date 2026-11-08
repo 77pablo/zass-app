@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { ErrorApi } from '../api/cliente'
 import { fichaPublica, type FichaPublica } from '../funciones/busqueda/servicio'
 import { Icono } from '../marco/Icono'
@@ -8,6 +8,7 @@ import { capitalizar, duracion, etiquetaDeTipo, pesos, reputacion } from '../mar
 import { descripcionDeFicha } from '../marco/seo'
 import { useMeta } from '../marco/useMeta'
 import { useTitulo } from '../marco/useTitulo'
+import { AgendarHora } from './AgendarHora'
 import { NoEncontrada } from './NoEncontrada'
 
 /** Solo http(s): un `javascript:` en el sitio web de alguien no se vuelve un enlace. */
@@ -27,6 +28,8 @@ type Estado =
  */
 export function Ficha() {
   const { slug = '' } = useParams()
+  // Flujo 4G de CU-12: quien entro o se registro vuelve con el servicio y la hora que habia elegido.
+  const [busqueda] = useSearchParams()
   const [estado, setEstado] = useState<Estado | null>(null)
   const [intento, setIntento] = useState(0)
 
@@ -148,6 +151,13 @@ export function Ficha() {
               <p className="bloque-texto bloque-vacio">Todavía no publicó sus servicios.</p>
             )}
           </section>
+
+          <AgendarHora
+            slug={ficha.slug}
+            nombre={ficha.nombrePublico}
+            servicios={ficha.servicios}
+            elegidoInicial={{ servicio: busqueda.get('servicio'), bloque: busqueda.get('bloque') }}
+          />
 
           {ficha.credenciales.length > 0 && (
             <section className="bloque">

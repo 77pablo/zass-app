@@ -790,3 +790,40 @@ option { background: var(--panel-2); color: var(--texto); }
 .elegida-quitar:hover { color: var(--texto); background: var(--linea); }
 .filtro-comunas--editor { position: static; max-width: none; margin: 0; }
 .comunas-lista--editor .casilla { width: 100%; }
+
+/* ---------------------------------------------------------------- agendar una hora (CU-12) */
+.agenda-servicios { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
+.ficha-opcion {
+  display: grid; gap: 2px; text-align: left; padding: 12px 16px; min-height: 44px; cursor: pointer;
+  background: var(--vidrio); color: var(--texto); border: 1px solid var(--linea); border-radius: 12px; font: inherit;
+}
+.ficha-opcion span { color: var(--suave); font-size: 0.875rem; }
+.ficha-opcion:hover { border-color: var(--linea-fuerte); }
+.ficha-opcion--activa { border-color: var(--amarillo); background: var(--amarillo-suave); }
+.agenda-aviso {
+  margin: 12px 0; padding: 12px 14px; border-radius: 12px; font-size: 0.9375rem;
+  background: var(--amarillo-suave); border: 1px solid rgba(246, 200, 30, 0.35);
+}
+.agenda-dias { list-style: none; margin: 16px 0 8px; padding: 0; display: grid; gap: 16px; }
+.agenda-dia { margin: 0 0 8px; font-size: 0.9375rem; font-weight: 600; text-transform: capitalize; color: var(--suave); }
+.agenda-horas { display: flex; flex-wrap: wrap; gap: 8px; }
+.hora {
+  min-width: 68px; min-height: 44px; padding: 0 14px; cursor: pointer; font: inherit; font-variant-numeric: tabular-nums;
+  background: var(--vidrio); color: var(--texto); border: 1px solid var(--linea); border-radius: 10px;
+}
+.hora:hover { border-color: var(--amarillo); }
+.hora--activa { background: var(--amarillo); color: var(--tinta); border-color: var(--amarillo); font-weight: 700; }
+.agenda-resumen { margin-top: 20px; padding: 18px; border: 1px solid var(--linea-fuerte); border-radius: 16px; background: var(--panel); }
+.agenda-resumen h3 { margin: 0 0 8px; font-size: 1rem; }
+.campo-nota { display: grid; gap: 6px; margin: 14px 0; }
+.campo-nota textarea {
+  width: 100%; padding: 10px 12px; font: inherit; color: var(--texto); resize: vertical;
+  background: var(--vidrio); border: 1px solid var(--linea); border-radius: 10px;
+}
+.campo-nota small { color: var(--suave); justify-self: end; }
+.agenda-entrar { font-size: 0.9375rem; }
+.agenda-codigo {
+  display: inline-block; margin: 8px 0; padding: 6px 14px; border-radius: 10px; letter-spacing: 0.08em;
+  font-family: var(--mono); font-size: 1.25rem; font-weight: 700; background: var(--amarillo-suave); border: 1px solid var(--amarillo);
+}
+.agenda--lista { border-color: var(--neon); }
