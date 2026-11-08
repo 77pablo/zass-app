@@ -103,7 +103,27 @@ public class FichaPublicaPruebas
         var servicio = Assert.Single(ficha.Servicios);
         Assert.Equal(new ServicioPublicoDto("Tasación comercial", 60, 35_000), servicio);
         var zona = Assert.Single(ficha.Zonas);
-        Assert.Equal(new ZonaPublicaDto("Centro", "centro", true), zona);
+        Assert.Equal(new ZonaPublicaDto("Centro", "centro", true, "Temuco", ""), zona);
+    }
+
+    /// <summary>
+    /// «Centro» solo no dice de que ciudad: todas tienen uno. Un barrio se nombra con su comuna, y una
+    /// comuna (que ya es unica) va sola.
+    /// </summary>
+    [Fact]
+    public async Task Un_barrio_se_nombra_con_su_comuna_y_una_comuna_va_sola()
+    {
+        _base.Zonas.Single(z => z.Id == 1).Tipo = TipoDeZona.Barrio;
+        _base.Zonas.Single(z => z.Id == 1).Region = "La Araucanía";
+        _base.Zonas.Add(new Zona { Id = 100, Nombre = "Villarrica", Sector = "La Araucanía", Comuna = "Villarrica", Region = "La Araucanía", Tipo = TipoDeZona.Comuna, CentroLatitud = -39.28, CentroLongitud = -72.23 });
+        var perfil = UnPerfil();
+        Cubre(perfil, 1, principal: true);
+        Cubre(perfil, 100, principal: false);
+
+        var ficha = await _servicio.FichaPublicaAsync("marcela-soto");
+
+        Assert.Contains(ficha!.Zonas, z => z.Nombre == "Centro, Temuco" && z.Comuna == "Temuco" && z.Region == "La Araucanía");
+        Assert.Contains(ficha.Zonas, z => z.Nombre == "Villarrica" && z.Comuna == "Villarrica");
     }
 
     [Fact]

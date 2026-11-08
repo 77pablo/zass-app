@@ -57,3 +57,8 @@ export function hoyISO(): string {
 
 /** Lo que la gente suele buscar: sirve de ejemplo en el campo y de atajo al abrirlo vacio. */
 export const EJEMPLOS = ['abogado', 'contadora', 'gasfiter', 'arquitecto', 'corredor de propiedades', 'electricista']
+
+/** Minusculas y sin tildes ni dieresis: «Ñuble» y «nuble» son lo mismo cuando alguien filtra una lista. */
+export function sinTildes(texto: string): string {
+  return texto.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase('es-CL')
+}

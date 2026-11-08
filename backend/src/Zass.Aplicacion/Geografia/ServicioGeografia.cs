@@ -31,6 +31,12 @@ public sealed class ServicioGeografia : IServicioGeografia
     /// </summary>
     public const int MaxZonas = 10;
 
+    /// <summary>
+    /// Hasta donde se prefiere un barrio a su comuna al resolver un punto. Un barrio es un sector de ciudad: mas lejos
+    /// que esto el punto es de la comuna pero no de ninguno de sus barrios conocidos (un fundo, un sector rural).
+    /// </summary>
+    public const int MaxKmHastaUnBarrio = 8;
+
     private readonly IRepositorioGeografia _repo;
     private readonly IGeocodificador _geocodificador;
     private readonly IUnidadDeTrabajo _trabajo;
@@ -95,7 +101,25 @@ public sealed class ServicioGeografia : IServicioGeografia
                 $"Ese punto queda a mas de {MaxKmDesdeElCentro} km de cualquier zona "
                 + "que cubramos todavia.");
 
-        return Resultado.Ok(Describir(masCercana.zona));
+        var elegida = masCercana.zona;
+
+        // El nivel mas fino que se conozca. Si lo mas cercano es una COMUNA que tiene barrios, y alguno de ellos
+        // queda cerca, se resuelve al barrio: quien esta en la Plaza de Armas esta en «Centro, Temuco», no solo
+        // en «Temuco». Se mira primero la comuna y despues sus barrios, y no el barrio mas cercano de todo
+        // Chile: un punto en Padre Las Casas esta a pocos km de un barrio de Temuco y no por eso es de Temuco.
+        if (elegida.Tipo == TipoDeZona.Comuna)
+        {
+            var barrio = zonas
+                .Where(z => z.PadreId == elegida.Id)
+                .Select(z => (zona: z, metros: Geo.DistanciaEnMetros(punto, Centro(z))))
+                .OrderBy(x => x.metros)
+                .Cast<(Zona zona, double metros)?>()
+                .FirstOrDefault();
+            if (barrio is not null && barrio.Value.metros <= MaxKmHastaUnBarrio * 1000.0)
+                elegida = barrio.Value.zona;
+        }
+
+        return Resultado.Ok(Describir(elegida));
     }
 
     public async Task<Resultado<ZonaDto>> ZonaDeDireccionAsync(
@@ -122,10 +146,13 @@ public sealed class ServicioGeografia : IServicioGeografia
         return cobertura
             .Select(c => new ZonaCubiertaDto(
                 c.ZonaId,
-                c.Zona?.Nombre ?? "",
+                // La etiqueta y no el nombre pelado: «Centro» no dice de que ciudad.
+                c.Zona?.Etiqueta() ?? "",
                 c.Zona?.Sector ?? "",
                 c.EsPrincipal,
-                c.DesdeEn))
+                c.DesdeEn,
+                c.Zona?.Comuna ?? "",
+                c.Zona?.Region ?? ""))
             // La principal primero: es la que se muestra en la ficha (RN-S3-08).
             .OrderByDescending(z => z.EsPrincipal)
             .ThenBy(z => z.Nombre)
@@ -233,5 +260,6 @@ public sealed class ServicioGeografia : IServicioGeografia
     private static Punto Centro(Zona z) => new(z.CentroLatitud, z.CentroLongitud);
 
     private static ZonaDto Describir(Zona z) => new(
-        z.Id, z.Nombre, z.Sector, z.Comuna, z.CentroLatitud, z.CentroLongitud);
+        z.Id, z.Nombre, z.Sector, z.Comuna, z.CentroLatitud, z.CentroLongitud,
+        z.Tipo.ToString(), z.Region, z.PadreId);
 }

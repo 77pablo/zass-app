@@ -374,6 +374,9 @@ public static class EndpointsIdentidad
             ConfiguracionDeSeguridad.CookieRefresco, new CookieOptions { Path = "/api/auth" });
     }
 
+    // La IP del visitante para auditoria y sesiones. Detras de un proxy de confianza ya viene
+    // corregida por UseForwardedHeaders (ver ProxiesDeConfianza); por eso NO se lee
+    // X-Forwarded-For aqui: una cabecera cruda la puede escribir cualquiera.
     private static string? Ip(HttpContext http) =>
         http.Connection.RemoteIpAddress?.ToString();
 

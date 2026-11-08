@@ -7,6 +7,7 @@ import {
   pedirRecuperacion, restablecerContrasena, verificarCorreo,
 } from '../funciones/identidad/servicio'
 import { Icono } from '../marco/Icono'
+import { useMeta } from '../marco/useMeta'
 import { useTitulo } from '../marco/useTitulo'
 
 const CONTRASENA_MINIMA = 10
@@ -38,6 +39,7 @@ function Marco({ sobretitulo, children }: { sobretitulo: string; children: React
  */
 export function VerificarCorreo() {
   useTitulo('Verificar correo')
+  useMeta({ noindex: true })
   const [params] = useSearchParams()
   const token = params.get('token') ?? ''
   const llamada = useRef<Promise<void> | null>(null)
@@ -85,6 +87,7 @@ export function VerificarCorreo() {
  */
 export function RecuperarContrasena() {
   useTitulo('Recuperar contraseña')
+  useMeta({ noindex: true })
   const [correo, setCorreo] = useState('')
   const [error, setError] = useState<string>()
   const [aviso, setAviso] = useState<string>()
@@ -140,6 +143,7 @@ export function RecuperarContrasena() {
 /** API-15. Se llega desde el enlace del correo: /restablecer-contrasena?token=... */
 export function RestablecerContrasena() {
   useTitulo('Nueva contraseña')
+  useMeta({ noindex: true })
   const [params] = useSearchParams()
   const token = params.get('token') ?? ''
   const [clave, setClave] = useState('')

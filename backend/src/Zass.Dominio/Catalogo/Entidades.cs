@@ -58,11 +58,36 @@ public class Zona
 {
     public int Id { get; set; }
     public string Nombre { get; set; } = "";
+
+    /// <summary>
+    /// Para un barrio, el sector de su ciudad (oriente, norte...). Para una comuna, su region: asi un
+    /// selector las puede agrupar sin otra columna.
+    /// </summary>
     public string Sector { get; set; } = "";
     public double CentroLatitud { get; set; }
     public double CentroLongitud { get; set; }
-    public string Comuna { get; set; } = "Temuco";
+
+    /// <summary>La comuna a la que pertenece. Para una comuna, ella misma.</summary>
+    public string Comuna { get; set; } = "";
+
+    public TipoDeZona Tipo { get; set; } = TipoDeZona.Comuna;
+    public string Region { get; set; } = "";
+
+    /// <summary>De que comuna es este barrio. Nulo para una comuna.</summary>
+    public int? PadreId { get; set; }
+
+    /// <summary>
+    /// Como se dice en voz alta. «Centro» solo no dice de que ciudad (todas tienen uno), asi que un
+    /// barrio se nombra con su comuna: «Centro, Temuco». Una comuna ya es unica.
+    /// </summary>
+    public string Etiqueta() => Tipo == TipoDeZona.Barrio ? $"{Nombre}, {Comuna}" : Nombre;
 }
+
+/// <summary>
+/// El nivel de una zona. La COMUNA es la unidad nacional (hay 346): un prestador de Valdivia y uno de
+/// Calama se eligen igual. El BARRIO es un nivel opcional dentro de una comuna grande.
+/// </summary>
+public enum TipoDeZona { Comuna, Barrio }
 
 /// <summary>CL-08 · TBL-11. Una sola zona principal por prestador (R-2).</summary>
 public class CoberturaPrestador

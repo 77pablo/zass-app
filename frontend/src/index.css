@@ -614,8 +614,8 @@ option { background: var(--panel-2); color: var(--texto); }
 /* --- Hero: dos columnas, texto y radar --- */
 .hero-rejilla { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr); gap: 32px 40px; align-items: center; }
 .hero-texto { min-width: 0; }
-.hero-radar { min-width: 0; }
-@media (max-width: 1000px) { .hero-rejilla { grid-template-columns: minmax(0, 1fr); } .hero-radar { max-width: 520px; margin-inline: auto; width: 100%; } }
+.hero-mapa { min-width: 0; }
+@media (max-width: 1000px) { .hero-rejilla { grid-template-columns: minmax(0, 1fr); } .hero-mapa { max-width: 340px; margin-inline: auto; width: 100%; } }
 .titular { max-width: 14ch; font-size: clamp(2.7rem, 6.2vw, 5.4rem); }
 
 /* Entrada escalonada de lo que se ve al cargar */
@@ -656,31 +656,6 @@ option { background: var(--panel-2); color: var(--texto); }
   background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.55) 50%, transparent 70%); animation: destello 4.5s ease-in-out infinite;
 }
 @keyframes destello { 0%, 60% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
-
-/* --- Radar de Temuco --- */
-.radar { position: relative; margin: 0; padding: 0; }
-.radar svg { width: 100%; height: auto; overflow: visible; }
-.radar-anillo { fill: none; stroke: rgba(246, 200, 30, 0.22); stroke-width: 1; stroke-dasharray: 3 7; }
-.radar-eje { stroke: rgba(255, 255, 255, 0.07); stroke-width: 1; }
-.radar-barrido { animation: barrer 7s linear infinite; }
-@keyframes barrer { to { transform: rotate(360deg); } }
-.radar-punto { cursor: pointer; outline: none; }
-.radar-toque { fill: transparent; }
-.radar-nucleo { fill: rgba(255, 255, 255, 0.28); stroke: rgba(255, 255, 255, 0.5); stroke-width: 1; transition: fill 0.2s; }
-.radar-punto--vivo .radar-nucleo { fill: #f6c81e; stroke: #fff4b8; filter: drop-shadow(0 0 10px rgba(246, 200, 30, 0.95)); }
-.radar-onda { fill: none; stroke: #f6c81e; stroke-width: 1.5; transform-box: fill-box; transform-origin: center; animation: onda 2.8s ease-out infinite; }
-@keyframes onda { from { transform: scale(1); opacity: 0.9; } to { transform: scale(3.4); opacity: 0; } }
-.radar-punto:hover .radar-nucleo, .radar-punto:focus-visible .radar-nucleo, .radar-punto--activo .radar-nucleo { fill: #fff; filter: drop-shadow(0 0 16px #f6c81e); }
-.radar-punto:focus-visible .radar-toque { stroke: #f6c81e; stroke-width: 2; }
-.radar-nombre { font-family: var(--mono); font-size: 12.5px; font-weight: 600; fill: var(--texto); opacity: 0; paint-order: stroke; stroke: #07070a; stroke-width: 4px; transition: opacity 0.2s; pointer-events: none; }
-.radar-nombre--visible { opacity: 0.95; }
-.radar-leyenda {
-  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; margin-top: 4px; padding: 14px 20px;
-  background: var(--vidrio); border: 1px solid var(--linea-fuerte); border-radius: 18px; min-height: 60px;
-  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
-}
-.radar-leyenda strong { font-weight: 800; }
-.radar-leyenda span { font-family: var(--mono); font-size: 0.82rem; color: var(--amarillo); }
 
 /* --- Cinta de dos filas, en sentidos opuestos --- */
 .cinta { display: grid; gap: 14px; }
@@ -740,7 +715,7 @@ option { background: var(--panel-2); color: var(--texto); }
 /* Reducir movimiento: todo lo de arriba se queda quieto y visible */
 @media (prefers-reduced-motion: reduce) {
   .aparece, .entra { opacity: 1 !important; transform: none !important; filter: none !important; }
-  .radar-barrido, .radar-onda { animation: none !important; }
+  .mapa-barrido, .mapa-onda { animation: none !important; }
   .barra--portada .barra-forma { animation: none !important; }
 }
 
@@ -749,3 +724,69 @@ option { background: var(--panel-2); color: var(--texto); }
 .entra--arriba { position: relative; z-index: 30; }
 .hero-texto .barra { z-index: 30; }
 .pagina-cabeza .contenedor > .barra { position: relative; z-index: 30; }
+
+/* --- Mapa de Chile: una comuna, un punto --- */
+.mapa { position: relative; margin: 0; padding: 0; display: grid; justify-items: center; gap: 10px; }
+.mapa svg { width: auto; height: min(70vh, 560px); max-width: 100%; overflow: visible; }
+.mapa-punto { fill: rgba(255, 255, 255, 0.22); }
+.mapa-barrido { animation: escanear 7s linear infinite; }
+@keyframes escanear { from { transform: translateY(0); } to { transform: translateY(680px); } }
+.mapa-vivo { cursor: pointer; outline: none; }
+.mapa-toque { fill: transparent; }
+.mapa-nucleo { fill: #f6c81e; stroke: #fff4b8; stroke-width: 1; filter: drop-shadow(0 0 10px rgba(246, 200, 30, 0.95)); transition: fill 0.2s; }
+.mapa-onda { fill: none; stroke: #f6c81e; stroke-width: 1.5; transform-box: fill-box; transform-origin: center; animation: onda 2.8s ease-out infinite; }
+@keyframes onda { from { transform: scale(1); opacity: 0.9; } to { transform: scale(3.4); opacity: 0; } }
+.mapa-vivo:hover .mapa-nucleo, .mapa-vivo:focus-visible .mapa-nucleo, .mapa-vivo--activo .mapa-nucleo { fill: #fff; filter: drop-shadow(0 0 16px #f6c81e); }
+.mapa-vivo:focus-visible .mapa-toque { stroke: #f6c81e; stroke-width: 2; }
+.mapa-nombre { font-family: var(--mono); font-size: 12.5px; font-weight: 600; fill: var(--texto); paint-order: stroke; stroke: #07070a; stroke-width: 4px; pointer-events: none; }
+.mapa-leyenda {
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; width: 100%; max-width: 380px;
+  padding: 14px 20px; background: var(--vidrio); border: 1px solid var(--linea-fuerte); border-radius: 18px; min-height: 60px;
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+}
+.mapa-leyenda strong { font-weight: 800; }
+.mapa-leyenda span { font-family: var(--mono); font-size: 0.82rem; color: var(--amarillo); }
+
+/* --- Pagina de comunas: regiones que se abren --- */
+.filtro-comunas {
+  position: sticky; top: 88px; z-index: 5; display: flex; align-items: center; gap: 12px; max-width: 560px; margin-bottom: 28px; padding: 0 18px;
+  background: rgba(14, 14, 19, 0.92); border: 1px solid var(--linea-fuerte); border-radius: 999px;
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+}
+.filtro-comunas .icono { color: var(--amarillo); }
+.filtro-comunas input { flex: 1; min-width: 0; min-height: 52px; border: 0; background: transparent; outline: none; font-size: 1.0625rem; font-weight: 600; color: var(--texto); caret-color: var(--amarillo); }
+.filtro-comunas:focus-within { border-color: var(--amarillo); box-shadow: 0 0 30px rgba(246, 200, 30, 0.2); }
+.regiones { display: grid; gap: 10px; }
+.region { border: 1px solid var(--linea); border-radius: 20px; background: var(--vidrio); }
+.region[open] { background: var(--panel); border-color: var(--linea-fuerte); }
+.region > summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 64px; padding: 0 24px; cursor: pointer; list-style: none;
+}
+.region > summary::-webkit-details-marker { display: none; }
+.region-nombre { font-size: 1.25rem; font-weight: 800; letter-spacing: -0.02em; }
+.region-cuenta { display: inline-flex; align-items: center; gap: 14px; font-family: var(--mono); font-size: 0.82rem; font-weight: 600; color: var(--amarillo); }
+.region-cuenta i { width: 9px; height: 9px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); transition: transform 0.2s; }
+.region[open] .region-cuenta i { transform: rotate(-135deg); }
+.comunas-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 0 32px; padding: 4px 24px 20px; }
+.comuna, .barrio-enlace {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-height: 48px; padding: 10px 8px; margin: 0 -8px;
+  border-bottom: 1px solid var(--linea); text-decoration: none; border-radius: 8px; transition: background 0.15s, padding 0.2s;
+}
+.comuna { font-size: 1.0625rem; font-weight: 700; letter-spacing: -0.01em; }
+.comuna:hover, .barrio-enlace:hover { background: var(--amarillo-suave); padding-left: 14px; }
+.barrios-lista { margin: 0 0 6px 14px; padding-left: 12px; border-left: 2px solid rgba(246, 200, 30, 0.4); }
+.barrio-enlace { min-height: 44px; font-size: 0.9375rem; font-weight: 600; color: var(--suave); }
+.barrio-enlace:hover { color: var(--texto); }
+
+/* --- Editor de comunas de Mi ficha --- */
+.elegidas { display: grid; gap: 10px; padding: 18px 20px; background: var(--vidrio); border: 1px solid var(--linea); border-radius: 20px; }
+.elegidas-cuenta { font-family: var(--mono); font-size: 0.85rem; color: var(--suave); }
+.elegidas-cuenta strong { color: var(--amarillo); font-size: 1.1rem; }
+.elegidas-lista { display: grid; gap: 8px; }
+.elegida { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 6px 8px 6px 18px; border: 1px solid var(--linea-fuerte); border-radius: 999px; }
+.elegida--principal { border-color: var(--amarillo); background: var(--amarillo-suave); }
+.elegida-nombre { flex: 1; min-width: 8ch; font-weight: 700; }
+.elegida-quitar { display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 50%; background: none; color: var(--suave); cursor: pointer; }
+.elegida-quitar:hover { color: var(--texto); background: var(--linea); }
+.filtro-comunas--editor { position: static; max-width: none; margin: 0; }
+.comunas-lista--editor .casilla { width: 100%; }

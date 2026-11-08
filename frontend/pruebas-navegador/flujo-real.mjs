@@ -90,13 +90,16 @@ try {
   comprobar('un servicio sugerido se agrega y se guarda', true)
 
   // --- Barrios ---
-  await seccion('Dónde atiendes').getByRole('button', { name: /elegir mis barrios|editar/i }).first().click()
-  await pagina.getByRole('checkbox', { name: 'Centro' }).check()
-  await pagina.getByRole('radio', { name: 'Principal' }).check()
-  await pagina.getByRole('button', { name: 'Guardar barrios' }).click()
+  await seccion('Dónde atiendes').getByRole('button', { name: /elegir mis comunas|editar/i }).first().click()
+  // Las 346 comunas se encuentran escribiendo (sin importar tildes ni mayusculas).
+  await pagina.getByRole('searchbox', { name: 'Buscar una comuna' }).fill('TEMUCO')
+  await pagina.getByRole('checkbox', { name: 'Temuco', exact: true }).check()
+  comprobar('la primera comuna elegida queda de principal',
+    await pagina.getByRole('radio', { name: /Principal\s*:\s*Temuco/ }).isChecked())
+  await pagina.getByRole('button', { name: 'Guardar comunas' }).click()
   await pagina.locator('form.editor').waitFor({ state: 'detached' })
-  await seccion('Dónde atiendes').getByText('Centro').waitFor()
-  comprobar('los barrios se guardan con uno principal', true)
+  await seccion('Dónde atiendes').getByText('Temuco').waitFor()
+  comprobar('la comuna se guarda como principal', true)
 
   // --- Publicar ---
   await pagina.getByRole('button', { name: /publicar mi ficha/i }).click()
@@ -104,7 +107,7 @@ try {
   comprobar('publicar deja la ficha publicada', true)
 
   // --- Aparece en la busqueda y su ficha publica la muestra ---
-  await pagina.goto(`${BASE}/buscar?q=contador&zona=1`, { waitUntil: 'networkidle' })
+  await pagina.goto(`${BASE}/buscar?q=contador&zona=377`, { waitUntil: 'networkidle' })
   const tarjeta = pagina.getByRole('link', { name: /Elena Flujo Contadora/ })
   await tarjeta.waitFor()
   comprobar('aparece en la busqueda de su oficio y su barrio', true)

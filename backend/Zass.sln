@@ -19,6 +19,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zass.Aplicacion.Pruebas", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zass.Integracion.Pruebas", "pruebas\Zass.Integracion.Pruebas\Zass.Integracion.Pruebas.csproj", "{ABAD27C5-CAD2-4F16-8CB1-229D9B002DED}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zass.Arquitectura.Pruebas", "pruebas\Zass.Arquitectura.Pruebas\Zass.Arquitectura.Pruebas.csproj", "{17EB1F8D-8E9B-49D7-ABF5-2CAEA085DF53}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -52,6 +54,10 @@ Global
 		{ABAD27C5-CAD2-4F16-8CB1-229D9B002DED}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{ABAD27C5-CAD2-4F16-8CB1-229D9B002DED}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{ABAD27C5-CAD2-4F16-8CB1-229D9B002DED}.Release|Any CPU.Build.0 = Release|Any CPU
+		{17EB1F8D-8E9B-49D7-ABF5-2CAEA085DF53}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{17EB1F8D-8E9B-49D7-ABF5-2CAEA085DF53}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{17EB1F8D-8E9B-49D7-ABF5-2CAEA085DF53}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{17EB1F8D-8E9B-49D7-ABF5-2CAEA085DF53}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{7817F2AF-7858-4080-A8D4-26A11467B80B} = {14C59B66-49DC-46A2-AD9A-757914E9019B}
@@ -60,5 +66,6 @@ Global
 		{7CFEF814-D92A-4CCB-9165-54FC1826E4D0} = {14C59B66-49DC-46A2-AD9A-757914E9019B}
 		{07621747-45D2-41FF-860B-670B0FE5B6FE} = {93637A38-66C5-4B9E-8C99-E23B34C5B3D5}
 		{ABAD27C5-CAD2-4F16-8CB1-229D9B002DED} = {93637A38-66C5-4B9E-8C99-E23B34C5B3D5}
+		{17EB1F8D-8E9B-49D7-ABF5-2CAEA085DF53} = {93637A38-66C5-4B9E-8C99-E23B34C5B3D5}
 	EndGlobalSection
 EndGlobal

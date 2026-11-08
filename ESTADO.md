@@ -213,6 +213,67 @@ nadie dice "atiendo en Condominio Nueva Milano". Quedaron los 16 sectores con lo
 gente de Temuco dice dónde está. Ninguna coordenada está inventada, y eso importa: un
 centroide mal puesto manda al prestador al barrio de al lado sin que nada falle.
 
+### Chile entero: la comuna como unidad (8-nov-2026)
+
+Pablo quiere salir **a nivel nacional y gratis**. Hasta hoy todo estaba armado alrededor de los 16 barrios de Temuco.
+
+**Hecho y verificado:**
+- **346 comunas en 16 regiones**, bajadas de OpenStreetMap (Overpass) con su **capital comunal** (`admin_centre`) como punto;
+  cada región se validó contra la cifra oficial (RM 52, Biobío 33, Los Ríos 12…). Una sola comuna se usa con el centro de su
+  caja (Rengo) y **Antártica no existe como relación en OSM**: se usa el nodo de Villa Las Estrellas (su capital legal),
+  dicho en el archivo. Generado por `generar_zonas.py` → `Zass.Infraestructura/Datos/ZonasDeChile.cs` (no se edita a mano).
+- **Modelo:** `Zona` ahora tiene `Tipo` (Comuna|Barrio), `Region` y `PadreId`. Los 16 barrios quedaron como barrios de la comuna de
+  Temuco (id 377). La base lo exige (`ck_zona_tipo`, `ck_zona_padre`). Ids 101–446, fijos una vez migrados.
+- **Migración `ComunasDeChile`** (+ dos funciones SQL: `zonas_relacionadas` y `etiqueta_de_zona`). Ya aplicada en la base de desarrollo.
+- **La relación comuna–barrio manda en la búsqueda:** quien cubre «Temuco» aparece al buscar en «Centro, Temuco» y al revés; los
+  barrios hermanos y las comunas vecinas no se mezclan. El conteo de la portada usa la misma relación y **una prueba exige que
+  coincida con lo que la búsqueda devuelve en cada una de las 362 zonas**.
+- Un barrio se nombra con su comuna («Centro, Temuco»); sin ubicación de la persona **no se mide desde ningún centro** (antes, la Plaza de Temuco).
+- `ResolverZona` (un punto → zona) ahora devuelve la comuna más cercana y, si tiene barrios a menos de 8 km, el barrio.
+- **Pantallas:** mapa de Chile hecho de puntos en la portada (reemplaza el radar), página **Comunas** por región con filtro (`/barrios`
+  redirige), editor de cobertura de «Mi ficha» (se filtra escribiendo, máximo 10, la primera elegida queda de principal) y selector
+  de zona de la búsqueda por región.
+- **Se midió:** 372 pruebas de aplicación, 310 de integración y 174 de interfaz en verde; 10 mutantes de la relación y los
+  conteos (todos muertos); recorrido real en navegador completo (crear cuenta → armar ficha con una comuna → publicar → aparece en la búsqueda → salir).
+
+**Pendiente de pulir:** el «barrido» del mapa de Chile se ve como una franja rectangular; `ResolverZona` es por capital más cercana
+(en una metrópoli de comunas pegadas un punto en el límite puede caer en la vecina: sirve para ubicar, no para fijar límites);
+solo existen sinónimos de búsqueda para los 5 rubros actuales; límite de 10 comunas por prestador (decisión mía).
+
+### Pruebas de arquitectura (8-nov-2026)
+
+Proyecto nuevo `Zass.Arquitectura.Pruebas` (NetArchTest, 15 pruebas): las capas van de adentro hacia afuera (Dominio no conoce a nadie,
+Aplicación no conoce Infraestructura ni Api, Infraestructura no conoce Api), el Dominio no usa marcos ni declara paquetes NuGet, la
+Aplicación no usa EF Core/Npgsql/ASP.NET, los **endpoints no tocan la base ni los repositorios**, y **cada módulo solo habla con su propio
+repositorio** (los demás lo consumen por su servicio). Más controles de que las reglas pueden fallar. **Se midió:** 5 violaciones reales
+inyectadas, 4 cazadas; la que no (un `typeof` suelto) es un límite de la herramienta y está anotada en el archivo.
+Atención al fusionar `agente/produccion`: su `/api/salud/lista` consulta la base; si lo hace desde `Zass.Api.Endpoints` esta prueba fallará y la solución es un puerto.
+
+### Trabajo en paralelo con agentes (8-nov-2026) — CÓMO RETOMAR
+
+Cinco agentes trabajan en copias del repositorio (git worktrees) en `C:\Users\pdani\zass-agentes\<nombre>`, cada uno en su rama
+`agente/<nombre>` y con **su propia base de pruebas** (`zass_pruebas_<nombre>`). **Ninguno ha hecho push ni merge.** Se cortaron una vez
+por el límite de uso de 5 horas; su trabajo parcial quedó guardado. Hay que REVISAR cada rama antes de fusionarla (correr sus pruebas, no fiarse del informe).
+
+| Rama | Qué es | Estado al traspasar |
+|---|---|---|
+| `agente/produccion` | ForwardedHeaders seguro, validación de configuración, salud, Dockerfile/`render.yaml`, migraciones en producción, `DESPLIEGUE-API.md` | **TERMINÓ** (4 commits, informe: 348 integración, 24 mutantes). **Por revisar antes de fusionar**: su `/api/salud/lista` consulta la base y puede romper la prueba de arquitectura «endpoints sin base» (solución: un puerto); una prueba suya fue intermitente una vez; Docker no se probó (no está instalado) |
+| `agente/correo` | Envío real de correos (Brevo/Resend) con cola segura y purga del token | Retomado, **aún sin informe final**; sin esto nadie puede verificar su cuenta |
+| `agente/seo` | Meta tags por ficha (Pages Function), sitemap, robots, `useMeta`, imagen para compartir, páginas `/terminos` y `/privacidad` (con `BORRADOR_LEGAL`) | **TERMINÓ** (3 commits, informe: 263 frontend, 30 mutantes). Añade API-64 `/api/prestadores/mapa` (reservar el slug `mapa`). **Por revisar antes de fusionar**; faltan líneas de `useMeta` en `Portada`, `PaginaBuscar`, `Comunas` (aún sin meta y fuera del sitemap) y `MiFicha`: están en su informe y en su rama |
+| `agente/resenas` | MOD-11 Reseñas, solo backend | **En pausa** (cupo); trabajo parcial sin commit |
+| `agente/verificacion` | Verificación manual de credenciales (cola, tomar, resolver) con `Zass:Verificacion:PermitirSinDocumentos` | **En pausa** (cupo); 1 commit + cambios sin commit |
+
+Para fusionar: `git -C C:\Users\pdani\zass-app merge agente/<nombre>` (cuidar conflictos en `Program.cs`, `AgregarZass.cs`, `Puertos.cs`, `App.tsx`,
+`Pie.tsx`; ninguno trae migraciones de EF a propósito). Después, borrar el worktree con `git worktree remove`.
+
+### Lo que falta para PUBLICAR en Cloudflare (decisión de Pablo)
+
+1. **Dónde corre la API y la base:** Cloudflare Pages solo aloja el sitio. Propuesta gratis: **Render** (API) + **Neon** (PostgreSQL con PostGIS).
+2. Cuenta de Cloudflare con `zass.cl` y sesión de `wrangler` (`! npx wrangler login`), cuenta de Brevo o Resend para los correos.
+3. Fusionar `agente/produccion` y `agente/correo` (sin ellas no hay IP real detrás del proxy ni correos), y `agente/seo` si se quiere que Google vea las fichas.
+4. Reemplazar los datos de demostración por gente real antes de abrirlo (`limpiar-demo.sql`), y revisar los textos legales con un abogado.
+5. Pregunta 4 sigue sin responder: ficha pública y NFC con suscripción vencida.
+
 ### La barra de búsqueda y el segundo rediseño (7-nov-2026, noche)
 
 Pablo vio la página y dijo que **le faltaba mucho y se veía pobre**, que la frase fuera «busca a alguien de tu
@@ -643,9 +704,9 @@ Endpoints: **API-01 a API-05, 08-23**, más `GET /api/auth/csrf` y `GET /api/sal
 
 | Proyecto | Cuántas | Qué cubre |
 |---|---|---|
-| `Zass.Aplicacion.Pruebas` | **371** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02 a RN-S3-08, RN-S5-11, CC-02, y MOD-03, MOD-04 y MOD-05 completos |
-| `Zass.Integracion.Pruebas` | **300** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
-| `frontend` (Vitest) | **154** | Cliente HTTP y pantallas, con `fetch` simulado |
+| `Zass.Aplicacion.Pruebas` | **372** | Las reglas, sin base de datos: RN-S1-01 a RN-S1-08, RN-S3-02 a RN-S3-08, RN-S5-11, CC-02, y MOD-03, MOD-04 y MOD-05 completos |
+| `Zass.Integracion.Pruebas` | **310** | Argon2id y AES-GCM reales, el contenedor, PostgreSQL real, y la API por HTTPS |
+| `frontend` (Vitest) | **174** | Cliente HTTP y pantallas, con `fetch` simulado |
 | `frontend/pruebas-navegador` | 2 guiones | Navegador real contra la API real: que la página monta, los colores de marca, y el registro e ingreso completos |
 
 Escritas con TDD: cada prueba se vio fallar antes de que existiera el código.
@@ -686,6 +747,53 @@ Cosas que **tienen prueba propia**, no solo un comentario:
 - La aplicación **no arranca** sin la clave de cifrado, ni con una clave de largo erróneo.
 
 ---
+
+## 3 bis. Correo transaccional real (agente/correo)
+
+**Qué hay.** Los avisos de verificación de correo y recuperación de contraseña ya se envían de verdad
+(antes solo se encolaban en TBL-27). Sin columnas nuevas ni migraciones: `programada_para` hace de
+«próximo intento» y de reserva, y `intentos`/`ultimo_error` ya existían.
+
+- `TrabajoDeCorreo` (BackgroundService) llama a `ProcesadorDeCorreo`, que reserva un lote con
+  `UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED) RETURNING id` (estado `Enviando`, reserva de
+  120 s: si una réplica muere, otra retoma el aviso). Seguro con varias réplicas: hay prueba con dos
+  trabajadores y 40 avisos, un solo envío por aviso.
+- Fallo del proveedor: 5xx, 408, 425, 429, timeout y error de red se reintentan con espera 1 min, 2, 4... (tope 1 h);
+  otro 4xx queda `Fallida` sin reintentar. Máximo 5 intentos (`Zass:Correo:MaximoIntentos`).
+- Puerto `IEnviadorDeCorreo`; `EnviadorBrevo` (API v3) y `EnviadorResend`, por HTTP.
+- Higiene del token: la carga del aviso es JSON `{"token":"..."}` (`CargaDeAviso`). Al enviarse (o anularse) pasa a
+  `{"purgado":true}`; un aviso fallido se purga 24 h después del fallo. Asunto fijo, sin token ni nombre.
+- Logs: correo enmascarado (`a***@dominio.cl`), nunca token, clave ni cuerpo de respuesta del proveedor.
+- Si el usuario ya verificó su correo o la cuenta se eliminó, el aviso se anula sin enviar.
+- Pedir recuperación con un correo inexistente no encola nada y responde igual (prueba por HTTP).
+- Límite conocido: entrega «al menos una vez». Si el proveedor aceptó el correo y la base falla justo después, el aviso
+  se reenvía al vencer la reserva.
+- Un aviso pendiente (por ejemplo, sin `UrlPublica`) conserva el token en claro hasta que sale o se anula; no hay caducidad
+  automática de avisos pendientes.
+
+**Configuración (variables de entorno en Render; en Cloudflare solo si la API corre allí).**
+
+| Variable | Valor |
+|---|---|
+| `Zass__Correo__Proveedor` | `Brevo`, `Resend` o `Ninguno` (por omisión: no envía, los avisos quedan pendientes) |
+| `Zass__Correo__ApiKey` | clave de API del proveedor (secreto; nunca en el repositorio) |
+| `Zass__Correo__Remitente` | dirección de un dominio verificado, p. ej. `no-responder@zass.cl` |
+| `Zass__Correo__NombreRemitente` | opcional, por omisión `ZASS!` |
+| `Zass__UrlPublica` | `https://zass.cl`; sin ella no se envía nada y se registra una advertencia |
+
+Con proveedor distinto de `Ninguno` y sin clave o sin remitente, la aplicación se niega a arrancar con un mensaje claro.
+Ajustes opcionales: `Zass__Correo__MaximoIntentos`, `EsperaBaseSegundos`, `TamanoDeLote`, `SondeoSegundos`, `PurgaDeFallidasHoras`.
+
+**Límites del plan gratuito.** Brevo y Resend tienen cupos diarios/mensuales en su plan gratuito: verifícalo en la página del proveedor.
+La cuota agotada suele llegar como 429 (se reintenta con espera) o como un 4xx del proveedor (queda fallida): revísalo al elegir.
+
+**Verificar el dominio remitente (SPF/DKIM).** Sin esto los correos caen en spam o el proveedor los rechaza.
+1. En el panel del proveedor, agrega el dominio (p. ej. `zass.cl`) en la sección de dominios/remitentes.
+2. El proveedor muestra los registros DNS que debes crear (SPF como TXT, DKIM como TXT o CNAME, a veces DMARC). Copia exactamente los valores que te muestre.
+3. Créalos en el DNS donde está `zass.cl`, espera la propagación y pulsa «verificar» en el panel.
+4. Usa como `Remitente` una dirección de ese dominio. Si ya existe un SPF, no crees un segundo: se combinan en un único registro.
+
+**Pruebas:** ver el informe de la sesión; todo en `backend/pruebas/Zass.Integracion.Pruebas/Correo/` (HttpMessageHandler falso, sin red).
 
 ## 4. Los seis fallos que encontraron las pruebas de verdad
 
@@ -990,3 +1098,17 @@ Al terminar: `detener-postgres.bat`.
 | **Las coordenadas de las zonas son de OpenStreetMap (ODbL)** | La licencia pide atribuir a *OpenStreetMap contributors* allá donde se muestren. Son 16 puntos y nombres de barrio, pero conviene poner la atribución en el pie del mapa desde el primer día en vez de acordarse después |
 | **El clúster local se creó con locale `C`** | `lower()` y `upper()` solo pliegan ASCII. Ninguna regla puede apoyarse en ellas: por eso `servicio` lleva `nombre_normalizado` calculado en C#. Si alguna vez se recrea el clúster, **no** cambia nada de esto, y es a propósito: en Azure el locale será otro |
 | **Subir al repositorio exige revisar la historia, no solo `.gitignore`** | Antes del primer `push` se revisaron los nombres de archivo de **todos** los commits buscando claves, `.env`, certificados y `appsettings.Development.json`. No había ninguno. Un `.gitignore` correcto no dice nada de lo que ya se versionó |
+
+---
+
+## Nota de la rama `agente/seo` (7-nov-2026): SEO y páginas legales
+
+**Hecho (probado, sin Cloudflare real):** Function `/prestadores/:slug` con meta por ficha, `/sitemap.xml` (+ índice si pasa de 50 000), `robots.txt`, `GET /api/prestadores/mapa` (API-64) en el backend, hook `useMeta`, imagen `public/og-zass.png`, y las páginas `/terminos` y `/privacidad` enlazadas desde el pie y desde el registro. Detalle de despliegue en `frontend/DESPLIEGUE-CLOUDFLARE.md`.
+
+**PENDIENTE PARA PABLO: las páginas legales son un BORRADOR, no asesoría legal.**
+
+1. Llenar en `frontend/src/paginas/legal.ts`: `RESPONSABLE` (razón social y RUT), `CORREO_PRIVACIDAD` (casilla para ejercer derechos de la Ley 21.719), `PROVEEDORES` (alojamiento, base de datos, correo) y `PLAZO_REGISTROS_DE_SEGURIDAD`. Mientras estén entre corchetes se ven resaltados en la página.
+2. **Decidir el plazo de los registros de seguridad (IP y fecha de acciones, tabla de auditoría y sesiones) y construir su borrado: hoy el sistema NO los borra solo.**
+3. Llevar `Terminos.tsx` y `Privacidad.tsx` a un abogado. Cuando los apruebe, cambiar `BORRADOR_LEGAL` a `false` en `legal.ts` (desaparece el aviso «Borrador: pendiente de revisión legal») y actualizar `ULTIMA_ACTUALIZACION`.
+4. Los textos dicen que hoy no hay cobro de la mensualidad, ni credenciales revisadas, ni pagos ni agenda: si eso cambia, hay que actualizarlos.
+5. Anotado para el backend: reservar el slug `mapa` al generar slugs (choca con `/api/prestadores/mapa`).

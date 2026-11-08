@@ -204,7 +204,8 @@ public sealed record FichaPublicaDto(
     DateTime? PublicadoEn);
 
 /// <summary>Una zona que cubre. La principal es la que se muestra primero (RN-S3-08).</summary>
-public sealed record ZonaPublicaDto(string Nombre, string Sector, bool EsPrincipal);
+public sealed record ZonaPublicaDto(
+    string Nombre, string Sector, bool EsPrincipal, string Comuna = "", string Region = "");
 
 /// <summary>Lo que el prestador eligio mostrar. Cualquiera puede ser nulo.</summary>
 public sealed record ContactoPublicoDto(
@@ -218,7 +219,11 @@ public sealed record ResumenDeComunidadDto(
     int Total,
     IReadOnlyList<PersonasPorZonaDto> PorZona,
     IReadOnlyList<PersonasPorRubroDto> PorRubro,
-    IReadOnlyList<RecienLlegadoDto> RecienLlegados);
+    IReadOnlyList<RecienLlegadoDto> RecienLlegados,
+    /// <summary>Personas por region, contadas UNA vez cada una aunque cubra varias comunas.</summary>
+    IReadOnlyList<PersonasPorRegionDto> PorRegion);
+
+public sealed record PersonasPorRegionDto(string Region, int Personas);
 
 public sealed record PersonasPorZonaDto(int ZonaId, int Personas);
 

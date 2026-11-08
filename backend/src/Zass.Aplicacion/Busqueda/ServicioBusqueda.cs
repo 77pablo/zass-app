@@ -141,12 +141,6 @@ public sealed class ServicioBusqueda : IServicioBusqueda
     public const int PorPaginaDeTexto = 24;
     public const int PaginaMaximaDeTexto = 50;
 
-    /// <summary>
-    /// La Plaza de Armas de Temuco. Sin ubicacion de la persona se mide desde aqui, solo para que
-    /// «mas cerca» y los empates tengan sentido; esa distancia NO se muestra, porque no es la de nadie.
-    /// </summary>
-    public static readonly Punto CentroDeTemuco = new(-38.7359, -72.5904);
-
     private static string CodigoDeOrden(OrdenDeTexto orden) => orden switch
     {
         OrdenDeTexto.Cercania => "cercania",
@@ -199,10 +193,12 @@ public sealed class ServicioBusqueda : IServicioBusqueda
 
         var pagina = Math.Clamp(criterios.Pagina, 1, PaginaMaximaDeTexto);
         var (formas, grupos) = TextoDeBusqueda.Grupos(criterios.Texto);
-        var origen = conUbicacion ? new Punto(criterios.Latitud!.Value, criterios.Longitud!.Value) : CentroDeTemuco;
+        // Sin ubicacion no se mide desde ninguna parte: a nivel nacional no hay un «centro» que tenga sentido,
+        // y los empates se desempatan por reputacion e id, no por cercania a un lugar que no es el de nadie.
+        Punto? origen = conUbicacion ? new Punto(criterios.Latitud!.Value, criterios.Longitud!.Value) : null;
 
         var filas = await _repo.PorTextoAsync(new CriteriosDeTexto(
-            formas, grupos, origen.Latitud, origen.Longitud, zonaId, CodigoDeOrden(orden),
+            formas, grupos, origen?.Latitud, origen?.Longitud, zonaId, CodigoDeOrden(orden),
             _reloj.Ahora, PorPaginaDeTexto + 1, (pagina - 1) * PorPaginaDeTexto,
             criterios.SoloVerificados, criterios.CalificacionMinima), ct);
 
@@ -239,7 +235,9 @@ public sealed class ServicioBusqueda : IServicioBusqueda
             crudo.PorZona.Select(z => new PersonasPorZonaDto(z.Id, z.Personas)).ToList(),
             crudo.PorRubro.Select(r => new PersonasPorRubroDto((short)r.Id, r.Personas)).ToList(),
             crudo.Recientes.Select(r => new RecienLlegadoDto(
-                r.Slug, r.NombrePublico, r.RubroNombre, r.ZonaPrincipal, r.Verificada)).ToList());
+                r.Slug, r.NombrePublico, r.RubroNombre, r.ZonaPrincipal, r.Verificada)).ToList(),
+            (crudo.PorRegion ?? Array.Empty<ConteoDeRegion>())
+                .Select(r => new PersonasPorRegionDto(r.Region, r.Personas)).ToList());
     }
 
     // ------------------------------------------------------------- CU-09, la ficha
@@ -269,7 +267,7 @@ public sealed class ServicioBusqueda : IServicioBusqueda
             perfil.UrlFoto,
             rubro,
             // MOD-04 ya las entrega con la principal primero (RN-S3-08).
-            zonas.Select(z => new ZonaPublicaDto(z.Nombre, z.Sector, z.EsPrincipal)).ToList(),
+            zonas.Select(z => new ZonaPublicaDto(z.Nombre, z.Sector, z.EsPrincipal, z.Comuna, z.Region)).ToList(),
             servicios,
             credenciales,
             perfil.PromedioCalificacion,      // MOD-01 ya aplico RN-S5-11

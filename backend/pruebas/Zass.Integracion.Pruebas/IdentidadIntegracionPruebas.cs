@@ -338,7 +338,7 @@ public class IdentidadIntegracionPruebas : IDisposable
             .OrderByDescending(n => n.ProgramadaPara)
             .FirstAsync();
 
-        return aviso.Cuerpo.Split(' ').Last().TrimEnd('.');
+        return Zass.Aplicacion.Puertos.CargaDeAviso.LeerToken(aviso.Cuerpo)!;
     }
 
     private async Task<string?> EscalarAsync(string sql, Guid id)
