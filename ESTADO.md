@@ -413,8 +413,9 @@ el tipo `FichaPublica`, pero no se comprobó que compile el frontend ni que sus 
 0. **HECHO**: `enviar` ya admite cabeceras propias (4º parámetro) y repite la MISMA `Idempotency-Key` en sus
    reintentos internos; 4 pruebas, y se mutó el reintento para ver que caen. **Las 287 pruebas de interfaz pasan y
    `tsc -b` compila limpio** (esto cierra el hueco anotado arriba).
-1. `frontend/src/funciones/agenda/servicio.ts`: llamadas a API-35 (calendario), API-36 (agendar) y API-37 (mis
-   citas). La clave de idempotencia se genera UNA vez al abrir el formulario, no por clic.
+1. **HECHO** `frontend/src/funciones/agenda/servicio.ts` (+10 pruebas): las siete llamadas (API-35 a API-42), la
+   clave de idempotencia (`nuevaClaveDeIdempotencia`, UNA por intención) y los ayudantes de hora de Chile
+   (`horaDeChile`, `porDia`). **Falta la pantalla que lo use.** Los bloques se agrupan por día CHILENO, no UTC.
 2. En `Ficha.tsx`: elegir servicio → calendario de bloques → confirmar. Si el servicio es `Manual`, avisar ANTES
    de elegir hora que el prestador debe confirmar (flujo 4C). Un visitante sin cuenta pasa por registrarse y
    vuelve con el bloque elegido (flujo 4G). Los bloques vienen en UTC: mostrarlos en hora de Chile con
