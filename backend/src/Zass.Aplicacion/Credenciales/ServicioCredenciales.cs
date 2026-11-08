@@ -159,11 +159,11 @@ public sealed class ServicioCredenciales : IServicioCredenciales
         var credencial = await _repo.PorIdAsync(credencialId, ct);
 
         // Mismo mensaje para "no existe" y "es de otra persona", como en API-28.
-        if (credencial is null)
+        if (credencial is null || credencial.PerfilPrestadorId != perfilPrestadorId)
             return Resultado.Falla(Fallas.NoEncontrado, "No encontramos esa credencial.");
 
         var estabaEsperando = credencial.Estado == EstadoCredencial.EnRevision;
-        var r = credencial.EnviarARevision(true);
+        var r = credencial.EnviarARevision(_opciones.PermitirSinDocumentos);
         if (!r.Exito) return r;
 
         _auditor.Registrar(Auditar.Entrada(
