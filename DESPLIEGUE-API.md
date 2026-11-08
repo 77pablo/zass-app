@@ -113,7 +113,7 @@ Si algún día el sitio y la API van en subdominios distintos (`zass.cl` y `api.
 
 ## 8. Lo que NO se pudo probar (honestidad)
 
-* **La imagen Docker:** Docker no está instalado en esta máquina; el `Dockerfile` **no se construyó ni ejecutó**. Sí se comprobó que `dotnet publish -c Release` compila y que la API publicada arranca y migra una base real con `--migrar`.
+* **La imagen Docker:** Docker no está instalado en esta máquina; el `Dockerfile` **no se construyó ni ejecutó**. Sí se comprobó que `dotnet publish -c Release` compila; que la API publicada, con `--migrar`, sale con 0 contra una base local ya migrada (en Development: la base local no tiene SSL); que en Production esa misma cadena sin SSL se rechaza con un mensaje claro; y, por prueba de integración, que `--migrar` aplica todo sobre una base vacía y es idempotente.
 * **Render:** no hay cuenta; `render.yaml` no se validó contra Render (claves como `dockerContext` y `healthCheckPath` según su documentación a la fecha; verifícalas al crear el Blueprint). Cuántas cabeceras `X-Forwarded-For` añade el balanceador de Render y desde qué red llega al contenedor: **sin verificar**.
 * **Neon:** no hay cuenta; no se probó `CREATE EXTENSION postgis`, ni la pausa por inactividad, ni la conexión SSL real.
 * **Cloudflare:** no se probó la Pages Function de extremo a extremo; las pruebas de proxy simulan la IP remota y las cabeceras dentro del servidor de pruebas.
