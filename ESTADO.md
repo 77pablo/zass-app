@@ -257,9 +257,9 @@ por el límite de uso de 5 horas; su trabajo parcial quedó guardado. Hay que RE
 
 | Rama | Qué es | Estado al traspasar |
 |---|---|---|
-| `agente/produccion` | ForwardedHeaders seguro, validación de configuración, salud, Dockerfile/`render.yaml`, migraciones en producción, `DESPLIEGUE-API.md` | Retomado; es lo que bloquea salir |
-| `agente/correo` | Envío real de correos (Brevo/Resend) con cola segura y purga del token | Retomado; sin esto nadie puede verificar su cuenta |
-| `agente/seo` | Meta tags por ficha (Pages Function), sitemap, robots, `useMeta`, imagen para compartir, páginas `/terminos` y `/privacidad` (con `BORRADOR_LEGAL`) | Retomado |
+| `agente/produccion` | ForwardedHeaders seguro, validación de configuración, salud, Dockerfile/`render.yaml`, migraciones en producción, `DESPLIEGUE-API.md` | **TERMINÓ** (4 commits, informe: 348 integración, 24 mutantes). **Por revisar antes de fusionar**: su `/api/salud/lista` consulta la base y puede romper la prueba de arquitectura «endpoints sin base» (solución: un puerto); una prueba suya fue intermitente una vez; Docker no se probó (no está instalado) |
+| `agente/correo` | Envío real de correos (Brevo/Resend) con cola segura y purga del token | Retomado, **aún sin informe final**; sin esto nadie puede verificar su cuenta |
+| `agente/seo` | Meta tags por ficha (Pages Function), sitemap, robots, `useMeta`, imagen para compartir, páginas `/terminos` y `/privacidad` (con `BORRADOR_LEGAL`) | **TERMINÓ** (3 commits, informe: 263 frontend, 30 mutantes). Añade API-64 `/api/prestadores/mapa` (reservar el slug `mapa`). **Por revisar antes de fusionar**; faltan líneas de `useMeta` en `Portada`, `PaginaBuscar`, `Comunas` (aún sin meta y fuera del sitemap) y `MiFicha`: están en su informe y en su rama |
 | `agente/resenas` | MOD-11 Reseñas, solo backend | **En pausa** (cupo); trabajo parcial sin commit |
 | `agente/verificacion` | Verificación manual de credenciales (cola, tomar, resolver) con `Zass:Verificacion:PermitirSinDocumentos` | **En pausa** (cupo); 1 commit + cambios sin commit |
 
