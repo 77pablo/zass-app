@@ -306,6 +306,32 @@ Cuatro agentes en worktrees bajo `C:\Users\pdani\zass-agentes\<nombre>`, cada un
 cada rama antes de fusionarla: correr sus pruebas aquí, no fiarse del informe.** Las tres fusiones
 de hoy demuestran por qué.
 
+> ### LOS CUATRO SE CAYERON AL ARRANCAR. NO ESTAN CORRIENDO.
+>
+> Los cuatro murieron al primer o segundo paso con el **límite de 5 horas agotado** (se reiniciaba
+> a las 6:30 AM de Santiago). **Ninguno llegó a terminar nada.**
+>
+> **La causa fue lanzar cuatro agentes en paralelo sobre Opus**, más las fusiones que se estaban
+> haciendo en la misma ventana. Cada agente consume del mismo presupuesto. El techo no era la
+> capacidad de revisión, era el presupuesto de la ventana de 5 horas.
+>
+> **Recomendación para la próxima tanda:** o **dos agentes** en vez de cuatro, o **los cuatro sobre
+> Sonnet** y dejar Opus para revisar y fusionar, que es donde se encontraron los defectos de hoy.
+> Los prompts que se les dio eran muy específicos, y para trabajo así especificado Sonnet rinde.
+>
+> **Lo que SI quedó guardado** (se buscaron mutantes en los cuatro worktrees y **no hay ninguno**):
+>
+> | Rama | Qué dejó |
+> |---|---|
+> | `agente/fondo` | Un commit WIP con lo difícil ya diseñado: `TrabajoDeFondo` (una fila por trabajo programado, con próxima corrida y **reserva que vence**), su migración y el mapeo en `ZassDbContext`. Resuelve que el planificador corre en todas las réplicas y avisar dos veces mandaría dos correos. **Sin verificar: no se sabe si compila, la migración no se aplicó a ninguna base, y nadie llama todavía a `VencerExpiradasAsync` ni a `PorVencerAsync`, que era la tarea.** Hay que comprobar contra el documento los identificadores A-09 y CC-08 que cita |
+> | `agente/verificacion` | Un commit WIP con cinco archivos que dejó preparados. **Sin verificar** |
+> | `agente/resenas` | Nada nuevo. Sigue en su WIP anterior, al día con main, y **compila** |
+> | `agente/agenda` | Nada. Limpio, partiendo de `main` |
+>
+> Si se relanzan, vale la pena rehacer los prompts con el mismo nivel de detalle: incluían la base
+> de pruebas propia de cada uno, su anclaje de registro, las reglas de arquitectura que vigila
+> NetArchTest, y cómo se verifica en este proyecto (mutar la guarda y verla en rojo).
+
 | Rama | Qué es | Punto de partida |
 |---|---|---|
 | `agente/resenas` | MOD-11 Reseñas: backend + pantalla | Su WIP, ya commiteado y al día con main. **Compila** |
@@ -985,6 +1011,20 @@ no reintente sin fin.
 ---
 
 ## 7. El siguiente paso exacto
+
+### Lo primero, al retomar (estado al cierre del 8-nov-2026, noche)
+
+1. **Los cuatro agentes NO están corriendo.** Se cayeron al arrancar por el límite de 5 horas. Ver
+   «Segunda tanda de agentes» más arriba: dice qué dejó cada uno y por qué conviene relanzar con
+   **dos agentes, o cuatro sobre Sonnet**, no cuatro sobre Opus.
+2. **Hay commits sin subir en `main`.** Pablo los sube con GitHub Desktop. Comprobar con
+   `git log --oneline origin/main..main`.
+3. **`main` está en verde y limpio:** 381 aplicación + 15 arquitectura + 440 integración, más 283
+   de interfaz. Es un buen punto de partida, y ya trae la API lista para producción, el envío real
+   de correos y el SEO.
+4. Lo que sigue bloqueado por Pablo, y solo por él: **precio y nombre de los planes**, y **pasarela
+   simulada o esperar a Transbank, Flow o Mercado Pago**.
+
 
 ```
 HECHO   MOD-01 Identidad        dominio, API y pantalla
