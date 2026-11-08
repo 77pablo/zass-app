@@ -110,7 +110,8 @@ public sealed class ServicioRegistro
             Canal = CanalNotificacion.Correo,
             ClaveIdempotencia = $"verificacion:{usuario.Id}:{ahora:yyyyMMddHHmmss}",
             Asunto = "Confirma tu correo en ZASS!",
-            Cuerpo = $"Hola {nombre}: confirma tu cuenta con este codigo dentro de 24 horas: {token}",
+            // El token va en una carga estructurada que el enviador purga tras el envio.
+            Cuerpo = CargaDeAviso.ConToken(token),
             ProgramadaPara = ahora,
         });
 

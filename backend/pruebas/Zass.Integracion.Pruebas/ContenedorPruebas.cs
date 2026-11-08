@@ -28,6 +28,7 @@ public class ContenedorPruebas
             .Build();
 
         return new ServiceCollection()
+            .AddLogging()   // el anfitrion real (WebApplication) ya lo trae; el trabajo de correo lo usa
             .AgregarZass(configuracion)
             .BuildServiceProvider(new ServiceProviderOptions
             {

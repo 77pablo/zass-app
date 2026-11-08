@@ -3,6 +3,8 @@ using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Catalogo;
@@ -11,6 +13,7 @@ using Zass.Aplicacion.Busqueda;
 using Zass.Aplicacion.Geografia;
 using Zass.Aplicacion.Suscripciones;
 using Zass.Aplicacion.Puertos;
+using Zass.Infraestructura.Correo;
 using Zass.Infraestructura.Datos;
 using Zass.Infraestructura.Datos.Repositorios;
 using Zass.Infraestructura.Seguridad;
@@ -36,6 +39,12 @@ public sealed class OpcionesZass
     /// </summary>
     [Required(ErrorMessage = "Falta la clave de cifrado de direcciones.")]
     public string ClaveDireccionesBase64 { get; set; } = "";
+
+    /// <summary>
+    /// Dirección pública del sitio (p. ej. https://zass.cl). Con ella se arman los enlaces de
+    /// los correos. Opcional al arrancar: sin ella los correos no se envían (y se registra).
+    /// </summary>
+    public string? UrlPublica { get; set; }
 
     public byte[] ClaveDirecciones()
     {
@@ -129,6 +138,30 @@ public static class RegistroDeServicios
 
         // --- MOD-13 Suscripciones ---
         servicios.AddScoped<IServicioSuscripciones, ServicioSuscripciones>();
+
+        // --- Correo transaccional ---
+        // Con proveedor distinto de Ninguno y sin clave, la aplicacion se niega a arrancar
+        // (ValidadorOpcionesCorreo + ValidateOnStart), igual que con la clave de cifrado.
+        servicios.AddOptions<OpcionesCorreo>()
+            .Bind(configuracion.GetSection(OpcionesCorreo.Seccion))
+            .ValidateOnStart();
+        servicios.AddSingleton<IValidateOptions<OpcionesCorreo>, ValidadorOpcionesCorreo>();
+        servicios.AddSingleton<IEnviadorDeCorreo>(sp =>
+        {
+            var o = sp.GetRequiredService<IOptions<OpcionesCorreo>>().Value;
+            if (o.Proveedor == ProveedorDeCorreo.Ninguno) return new EnviadorNulo();
+
+            // Un solo HttpClient con vida de conexion acotada (para que el DNS se renueve).
+            var http = new HttpClient(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) })
+            {
+                Timeout = TimeSpan.FromSeconds(o.TiempoLimiteHttpSegundos),
+            };
+            return o.Proveedor == ProveedorDeCorreo.Brevo
+                ? new EnviadorBrevo(http, Options.Create(o), sp.GetRequiredService<ILogger<EnviadorBrevo>>())
+                : new EnviadorResend(http, Options.Create(o), sp.GetRequiredService<ILogger<EnviadorResend>>());
+        });
+        servicios.AddScoped<ProcesadorDeCorreo>();
+        servicios.AddHostedService<TrabajoDeCorreo>();
 
         // --- Validadores ---
         // Se registran por ensamblado a proposito: agregar un comando sin su validador

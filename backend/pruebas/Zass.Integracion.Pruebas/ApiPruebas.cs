@@ -1689,7 +1689,7 @@ public class ApiPruebas : IAsyncLifetime
             .OrderByDescending(n => n.ProgramadaPara)
             .FirstAsync();
 
-        return aviso.Cuerpo.Split(' ').Last().TrimEnd('.');
+        return Zass.Aplicacion.Puertos.CargaDeAviso.LeerToken(aviso.Cuerpo)!;
     }
 }
 
