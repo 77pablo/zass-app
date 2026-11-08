@@ -405,10 +405,9 @@ el modo. Eso obligó a cambiar **dos guardas que lo prohibían a propósito** (`
 `ApiPruebas.La_ficha_publica_no_filtra...`); siguen protegiendo el id de catálogo, el del perfil y todo lo de la
 cuenta. Se actualizó el tipo `FichaPublica` del frontend.
 
-**Verificación al pausar, con sus huecos:** 654 de aplicación y 16 de arquitectura verdes tras el cambio. De
-integración, la suite completa dio 1 rojo (la guarda HTTP de arriba), que se arregló y **se re-corrió sola, en
-verde**; **la suite completa de integración NO se volvió a correr después del arreglo**. Antes del cambio
-estaba entera en verde (591). Las pruebas de interfaz tampoco se corrieron.
+**Verificación al pausar:** backend completo en verde tras el cambio, **re-corrido entero**: 654 de aplicación +
+16 de arquitectura + 591 de integración (1.261). **Las pruebas de interfaz (283) no se corrieron**: solo se tocó
+el tipo `FichaPublica`, pero no se comprobó que compile el frontend ni que sus pruebas sigan pasando.
 
 **Siguiente paso exacto: la pantalla de la agenda** (el backend está completo, falta todo el frontend):
 1. `frontend/src/funciones/agenda/servicio.ts`: llamadas a API-35 (calendario), API-36 (agendar) y API-37 (mis citas).
