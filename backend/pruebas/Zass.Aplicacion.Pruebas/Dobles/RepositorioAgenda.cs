@@ -172,6 +172,34 @@ public sealed class RepositorioAgendaEnMemoria : IRepositorioAgenda
         return Task.FromResult(r);
     }
 
+    private IReadOnlyList<Guid> Ids(IEnumerable<Cita> citas, int maximo)
+    {
+        IReadOnlyList<Guid> r = citas.Select(c => Enlazar(c).Id).Take(maximo).ToList();
+        return r;
+    }
+
+    /// <summary>
+    /// Para provocar la carrera «la lista se armó y la cita cambió antes de procesarla». Con
+    /// pruebas secuenciales no ocurre nunca: el doble filtra por estado y la lista siempre
+    /// está al día. Si esto está puesto, se devuelve tal cual, aunque ya no corresponda.
+    /// </summary>
+    public IReadOnlyList<Guid>? IdsObsoletosPorExpirar { get; set; }
+
+    public Task<IReadOnlyList<Guid>> CitasPorExpirarAsync(DateTime ahora, int maximo, CancellationToken ct = default) =>
+        IdsObsoletosPorExpirar is { } viejos ? Task.FromResult(viejos) :
+        Task.FromResult(Ids(_base.Citas.Where(
+            c => c.Estado == EstadoCita.Solicitada && c.ExpiraEn is { } l && l <= ahora), maximo));
+
+    public Task<IReadOnlyList<Guid>> CitasTerminadasAsync(DateTime ahora, int maximo, CancellationToken ct = default) =>
+        Task.FromResult(Ids(_base.Citas.Where(
+            c => c.Estado == EstadoCita.Confirmada
+                 && _base.Bloques.Any(b => b.Id == c.BloqueHorarioId && b.FinEn <= ahora)), maximo));
+
+    public Task<IReadOnlyList<Guid>> CitasSinAsistenciaAsync(DateTime limite, int maximo, CancellationToken ct = default) =>
+        Task.FromResult(Ids(_base.Citas.Where(
+            c => c.Estado == EstadoCita.PendienteAsistencia
+                 && _base.Bloques.Any(b => b.Id == c.BloqueHorarioId && b.FinEn <= limite)), maximo));
+
     public Task<Cita?> CitaParaCambioAsync(Guid id, CancellationToken ct = default) =>
         CitaPorIdAsync(id, ct);
 

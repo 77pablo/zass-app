@@ -357,10 +357,15 @@ idempotencia que no vigilaba nada porque el reloj de prueba no avanzaba.
   vez en la suite completa y pasa sola y en las siguientes corridas. Probable causa: otra prueba deja avisos
   `Programada` en `zass_pruebas` en ese instante (el `InitializeAsync` de esa clase los borra, pero la carrera
   existe). **No se investigó a fondo.** Si reaparece, mirar `notificaciones` en `zass_pruebas`.
-- **Faltan las tres transiciones que dispara el tiempo** (todas del planificador): T5 expirar solicitada a las
-  24 h, T8 pasar a `pendiente_asistencia`, T11 asumir realizada a las 72 h. `Cita.RegistrarAsistencia` exige
-  `PendienteAsistencia`, así que **hoy ninguna cita llega a poder marcarse** hasta que T8 exista. Es lo primero
-  que sigue. La clase `TrabajoDiario` está pensada para que sea una entrada más.
+- **HECHAS las tres transiciones que dispara el tiempo** (T5, T8, T11), en `Planificador` (reemplaza a
+  `TrabajoDiario`; dos filas en `trabajos_de_fondo`: `suscripciones-diario` y `citas-periodico`, esta cada 15 min).
+  Cada cita se procesa en SU transacción y se relee el estado dentro de ella. **Comprobado**: contra la base, una
+  cita llega de confirmada a realizada y el prestador marca asistencia; y se mutó la releída de estado, que
+  **al principio sobrevivió** (ninguna prueba secuencial puede provocar esa carrera): se añadió un doble con lista
+  obsoleta y ahora cae. Las transiciones del tiempo se anotan en TBL-19 como `Asistencia`/`Rechazo` con
+  `realizado_por` nulo; el documento no tiene un tipo propio para «venció el plazo», y no se inventó uno.
+  **Lo que NO se probó**: el `Planificador` entero corriendo con su temporizador (se apaga en las pruebas de la
+  API); solo se probaron sus piezas y el servicio que llama.
 - Recordatorios de cita (RN-S4-07) y avisos de cita (confirmada, cancelada…): **no hechos**. `TienePlantilla`
   solo cubre verificación, recuperación y los dos de suscripción.
 - `appsettings.Development.json` **ahora se versiona a propósito** (sin secretos). Estaba en `.gitignore`

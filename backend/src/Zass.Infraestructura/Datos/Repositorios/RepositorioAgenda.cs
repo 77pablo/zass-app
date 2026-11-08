@@ -157,6 +157,26 @@ public sealed class RepositorioAgendaEfCore : IRepositorioAgenda
         Guid perfilPrestadorId, CancellationToken ct = default) =>
         await Completa().Where(c => c.PerfilPrestadorId == perfilPrestadorId).ToListAsync(ct);
 
+    // ------------------------------------------------------- A-09
+
+    public async Task<IReadOnlyList<Guid>> CitasPorExpirarAsync(
+        DateTime ahora, int maximo, CancellationToken ct = default) =>
+        await _ctx.Citas
+            .Where(c => c.Estado == EstadoCita.Solicitada && c.ExpiraEn != null && c.ExpiraEn <= ahora)
+            .OrderBy(c => c.ExpiraEn).Select(c => c.Id).Take(maximo).ToListAsync(ct);
+
+    public async Task<IReadOnlyList<Guid>> CitasTerminadasAsync(
+        DateTime ahora, int maximo, CancellationToken ct = default) =>
+        await _ctx.Citas
+            .Where(c => c.Estado == EstadoCita.Confirmada && c.BloqueHorario!.FinEn <= ahora)
+            .OrderBy(c => c.BloqueHorario!.FinEn).Select(c => c.Id).Take(maximo).ToListAsync(ct);
+
+    public async Task<IReadOnlyList<Guid>> CitasSinAsistenciaAsync(
+        DateTime limite, int maximo, CancellationToken ct = default) =>
+        await _ctx.Citas
+            .Where(c => c.Estado == EstadoCita.PendienteAsistencia && c.BloqueHorario!.FinEn <= limite)
+            .OrderBy(c => c.BloqueHorario!.FinEn).Select(c => c.Id).Take(maximo).ToListAsync(ct);
+
     /// <summary>
     /// Rastreada y con el bloque, para poder cambiarle el estado y liberar o vencer la hora
     /// en la misma transacción.

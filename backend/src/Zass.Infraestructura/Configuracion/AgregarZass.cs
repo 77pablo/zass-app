@@ -208,7 +208,7 @@ public static class RegistroDeServicios
         // --- A-09 Planificador (trabajos de fondo) ---
         servicios.AddOptions<OpcionesFondo>().Bind(configuracion.GetSection(OpcionesFondo.Seccion));
         servicios.AddScoped<CoordinadorDeTrabajos>();
-        servicios.AddHostedService<TrabajoDiario>();
+        servicios.AddHostedService<Planificador>();
 
         // --- Validadores ---
         // Se registran por ensamblado a proposito: agregar un comando sin su validador

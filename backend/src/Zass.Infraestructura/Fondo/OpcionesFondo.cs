@@ -25,6 +25,12 @@ public sealed class OpcionesFondo
     public int IntervaloHoras { get; set; } = 24;
 
     /// <summary>
+    /// Cada cuánto se revisan las citas (T5, T8, T11). estados-cita.md pide 15 minutos para T8: es lo
+    /// que tarda un prestador en poder marcar asistencia después de la hora.
+    /// </summary>
+    public int CitasCadaMinutos { get; set; } = 15;
+
+    /// <summary>
     /// Cuánto se reserva el trabajo quien lo toma. Tiene que superar de sobra lo que tarda:
     /// si vence a mitad, otra réplica lo retomaría en paralelo. Vencer y avisar son dos
     /// consultas y unos cuantos INSERT, así que diez minutos es holgado.

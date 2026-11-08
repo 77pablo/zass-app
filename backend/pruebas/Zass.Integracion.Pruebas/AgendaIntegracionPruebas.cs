@@ -460,6 +460,104 @@ public class AgendaIntegracionPruebas : IAsyncLifetime
             c => c.BloqueHorarioId == nuevo && c.Estado == EstadoCita.Confirmada));
     }
 
+    // ========================================================= A-09 contra la base
+
+    /// <summary>
+    /// Las tres transiciones del tiempo con el SQL real: las consultas con unión al bloque, la
+    /// comparación de fechas en timestamptz y la transacción por cita. Una lista en memoria
+    /// no contesta nada de eso.
+    ///
+    /// Se mueve el reloj de la API y no los datos: el bloque queda a 2 días y se avanza el
+    /// reloj, que es lo que de verdad pasa en producción.
+    /// </summary>
+    [Fact]
+    public async Task El_tiempo_lleva_una_cita_de_confirmada_a_realizada_con_el_sql_real()
+    {
+        var bloque = await UnBloqueLibreAsync(_reloj.Ahora.AddHours(3));
+        var (agenda, _) = UnaReplica();
+        var cita = await agenda.AgendarAsync(new AgendarCmd(
+            _usuarioBuscador, bloque, $"t-{Guid.NewGuid():N}", null));
+        Assert.True(cita.Exito, cita.Mensaje);
+
+        var relojAdelantado = new RelojAdelantado(_reloj, TimeSpan.FromHours(4));
+        var futura = AgendaConReloj(relojAdelantado);
+
+        var t8 = await futura.AvanzarPorElTiempoAsync();
+        Assert.Equal(1, t8.PorAsistir);
+        await using (var ctx = ContextoDePrueba.Crear())
+            Assert.Equal(EstadoCita.PendienteAsistencia,
+                (await ctx.Citas.SingleAsync(c => c.Id == cita.Valor!.Id)).Estado);
+
+        // Ahora el prestador sí puede marcar asistencia.
+        var marca = await futura.RegistrarAsistenciaAsync(
+            cita.Valor!.Id, new AutorDeCambio(_usuarioPrestador, _perfil), asistio: true);
+        Assert.True(marca.Exito, marca.Mensaje);
+        Assert.True(await futura.CitaRealizadaAsync(_usuarioBuscador, _perfil));
+
+        await using var fin = ContextoDePrueba.Crear();
+        Assert.Equal(EstadoBloque.Vencido, (await fin.Bloques.SingleAsync(b => b.Id == bloque)).Estado);
+        Assert.Equal(2, await fin.CambiosCita.CountAsync(
+            c => c.CitaId == cita.Valor.Id && c.Tipo == TipoCambio.Asistencia));
+    }
+
+    [Fact]
+    public async Task Una_solicitada_sin_respuesta_expira_y_su_hora_vuelve_a_ofrecerse_en_la_base()
+    {
+        // Servicio manual: se cambia el modo del ofrecido de esta prueba.
+        await using (var ctx = ContextoDePrueba.Crear())
+        {
+            (await ctx.PrestadorServicios.SingleAsync(ps => ps.Id == _servicioAutomatico))
+                .ModoAgenda = ModoAgenda.Manual;
+            await ctx.SaveChangesAsync();
+        }
+        var bloque = await UnBloqueLibreAsync(_reloj.Ahora.AddDays(5));
+        var (agenda, _) = UnaReplica();
+        var cita = await agenda.AgendarAsync(new AgendarCmd(
+            _usuarioBuscador, bloque, $"t5-{Guid.NewGuid():N}", null));
+        Assert.Equal("Solicitada", cita.Valor!.Estado);
+
+        var futura = AgendaConReloj(new RelojAdelantado(_reloj, TimeSpan.FromHours(25)));
+        var r = await futura.AvanzarPorElTiempoAsync();
+
+        Assert.Equal(1, r.Expiradas);
+        await using var fin = ContextoDePrueba.Crear();
+        Assert.Equal(EstadoBloque.Libre, (await fin.Bloques.SingleAsync(b => b.Id == bloque)).Estado);
+
+        // R-1 ya no estorba: la expirada deja de ser activa y la hora se puede volver a dar.
+        Assert.False(await fin.Citas.AnyAsync(
+            c => c.BloqueHorarioId == bloque
+                 && (c.Estado == EstadoCita.Solicitada || c.Estado == EstadoCita.Confirmada)));
+    }
+
+    private ServicioAgenda AgendaConReloj(Zass.Aplicacion.Puertos.IRelojSistema reloj)
+    {
+        var ctx = ContextoDePrueba.Crear();
+        _contextos.Add(ctx);
+        var trabajo = new UnidadDeTrabajoEfCore(ctx);
+        var auditor = new AuditorEfCore(ctx);
+        return new ServicioAgenda(
+            new RepositorioAgendaEfCore(ctx), trabajo, reloj, auditor,
+            new ContactosEfCore(ctx),
+            new ServicioCatalogo(new RepositorioCatalogoEfCore(ctx), trabajo, reloj, auditor),
+            new ServicioIdentidad(new RepositorioUsuariosEfCore(ctx), new RepositorioPerfilesEfCore(ctx)),
+            new ServicioSuscripciones(
+                new RepositorioSuscripcionesEfCore(ctx), trabajo, reloj, auditor,
+                new ColaNotificacionesEfCore(ctx)));
+    }
+
+    /// <summary>El reloj real corrido hacia adelante. Así «pasaron 4 horas» sin esperarlas.</summary>
+    private sealed class RelojAdelantado : Zass.Aplicacion.Puertos.IRelojSistema
+    {
+        private readonly Zass.Aplicacion.Puertos.IRelojSistema _base;
+        private readonly TimeSpan _salto;
+        public RelojAdelantado(Zass.Aplicacion.Puertos.IRelojSistema baseReloj, TimeSpan salto)
+        {
+            _base = baseReloj;
+            _salto = salto;
+        }
+        public DateTime Ahora => _base.Ahora + _salto;
+    }
+
     /// <summary>
     /// El camino completo de CU-11: definir el horario genera bloques de verdad, y el
     /// calendario público los muestra. Es lo que convierte la regla en horas reservables.

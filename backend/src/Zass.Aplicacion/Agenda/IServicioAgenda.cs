@@ -101,6 +101,15 @@ public interface IServicioAgenda
     Task<Resultado<CitaDto>> RegistrarAsistenciaAsync(
         Guid citaId, AutorDeCambio autor, bool asistio, CancellationToken ct = default);
 
+    // ------------------------------------------------------------- A-09: lo que mueve el tiempo
+
+    /// <summary>
+    /// T5, T8 y T11. Lo llama el planificador cada pocos minutos. Cada cita se procesa en SU
+    /// transacción y se vuelve a comprobar su estado dentro de ella: mientras tanto alguien pudo
+    /// confirmarla o cancelarla, y vencer algo que ya cambió sería pisarle la decisión.
+    /// </summary>
+    Task<ResumenDeCitas> AvanzarPorElTiempoAsync(CancellationToken ct = default);
+
     // ------------------------------------------------------------- lo que consume MOD-11
 
     /// <summary>
@@ -181,6 +190,13 @@ public sealed record ReprogramarCitaCmd(
     AutorDeCambio Autor,
     string ClaveIdempotencia,
     string? Motivo);
+
+/// <summary>Lo que hizo una pasada del planificador sobre las citas. Solo números.</summary>
+public sealed record ResumenDeCitas(int Expiradas, int PorAsistir, int Asumidas)
+{
+    public override string ToString() =>
+        $"{Expiradas} expiradas, {PorAsistir} por asistir, {Asumidas} asumidas";
+}
 
 public sealed record MotivoHttpCmd(string? Motivo);
 

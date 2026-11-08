@@ -31,6 +31,15 @@ public sealed class ServicioAgenda : IServicioAgenda
     /// <summary>RN-S4-03. Una cita manual sin respuesta expira y libera el bloque.</summary>
     public static readonly TimeSpan PlazoDeRespuestaManual = TimeSpan.FromHours(24);
 
+    /// <summary>T11. Si el prestador no marca asistencia en este plazo, se asume realizada.</summary>
+    public static readonly TimeSpan PlazoParaMarcarAsistencia = TimeSpan.FromHours(72);
+
+    /// <summary>
+    /// Tope por pasada. Si hay más, la siguiente (en 15 min) sigue: mejor una pasada corta
+    /// que una transacción larga o una reserva del planificador que venza a mitad.
+    /// </summary>
+    public const int MaximoPorPasada = 200;
+
     public const int LargoMaximoNota = 500;
     public const int LargoMaximoMotivo = 300;
 
@@ -725,6 +734,102 @@ public sealed class ServicioAgenda : IServicioAgenda
 
     private static string? Limpiar(string? texto) =>
         string.IsNullOrWhiteSpace(texto) ? null : texto.Trim();
+
+    // ------------------------------------------------------------- A-09: lo que mueve el tiempo
+
+    public async Task<ResumenDeCitas> AvanzarPorElTiempoAsync(CancellationToken ct = default)
+    {
+        var ahora = _reloj.Ahora;
+
+        var expiradas = await ProcesarAsync(
+            await _repo.CitasPorExpirarAsync(ahora, MaximoPorPasada, ct), ct,
+            (c, a) =>
+            {
+                // Se vuelve a mirar: mientras tanto el prestador pudo responder.
+                if (c.Estado != EstadoCita.Solicitada || c.ExpiraEn is not { } l || a <= l) return null;
+                var anterior = c.Estado;
+                c.Rechazar();
+                c.BloqueHorario?.Liberar();
+                return (anterior, TipoCambio.Rechazo, "Sin respuesta del prestador en 24 horas");
+            });
+
+        var porAsistir = await ProcesarAsync(
+            await _repo.CitasTerminadasAsync(ahora, MaximoPorPasada, ct), ct,
+            (c, a) =>
+            {
+                if (c.Estado != EstadoCita.Confirmada || c.BloqueHorario is not { } b || b.FinEn > a) return null;
+                var anterior = c.Estado;
+                c.PasarAPendienteAsistencia();
+                return (anterior, TipoCambio.Asistencia, "Pasó la hora de la cita");
+            });
+
+        var asumidas = await ProcesarAsync(
+            await _repo.CitasSinAsistenciaAsync(ahora - PlazoParaMarcarAsistencia, MaximoPorPasada, ct), ct,
+            (c, a) =>
+            {
+                if (c.Estado != EstadoCita.PendienteAsistencia || c.BloqueHorario is not { } b
+                    || b.FinEn > a - PlazoParaMarcarAsistencia) return null;
+                var anterior = c.Estado;
+                c.AsumirRealizada();
+                c.BloqueHorario?.Vencer();
+                return (anterior, TipoCambio.Asistencia, "Sin asistencia marcada en 72 horas: se asume realizada");
+            });
+
+        return new ResumenDeCitas(expiradas, porAsistir, asumidas);
+    }
+
+    /// <summary>
+    /// Una cita, una transacción. Si una falla por concurrencia (alguien la tocó justo ahora) no
+    /// tumba a las otras 199: queda para la pasada siguiente, que la verá ya cambiada.
+    /// </summary>
+    private async Task<int> ProcesarAsync(
+        IReadOnlyList<Guid> ids, CancellationToken ct,
+        Func<Cita, DateTime, (EstadoCita Anterior, TipoCambio Tipo, string Motivo)?> transicion)
+    {
+        var hechas = 0;
+        foreach (var id in ids)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var ok = await _trabajo.EnTransaccionAsync(async t =>
+                {
+                    var cita = await _repo.CitaParaCambioAsync(id, t);
+                    if (cita is null) return false;
+
+                    var ahora = _reloj.Ahora;
+                    if (transicion(cita, ahora) is not { } cambio) return false;
+
+                    cita.Version++;
+                    _repo.AgregarCambio(new CambioCita
+                    {
+                        CitaId = cita.Id,
+                        Tipo = cambio.Tipo,
+                        EstadoAnterior = cambio.Anterior,
+                        EstadoNuevo = cita.Estado,
+                        RealizadoPor = null,        // TBL-19: nulo si lo hizo el Planificador
+                        Motivo = cambio.Motivo,
+                        OcurridoEn = ahora,
+                    });
+                    await _trabajo.GuardarAsync(t);
+                    return true;
+                }, ct);
+                if (ok) hechas++;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException && EsConcurrencia(ex))
+            {
+                // La toma la pasada siguiente.
+            }
+        }
+        return hechas;
+    }
+
+    /// <summary>
+    /// La aplicación no conoce EF Core (una regla de arquitectura lo vigila), así que reconoce la
+    /// excepción de concurrencia por su nombre.
+    /// </summary>
+    private static bool EsConcurrencia(Exception ex) =>
+        ex.GetType().Name == "DbUpdateConcurrencyException";
 
     // ------------------------------------------------------------- lo que consume MOD-11
 

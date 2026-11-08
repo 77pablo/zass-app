@@ -41,4 +41,10 @@ public static class Trabajos
 {
     /// <summary>Vencer las suscripciones pasadas de fecha y avisar a quien esta por vencer.</summary>
     public const string Suscripciones = "suscripciones-diario";
+
+    /// <summary>
+    /// T5, T8 y T11 de la cita: expirar las manuales sin respuesta, pasar a «pendiente de
+    /// asistencia» las que ya ocurrieron y asumir realizadas las que nadie marcó en 72 h.
+    /// </summary>
+    public const string Citas = "citas-periodico";
 }

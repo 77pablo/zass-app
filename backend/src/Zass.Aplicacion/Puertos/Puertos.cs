@@ -625,6 +625,17 @@ public interface IRepositorioAgenda
     Task<IReadOnlyList<Cita>> CitasDePrestadorAsync(
         Guid perfilPrestadorId, CancellationToken ct = default);
 
+    // ------------------------------------------------------- lo que dispara el tiempo (A-09)
+
+    /// <summary>T5. Solicitadas cuyo plazo de 24 h ya venció. Solo los ids: cada una se procesa en su transacción.</summary>
+    Task<IReadOnlyList<Guid>> CitasPorExpirarAsync(DateTime ahora, int maximo, CancellationToken ct = default);
+
+    /// <summary>T8. Confirmadas cuya hora ya terminó.</summary>
+    Task<IReadOnlyList<Guid>> CitasTerminadasAsync(DateTime ahora, int maximo, CancellationToken ct = default);
+
+    /// <summary>T11. Pendientes de asistencia cuya hora terminó antes de <paramref name="limite"/>.</summary>
+    Task<IReadOnlyList<Guid>> CitasSinAsistenciaAsync(DateTime limite, int maximo, CancellationToken ct = default);
+
     /// <summary>
     /// La cita RASTREADA, con su bloque, para poder cambiarle el estado. Separada de
     /// <see cref="CitaPorIdAsync"/> porque esa es de lectura y puede venir sin rastreo.

@@ -606,4 +606,192 @@ public class CicloDeLaCitaPruebas
         Assert.Equal(Fallas.Conflicto, r.Codigo);
         Assert.Equal(terminal, cita.Estado);
     }
+
+    // ========================================================= A-09: lo que mueve el tiempo
+
+    /// <summary>RN-S4-03 y T5. La solicitada sin respuesta expira y la hora vuelve a estar libre.</summary>
+    [Fact]
+    public async Task Una_solicitada_sin_respuesta_expira_a_las_24_horas_y_libera_la_hora()
+    {
+        var (cita, bloque) = await UnaCitaAsync(inicio: Ahora.AddDays(5), de: _manual);
+        _reloj.Avanzar(ServicioAgenda.PlazoDeRespuestaManual + TimeSpan.FromMinutes(1));
+
+        var r = await _servicio.AvanzarPorElTiempoAsync();
+
+        Assert.Equal(1, r.Expiradas);
+        Assert.Equal(EstadoCita.Rechazada, cita.Estado);
+        Assert.Equal(EstadoBloque.Libre, bloque.Estado);
+
+        // TBL-19: «nulo si lo hizo el Planificador».
+        var cambio = _base.CambiosCita.Single(c => c.Tipo == TipoCambio.Rechazo);
+        Assert.Null(cambio.RealizadoPor);
+        Assert.Contains("24 horas", cambio.Motivo);
+    }
+
+    [Fact]
+    public async Task Una_solicitada_dentro_de_plazo_no_se_toca()
+    {
+        var (cita, bloque) = await UnaCitaAsync(inicio: Ahora.AddDays(5), de: _manual);
+        _reloj.Avanzar(TimeSpan.FromHours(23));
+
+        var r = await _servicio.AvanzarPorElTiempoAsync();
+
+        Assert.Equal(0, r.Expiradas);
+        Assert.Equal(EstadoCita.Solicitada, cita.Estado);
+        Assert.Equal(EstadoBloque.Reservado, bloque.Estado);
+    }
+
+    /// <summary>
+    /// Mientras el planificador decidía, el prestador pudo confirmar. Vencer algo que ya cambió
+    /// sería pisarle la decisión: por eso el estado se vuelve a comprobar DENTRO de la
+    /// transacción de cada cita.
+    /// </summary>
+    [Fact]
+    public async Task Una_solicitada_que_el_prestador_confirmo_no_se_expira()
+    {
+        var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddDays(5), de: _manual);
+        await _servicio.ConfirmarAsync(cita.Id, ComoPrestador);
+        _reloj.Avanzar(ServicioAgenda.PlazoDeRespuestaManual + TimeSpan.FromHours(1));
+
+        var r = await _servicio.AvanzarPorElTiempoAsync();
+
+        Assert.Equal(0, r.Expiradas);
+        Assert.Equal(EstadoCita.Confirmada, cita.Estado);
+    }
+
+    /// <summary>
+    /// La carrera que la releída de estado existe para cubrir: el planificador armó la lista de
+    /// "por expirar" y, antes de llegar a esta cita, el buscador la canceló. Cancelar NO borra
+    /// <c>ExpiraEn</c>, así que la cita sigue pareciendo vencida por fecha; lo único que la
+    /// protege es volver a mirar el estado DENTRO de su transacción.
+    ///
+    /// Sin esa releída se escribía un cambio de «rechazo» sobre una cita cancelada: un
+    /// historial inmutable que cuenta algo que no ocurrió.
+    ///
+    /// Se descubrió mutando la guarda y viendo que ninguna prueba secuencial se ponía roja.
+    /// </summary>
+    [Fact]
+    public async Task Si_la_cita_cambio_despues_de_armar_la_lista_no_se_le_escribe_un_rechazo()
+    {
+        var (cita, bloque) = await UnaCitaAsync(inicio: Ahora.AddDays(5), de: _manual);
+        await _servicio.CancelarAsync(new CancelarCitaCmd(cita.Id, ComoBuscador, $"c-{Guid.NewGuid():N}", null));
+        Assert.NotNull(cita.ExpiraEn);   // el supuesto que hace posible la carrera
+
+        _reloj.Avanzar(ServicioAgenda.PlazoDeRespuestaManual + TimeSpan.FromHours(1));
+        _repo.IdsObsoletosPorExpirar = new[] { cita.Id };
+
+        var r = await _servicio.AvanzarPorElTiempoAsync();
+
+        Assert.Equal(0, r.Expiradas);
+        Assert.Equal(EstadoCita.Cancelada, cita.Estado);
+        Assert.DoesNotContain(_base.CambiosCita, c => c.CitaId == cita.Id && c.Tipo == TipoCambio.Rechazo);
+        Assert.Equal(EstadoBloque.Libre, bloque.Estado);
+    }
+
+    /// <summary>T8. Es lo que abre la puerta de CS-12: sin ella ninguna cita puede marcarse.</summary>
+    [Fact]
+    public async Task Cuando_pasa_la_hora_la_cita_confirmada_espera_asistencia()
+    {
+        var (cita, bloque) = await UnaCitaAsync(inicio: Ahora.AddHours(3));
+        _reloj.Avanzar(TimeSpan.FromHours(4));
+
+        var r = await _servicio.AvanzarPorElTiempoAsync();
+
+        Assert.Equal(1, r.PorAsistir);
+        Assert.Equal(EstadoCita.PendienteAsistencia, cita.Estado);
+        Assert.Equal(EstadoBloque.Reservado, bloque.Estado);   // T8: sigue reservado
+    }
+
+    [Fact]
+    public async Task Una_cita_cuya_hora_no_ha_terminado_no_pasa_a_pendiente()
+    {
+        var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddHours(3));
+        _reloj.Avanzar(TimeSpan.FromMinutes(150));   // 30 min antes de que empiece... aún no termina
+
+        await _servicio.AvanzarPorElTiempoAsync();
+
+        Assert.Equal(EstadoCita.Confirmada, cita.Estado);
+    }
+
+    /// <summary>
+    /// El circuito completo que hasta hoy no podía cerrarse: agendar, que pase la hora, que el
+    /// planificador la pase a pendiente, y que el prestador marque asistencia. Cada eslabón
+    /// estaba probado por separado; juntos faltaba el segundo, y sin él el tercero era
+    /// inalcanzable.
+    /// </summary>
+    [Fact]
+    public async Task Despues_de_la_hora_el_prestador_ya_puede_marcar_asistencia_y_el_buscador_resenar()
+    {
+        var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddHours(3));
+        Assert.False((await _servicio.RegistrarAsistenciaAsync(cita.Id, ComoPrestador, true)).Exito);
+
+        _reloj.Avanzar(TimeSpan.FromHours(4));
+        await _servicio.AvanzarPorElTiempoAsync();
+        var r = await _servicio.RegistrarAsistenciaAsync(cita.Id, ComoPrestador, asistio: true);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.True(await _servicio.CitaRealizadaAsync(_buscador.Id, _prestador.Id));
+    }
+
+    /// <summary>
+    /// T11. Si el prestador nunca marca, el buscador no puede quedarse sin reseñar por una
+    /// omisión que no es suya.
+    /// </summary>
+    [Fact]
+    public async Task A_las_72_horas_sin_marcar_se_asume_realizada_y_el_bloque_vence()
+    {
+        var (cita, bloque) = await UnaCitaAsync(inicio: Ahora.AddHours(3));
+        _reloj.Avanzar(TimeSpan.FromHours(4));
+        await _servicio.AvanzarPorElTiempoAsync();
+        Assert.Equal(EstadoCita.PendienteAsistencia, cita.Estado);
+
+        _reloj.Avanzar(ServicioAgenda.PlazoParaMarcarAsistencia + TimeSpan.FromMinutes(1));
+        var r = await _servicio.AvanzarPorElTiempoAsync();
+
+        Assert.Equal(1, r.Asumidas);
+        Assert.Equal(EstadoCita.Realizada, cita.Estado);
+        Assert.Equal(EstadoBloque.Vencido, bloque.Estado);
+        Assert.True(await _servicio.CitaRealizadaAsync(_buscador.Id, _prestador.Id));
+    }
+
+    [Fact]
+    public async Task Antes_de_las_72_horas_la_cita_sigue_esperando_asistencia()
+    {
+        var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddHours(3));
+        _reloj.Avanzar(TimeSpan.FromHours(4));
+        await _servicio.AvanzarPorElTiempoAsync();
+
+        _reloj.Avanzar(TimeSpan.FromHours(60));
+        var r = await _servicio.AvanzarPorElTiempoAsync();
+
+        Assert.Equal(0, r.Asumidas);
+        Assert.Equal(EstadoCita.PendienteAsistencia, cita.Estado);
+    }
+
+    /// <summary>Correrlo dos veces seguidas no repite nada: es lo que hace seguro al planificador.</summary>
+    [Fact]
+    public async Task Correr_dos_veces_seguidas_no_repite_las_transiciones()
+    {
+        var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddHours(3));
+        _reloj.Avanzar(TimeSpan.FromHours(4));
+
+        await _servicio.AvanzarPorElTiempoAsync();
+        var segunda = await _servicio.AvanzarPorElTiempoAsync();
+
+        Assert.Equal(new ResumenDeCitas(0, 0, 0), segunda);
+        Assert.Single(_base.CambiosCita.Where(c => c.CitaId == cita.Id && c.Tipo == TipoCambio.Asistencia));
+    }
+
+    [Fact]
+    public async Task Una_cita_cancelada_no_pasa_a_esperar_asistencia()
+    {
+        var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddHours(3));
+        await _servicio.CancelarAsync(new CancelarCitaCmd(cita.Id, ComoBuscador, $"c-{Guid.NewGuid():N}", "motivo"));
+        _reloj.Avanzar(TimeSpan.FromHours(4));
+
+        var r = await _servicio.AvanzarPorElTiempoAsync();
+
+        Assert.Equal(0, r.PorAsistir);
+        Assert.Equal(EstadoCita.Cancelada, cita.Estado);
+    }
 }

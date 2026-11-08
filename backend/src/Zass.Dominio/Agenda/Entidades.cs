@@ -176,6 +176,31 @@ public class Cita
 
     public void MarcarReprogramada() => Estado = EstadoCita.Reprogramada;
 
+    /// <summary>
+    /// T8. Pasó la hora de la cita. Es lo que abre la puerta de CS-12: sin este paso nadie
+    /// podría marcar asistencia, y se podría marcar «realizada» una cita futura y reseñar sin
+    /// que el servicio hubiera ocurrido.
+    /// </summary>
+    public Resultado PasarAPendienteAsistencia()
+    {
+        if (Estado != EstadoCita.Confirmada)
+            return Resultado.Falla(Fallas.Conflicto, "Solo una cita confirmada pasa a esperar asistencia.");
+        Estado = EstadoCita.PendienteAsistencia;
+        return Resultado.Ok();
+    }
+
+    /// <summary>
+    /// T11. Pasaron 72 h sin que el prestador marcara nada. Se asume realizada: lo contrario
+    /// dejaría al buscador sin poder reseñar por una omisión que no es suya.
+    /// </summary>
+    public Resultado AsumirRealizada()
+    {
+        if (Estado != EstadoCita.PendienteAsistencia)
+            return Resultado.Falla(Fallas.Conflicto, "Solo se asume realizada una cita que esperaba asistencia.");
+        Estado = EstadoCita.Realizada;
+        return Resultado.Ok();
+    }
+
     public Resultado RegistrarAsistencia(bool asistio)
     {
         if (Estado != EstadoCita.PendienteAsistencia)
