@@ -10,6 +10,7 @@ using Zass.Aplicacion.Credenciales;
 using Zass.Aplicacion.Busqueda;
 using Zass.Aplicacion.Geografia;
 using Zass.Aplicacion.Suscripciones;
+using Zass.Aplicacion.Resenas;
 using Zass.Aplicacion.Puertos;
 using Zass.Infraestructura.Datos;
 using Zass.Infraestructura.Datos.Repositorios;
@@ -129,6 +130,10 @@ public static class RegistroDeServicios
 
         // --- MOD-13 Suscripciones ---
         servicios.AddScoped<IServicioSuscripciones, ServicioSuscripciones>();
+
+        // --- MOD-11 Resenas ---
+        servicios.AddScoped<IRepositorioResenas, RepositorioResenasEfCore>();
+        servicios.AddScoped<IServicioResenas, ServicioResenas>();
 
         // --- Validadores ---
         // Se registran por ensamblado a proposito: agregar un comando sin su validador
