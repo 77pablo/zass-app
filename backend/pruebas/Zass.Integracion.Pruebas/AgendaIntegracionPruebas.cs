@@ -67,9 +67,16 @@ public class AgendaIntegracionPruebas : IAsyncLifetime
         var buscador = new Usuario
         {
             Correo = $"ag-b-{marca}@zass.local", HashContrasena = "x",
-            Nombre = "Ana Pérez", CorreoVerificado = true,
+            Nombre = "Ana Pérez", CorreoVerificado = true, Estado = EstadoCuenta.Activa,
         };
         ctx.Usuarios.AddRange(prestador, buscador);
+        // Reseñas exige cuenta de buscador, no solo un usuario: sin el rol, EsElegible responde
+        // «necesitas una cuenta de buscador» aunque la cita esté realizada.
+        ctx.UsuarioRoles.Add(new UsuarioRol
+        {
+            UsuarioId = buscador.Id,
+            RolId = (await ctx.Roles.AsNoTracking().SingleAsync(r => r.Codigo == "buscador")).Id,
+        });
 
         var rubro = await ctx.Rubros.FirstAsync(r => r.Activo);
         var perfil = new PerfilPrestador
@@ -132,6 +139,7 @@ public class AgendaIntegracionPruebas : IAsyncLifetime
             DELETE FROM auditoria         WHERE actor_id IN ({1}, {2});
             DELETE FROM perfiles_prestador WHERE id = {0};
             DELETE FROM notificaciones    WHERE destinatario_id IN ({1}, {2});
+            DELETE FROM usuario_roles     WHERE usuario_id IN ({1}, {2});
             DELETE FROM usuarios          WHERE id IN ({1}, {2});
             """,
             _perfil, _usuarioPrestador, _usuarioBuscador, _servicioCatalogo);
@@ -527,6 +535,72 @@ public class AgendaIntegracionPruebas : IAsyncLifetime
         Assert.False(await fin.Citas.AnyAsync(
             c => c.BloqueHorarioId == bloque
                  && (c.Estado == EstadoCita.Solicitada || c.Estado == EstadoCita.Confirmada)));
+    }
+
+    // ========================================================= agenda -> resenas (MOD-06 + MOD-11)
+
+    private Zass.Aplicacion.Resenas.ServicioResenas ResenasConReloj(Zass.Aplicacion.Puertos.IRelojSistema reloj)
+    {
+        var ctx = ContextoDePrueba.Crear();
+        _contextos.Add(ctx);
+        return new Zass.Aplicacion.Resenas.ServicioResenas(
+            new RepositorioResenasEfCore(ctx),
+            new ServicioIdentidad(new RepositorioUsuariosEfCore(ctx), new RepositorioPerfilesEfCore(ctx)),
+            new UnidadDeTrabajoEfCore(ctx), reloj, new AuditorEfCore(ctx), new ColaNotificacionesEfCore(ctx));
+    }
+
+    /// <summary>
+    /// El circuito que ninguna rama podia probar sola: agendar, que pase la hora, que el
+    /// prestador marque asistencia y que MOD-11 diga que se puede resenar.
+    /// </summary>
+    [Fact]
+    public async Task Una_cita_realizada_habilita_la_resena_por_el_camino_completo()
+    {
+        var bloque = await UnBloqueLibreAsync(_reloj.Ahora.AddHours(3));
+        var (agenda, _) = UnaReplica();
+        var cita = await agenda.AgendarAsync(new AgendarCmd(_usuarioBuscador, bloque, $"e-{Guid.NewGuid():N}", null));
+        Assert.True(cita.Exito, cita.Mensaje);
+
+        var futuro = new RelojAdelantado(_reloj, TimeSpan.FromHours(4));
+        var agendaFutura = AgendaConReloj(futuro);
+        await agendaFutura.AvanzarPorElTiempoAsync();
+        await agendaFutura.RegistrarAsistenciaAsync(cita.Valor!.Id, new AutorDeCambio(_usuarioPrestador, _perfil), true);
+
+        var r = await ResenasConReloj(futuro).EsElegibleAsync(_usuarioBuscador, _perfil);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.True(r.Valor!.Elegible, r.Valor.Mensaje);
+    }
+
+    /// <summary>
+    /// RN-S4-05, y es el defecto que solo aparecio al JUNTAR las dos ramas: el contacto de una
+    /// cita apunta a la PRIMERA de la cadena, y esa queda `Reprogramada` en cuanto se mueve la
+    /// hora. Si resenas mira solo ese estado, quien reprograma y luego es atendido pierde el
+    /// derecho a opinar, que es justo lo que la regla existe para impedir.
+    /// </summary>
+    [Fact]
+    public async Task Reprogramar_no_hace_perder_la_elegibilidad_de_resena()
+    {
+        var primero = await UnBloqueLibreAsync(_reloj.Ahora.AddDays(2));
+        var segundo = await UnBloqueLibreAsync(_reloj.Ahora.AddDays(3));
+        var (agenda, _) = UnaReplica();
+
+        var original = await agenda.AgendarAsync(new AgendarCmd(_usuarioBuscador, primero, $"p-{Guid.NewGuid():N}", null));
+        var nueva = await agenda.ReprogramarAsync(new ReprogramarCitaCmd(
+            original.Valor!.Id, segundo, new AutorDeCambio(_usuarioBuscador, null), $"rp-{Guid.NewGuid():N}", null));
+        Assert.True(nueva.Exito, nueva.Mensaje);
+
+        var futuro = new RelojAdelantado(_reloj, TimeSpan.FromDays(3) + TimeSpan.FromHours(2));
+        var agendaFutura = AgendaConReloj(futuro);
+        await agendaFutura.AvanzarPorElTiempoAsync();
+        var marca = await agendaFutura.RegistrarAsistenciaAsync(
+            nueva.Valor!.Id, new AutorDeCambio(_usuarioPrestador, _perfil), true);
+        Assert.True(marca.Exito, marca.Mensaje);
+
+        var r = await ResenasConReloj(futuro).EsElegibleAsync(_usuarioBuscador, _perfil);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.True(r.Valor!.Elegible, $"{r.Valor.Motivo}: {r.Valor.Mensaje}");
     }
 
     private ServicioAgenda AgendaConReloj(Zass.Aplicacion.Puertos.IRelojSistema reloj)

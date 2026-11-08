@@ -93,7 +93,9 @@ public class ResenasApiPruebas : IAsyncLifetime
             var aviso = await ctx.Notificaciones
                 .Where(n => n.DestinatarioId == usuario.Id && n.Tipo == TipoNotificacion.CorreoVerificacion)
                 .OrderByDescending(n => n.ProgramadaPara).FirstAsync();
-            var token = aviso.Cuerpo.Split(' ').Last().TrimEnd('.');
+            // El cuerpo del aviso es una carga estructurada desde que el correo se envia de
+            // verdad (agente/correo): partirlo por espacios daba un token falso y el verificar 404.
+            var token = Zass.Aplicacion.Puertos.CargaDeAviso.LeerToken(aviso.Cuerpo)!;
             var v = await p.Http.PostAsJsonAsync("/api/auth/correo/verificar", new { token });
             Assert.Equal(HttpStatusCode.NoContent, v.StatusCode);
 

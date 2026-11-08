@@ -76,17 +76,62 @@ public sealed class RepositorioResenasEfCore : IRepositorioResenas
             .Select(p => new DatosDePerfil(p.Id, p.UsuarioId, p.Estado, p.NombrePublico))
             .FirstOrDefaultAsync(ct);
 
-    public Task<Contacto?> ContactoAsync(Guid contactoId, CancellationToken ct = default) =>
-        _ctx.Contactos.AsNoTracking().Include(c => c.Cita)
+    public async Task<Contacto?> ContactoAsync(Guid contactoId, CancellationToken ct = default)
+    {
+        var contacto = await _ctx.Contactos.AsNoTracking().Include(c => c.Cita)
             .FirstOrDefaultAsync(c => c.Id == contactoId, ct);
+        if (contacto is not null) await SeguirLaCadenaAsync(new[] { contacto }, ct);
+        return contacto;
+    }
 
     public async Task<IReadOnlyList<Contacto>> ContactosSinResenaAsync(
-        Guid buscadorId, Guid perfilPrestadorId, CancellationToken ct = default) =>
-        await _ctx.Contactos.AsNoTracking().Include(c => c.Cita)
+        Guid buscadorId, Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        var contactos = await _ctx.Contactos.AsNoTracking().Include(c => c.Cita)
             .Where(c => c.BuscadorId == buscadorId && c.PerfilPrestadorId == perfilPrestadorId
                         && c.Resena == null)
             .OrderBy(c => c.OcurridoEn).ThenBy(c => c.Id)
             .ToListAsync(ct);
+        await SeguirLaCadenaAsync(contactos, ct);
+        return contactos;
+    }
+
+    /// <summary>
+    /// RN-S4-05 y estados-cita.md, sección 4. El contacto de una cita apunta a la PRIMERA de la
+    /// cadena de reprogramaciones, y esa queda <c>Reprogramada</c> en cuanto se mueve la hora.
+    /// Si la elegibilidad mirara solo ese estado, quien reprograma y luego es atendido perdería
+    /// el derecho a reseñar, que es justo lo que la regla existe para impedir.
+    ///
+    /// Por eso <c>cita_origen_id</c> apunta siempre a la primera y no a la anterior: la cita
+    /// vigente de la cadena está a UN salto, sin recorrer eslabones. Aquí se sustituye la cita
+    /// del contacto por esa, y la regla de <c>ReglasDeResenas</c> sigue siendo una función pura
+    /// sobre un contacto cuya cita ya es la que importa.
+    ///
+    /// UNA consulta para todos los contactos, por la misma razón que el resto de este código:
+    /// no hacer una ida a la base por contacto.
+    /// </summary>
+    private async Task SeguirLaCadenaAsync(IReadOnlyCollection<Contacto> contactos, CancellationToken ct)
+    {
+        var origenes = contactos
+            .Where(c => c.Cita is { Estado: EstadoCita.Reprogramada })
+            .Select(c => c.CitaId!.Value).Distinct().ToList();
+        if (origenes.Count == 0) return;
+
+        var sucesoras = await _ctx.Citas.AsNoTracking()
+            .Where(c => c.CitaOrigenId != null && origenes.Contains(c.CitaOrigenId.Value))
+            .ToListAsync(ct);
+
+        foreach (var contacto in contactos.Where(c => c.Cita is { Estado: EstadoCita.Reprogramada }))
+        {
+            // La vigente es la ultima creada: las anteriores de la cadena estan todas cerradas
+            // como Reprogramada, y a lo sumo una sigue abierta o llego a su desenlace.
+            var vigente = sucesoras
+                .Where(c => c.CitaOrigenId == contacto.CitaId)
+                .OrderByDescending(c => c.CreadaEn).ThenByDescending(c => c.Id)
+                .FirstOrDefault();
+            if (vigente is not null) contacto.Cita = vigente;
+        }
+    }
 
     public async Task<DateTime?> UltimaResenaPorContactoAsync(
         Guid autorId, Guid perfilPrestadorId, DateTime desde, CancellationToken ct = default) =>

@@ -302,7 +302,7 @@ Los anclajes son exactamente para eso, y ya se usaron para resolver esos dos con
 
 ### Sesión del 9-nov-2026 — lo hecho, lo comprobado y lo que NO
 
-**Backend: 1.057 pruebas en verde** (528 aplicación + 16 arquitectura + 513 integración), desde 836.
+**Backend: 1.261 pruebas en verde** (654 aplicación + 16 arquitectura + 591 integración), desde 836.
 Las de interfaz (283) **no se corrieron esta sesión**: no se tocó el frontend.
 
 | Qué | Estado | Cómo se comprobó |
@@ -313,7 +313,7 @@ Las de interfaz (283) **no se corrieron esta sesión**: no se tocó el frontend.
 | Avisos de suscripción (7 y 1 día, y vencida) con plantilla | **Hecho** | La clave lleva el umbral, no la fecha; el segundo intento choca con R-18 (23505) y queda un aviso |
 | MOD-06 Agenda, backend completo (API-32 a API-42) | **Hecho** | Ver abajo |
 | Pantalla de la agenda | **NO hecha** | — |
-| MOD-11 Reseñas | **NO hecho** | Sigue en `agente/resenas` (WIP, compila) |
+| MOD-11 Reseñas (backend: API-46 a API-53) | **Fusionado, verde, REVISADO SOLO EN PARTE** | Ver abajo |
 
 **Documento corregido (se movió el documento, no el código), con fecha puesta en cada uno:**
 
@@ -351,6 +351,29 @@ Además, dos afirmaciones mías resultaron falsas al mutar y se corrigieron: un 
 «vencer y luego avisar» importaba (no importa, `PorVencerAsync` solo mira vigentes) y una prueba de
 idempotencia que no vigilaba nada porque el reloj de prueba no avanzaba.
 
+**MOD-11 Reseñas: qué se verificó y qué no (leer antes de fiarse del verde).**
+
+Se fusionó `agente/resenas` (4.400 líneas, la mayoría pruebas del agente: 115 de aplicación y 66 de
+integración, todas verdes). **Yo no las revisé línea por línea ni les hice mutaciones**: confío en ellas lo
+que confiaría en cualquier WIP de agente, que esta sesión demostró que es poco. Lo que sí se hizo:
+
+- Falló la compilación por mi `EnTransaccionAsync` nuevo en `IUnidadDeTrabajo` (un doble de prueba del agente
+  no lo implementaba) y **las 17 `ResenasApiPruebas` cayeron juntas**: el mismo defecto del token del aviso
+  (`Split(' ')`), **la cuarta vez que pasa al fusionar una rama escrita antes de `correo`**.
+- **Defecto de la unión, probado y corregido**: el contacto de una cita apunta a la PRIMERA de la cadena
+  (RN-S4-05) y esa queda `Reprogramada`; la regla de reseñas la trataba como «la cita no llegó a realizarse».
+  **Quien reprograma y luego era atendido perdía el derecho a reseñar.** Ninguna rama podía verlo sola. Hay un
+  par de pruebas de punta a punta en `AgendaIntegracionPruebas` (agendar → reprogramar → pasar la hora →
+  marcar asistencia → `EsElegible`): el caso base pasa y el de reprogramar **cayó con «CitaSinRealizar» antes
+  del arreglo**. Ahora reseñas sigue el salto de `cita_origen_id` (`SeguirLaCadenaAsync`).
+- **La sección 4.1 del documento decía que reseñas no toca la tabla `cita`**, pero la elegibilidad la lee a
+  través de `Contacto.Cita`. Se dejó escrito en 4.1 por qué difiere y qué costaría cumplirla al pie de la
+  letra. `IServicioAgenda.CitaRealizadaAsync` existe y **nadie la usa todavía**.
+
+Abierto en reseñas: la cita `NoAsistio` hoy **no** habilita reseña (el agente lo dejó como «decisión pendiente»);
+`estados-cita.md` dice que si faltó el prestador sí, pero la cita no guarda **quién** faltó. Es una decisión de
+Pablo o un campo nuevo. Sin pantalla de reseñas.
+
 **Cosas que conviene saber y que quedan abiertas:**
 
 - **Un rojo intermitente sin resolver**: `Dos_reservas_simultaneas_reciben_filas_distintas` (correo) falló una
@@ -371,7 +394,7 @@ idempotencia que no vigilaba nada porque el reloj de prueba no avanzaba.
 - `appsettings.Development.json` **ahora se versiona a propósito** (sin secretos). Estaba en `.gitignore`
   pero la fusión de `verificacion` lo trajo igual, quedando rastreado e ignorado a la vez. La nota vieja de
   esta sección 10 que dice que está ignorado **ya no es cierta**.
-- **26 commits sin subir.** Pablo los sube con GitHub Desktop.
+- **Muchos commits sin subir** (más de 30). Pablo los sube con GitHub Desktop; comprobar con `git log --oneline origin/main..main`.
 - `ver-zass.bat` figura modificado en los worktrees de agentes; no es de `main`.
 
 ### Segunda tanda de agentes (8-nov-2026, noche) — CÓMO RETOMAR

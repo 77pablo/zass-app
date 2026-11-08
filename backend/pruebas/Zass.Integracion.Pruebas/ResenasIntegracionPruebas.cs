@@ -769,6 +769,12 @@ public class ResenasConcurrenciaPruebas : IAsyncLifetime
             await _real.GuardarAsync(ct);
             throw new InvalidOperationException("caída simulada tras guardar la reseña");
         }
+
+        // Lo que añadió MOD-06 (CC-01) a la interfaz. Reseñas lleva su propia transacción por el
+        // repositorio, así que aquí solo se delega.
+        public Task<T> EnTransaccionAsync<T>(
+            Func<CancellationToken, Task<T>> cuerpo, CancellationToken ct = default) =>
+            _real.EnTransaccionAsync(cuerpo, ct);
     }
 
     [Fact]
