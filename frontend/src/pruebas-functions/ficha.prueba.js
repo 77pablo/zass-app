@@ -149,6 +149,8 @@ const HOSTILES = [
   '</title><script>alert(2)</script>',
   '</script><img src=x onerror=alert(3)>',
   "' onmouseover='alert(4)",
+  '" onmouseover="alert(7)" x="',
+  'Tom & Jerry &lt;b&gt; &amp; &#60;',
   '<!--seo:fin--><script>alert(5)</script>',
   '`${alert(6)}`',
   'Línea 1\nLínea 2\r\n<b>negrita</b>',
@@ -197,6 +199,13 @@ describe('contenido hostil de usuarios', () => {
     // Y el resto de la pagina sigue ahi: un `$\`` mal interpretado pegaria el HTML anterior dentro del titulo.
     expect(d.title.length).toBeLessThan(120)
     expect(d.querySelector('#root')).not.toBeNull()
+  })
+
+  it('el ampersand se escapa: «&lt;» escrito por un usuario se lee como texto, no como «<»', async () => {
+    respuestaApi = () => json({ ...FICHA, nombrePublico: 'Tom &lt;b&gt; & Jerry' })
+    const html = await (await pedir('marcela-soto')).text()
+    expect(html).toContain('<title>Tom &amp;lt;b&amp;gt; &amp; Jerry')
+    expect(dom(html).title).toContain('Tom &lt;b&gt; & Jerry')
   })
 
   it('una descripcion enorme se recorta', async () => {
@@ -267,6 +276,11 @@ describe('la API falla', () => {
 
   it.each([500, 502, 503, 429, 400])('con un %i de la API', async (estado) => {
     respuestaApi = () => new Response('error', { status: estado })
+    await esAppNormalSinMeta(await pedir('marcela-soto'))
+  })
+
+  it('un 500 de la API con cuerpo que parece una ficha NO se usa para las etiquetas', async () => {
+    respuestaApi = () => json(FICHA, 500)
     await esAppNormalSinMeta(await pedir('marcela-soto'))
   })
 
