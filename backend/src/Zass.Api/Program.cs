@@ -95,7 +95,7 @@ app.MapearMapaDelSitio();
 app.MapearCredenciales();
 app.MapearSalud();                                    // /api/salud/lista (readiness)
 
-// ANCLAJE MOD-06 Agenda: su Mapear va en esta linea y en ninguna otra.
+app.MapearAgenda();                                    // ANCLAJE MOD-06 Agenda
 
 // ANCLAJE MOD-11 Resenas: su Mapear va en esta linea y en ninguna otra.
 

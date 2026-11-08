@@ -7,6 +7,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Zass.Aplicacion.Identidad;
+using Zass.Aplicacion.Agenda;
 using Zass.Aplicacion.Catalogo;
 using Zass.Aplicacion.Credenciales;
 using Zass.Aplicacion.Busqueda;
@@ -155,6 +156,11 @@ public static class RegistroDeServicios
 
         // --- MOD-04 Geolocalizacion ---
         servicios.AddScoped<IServicioGeografia, ServicioGeografia>();
+
+        // --- MOD-06 Agenda ---
+        servicios.AddScoped<IRepositorioAgenda, RepositorioAgendaEfCore>();
+        servicios.AddScoped<IContactos, ContactosEfCore>();
+        servicios.AddScoped<IServicioAgenda, ServicioAgenda>();
 
         // --- MOD-05 Busqueda ---
         servicios.AddScoped<IServicioBusqueda, ServicioBusqueda>();

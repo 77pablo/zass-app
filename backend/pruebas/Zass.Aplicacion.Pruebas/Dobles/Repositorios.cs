@@ -1,6 +1,8 @@
 using Zass.Aplicacion.Puertos;
+using Zass.Dominio.Agenda;
 using Zass.Dominio.Catalogo;
 using Zass.Dominio.Credenciales;
+using Zass.Dominio.Reputacion;
 using Zass.Dominio.Identidad;
 using Zass.Dominio.Suscripciones;
 
@@ -34,12 +36,33 @@ public sealed class BaseEnMemoria : IUnidadDeTrabajo
     public List<Pago> Pagos { get; } = new();
     public List<Credencial> Credenciales { get; } = new();
     public List<EntidadCertificadora> Entidades { get; } = new();
+    public List<Disponibilidad> Disponibilidades { get; } = new();
+    public List<BloqueHorario> Bloques { get; } = new();
+    public List<BloqueoAgenda> BloqueosAgenda { get; } = new();
+    public List<Cita> Citas { get; } = new();
+    public List<CambioCita> CambiosCita { get; } = new();
+    public List<Contacto> Contactos { get; } = new();
 
     public int Guardados { get; private set; }
     public Task<int> GuardarAsync(CancellationToken ct = default)
     {
         Guardados++;
         return Task.FromResult(0);
+    }
+
+    /// <summary>Cuantas transacciones se abrieron. Hay pruebas que comprueban que SI hubo una.</summary>
+    public int Transacciones { get; private set; }
+
+    /// <summary>
+    /// Una lista en memoria no tiene transacciones: esto solo lleva la cuenta y deja pasar
+    /// el cuerpo. Que la transaccion REAL exista y deshaga de verdad lo prueba integracion,
+    /// que es el unico sitio donde esa pregunta tiene sentido.
+    /// </summary>
+    public async Task<T> EnTransaccionAsync<T>(
+        Func<CancellationToken, Task<T>> cuerpo, CancellationToken ct = default)
+    {
+        Transacciones++;
+        return await cuerpo(ct);
     }
 }
 

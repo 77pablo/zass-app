@@ -14,6 +14,22 @@ public sealed class UnidadDeTrabajoEfCore : IUnidadDeTrabajo
     public UnidadDeTrabajoEfCore(ZassDbContext ctx) => _ctx = ctx;
 
     public Task<int> GuardarAsync(CancellationToken ct = default) => _ctx.SaveChangesAsync(ct);
+
+    /// <summary>
+    /// La transaccion explicita que CC-01 necesita. Si ya hay una abierta se reutiliza, sin
+    /// confirmarla ni deshacerla: quien la abrio decide. Eso es lo que permite que las
+    /// pruebas de integracion envuelvan todo en una transaccion que luego se deshace.
+    /// </summary>
+    public async Task<T> EnTransaccionAsync<T>(
+        Func<CancellationToken, Task<T>> cuerpo, CancellationToken ct = default)
+    {
+        if (_ctx.Database.CurrentTransaction is not null) return await cuerpo(ct);
+
+        await using var tx = await _ctx.Database.BeginTransactionAsync(ct);
+        var r = await cuerpo(ct);
+        await tx.CommitAsync(ct);
+        return r;
+    }
 }
 
 public sealed class RepositorioUsuariosEfCore : IRepositorioUsuarios

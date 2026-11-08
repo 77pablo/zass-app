@@ -122,6 +122,7 @@ public class ArquitecturaPruebas
         ("Geografia", new[] { "IRepositorioGeografia", "IGeocodificador" }),
         ("Suscripciones", new[] { "IRepositorioSuscripciones" }),
         ("Credenciales", new[] { "IRepositorioCredenciales" }),
+        ("Agenda", new[] { "IRepositorioAgenda" }),
         ("Identidad", new[] { "IRepositorioUsuarios", "IRepositorioSesiones", "IRepositorioPerfiles" }),
     };
 
