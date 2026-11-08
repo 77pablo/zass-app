@@ -374,4 +374,106 @@ public class ApiAgendaPruebas : IAsyncLifetime
         Assert.Equal("Confirmada", cita.GetProperty("estado").GetString());
         Assert.Equal("Estudio de prueba", cita.GetProperty("prestador").GetString());
     }
+
+    // ------------------------------------------------------------- el ciclo de la cita, por HTTP
+
+    /// <summary>POST a /api/citas/{id}/{accion} con CSRF y, si se pide, la clave de idempotencia.</summary>
+    private async Task<HttpResponseMessage> AccionAsync(
+        string citaId, string accion, object? cuerpo = null, string? clave = null)
+    {
+        var p = new HttpRequestMessage(HttpMethod.Post, $"/api/citas/{citaId}/{accion}")
+        {
+            Content = JsonContent.Create(cuerpo ?? new { }),
+        };
+        p.Headers.Add("X-CSRF-Token", await CsrfAsync());
+        if (clave is not null) p.Headers.Add(FiltroIdempotencia.Cabecera, clave);
+        return await _cliente.SendAsync(p);
+    }
+
+    private async Task<string> UnaCitaPropiaAsync()
+    {
+        var r = await AgendarAsync(_bloque, $"ciclo-{Guid.NewGuid():N}");
+        Assert.Equal(HttpStatusCode.Created, r.StatusCode);
+        return (await LeerCitaAsync(r)).id;
+    }
+
+    /// <summary>
+    /// api-rest.md marca cancelar y reprogramar con «I». Confirmar, rechazar y asistencia no:
+    /// repetirlas es inofensivo, porque la segunda encuentra la cita en un estado desde el que
+    /// la transición no existe.
+    /// </summary>
+    [Theory]
+    [InlineData("cancelar")]
+    [InlineData("reprogramar")]
+    public async Task Cancelar_y_reprogramar_exigen_la_clave_de_idempotencia(string accion)
+    {
+        await UnBuscadorConSesionAsync();
+        var cita = await UnaCitaPropiaAsync();
+
+        var r = await AccionAsync(cita, accion, new { bloqueNuevoId = Guid.NewGuid(), motivo = (string?)null });
+
+        Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
+        Assert.Contains(FiltroIdempotencia.Cabecera, await r.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Cancelar_con_tiempo_responde_200_y_libera_la_hora()
+    {
+        await UnBuscadorConSesionAsync();
+        var cita = await UnaCitaPropiaAsync();
+
+        var r = await AccionAsync(cita, "cancelar", new { motivo = (string?)null }, $"c-{Guid.NewGuid():N}");
+
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        using var ctx = ContextoDePrueba.Crear();
+        Assert.Equal(EstadoBloque.Libre, (await ctx.Bloques.SingleAsync(b => b.Id == _bloque)).Estado);
+        Assert.Equal(EstadoCita.Cancelada,
+            (await ctx.Citas.SingleAsync(c => c.Id == Guid.Parse(cita))).Estado);
+    }
+
+    /// <summary>La cita de otra persona responde 404, igual que una que no existe.</summary>
+    [Fact]
+    public async Task Cancelar_la_cita_de_otro_responde_404_igual_que_una_inexistente()
+    {
+        await UnBuscadorConSesionAsync();
+        var ajena = await UnaCitaPropiaAsync();
+
+        await UnBuscadorConSesionAsync();   // otra persona, otra sesión
+        var deOtro = await AccionAsync(ajena, "cancelar", new { motivo = (string?)null }, $"c-{Guid.NewGuid():N}");
+        var inexistente = await AccionAsync(
+            Guid.NewGuid().ToString(), "cancelar", new { motivo = (string?)null }, $"c-{Guid.NewGuid():N}");
+
+        Assert.Equal(HttpStatusCode.NotFound, deOtro.StatusCode);
+        Assert.Equal(await inexistente.Content.ReadAsStringAsync(), await deOtro.Content.ReadAsStringAsync());
+    }
+
+    /// <summary>
+    /// La defensa de CU-16 por HTTP: el buscador no puede marcar su propia asistencia, y el
+    /// código es el mismo 404 que si la cita no existiera.
+    /// </summary>
+    [Fact]
+    public async Task El_buscador_no_puede_marcar_asistencia_ni_confirmar()
+    {
+        await UnBuscadorConSesionAsync();
+        var cita = await UnaCitaPropiaAsync();
+
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await AccionAsync(cita, "asistencia", new { asistio = true })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await AccionAsync(cita, "confirmar")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await AccionAsync(cita, "rechazar", new { motivo = (string?)null })).StatusCode);
+    }
+
+    [Theory]
+    [InlineData("confirmar")]
+    [InlineData("rechazar")]
+    [InlineData("asistencia")]
+    [InlineData("cancelar")]
+    [InlineData("reprogramar")]
+    public async Task Sin_sesion_ninguna_accion_sobre_una_cita_pasa(string accion)
+    {
+        var r = await AccionAsync(Guid.NewGuid().ToString(), accion, new { }, $"x-{Guid.NewGuid():N}");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode);
+    }
 }

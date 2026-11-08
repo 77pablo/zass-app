@@ -1,11 +1,12 @@
 # ZASS! — estado del desarrollo
 
-**Última sesión:** 8 de noviembre de 2026, noche (se fusionaron a `main` las tres ramas de agentes que
-habían terminado: produccion, seo y correo; se respondió la pregunta 4; y se lanzó una segunda tanda de
-cuatro agentes).
+**Última sesión:** 9 de noviembre de 2026 (se rescataron las dos ramas de agentes que habían quedado sin
+verificar —`verificacion` y `fondo`—, se construyó el planificador A-09 y **MOD-06 Agenda** entero en el
+backend, sin la pantalla). **Lo que sigue pendiente está en «Sesión del 9-nov» más abajo.**
 
-**Sesiones anteriores:** 8-nov mañana (Chile entero por comunas, pruebas de arquitectura) · 7-nov tarde
-(MOD-03, MOD-04, MOD-05, repositorio en GitHub).
+**Sesiones anteriores:** 8-nov noche (tres fusiones, anclajes, segunda tanda de agentes que se cayó) ·
+8-nov mañana (Chile entero por comunas, pruebas de arquitectura) · 7-nov tarde (MOD-03, MOD-04, MOD-05,
+repositorio en GitHub).
 
 Este archivo existe para retomar sin reconstruir contexto. Dice **qué está hecho y
 comprobado**, **qué no**, y **el siguiente paso exacto**.
@@ -299,6 +300,75 @@ fusionaron esos dos archivos **solas**. Pero al poner al día las ramas en pausa
 el de MOD-02 **sí** conflictuaron ahí, porque los dos habían registrado al final de la misma lista.
 Los anclajes son exactamente para eso, y ya se usaron para resolver esos dos conflictos.
 
+### Sesión del 9-nov-2026 — lo hecho, lo comprobado y lo que NO
+
+**Backend: 1.057 pruebas en verde** (528 aplicación + 16 arquitectura + 513 integración), desde 836.
+Las de interfaz (283) **no se corrieron esta sesión**: no se tocó el frontend.
+
+| Qué | Estado | Cómo se comprobó |
+|---|---|---|
+| `agente/verificacion` (MOD-02: cola, tomar, resolver, API-27/29/30/31) | **Fusionada** | Compilaba, pero **3 pruebas rojas nacieron de juntarla con `correo`**: leía el token del aviso partiendo el cuerpo por espacios, y desde `correo` es una carga JSON. Se arregló con `CargaDeAviso.LeerToken` |
+| `agente/fondo` (tabla `trabajos_de_fondo`) | **Fusionada y terminada** | Migración aplicada; tabla y PK consultadas en `information_schema`/`pg_constraint`; `has-pending-model-changes` limpio |
+| Planificador A-09 (`TrabajoDiario`, `CoordinadorDeTrabajos`) | **Hecho** | 7 pruebas contra PostgreSQL con una réplica por contexto. Se **mutó** la guarda de CC-08 y 3 se pusieron rojas |
+| Avisos de suscripción (7 y 1 día, y vencida) con plantilla | **Hecho** | La clave lleva el umbral, no la fecha; el segundo intento choca con R-18 (23505) y queda un aviso |
+| MOD-06 Agenda, backend completo (API-32 a API-42) | **Hecho** | Ver abajo |
+| Pantalla de la agenda | **NO hecha** | — |
+| MOD-11 Reseñas | **NO hecho** | Sigue en `agente/resenas` (WIP, compila) |
+
+**Documento corregido (se movió el documento, no el código), con fecha puesta en cada uno:**
+
+- **CC-08** prescribía `pg_try_advisory_lock` «sin tabla de bloqueos». El bloqueo impide que dos corran a la
+  vez pero **no recuerda que ya corrió hoy**; un despliegue a media mañana repite el trabajo. Se cambió a
+  una fila por trabajo con reserva que vence. La tabla es **TBL-32** (Parte 5 · Operación; el total pasa a 32).
+- **TBL-18** no listaba `perfil_prestador_id` ni `clave_idempotencia`, que existían en el esquema.
+- **TBL-16**: las horas son **locales de Chile**, no UTC (ver el defecto de abajo).
+- El sitio se regeneró tras cada cambio y se comprobó en el HTML, no solo en el `.md`.
+
+**El defecto más caro de la sesión: la agenda salía corrida 3-4 horas.** El generador de bloques tomaba
+`hora_inicio` como UTC: «lunes 09:00» llegaba a las 06:00 de Chile. **Las 36 pruebas de la agenda estaban verdes**
+porque contaban cuántos bloques salían y ninguna miraba a qué hora. Corregido con `HoraDeChile`
+(`America/Santiago`, con respaldo al nombre de Windows; la hora que el horario de verano se salta no genera
+bloque). 10 pruebas nuevas; **se revirtió el generador a UTC y 5 cayeron**.
+
+**MOD-06, lo que importa:**
+
+- `IUnidadDeTrabajo.EnTransaccionAsync` es nuevo y CC-01 lo exige: el `FOR UPDATE` solo sirve si el INSERT y el
+  UPDATE viven en la misma transacción que el bloqueo.
+- El contacto de TBL-21 se deja por un puerto de salida, `IContactos`. `MOD-06 → MOD-11` está prohibido
+  (ciclo), pero el contacto debe quedar dentro de la transacción. Mismo patrón que `INotificaciones`.
+- `FiltroIdempotencia`: 400 sin `Idempotency-Key`, y también con dos cabeceras distintas.
+- `version` de la cita **sube** en cada transición; antes era token de concurrencia que nadie incrementaba.
+- Quien no es parte de una cita recibe el mismo 404 que si no existiera.
+
+**La lección de verificación, otra vez, dos veces:**
+
+1. «Diez personas sobre el mismo bloque» **pasaba igual con el `FOR UPDATE` quitado**: las llamadas no se
+   solapaban. Con `Task.Run` + `Barrier` sí mide; sin el bloqueo cae.
+2. CC-06 se probó con dos reprogramaciones cruzadas y se **mutó el orden de bloqueo**: cae con
+   `40P01: deadlock detected`, exactamente lo que el documento describe.
+
+Además, dos afirmaciones mías resultaron falsas al mutar y se corrigieron: un comentario que decía que el orden
+«vencer y luego avisar» importaba (no importa, `PorVencerAsync` solo mira vigentes) y una prueba de
+idempotencia que no vigilaba nada porque el reloj de prueba no avanzaba.
+
+**Cosas que conviene saber y que quedan abiertas:**
+
+- **Un rojo intermitente sin resolver**: `Dos_reservas_simultaneas_reciben_filas_distintas` (correo) falló una
+  vez en la suite completa y pasa sola y en las siguientes corridas. Probable causa: otra prueba deja avisos
+  `Programada` en `zass_pruebas` en ese instante (el `InitializeAsync` de esa clase los borra, pero la carrera
+  existe). **No se investigó a fondo.** Si reaparece, mirar `notificaciones` en `zass_pruebas`.
+- **Faltan las tres transiciones que dispara el tiempo** (todas del planificador): T5 expirar solicitada a las
+  24 h, T8 pasar a `pendiente_asistencia`, T11 asumir realizada a las 72 h. `Cita.RegistrarAsistencia` exige
+  `PendienteAsistencia`, así que **hoy ninguna cita llega a poder marcarse** hasta que T8 exista. Es lo primero
+  que sigue. La clase `TrabajoDiario` está pensada para que sea una entrada más.
+- Recordatorios de cita (RN-S4-07) y avisos de cita (confirmada, cancelada…): **no hechos**. `TienePlantilla`
+  solo cubre verificación, recuperación y los dos de suscripción.
+- `appsettings.Development.json` **ahora se versiona a propósito** (sin secretos). Estaba en `.gitignore`
+  pero la fusión de `verificacion` lo trajo igual, quedando rastreado e ignorado a la vez. La nota vieja de
+  esta sección 10 que dice que está ignorado **ya no es cierta**.
+- **26 commits sin subir.** Pablo los sube con GitHub Desktop.
+- `ver-zass.bat` figura modificado en los worktrees de agentes; no es de `main`.
+
 ### Segunda tanda de agentes (8-nov-2026, noche) — CÓMO RETOMAR
 
 Cuatro agentes en worktrees bajo `C:\Users\pdani\zass-agentes\<nombre>`, cada uno en su rama
@@ -306,6 +376,8 @@ Cuatro agentes en worktrees bajo `C:\Users\pdani\zass-agentes\<nombre>`, cada un
 cada rama antes de fusionarla: correr sus pruebas aquí, no fiarse del informe.** Las tres fusiones
 de hoy demuestran por qué.
 
+> **ACTUALIZACIÓN 9-nov: `verificacion` y `fondo` ya están fusionadas y terminadas (ver arriba). Siguen sin fusionar `resenas` y `agenda`; esta última queda obsoleta porque MOD-06 se hizo directamente en `main`. Sus worktrees se pueden borrar.**
+>
 > ### LOS CUATRO SE CAYERON AL ARRANCAR. NO ESTAN CORRIENDO.
 >
 > Los cuatro murieron al primer o segundo paso con el **límite de 5 horas agotado** (se reiniciaba
