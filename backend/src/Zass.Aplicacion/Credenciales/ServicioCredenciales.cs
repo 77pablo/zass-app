@@ -23,11 +23,13 @@ public sealed class ServicioCredenciales : IServicioCredenciales
     private readonly IUnidadDeTrabajo _trabajo;
     private readonly IRelojSistema _reloj;
     private readonly IAuditor _auditor;
+    private readonly OpcionesVerificacion _opciones;
 
     public ServicioCredenciales(
         IRepositorioCredenciales repo, IUnidadDeTrabajo trabajo,
-        IRelojSistema reloj, IAuditor auditor)
+        IRelojSistema reloj, IAuditor auditor, OpcionesVerificacion? opciones = null)
     {
+        _opciones = opciones ?? new OpcionesVerificacion();
         _repo = repo;
         _trabajo = trabajo;
         _reloj = reloj;
@@ -144,6 +146,30 @@ public sealed class ServicioCredenciales : IServicioCredenciales
         _auditor.Registrar(Auditar.Entrada(
             "eliminar_credencial", "credencial", credencial.Id, _reloj.Ahora,
             contexto: new { teniaSello }));
+
+        await _trabajo.GuardarAsync(ct);
+        return Resultado.Ok();
+    }
+
+    // ------------------------------------------------------------- API-27
+
+    public async Task<Resultado> EnviarARevisionAsync(
+        Guid perfilPrestadorId, Guid credencialId, CancellationToken ct = default)
+    {
+        var credencial = await _repo.PorIdAsync(credencialId, ct);
+
+        // Mismo mensaje para "no existe" y "es de otra persona", como en API-28.
+        if (credencial is null || credencial.PerfilPrestadorId != perfilPrestadorId)
+            return Resultado.Falla(Fallas.NoEncontrado, "No encontramos esa credencial.");
+
+        var estabaEsperando = credencial.Estado == EstadoCredencial.EnRevision;
+        var r = credencial.EnviarARevision(_opciones.PermitirSinDocumentos);
+        if (!r.Exito) return r;
+
+        _auditor.Registrar(Auditar.Entrada(
+            estabaEsperando ? "responder_antecedentes" : "enviar_credencial_a_revision",
+            "credencial", credencial.Id, _reloj.Ahora,
+            contexto: new { sinDocumentos = !credencial.TieneRespaldo() }));
 
         await _trabajo.GuardarAsync(ct);
         return Resultado.Ok();

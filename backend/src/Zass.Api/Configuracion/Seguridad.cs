@@ -20,6 +20,13 @@ public static class Tasa
     public static readonly string[] Todos = { Publico, Autenticacion, General, Sensible };
 }
 
+/// <summary>Politicas de autorizacion por rol interno (TBL-02).</summary>
+public static class Politicas
+{
+    public const string Verificador = "verificador";
+    public const string RolVerificador = "verificador";
+}
+
 public static class ConfiguracionDeSeguridad
 {
     public const string CookieAcceso = "zass_sesion";
@@ -114,7 +121,11 @@ public static class ConfiguracionDeSeguridad
                 };
             });
 
-        servicios.AddAuthorization();
+        // El rol viaja en la cookie (ClaimTypes.Role, ver EndpointsIdentidad). La politica del
+        // Verificador es lo unico que protege /api/interno: un buscador o un prestador autenticado
+        // recibe 403 antes de que el endpoint ejecute nada, ni siquiera para listar la cola.
+        servicios.AddAuthorization(opciones =>
+            opciones.AddPolicy(Politicas.Verificador, p => p.RequireRole(Politicas.RolVerificador)));
         servicios.AddAntiforgery(opciones =>
         {
             opciones.HeaderName = CabeceraCsrf;

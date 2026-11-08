@@ -19,7 +19,8 @@ public sealed class Aplicacion : WebApplicationFactory<Program>
 {
     private readonly Dictionary<string, string?> _ajustes;
 
-    public Aplicacion(int? limiteAutenticacion = null)
+    public Aplicacion(
+        int? limiteAutenticacion = null, bool permitirSinDocumentos = true, int? limiteSensible = null)
     {
         _ajustes = new Dictionary<string, string?>
         {
@@ -32,7 +33,11 @@ public sealed class Aplicacion : WebApplicationFactory<Program>
             ["Zass:Tasa:A"] = (limiteAutenticacion ?? 10_000).ToString(),
             ["Zass:Tasa:G"] = "10000",
             ["Zass:Tasa:P"] = "10000",
-            ["Zass:Tasa:S"] = "10000",
+            ["Zass:Tasa:S"] = (limiteSensible ?? 10_000).ToString(),
+
+            // Se fija SIEMPRE, y no se deja a appsettings.Development.json: cada prueba sabe en
+            // que modo de la decision de lanzamiento corre.
+            ["Zass:Verificacion:PermitirSinDocumentos"] = permitirSinDocumentos ? "true" : "false",
         };
     }
 
@@ -44,7 +49,7 @@ public sealed class Aplicacion : WebApplicationFactory<Program>
     }
 }
 
-public class ApiPruebas : IAsyncLifetime
+public partial class ApiPruebas : IAsyncLifetime
 {
     private readonly Aplicacion _app = new();
     private readonly List<string> _correosCreados = new();

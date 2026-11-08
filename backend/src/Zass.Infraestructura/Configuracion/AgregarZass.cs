@@ -117,6 +117,16 @@ public static class RegistroDeServicios
         // --- MOD-02 Credenciales ---
         servicios.AddScoped<IRepositorioCredenciales, RepositorioCredencialesEfCore>();
         servicios.AddScoped<IServicioCredenciales, ServicioCredenciales>();
+        servicios.AddScoped<IServicioVerificacion, ServicioVerificacion>();
+
+        // DECISION DE PRODUCTO REVISABLE (etapa de lanzamiento, sin MOD-08): permite enviar a
+        // revision sin documentos. Falso por omision. Se lee al RESOLVER, no al registrar, por la
+        // misma razon que las opciones de arriba (fuentes agregadas despues).
+        servicios.AddSingleton(sp => new OpcionesVerificacion
+        {
+            PermitirSinDocumentos = sp.GetRequiredService<IConfiguration>()
+                .GetValue(OpcionesVerificacion.ClaveDeConfiguracion, false),
+        });
 
         // --- MOD-03 Catalogo ---
         servicios.AddScoped<IServicioCatalogo, ServicioCatalogo>();

@@ -77,6 +77,7 @@ app.MapearCatalogo();
 app.MapearGeografia();
 app.MapearBusqueda();
 app.MapearCredenciales();
+app.MapearVerificacion();
 
 // Sonda de vida. Sin sesion y con el limite publico: tambien es un endpoint.
 app.MapGet("/api/salud", () => Results.Ok(new { estado = "vivo" }))

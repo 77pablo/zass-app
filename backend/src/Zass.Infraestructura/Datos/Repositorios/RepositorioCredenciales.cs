@@ -50,4 +50,67 @@ public sealed class RepositorioCredencialesEfCore : IRepositorioCredenciales
     }
 
     public void AgregarEntidad(EntidadCertificadora entidad) => _ctx.EntidadesCertificadoras.Add(entidad);
+
+    // ---------------------------------------------------------- cola del Verificador
+
+    public async Task<IReadOnlyList<Credencial>> ColaAsync(
+        Guid verificadorId, DateTime ahora, CancellationToken ct = default) =>
+        await ConDetalle().Include(c => c.PerfilPrestador)
+            .Where(c => c.Estado == EstadoCredencial.EnRevision && !c.EsperandoPrestador)
+            // RN-S2-09: nunca las propias.
+            .Where(c => !_ctx.PerfilesPrestador.Any(
+                p => p.Id == c.PerfilPrestadorId && p.UsuarioId == verificadorId))
+            // CC-03: sin las que otro tiene vigentes. Las mias si salen: es lo que tengo tomado.
+            .Where(c => c.ReservadaHasta == null || c.ReservadaHasta < ahora || c.ReservadaPor == verificadorId)
+            .OrderBy(c => c.CreadaEn).ThenBy(c => c.Id)
+            .ToListAsync(ct);
+
+    public Task<Credencial?> PorIdParaRevisionAsync(Guid id, CancellationToken ct = default) =>
+        ConDetalle().Include(c => c.PerfilPrestador).FirstOrDefaultAsync(c => c.Id == id, ct);
+
+    public async Task<bool> ReservarAsync(
+        Guid credencialId, Guid verificadorId, DateTime ahora, DateTime hasta,
+        CancellationToken ct = default)
+    {
+        // Una sola sentencia: la condicion y la escritura son atomicas. Con dos solicitudes a la
+        // vez PostgreSQL bloquea la fila para la segunda, que reevalua el WHERE ya con la reserva
+        // del ganador puesta y no encuentra nada que actualizar.
+        var filas = await _ctx.Credenciales
+            .Where(c => c.Id == credencialId
+                && c.Estado == EstadoCredencial.EnRevision && !c.EsperandoPrestador
+                && (c.ReservadaHasta == null || c.ReservadaHasta < ahora || c.ReservadaPor == verificadorId)
+                && !_ctx.PerfilesPrestador.Any(
+                    p => p.Id == c.PerfilPrestadorId && p.UsuarioId == verificadorId))
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(c => c.ReservadaPor, (Guid?)verificadorId)
+                .SetProperty(c => c.ReservadaHasta, (DateTime?)hasta), ct);
+        if (filas == 1) await RefrescarAsync(credencialId, ct);
+        return filas == 1;
+    }
+
+    /// <summary>
+    /// ExecuteUpdate escribe directo en la base y no toca lo que el contexto ya tiene cargado. Si esta
+    /// misma unidad de trabajo ya habia leido la credencial, seguiria viendo la reserva de ANTES.
+    /// </summary>
+    private async Task RefrescarAsync(Guid credencialId, CancellationToken ct)
+    {
+        var rastreada = _ctx.ChangeTracker.Entries<Credencial>().FirstOrDefault(e => e.Entity.Id == credencialId);
+        if (rastreada is not null) await rastreada.ReloadAsync(ct);
+    }
+
+    public async Task<bool> ConsumirReservaAsync(
+        Guid credencialId, Guid verificadorId, DateTime ahora, CancellationToken ct = default)
+    {
+        var filas = await _ctx.Credenciales
+            .Where(c => c.Id == credencialId
+                && c.Estado == EstadoCredencial.EnRevision && !c.EsperandoPrestador
+                && c.ReservadaPor == verificadorId && c.ReservadaHasta >= ahora)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(c => c.ReservadaPor, (Guid?)null)
+                .SetProperty(c => c.ReservadaHasta, (DateTime?)null), ct);
+        if (filas == 1) await RefrescarAsync(credencialId, ct);
+        return filas == 1;
+    }
+
+    public void AgregarVerificacion(Verificacion verificacion) => _ctx.Verificaciones.Add(verificacion);
 }
