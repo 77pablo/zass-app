@@ -394,8 +394,35 @@ Pablo o un campo nuevo. Sin pantalla de reseñas.
 - `appsettings.Development.json` **ahora se versiona a propósito** (sin secretos). Estaba en `.gitignore`
   pero la fusión de `verificacion` lo trajo igual, quedando rastreado e ignorado a la vez. La nota vieja de
   esta sección 10 que dice que está ignorado **ya no es cierta**.
-- **Muchos commits sin subir** (más de 30). Pablo los sube con GitHub Desktop; comprobar con `git log --oneline origin/main..main`.
+- Los 32 commits de esta sesión **ya están subidos** a `origin/main` (hasta `ae36c0a`). Antes de cada push se revisan los nombres de archivo por claves o certificados.
 - `ver-zass.bat` figura modificado en los worktrees de agentes; no es de `main`.
+
+### PAUSA del 9-nov — dónde quedó y el siguiente paso exacto
+
+**Lo último que se hizo (commiteado, NO subido):** la ficha pública ahora expone, por servicio, el `id` de la
+oferta y el `modoAgenda`, porque el calendario (API-35) no se puede pedir sin ese id y CU-12 paso 1 manda mostrar
+el modo. Eso obligó a cambiar **dos guardas que lo prohibían a propósito** (`FichaPublicaPruebas` y
+`ApiPruebas.La_ficha_publica_no_filtra...`); siguen protegiendo el id de catálogo, el del perfil y todo lo de la
+cuenta. Se actualizó el tipo `FichaPublica` del frontend.
+
+**Verificación al pausar, con sus huecos:** 654 de aplicación y 16 de arquitectura verdes tras el cambio. De
+integración, la suite completa dio 1 rojo (la guarda HTTP de arriba), que se arregló y **se re-corrió sola, en
+verde**; **la suite completa de integración NO se volvió a correr después del arreglo**. Antes del cambio
+estaba entera en verde (591). Las pruebas de interfaz tampoco se corrieron.
+
+**Siguiente paso exacto: la pantalla de la agenda** (el backend está completo, falta todo el frontend):
+1. `frontend/src/funciones/agenda/servicio.ts`: llamadas a API-35 (calendario), API-36 (agendar) y API-37 (mis citas).
+   `enviar` de `api/cliente.ts` **no admite cabeceras propias**: hay que extenderlo para mandar `Idempotency-Key`
+   (una por intención, generada al abrir el formulario, no por clic) y añadir su prueba en `cliente.prueba.ts`.
+2. En `Ficha.tsx`: elegir servicio → calendario de bloques → confirmar. Si el servicio es `Manual`, avisar ANTES
+   de elegir hora que el prestador debe confirmar (flujo 4C). Un visitante sin cuenta pasa por registrarse y
+   vuelve con el bloque elegido (flujo 4G). Los bloques vienen en UTC: mostrarlos en hora de Chile con
+   `Intl.DateTimeFormat('es-CL', { timeZone: 'America/Santiago' })`.
+3. Página «Mis citas» (API-37) con cancelar/reprogramar y, para el prestador, confirmar/rechazar/asistencia.
+4. Después, la pantalla de reseñas (API-46 a API-53).
+Mantener la línea de diseño de `diseno/prototipo-comunidad.html`: sitio de comunidad, no formulario.
+
+**Pendiente de decisión de Pablo:** la cita `NoAsistio` hoy no habilita reseña (la cita no guarda quién faltó).
 
 ### Segunda tanda de agentes (8-nov-2026, noche) — CÓMO RETOMAR
 

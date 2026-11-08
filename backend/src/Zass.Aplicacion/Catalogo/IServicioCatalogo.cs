@@ -71,8 +71,21 @@ public interface IServicioCatalogo
 
 public sealed record RubroDto(short Id, string Codigo, string Nombre, string? Icono);
 
-/// <summary>Un servicio en la ficha publica. Nada de lo interno: ni ids ni modo de agenda.</summary>
-public sealed record ServicioPublicoDto(string Nombre, short DuracionMinutos, int? PrecioReferencia);
+/// <summary>
+/// Un servicio en la ficha publica.
+///
+/// <paramref name="Id"/> es el de la FILA DE OFERTA y se expone a proposito: sin el, quien mira
+/// la ficha no puede pedir el calendario de ESE servicio (API-35), porque la disponibilidad es
+/// por servicio y no por prestador. No es enumerable (un UUID) y API-35 comprueba que el servicio
+/// sea del prestador del enlace, asi que conocerlo no da acceso a nada que ya no sea publico.
+///
+/// <paramref name="ModoAgenda"/> tambien: CU-12 paso 1 pide mostrar «los servicios del prestador
+/// con su modo», y el flujo 4C avisa ANTES de elegir hora si hace falta que el prestador confirme.
+///
+/// Lo que sigue sin salir: el id del servicio de catalogo, el del perfil y todo lo de la cuenta.
+/// </summary>
+public sealed record ServicioPublicoDto(
+    Guid Id, string Nombre, short DuracionMinutos, int? PrecioReferencia, string ModoAgenda);
 
 /// <summary>
 /// `EsCatalogo` viaja al cliente a proposito: la pantalla distingue entre lo que

@@ -1156,8 +1156,17 @@ public partial class ApiPruebas : IAsyncLifetime
         Assert.DoesNotContain("usuarioId", texto, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("@zass.local", texto, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("hash", texto, StringComparison.OrdinalIgnoreCase);
-        // Y el modo de agenda es de las citas, no de la ficha.
-        Assert.DoesNotContain("modoAgenda", texto, StringComparison.OrdinalIgnoreCase);
+        // El modo SI sale desde que existe la agenda (CU-12 paso 1 lo manda mostrar), junto con el id
+        // de la oferta que API-35 necesita. Lo que no sale es el id del servicio de catalogo, el del
+        // perfil, ni el rubro por numero dentro de un servicio.
+        var servicios = (JsonDocument.Parse(texto)).RootElement.GetProperty("servicios");
+        foreach (var servicio in servicios.EnumerateArray())
+        {
+            Assert.True(servicio.TryGetProperty("modoAgenda", out _));
+            Assert.True(servicio.TryGetProperty("id", out _));
+            Assert.False(servicio.TryGetProperty("servicioId", out _));
+            Assert.False(servicio.TryGetProperty("perfilPrestadorId", out _));
+        }
     }
 
     /// <summary>

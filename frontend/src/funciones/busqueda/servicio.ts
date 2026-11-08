@@ -90,7 +90,15 @@ export interface FichaPublica {
   urlFoto: string | null
   rubro: { id: number; codigo: string; nombre: string; icono: string | null } | null
   zonas: { nombre: string; sector: string; esPrincipal: boolean }[]
-  servicios: { nombre: string; duracionMinutos: number; precioReferencia: number | null }[]
+  servicios: {
+    /** Id de la oferta: lo que pide el calendario (API-35). */
+    id: string
+    nombre: string
+    duracionMinutos: number
+    precioReferencia: number | null
+    /** 'Automatico' confirma al instante; 'Manual' espera al prestador (CU-12 4C). */
+    modoAgenda: 'Automatico' | 'Manual'
+  }[]
   /** Sin estado interno ni archivos: solo "Verificada" o "Declarada por el usuario". */
   credenciales: { tipo: string; nombre: string; entidad: string | null; obtenidaEn: string; etiqueta: string; verificada: boolean }[]
   /** Nulo con menos de 3 resenas (RN-S5-11). */

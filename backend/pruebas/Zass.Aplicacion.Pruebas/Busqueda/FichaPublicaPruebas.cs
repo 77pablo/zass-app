@@ -101,7 +101,11 @@ public class FichaPublicaPruebas
         Assert.Equal("Corretaje de propiedades", ficha.Rubro!.Nombre);
         Assert.Equal("corretaje", ficha.Rubro.Codigo);
         var servicio = Assert.Single(ficha.Servicios);
-        Assert.Equal(new ServicioPublicoDto("Tasación comercial", 60, 35_000), servicio);
+        Assert.Equal("Tasación comercial", servicio.Nombre);
+        Assert.Equal(60, servicio.DuracionMinutos);
+        Assert.Equal(35_000, servicio.PrecioReferencia);
+        Assert.NotEqual(Guid.Empty, servicio.Id);
+        Assert.Equal("Automatico", servicio.ModoAgenda);
         var zona = Assert.Single(ficha.Zonas);
         Assert.Equal(new ZonaPublicaDto("Centro", "centro", true, "Temuco", ""), zona);
     }
@@ -336,14 +340,20 @@ public class FichaPublicaPruebas
     }
 
     /// <summary>
-    /// Y el servicio publico tampoco lleva lo interno: ni el id de la fila de oferta (que es
-    /// de las citas y los horarios) ni el modo de agenda.
+    /// El servicio publico lleva el id de la fila de OFERTA y el modo, y nada mas de lo interno.
+    ///
+    /// Antes esta prueba exigia que no hubiera ninguno de los dos. Se cambio cuando se construyo
+    /// la agenda: CU-12 paso 1 manda mostrar el modo, y API-35 no puede pedir un calendario sin
+    /// saber de que servicio. Lo que sigue protegido es lo que de verdad es sensible: el id del
+    /// servicio de catalogo y el del perfil no salen, y la ficha sigue sin nada de la cuenta.
     /// </summary>
     [Fact]
-    public void El_servicio_publico_no_expone_ids_internos_ni_el_modo_de_agenda()
+    public void El_servicio_publico_expone_solo_su_oferta_y_su_modo_y_no_ids_de_catalogo_ni_de_perfil()
     {
         var campos = typeof(ServicioPublicoDto).GetProperties().Select(p => p.Name).ToArray();
 
-        Assert.Equal(new[] { "Nombre", "DuracionMinutos", "PrecioReferencia" }, campos);
+        Assert.Equal(
+            new[] { "Id", "Nombre", "DuracionMinutos", "PrecioReferencia", "ModoAgenda" }, campos);
+        Assert.DoesNotContain(campos, c => c is "ServicioId" or "PerfilPrestadorId" or "RubroId");
     }
 }

@@ -78,7 +78,8 @@ public sealed class ServicioCatalogo : IServicioCatalogo
         // filas) pero no es publico: el prestador ya no lo ofrece.
         return oferta
             .Where(o => o.Activo && o.Servicio is not null)
-            .Select(o => new ServicioPublicoDto(o.Servicio!.Nombre, o.DuracionMinutos, o.PrecioReferencia))
+            .Select(o => new ServicioPublicoDto(
+                o.Id, o.Servicio!.Nombre, o.DuracionMinutos, o.PrecioReferencia, o.ModoAgenda.ToString()))
             .OrderBy(s => s.Nombre, EnEspanol)
             .ToList();
     }
