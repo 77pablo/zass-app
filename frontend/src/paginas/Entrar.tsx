@@ -1,11 +1,13 @@
 import { Link, Navigate, useLocation } from 'react-router-dom'
 import { Ingresar } from '../funciones/identidad/Ingresar'
+import { useMeta } from '../marco/useMeta'
 import { useTitulo } from '../marco/useTitulo'
 import { useSesion } from '../sesion/contexto'
 import { destinoDe } from '../sesion/destino'
 
 export function Entrar() {
   useTitulo('Entrar')
+  useMeta({ noindex: true })
   const { estado, usuario, recargar } = useSesion()
   const { state } = useLocation()
 

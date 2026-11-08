@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Icono } from '../marco/Icono'
+import { useMeta } from '../marco/useMeta'
 import { useTitulo } from '../marco/useTitulo'
 
 /** Una URL que no lleva a ningun lado. Dice que paso y da por donde seguir. */
@@ -8,6 +9,7 @@ export function NoEncontrada({
   texto = 'Puede que el enlace esté mal escrito o que ya no esté. Desde aquí puedes seguir.',
 }: { titulo?: string; texto?: string }) {
   useTitulo('No encontrada')
+  useMeta({ noindex: true })
   return (
     <section className="contenedor no-encontrada">
       <p className="sobretitulo sobretitulo--tinta">Error 404</p>

@@ -3,6 +3,7 @@ import { ErrorApi } from '../../api/cliente'
 import { registrarse, type RolPublico } from './servicio'
 import { Campo } from '../../componentes/Campo'
 import { Aviso } from '../../componentes/Aviso'
+import '../../legal.css'
 
 /** Los mismos de Limites, en Zass.Aplicacion/Identidad/Validadores.cs. */
 const CONTRASENA_MINIMA = 10
@@ -120,6 +121,12 @@ export function Registrarse({
         valor={contrasena} alCambiar={setContrasena} error={campos.contrasena}
         ayuda={`Al menos ${CONTRASENA_MINIMA} caracteres.`}
       />
+
+      <p className="aceptacion">
+        Al crear tu cuenta aceptas los{' '}
+        <a href="/terminos" target="_blank" rel="noopener">Términos de uso</a> y la{' '}
+        <a href="/privacidad" target="_blank" rel="noopener">Política de privacidad</a>.
+      </p>
 
       <button className="boton" type="submit" disabled={enviando}>
         {enviando ? 'Creando...' : 'Crear cuenta'}

@@ -91,6 +91,7 @@ app.MapearIdentidad();
 app.MapearCatalogo();
 app.MapearGeografia();
 app.MapearBusqueda();
+app.MapearMapaDelSitio();
 app.MapearCredenciales();
 app.MapearSalud();                                    // /api/salud/lista (readiness)
 

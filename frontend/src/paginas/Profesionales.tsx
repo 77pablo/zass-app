@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Icono } from '../marco/Icono'
+import { useMeta } from '../marco/useMeta'
 import { useTitulo } from '../marco/useTitulo'
 
 /**
@@ -9,6 +10,7 @@ import { useTitulo } from '../marco/useTitulo'
  */
 export function Profesionales() {
   useTitulo('Para profesionales')
+  useMeta({ descripcion: 'Ofrece tu servicio en ZASS!: crea tu ficha, aparece ante quien te busca cerca y paga una mensualidad. Buscar es gratis para tus clientes.' })
   return (
     <div className="pagina">
       <section className="pagina-cabeza pagina-cabeza--tinta">

@@ -4,6 +4,7 @@ import { personasEnRegion, personasEnZona } from '../api/comunidad'
 import { useCatalogo, useComunidad } from '../api/useCargado'
 import { Icono } from '../marco/Icono'
 import { personas, sinTildes } from '../marco/texto'
+import { useMeta } from '../marco/useMeta'
 import { useTitulo } from '../marco/useTitulo'
 import { agruparPorRegion } from '../marco/zonas'
 
@@ -14,6 +15,7 @@ import { agruparPorRegion } from '../marco/zonas'
  */
 export function Comunas() {
   useTitulo('Comunas')
+  useMeta({ descripcion: 'Encuentra a gente de tu comuna: cuantos profesionales y oficios hay en cada una de las 346 comunas de Chile. Buscar en ZASS! es gratis.' })
   const catalogo = useCatalogo()
   const comunidad = useComunidad()
   const [filtro, setFiltro] = useState('')

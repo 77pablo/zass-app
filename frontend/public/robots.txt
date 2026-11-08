@@ -1,0 +1,12 @@
+# Lo privado (cuenta, panel interno, flujos de correo) no se indexa; lo publico si.
+User-agent: *
+Disallow: /api/
+Disallow: /mi-ficha
+Disallow: /interno
+Disallow: /entrar
+Disallow: /crear-cuenta
+Disallow: /recuperar-contrasena
+Disallow: /restablecer-contrasena
+Disallow: /verificar-correo
+
+Sitemap: https://zass.cl/sitemap.xml

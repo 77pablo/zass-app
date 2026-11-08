@@ -1051,3 +1051,17 @@ Al terminar: `detener-postgres.bat`.
 | **Las coordenadas de las zonas son de OpenStreetMap (ODbL)** | La licencia pide atribuir a *OpenStreetMap contributors* allá donde se muestren. Son 16 puntos y nombres de barrio, pero conviene poner la atribución en el pie del mapa desde el primer día en vez de acordarse después |
 | **El clúster local se creó con locale `C`** | `lower()` y `upper()` solo pliegan ASCII. Ninguna regla puede apoyarse en ellas: por eso `servicio` lleva `nombre_normalizado` calculado en C#. Si alguna vez se recrea el clúster, **no** cambia nada de esto, y es a propósito: en Azure el locale será otro |
 | **Subir al repositorio exige revisar la historia, no solo `.gitignore`** | Antes del primer `push` se revisaron los nombres de archivo de **todos** los commits buscando claves, `.env`, certificados y `appsettings.Development.json`. No había ninguno. Un `.gitignore` correcto no dice nada de lo que ya se versionó |
+
+---
+
+## Nota de la rama `agente/seo` (7-nov-2026): SEO y páginas legales
+
+**Hecho (probado, sin Cloudflare real):** Function `/prestadores/:slug` con meta por ficha, `/sitemap.xml` (+ índice si pasa de 50 000), `robots.txt`, `GET /api/prestadores/mapa` (API-64) en el backend, hook `useMeta`, imagen `public/og-zass.png`, y las páginas `/terminos` y `/privacidad` enlazadas desde el pie y desde el registro. Detalle de despliegue en `frontend/DESPLIEGUE-CLOUDFLARE.md`.
+
+**PENDIENTE PARA PABLO: las páginas legales son un BORRADOR, no asesoría legal.**
+
+1. Llenar en `frontend/src/paginas/legal.ts`: `RESPONSABLE` (razón social y RUT), `CORREO_PRIVACIDAD` (casilla para ejercer derechos de la Ley 21.719), `PROVEEDORES` (alojamiento, base de datos, correo) y `PLAZO_REGISTROS_DE_SEGURIDAD`. Mientras estén entre corchetes se ven resaltados en la página.
+2. **Decidir el plazo de los registros de seguridad (IP y fecha de acciones, tabla de auditoría y sesiones) y construir su borrado: hoy el sistema NO los borra solo.**
+3. Llevar `Terminos.tsx` y `Privacidad.tsx` a un abogado. Cuando los apruebe, cambiar `BORRADOR_LEGAL` a `false` en `legal.ts` (desaparece el aviso «Borrador: pendiente de revisión legal») y actualizar `ULTIMA_ACTUALIZACION`.
+4. Los textos dicen que hoy no hay cobro de la mensualidad, ni credenciales revisadas, ni pagos ni agenda: si eso cambia, hay que actualizarlos.
+5. Anotado para el backend: reservar el slug `mapa` al generar slugs (choca con `/api/prestadores/mapa`).
