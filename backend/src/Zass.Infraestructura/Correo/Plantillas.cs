@@ -1,4 +1,5 @@
 using System.Net;
+using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
 
 namespace Zass.Infraestructura.Correo;
@@ -25,15 +26,42 @@ public static class Plantillas
     public static string EnlaceDeRecuperacion(string urlPublica, string token) =>
         $"{urlPublica.TrimEnd('/')}/restablecer-contrasena?token={Uri.EscapeDataString(token)}";
 
+    /// <summary>El panel del prestador, donde se ve y se renueva la suscripcion.</summary>
+    public static string EnlaceDelPanel(string urlPublica) => $"{urlPublica.TrimEnd('/')}/mi-ficha";
+
+    /// <summary>
+    /// Los tipos que este modulo sabe entregar. Los demas se quedan encolados sin gastar
+    /// intentos: encolar no es enviar, y el dia que tengan plantilla saldran solos.
+    /// </summary>
     public static bool TienePlantilla(TipoNotificacion tipo) =>
+        tipo is TipoNotificacion.CorreoVerificacion
+             or TipoNotificacion.RecuperarContrasena
+             or TipoNotificacion.SuscripcionPorVencer
+             or TipoNotificacion.SuscripcionVencida;
+
+    /// <summary>
+    /// Los que llevan un secreto en la carga. Importa porque de esos el cuerpo se purga en
+    /// cuanto el correo sale, y porque sin token no hay nada que enviar.
+    /// </summary>
+    public static bool LlevaToken(TipoNotificacion tipo) =>
         tipo is TipoNotificacion.CorreoVerificacion or TipoNotificacion.RecuperarContrasena;
 
-    /// <summary>Null si el tipo no tiene plantilla (se queda pendiente, no se pierde).</summary>
+    /// <summary>
+    /// Null si el tipo no tiene plantilla, o si su carga no trae lo que la plantilla necesita
+    /// (un token purgado, por ejemplo). El cuarto parametro es la CARGA del aviso, no el token
+    /// suelto: hay un solo formato de cuerpo.
+    /// </summary>
     public static CorreoRenderizado? Renderizar(
-        TipoNotificacion tipo, string nombre, string urlPublica, string token) => tipo switch
+        TipoNotificacion tipo, string nombre, string urlPublica, string carga) => tipo switch
     {
-        TipoNotificacion.CorreoVerificacion => Verificacion(nombre, EnlaceDeVerificacion(urlPublica, token)),
-        TipoNotificacion.RecuperarContrasena => Recuperacion(nombre, EnlaceDeRecuperacion(urlPublica, token)),
+        TipoNotificacion.CorreoVerificacion =>
+            CargaDeAviso.LeerToken(carga) is { } t ? Verificacion(nombre, EnlaceDeVerificacion(urlPublica, t)) : null,
+        TipoNotificacion.RecuperarContrasena =>
+            CargaDeAviso.LeerToken(carga) is { } t ? Recuperacion(nombre, EnlaceDeRecuperacion(urlPublica, t)) : null,
+        TipoNotificacion.SuscripcionPorVencer =>
+            int.TryParse(CargaDeAviso.LeerCampo(carga, "dias"), out var d)
+                ? PorVencer(nombre, d, EnlaceDelPanel(urlPublica)) : null,
+        TipoNotificacion.SuscripcionVencida => Vencida(nombre, EnlaceDelPanel(urlPublica)),
         _ => null,
     };
 
@@ -73,6 +101,53 @@ public static class Plantillas
             "Crear contraseña nueva", enlace,
             "Si no fuiste tú, ignora este mensaje: tu contraseña no ha cambiado.");
         return new("Crea una contraseña nueva en ZASS!", texto, html);
+    }
+
+    /// <summary>
+    /// RN-S3-09 apaga el perfil al dejar de pagar. Este aviso existe para que eso no ocurra
+    /// por sorpresa: sin el, el prestador se enteraria porque dejan de llamarlo.
+    /// </summary>
+    public static CorreoRenderizado PorVencer(string nombre, int dias, string enlace)
+    {
+        var cuando = dias <= 1 ? "mañana" : $"en {dias} días";
+        var parrafo =
+            $"Tu suscripción a ZASS! vence {cuando}. Mientras esté vigente tu ficha aparece en las "
+            + "búsquedas; cuando venza deja de aparecer, pero no se borra nada: tu ficha, tus "
+            + "credenciales verificadas y tus reseñas te esperan y vuelven en cuanto renueves.";
+        var texto =
+            $"Hola {nombre}:\n\n" +
+            $"{parrafo}\n\n" +
+            $"Puedes revisarla aquí:\n\n{enlace}\n\n" +
+            "Si ya renovaste, ignora este mensaje.\n\n" +
+            "— El equipo de ZASS!";
+        var html = Marco(
+            $"Tu suscripción vence {cuando}",
+            $"Hola {H(nombre)}:",
+            parrafo,
+            "Ver mi suscripción", enlace,
+            "Si ya renovaste, ignora este mensaje.");
+        return new($"Tu suscripción a ZASS! vence {cuando}", texto, html);
+    }
+
+    /// <summary>Ya venció: la ficha dejó de aparecer. Se dice sin rodeos y sin culpar a nadie.</summary>
+    public static CorreoRenderizado Vencida(string nombre, string enlace)
+    {
+        const string parrafo =
+            "Tu suscripción a ZASS! venció, así que tu ficha dejó de aparecer en las búsquedas. No se "
+            + "borró nada: tu ficha, tus credenciales verificadas y tus reseñas siguen ahí, y vuelven a "
+            + "verse en cuanto renueves.";
+        var texto =
+            $"Hola {nombre}:\n\n" +
+            $"{parrafo}\n\n" +
+            $"Puedes renovarla aquí:\n\n{enlace}\n\n" +
+            "— El equipo de ZASS!";
+        var html = Marco(
+            "Tu suscripción venció",
+            $"Hola {H(nombre)}:",
+            parrafo,
+            "Renovar mi suscripción", enlace,
+            "Si renovaste hace un momento, puede que este aviso se haya cruzado con el pago.");
+        return new("Tu suscripción a ZASS! venció", texto, html);
     }
 
     private static string H(string s) => WebUtility.HtmlEncode(s);

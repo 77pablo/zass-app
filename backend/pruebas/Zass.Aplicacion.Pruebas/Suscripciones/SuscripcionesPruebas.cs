@@ -16,6 +16,7 @@ public class SuscripcionesPruebas
     private readonly BaseEnMemoria _base = new();
     private readonly RelojFijo _reloj = new(Ahora);
     private readonly AuditoriaEnMemoria _auditor = new();
+    private readonly ColaEnMemoria _cola = new();
     private readonly ServicioSuscripciones _servicio;
 
     public SuscripcionesPruebas()
@@ -30,7 +31,7 @@ public class SuscripcionesPruebas
             Activo = true,
         });
         _servicio = new ServicioSuscripciones(
-            new RepositorioSuscripcionesEnMemoria(_base), _base, _reloj, _auditor);
+            new RepositorioSuscripcionesEnMemoria(_base), _base, _reloj, _auditor, _cola);
     }
 
     private PerfilPrestador UnPrestador()
@@ -129,7 +130,7 @@ public class SuscripcionesPruebas
     public async Task VigentesEntre_consulta_el_repositorio_UNA_sola_vez()
     {
         var repo = new RepositorioSuscripcionesEnMemoria(_base);
-        var servicio = new ServicioSuscripciones(repo, _base, _reloj, _auditor);
+        var servicio = new ServicioSuscripciones(repo, _base, _reloj, _auditor, _cola);
         var ids = Enumerable.Range(0, 20).Select(_ => UnPrestador().Id).ToArray();
         foreach (var id in ids) ConSuscripcion(id, EstadoSuscripcion.Activa, Ahora.AddDays(5));
 
@@ -142,7 +143,7 @@ public class SuscripcionesPruebas
     public async Task VigentesEntre_con_lista_vacia_no_toca_el_repositorio()
     {
         var repo = new RepositorioSuscripcionesEnMemoria(_base);
-        var servicio = new ServicioSuscripciones(repo, _base, _reloj, _auditor);
+        var servicio = new ServicioSuscripciones(repo, _base, _reloj, _auditor, _cola);
 
         var vigentes = await servicio.VigentesEntreAsync(Array.Empty<Guid>());
 
@@ -416,5 +417,139 @@ public class SuscripcionesPruebas
         s.PlanId = 7;
 
         Assert.Equal(10, await _servicio.LimiteDeServiciosAsync(p.Id));
+    }
+
+    // ------------------------------------------------- El trabajo diario (A-09)
+
+    [Fact]
+    public async Task Vencer_avisa_a_quien_perdio_la_visibilidad()
+    {
+        var p = UnPrestador();
+        var s = ConSuscripcion(p.Id, EstadoSuscripcion.Activa, Ahora.AddDays(-1));
+
+        Assert.Equal(1, await _servicio.VencerExpiradasAsync());
+
+        var aviso = Assert.Single(_cola.Encoladas);
+        Assert.Equal(TipoNotificacion.SuscripcionVencida, aviso.Tipo);
+        Assert.Equal(p.UsuarioId, aviso.DestinatarioId);
+        Assert.Equal($"SuscripcionVencida:{s.Id}", aviso.ClaveIdempotencia);
+    }
+
+    /// <summary>
+    /// Vencer tiene que ocurrir igual: el perfil debe salir de la busqueda aunque no haya
+    /// nadie a quien avisarle.
+    /// </summary>
+    [Fact]
+    public async Task Vencer_funciona_aunque_el_perfil_ya_no_tenga_dueno()
+    {
+        var huerfano = Guid.NewGuid();   // no se agrega a PerfilesPrestador
+        var s = ConSuscripcion(huerfano, EstadoSuscripcion.Activa, Ahora.AddDays(-1));
+
+        Assert.Equal(1, await _servicio.VencerExpiradasAsync());
+
+        Assert.Equal(EstadoSuscripcion.Vencida, s.Estado);
+        Assert.Empty(_cola.Encoladas);
+    }
+
+    /// <summary>
+    /// <c>DiasRestantes</c> redondea hacia ARRIBA, asi que una suscripcion vigente nunca
+    /// tiene 0 dias: la que vence dentro de una hora tiene 1. Por eso las fechas de aqui se
+    /// construyen un minuto antes del dia justo.
+    /// </summary>
+    [Theory]
+    [InlineData(7, 7)]    // el borde del umbral mayor
+    [InlineData(6, 7)]    // le queda menos: le sigue tocando el de 7
+    [InlineData(2, 7)]
+    [InlineData(1, 1)]    // el borde del umbral menor
+    public async Task El_aviso_usa_el_umbral_que_le_corresponde(int diasRestantes, int umbral)
+    {
+        var p = UnPrestador();
+        var s = ConSuscripcion(
+            p.Id, EstadoSuscripcion.Activa, Ahora.AddDays(diasRestantes).AddMinutes(-1));
+
+        await _servicio.CorrerDiarioAsync();
+
+        var aviso = Assert.Single(_cola.Encoladas);
+        Assert.Equal(TipoNotificacion.SuscripcionPorVencer, aviso.Tipo);
+        Assert.Equal($"SuscripcionPorVencer:{s.Id}:{umbral}", aviso.ClaveIdempotencia);
+        Assert.Contains("\"dias\"", aviso.Cuerpo);
+    }
+
+    [Fact]
+    public async Task La_que_vence_dentro_de_una_hora_recibe_el_aviso_de_un_dia()
+    {
+        var p = UnPrestador();
+        var s = ConSuscripcion(p.Id, EstadoSuscripcion.Activa, Ahora.AddHours(1));
+
+        await _servicio.CorrerDiarioAsync();
+
+        var aviso = Assert.Single(_cola.Encoladas);
+        Assert.Equal($"SuscripcionPorVencer:{s.Id}:1", aviso.ClaveIdempotencia);
+    }
+
+    [Fact]
+    public async Task La_que_vence_mas_alla_del_umbral_mayor_no_recibe_nada()
+    {
+        var p = UnPrestador();
+        ConSuscripcion(p.Id, EstadoSuscripcion.Activa, Ahora.AddDays(30));
+
+        var r = await _servicio.CorrerDiarioAsync();
+
+        Assert.Equal(0, r.Avisadas);
+        Assert.Empty(_cola.Encoladas);
+    }
+
+    /// <summary>
+    /// Dos corridas el mismo dia encolan la MISMA clave. Aqui se comprueba que la clave se
+    /// repite; que la base impida el segundo aviso lo prueba la de integracion, contra el
+    /// unico de TBL-27 (R-18, CC-04).
+    ///
+    /// El reloj AVANZA entre las dos corridas a proposito. Sin eso la prueba pasaba aunque
+    /// la clave llevara la hora dentro, y entonces no vigilaba nada: se descubrio mutando la
+    /// clave para que incluyera el instante y viendo que esta prueba seguia verde.
+    /// </summary>
+    [Fact]
+    public async Task Correr_dos_veces_el_mismo_dia_repite_la_clave_en_vez_de_inventar_otra()
+    {
+        var p = UnPrestador();
+        ConSuscripcion(p.Id, EstadoSuscripcion.Activa, Ahora.AddDays(3));
+
+        await _servicio.CorrerDiarioAsync();
+        _reloj.Avanzar(TimeSpan.FromHours(6));
+        await _servicio.CorrerDiarioAsync();
+
+        Assert.Equal(2, _cola.Encoladas.Count);
+        Assert.Single(_cola.Encoladas.Select(a => a.ClaveIdempotencia).Distinct());
+    }
+
+    /// <summary>
+    /// La que ya paso de fecha recibe UN aviso, el de vencida, y no tambien el de «te queda
+    /// poco». No depende del orden de la corrida: se muto invirtiendolo y esta prueba siguio
+    /// verde, porque PorVencerAsync solo mira vigentes. Lo que vigila es ese filtro.
+    /// </summary>
+    [Fact]
+    public async Task La_que_ya_paso_de_fecha_recibe_solo_el_aviso_de_vencida()
+    {
+        var p = UnPrestador();
+        ConSuscripcion(p.Id, EstadoSuscripcion.Activa, Ahora.AddHours(-1));
+
+        var r = await _servicio.CorrerDiarioAsync();
+
+        Assert.Equal(new ResumenDelDiario(1, 0), r);
+        Assert.Equal(TipoNotificacion.SuscripcionVencida, Assert.Single(_cola.Encoladas).Tipo);
+    }
+
+    [Fact]
+    public async Task El_trabajo_diario_pregunta_los_duenos_en_una_consulta_y_no_una_por_suscripcion()
+    {
+        var repo = new RepositorioSuscripcionesEnMemoria(_base);
+        var servicio = new ServicioSuscripciones(repo, _base, _reloj, _auditor, _cola);
+        for (var i = 0; i < 8; i++)
+            ConSuscripcion(UnPrestador().Id, EstadoSuscripcion.Activa, Ahora.AddDays(2));
+
+        await servicio.CorrerDiarioAsync();
+
+        Assert.Equal(8, _cola.Encoladas.Count);
+        Assert.Equal(1, repo.ConsultasDeDuenos);
     }
 }

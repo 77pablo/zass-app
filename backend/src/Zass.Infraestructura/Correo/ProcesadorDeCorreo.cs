@@ -22,11 +22,19 @@ namespace Zass.Infraestructura.Correo;
 /// </summary>
 public sealed class ProcesadorDeCorreo
 {
+    /// <summary>
+    /// Se deriva de <see cref="Plantillas.TienePlantilla"/> y no se escribe a mano: una lista
+    /// copiada se desincroniza en cuanto alguien agrega una plantilla y no se entera de que
+    /// ademas hay que apuntarla aqui (es lo que pasaba con los avisos de suscripcion).
+    /// </summary>
     private static readonly string[] TiposConPlantilla =
-    {
-        nameof(TipoNotificacion.CorreoVerificacion),
-        nameof(TipoNotificacion.RecuperarContrasena),
-    };
+        Enum.GetValues<TipoNotificacion>().Where(Plantillas.TienePlantilla)
+            .Select(t => t.ToString()).ToArray();
+
+    /// <summary>Solo de estos hay carga que purgar: los demas no guardan ningun secreto.</summary>
+    private static readonly string[] TiposConToken =
+        Enum.GetValues<TipoNotificacion>().Where(Plantillas.LlevaToken)
+            .Select(t => t.ToString()).ToArray();
 
     private readonly ZassDbContext _ctx;
     private readonly IEnviadorDeCorreo _enviador;
@@ -140,7 +148,7 @@ public sealed class ProcesadorDeCorreo
             {
                 new NpgsqlParameter("purgada", CargaDeAviso.Purgada),
                 new NpgsqlParameter("limite", NpgsqlDbType.TimestampTz) { Value = limite },
-                new NpgsqlParameter("tipos", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { Value = TiposConPlantilla },
+                new NpgsqlParameter("tipos", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { Value = TiposConToken },
             }, ct);
         if (n > 0) _log.LogInformation("Se purgó la carga de {N} aviso(s) fallidos o anulados.", n);
     }
@@ -175,14 +183,14 @@ public sealed class ProcesadorDeCorreo
             return;
         }
 
-        var token = CargaDeAviso.LeerToken(aviso.Cuerpo);
-        var correo = token is null
-            ? null
-            : Plantillas.Renderizar(aviso.Tipo, usuario.Nombre, urlPublica, token);
+        // La plantilla lee de la carga lo que necesita: el token, o los dias que quedan. Si no
+        // esta (una carga ya purgada, por ejemplo) no hay correo que armar y no se reintenta.
+        var correo = Plantillas.Renderizar(aviso.Tipo, usuario.Nombre, urlPublica, aviso.Cuerpo);
         if (correo is null)
         {
-            await CerrarComoFallidaAsync(aviso, "carga sin token legible", ahora, ct);
-            _log.LogError("Aviso {Id} ({Tipo}) fallido: la carga no tiene token legible.", aviso.Id, aviso.Tipo);
+            await CerrarComoFallidaAsync(aviso, "carga incompleta para su plantilla", ahora, ct);
+            _log.LogError("Aviso {Id} ({Tipo}) fallido: la carga no trae lo que pide su plantilla.",
+                aviso.Id, aviso.Tipo);
             return;
         }
 
@@ -209,7 +217,9 @@ public sealed class ProcesadorDeCorreo
                 aviso.Estado = EstadoEnvio.Enviada;
                 aviso.EnviadaEn = _reloj.Ahora;
                 aviso.UltimoError = null;
-                aviso.Cuerpo = CargaDeAviso.Purgada;   // el token deja de existir en claro
+                // El token deja de existir en claro. Los avisos sin secreto conservan su carga:
+                // purgarla solo borraria «cuantos dias quedaban», que sirve para entender el envio.
+                if (Plantillas.LlevaToken(aviso.Tipo)) aviso.Cuerpo = CargaDeAviso.Purgada;
                 await _ctx.SaveChangesAsync(ct);
                 _log.LogInformation("Correo {Tipo} enviado a {Destino} (aviso {Id}, intento {N}).",
                     aviso.Tipo, destino, aviso.Id, aviso.Intentos);

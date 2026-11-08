@@ -38,6 +38,11 @@ public sealed class Aplicacion : WebApplicationFactory<Program>
             // Se fija SIEMPRE, y no se deja a appsettings.Development.json: cada prueba sabe en
             // que modo de la decision de lanzamiento corre.
             ["Zass:Verificacion:PermitirSinDocumentos"] = permitirSinDocumentos ? "true" : "false",
+
+            // El planificador A-09 se apaga aqui: vencer suscripciones en medio de otra prueba
+            // la pondria roja sin que nadie entienda por que. Lo que hace se prueba llamandolo
+            // directo (CoordinadorDeTrabajos y CorrerDiarioAsync), no esperando su temporizador.
+            ["Zass:Fondo:Activo"] = "false",
         };
     }
 

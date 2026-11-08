@@ -147,6 +147,16 @@ public interface IRepositorioSuscripciones
     /// <summary>Comprueba el perfil sin traerlo entero ni depender del repositorio de MOD-01.</summary>
     Task<bool> ExistePerfilPrestadorAsync(Guid perfilPrestadorId, CancellationToken ct = default);
 
+    /// <summary>
+    /// A quien pertenece cada perfil, para poder avisarle. UNA consulta, por el mismo motivo
+    /// que <see cref="VigentesEntreAsync"/>: el trabajo diario puede tener cientos de
+    /// suscripciones por vencer y preguntar una por una serian cientos de idas a la base.
+    ///
+    /// Los perfiles que no existan simplemente no aparecen en el resultado.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, Guid>> UsuariosDePerfilesAsync(
+        IReadOnlyCollection<Guid> perfilPrestadorIds, CancellationToken ct = default);
+
     void Agregar(Suscripcion suscripcion);
     void AgregarPago(Pago pago);
 }

@@ -29,7 +29,8 @@ public class SuscripcionesIntegracionPruebas : IDisposable
         var ctx = _prueba.Ctx;
         _repo = new RepositorioSuscripcionesEfCore(ctx);
         _servicio = new ServicioSuscripciones(
-            _repo, new UnidadDeTrabajoEfCore(ctx), _reloj, new AuditorEfCore(ctx));
+            _repo, new UnidadDeTrabajoEfCore(ctx), _reloj, new AuditorEfCore(ctx),
+            new ColaNotificacionesEfCore(ctx));
     }
 
     public void Dispose() => _prueba.Dispose();

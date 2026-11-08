@@ -38,19 +38,29 @@ public static class CargaDeAviso
 {
     public const string Purgada = "{\"purgado\":true}";
 
-    public static string ConToken(string token) =>
-        JsonSerializer.Serialize(new Dictionary<string, string> { ["token"] = token });
+    public static string ConToken(string token) => ConCampos(("token", token));
+
+    /// <summary>
+    /// Una carga sin token, para los avisos que no llevan secreto: los de suscripcion solo
+    /// necesitan cuantos dias quedan. Se guardan igual como JSON para que haya UN formato de
+    /// cuerpo y no dos, y para que <see cref="Purgada"/> siga queriendo decir lo mismo.
+    /// </summary>
+    public static string ConCampos(params (string Clave, string Valor)[] campos) =>
+        JsonSerializer.Serialize(campos.ToDictionary(c => c.Clave, c => c.Valor));
 
     /// <summary>El token en claro, o null si la carga ya fue purgada o no es de este formato.</summary>
-    public static string? LeerToken(string cuerpo)
+    public static string? LeerToken(string cuerpo) => LeerCampo(cuerpo, "token");
+
+    /// <summary>Un campo de la carga, o null si no esta, fue purgada o no es JSON.</summary>
+    public static string? LeerCampo(string cuerpo, string clave)
     {
         try
         {
             using var doc = JsonDocument.Parse(cuerpo);
             return doc.RootElement.ValueKind == JsonValueKind.Object
-                   && doc.RootElement.TryGetProperty("token", out var t)
-                   && t.ValueKind == JsonValueKind.String
-                ? t.GetString()
+                   && doc.RootElement.TryGetProperty(clave, out var v)
+                   && v.ValueKind == JsonValueKind.String
+                ? v.GetString()
                 : null;
         }
         catch (JsonException)

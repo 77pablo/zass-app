@@ -47,7 +47,7 @@ public class CorreoUnidadPruebas
     [Fact]
     public void La_verificacion_lleva_el_enlace_correcto_en_texto_y_en_html()
     {
-        var r = Plantillas.Renderizar(TipoNotificacion.CorreoVerificacion, "Ana", "https://zass.cl/", "tok_en-1")!;
+        var r = Plantillas.Renderizar(TipoNotificacion.CorreoVerificacion, "Ana", "https://zass.cl/", CargaDeAviso.ConToken("tok_en-1"))!;
         const string enlace = "https://zass.cl/verificar-correo?token=tok_en-1";
 
         Assert.Contains(enlace, r.Texto);
@@ -58,7 +58,7 @@ public class CorreoUnidadPruebas
     [Fact]
     public void La_recuperacion_apunta_a_restablecer_contrasena()
     {
-        var r = Plantillas.Renderizar(TipoNotificacion.RecuperarContrasena, "Ana", "https://zass.cl", "abc")!;
+        var r = Plantillas.Renderizar(TipoNotificacion.RecuperarContrasena, "Ana", "https://zass.cl", CargaDeAviso.ConToken("abc"))!;
         Assert.Contains("https://zass.cl/restablecer-contrasena?token=abc", r.Texto);
         Assert.Contains("https://zass.cl/restablecer-contrasena?token=abc", r.Html);
     }
@@ -68,7 +68,7 @@ public class CorreoUnidadPruebas
     [InlineData(TipoNotificacion.RecuperarContrasena)]
     public void El_asunto_no_lleva_el_token_ni_el_nombre_y_hay_tildes_y_marca(TipoNotificacion tipo)
     {
-        var r = Plantillas.Renderizar(tipo, "Ana Pérez", "https://zass.cl", "TOKEN-SECRETO")!;
+        var r = Plantillas.Renderizar(tipo, "Ana Pérez", "https://zass.cl", CargaDeAviso.ConToken("TOKEN-SECRETO"))!;
 
         Assert.DoesNotContain("TOKEN-SECRETO", r.Asunto);
         Assert.DoesNotContain("Ana", r.Asunto);
@@ -83,8 +83,8 @@ public class CorreoUnidadPruebas
     public void Las_plantillas_solo_contienen_lo_del_propio_destinatario()
     {
         // Dos usuarios distintos: el correo de uno no puede mencionar nada del otro.
-        var a = Plantillas.Renderizar(TipoNotificacion.CorreoVerificacion, "Ana Pérez", "https://zass.cl", "tokenDeAna")!;
-        var b = Plantillas.Renderizar(TipoNotificacion.CorreoVerificacion, "Beto Soto", "https://zass.cl", "tokenDeBeto")!;
+        var a = Plantillas.Renderizar(TipoNotificacion.CorreoVerificacion, "Ana Pérez", "https://zass.cl", CargaDeAviso.ConToken("tokenDeAna"))!;
+        var b = Plantillas.Renderizar(TipoNotificacion.CorreoVerificacion, "Beto Soto", "https://zass.cl", CargaDeAviso.ConToken("tokenDeBeto"))!;
 
         foreach (var parte in new[] { a.Texto, a.Html })
         {
@@ -102,17 +102,82 @@ public class CorreoUnidadPruebas
     public void El_nombre_y_el_token_se_escapan_en_el_html_y_en_la_url()
     {
         var r = Plantillas.Renderizar(TipoNotificacion.CorreoVerificacion,
-            "<script>alert(1)</script>", "https://zass.cl", "a&b=c")!;
+            "<script>alert(1)</script>", "https://zass.cl", CargaDeAviso.ConToken("a&b=c"))!;
 
         Assert.DoesNotContain("<script>", r.Html);
         Assert.Contains("&lt;script&gt;", r.Html);
         Assert.Contains("token=a%26b%3Dc", r.Texto);
     }
 
+    // ------------------------------------------------------------ avisos de suscripcion
+
+    [Theory]
+    [InlineData(1, "mañana")]
+    [InlineData(5, "en 5 días")]
+    public void El_aviso_de_por_vencer_dice_cuanto_falta_y_lleva_al_panel(int dias, string esperado)
+    {
+        var r = Plantillas.Renderizar(TipoNotificacion.SuscripcionPorVencer, "Ana",
+            "https://zass.cl/", CargaDeAviso.ConCampos(("dias", dias.ToString())))!;
+
+        Assert.Contains(esperado, r.Asunto);
+        Assert.Contains("https://zass.cl/mi-ficha", r.Texto);
+        Assert.Contains("href=\"https://zass.cl/mi-ficha\"", r.Html);
+        Assert.DoesNotContain("zass.cl//", r.Texto);
+    }
+
+    /// <summary>
+    /// Lo que mas importa del texto: que no parezca que se pierde el trabajo hecho. Es lo
+    /// unico que puede hacer que alguien no renueve creyendo que ya da igual.
+    /// </summary>
+    [Fact]
+    public void Los_dos_avisos_dicen_que_no_se_borra_nada()
+    {
+        var porVencer = Plantillas.Renderizar(TipoNotificacion.SuscripcionPorVencer, "Ana",
+            "https://zass.cl", CargaDeAviso.ConCampos(("dias", "3")))!;
+        var vencida = Plantillas.Renderizar(TipoNotificacion.SuscripcionVencida, "Ana",
+            "https://zass.cl", CargaDeAviso.ConCampos(("dias", "0")))!;
+
+        foreach (var r in new[] { porVencer, vencida })
+        {
+            // «no se borra nada» en uno y «no se borró nada» en el otro: se compara la raiz.
+            Assert.Contains("no se borr", r.Texto, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("vuelven", r.Texto);
+            Assert.Contains("reseñas", r.Texto);
+            Assert.Contains("credenciales", r.Texto);
+            Assert.Contains("ZASS!", r.Asunto);
+        }
+    }
+
+    [Fact]
+    public void El_aviso_de_vencida_no_necesita_nada_en_la_carga()
+    {
+        Assert.NotNull(Plantillas.Renderizar(
+            TipoNotificacion.SuscripcionVencida, "Ana", "https://zass.cl", CargaDeAviso.Purgada));
+    }
+
+    /// <summary>Sin los dias no hay nada que decir: no se envia, en vez de mandar «vence en 0».</summary>
+    [Fact]
+    public void El_aviso_de_por_vencer_sin_dias_en_la_carga_no_se_renderiza()
+    {
+        Assert.Null(Plantillas.Renderizar(
+            TipoNotificacion.SuscripcionPorVencer, "Ana", "https://zass.cl", CargaDeAviso.Purgada));
+    }
+
+    [Fact]
+    public void Los_avisos_de_suscripcion_tienen_plantilla_y_no_guardan_ningun_secreto()
+    {
+        foreach (var tipo in new[]
+                 { TipoNotificacion.SuscripcionPorVencer, TipoNotificacion.SuscripcionVencida })
+        {
+            Assert.True(Plantillas.TienePlantilla(tipo));
+            Assert.False(Plantillas.LlevaToken(tipo));
+        }
+    }
+
     [Fact]
     public void Un_tipo_sin_plantilla_no_se_renderiza()
     {
-        Assert.Null(Plantillas.Renderizar(TipoNotificacion.PerfilPublicado, "Ana", "https://zass.cl", "t"));
+        Assert.Null(Plantillas.Renderizar(TipoNotificacion.PerfilPublicado, "Ana", "https://zass.cl", CargaDeAviso.ConToken("t")));
         Assert.False(Plantillas.TienePlantilla(TipoNotificacion.CitaConfirmada));
     }
 

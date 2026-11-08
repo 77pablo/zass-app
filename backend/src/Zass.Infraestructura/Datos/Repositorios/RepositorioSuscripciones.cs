@@ -97,6 +97,22 @@ public sealed class RepositorioSuscripcionesEfCore : IRepositorioSuscripciones
         Guid perfilPrestadorId, CancellationToken ct = default) =>
         _ctx.PerfilesPrestador.AnyAsync(p => p.Id == perfilPrestadorId, ct);
 
+    /// <summary>
+    /// UNA consulta para todos los perfiles. Misma razon que ExistePerfilPrestadorAsync para
+    /// no pasar por IRepositorioPerfiles: seria depender de un puerto de MOD-01 para leer una
+    /// columna.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<Guid, Guid>> UsuariosDePerfilesAsync(
+        IReadOnlyCollection<Guid> perfilPrestadorIds, CancellationToken ct = default)
+    {
+        if (perfilPrestadorIds.Count == 0) return new Dictionary<Guid, Guid>();
+        var filas = await _ctx.PerfilesPrestador
+            .Where(p => perfilPrestadorIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.UsuarioId })
+            .ToListAsync(ct);
+        return filas.ToDictionary(f => f.Id, f => f.UsuarioId);
+    }
+
     public void Agregar(Suscripcion suscripcion) => _ctx.Suscripciones.Add(suscripcion);
     public void AgregarPago(Pago pago) => _ctx.Pagos.Add(pago);
 }

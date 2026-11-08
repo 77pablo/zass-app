@@ -14,6 +14,7 @@ using Zass.Aplicacion.Geografia;
 using Zass.Aplicacion.Suscripciones;
 using Zass.Aplicacion.Puertos;
 using Zass.Infraestructura.Correo;
+using Zass.Infraestructura.Fondo;
 using Zass.Infraestructura.Datos;
 using Zass.Infraestructura.Datos.Repositorios;
 using Zass.Infraestructura.Seguridad;
@@ -197,6 +198,11 @@ public static class RegistroDeServicios
         });
         servicios.AddScoped<ProcesadorDeCorreo>();
         servicios.AddHostedService<TrabajoDeCorreo>();
+
+        // --- A-09 Planificador (trabajos de fondo) ---
+        servicios.AddOptions<OpcionesFondo>().Bind(configuracion.GetSection(OpcionesFondo.Seccion));
+        servicios.AddScoped<CoordinadorDeTrabajos>();
+        servicios.AddHostedService<TrabajoDiario>();
 
         // --- Validadores ---
         // Se registran por ensamblado a proposito: agregar un comando sin su validador

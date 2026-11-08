@@ -17,19 +17,29 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
     /// <summary>Plan con el que arranca quien publica su perfil por primera vez.</summary>
     public const string PlanInicial = "prueba";
 
+    /// <summary>
+    /// Con cuanta antelacion se avisa. Dos momentos, como los recordatorios de cita
+    /// (RN-S4-07): uno con tiempo para decidir y otro el dia antes, para quien lo dejo pasar.
+    ///
+    /// Cada umbral manda UN aviso y no mas, porque la clave de idempotencia lo incluye.
+    /// </summary>
+    public static readonly int[] DiasDeAviso = { 7, 1 };
+
     private readonly IRepositorioSuscripciones _repo;
     private readonly IUnidadDeTrabajo _trabajo;
     private readonly IRelojSistema _reloj;
     private readonly IAuditor _auditor;
+    private readonly INotificaciones _avisos;
 
     public ServicioSuscripciones(
         IRepositorioSuscripciones repo, IUnidadDeTrabajo trabajo,
-        IRelojSistema reloj, IAuditor auditor)
+        IRelojSistema reloj, IAuditor auditor, INotificaciones avisos)
     {
         _repo = repo;
         _trabajo = trabajo;
         _reloj = reloj;
         _auditor = auditor;
+        _avisos = avisos;
     }
 
     // ------------------------------------------------------------- Consultas
@@ -193,16 +203,86 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
         var expiradas = await _repo.ExpiradasSinMarcarAsync(ahora, ct);
         if (expiradas.Count == 0) return 0;
 
+        var duenos = await _repo.UsuariosDePerfilesAsync(
+            expiradas.Select(s => s.PerfilPrestadorId).Distinct().ToList(), ct);
+
         foreach (var s in expiradas)
         {
             s.Vencer();
             _auditor.Registrar(Auditar.Entrada(
                 "suscripcion_vencida", "suscripciones", s.Id, ahora,
                 contexto: new { vencioEn = s.VigenteHasta }));
+
+            // Quien pierde la visibilidad tiene derecho a saberlo. Si el perfil ya no tiene
+            // dueno (cuenta eliminada) no hay a quien avisarle, y vencer sigue siendo correcto.
+            if (duenos.TryGetValue(s.PerfilPrestadorId, out var usuarioId))
+                _avisos.Encolar(new Notificacion
+                {
+                    DestinatarioId = usuarioId,
+                    Tipo = TipoNotificacion.SuscripcionVencida,
+                    ClaveIdempotencia = $"SuscripcionVencida:{s.Id}",
+                    Asunto = "Tu suscripción a ZASS! venció",
+                    Cuerpo = CargaDeAviso.ConCampos(("dias", "0")),
+                    ProgramadaPara = ahora,
+                });
         }
 
         await _trabajo.GuardarAsync(ct);
         return expiradas.Count;
+    }
+
+    /// <summary>
+    /// Encola el aviso de «te queda poco» para cada umbral de <see cref="DiasDeAviso"/>.
+    ///
+    /// La clave lleva el umbral, no la fecha: si el trabajo corre dos veces hoy, o dos
+    /// replicas lo corren a la vez, la segunda choca con el unico de TBL-27 (R-18, CC-04) y
+    /// nadie recibe el correo dos veces. Y como cada umbral es una clave distinta, el aviso
+    /// de 7 dias no impide el de 1.
+    /// </summary>
+    private async Task<int> AvisarPorVencerAsync(CancellationToken ct)
+    {
+        var mayor = DiasDeAviso.Max();
+        var cercanas = await PorVencerAsync(mayor, ct);
+        if (cercanas.Count == 0) return 0;
+
+        var duenos = await _repo.UsuariosDePerfilesAsync(
+            cercanas.Select(s => s.PerfilPrestadorId).Distinct().ToList(), ct);
+
+        var encolados = 0;
+        foreach (var s in cercanas)
+        {
+            // El umbral que le corresponde hoy es el mas pequeño que ya alcanzo: a 6 dias le
+            // toca el de 7, a 1 el de 1. Asi no se salta ninguno si el trabajo no corrio un dia.
+            var umbral = DiasDeAviso.Where(d => s.DiasRestantes <= d).DefaultIfEmpty(0).Min();
+            if (umbral == 0) continue;
+            if (!duenos.TryGetValue(s.PerfilPrestadorId, out var usuarioId)) continue;
+
+            _avisos.Encolar(new Notificacion
+            {
+                DestinatarioId = usuarioId,
+                Tipo = TipoNotificacion.SuscripcionPorVencer,
+                ClaveIdempotencia = $"SuscripcionPorVencer:{s.SuscripcionId}:{umbral}",
+                Asunto = "Tu suscripción a ZASS! está por vencer",
+                Cuerpo = CargaDeAviso.ConCampos(("dias", Math.Max(1, s.DiasRestantes).ToString())),
+                ProgramadaPara = _reloj.Ahora,
+            });
+            encolados++;
+        }
+
+        await _trabajo.GuardarAsync(ct);
+        return encolados;
+    }
+
+    public async Task<ResumenDelDiario> CorrerDiarioAsync(CancellationToken ct = default)
+    {
+        // Vencer primero porque se lee mejor, NO porque el orden importe: se comprobo
+        // invirtiendolo y nada cambia. La razon es que PorVencerAsync solo mira vigentes
+        // (estado Prueba|Activa Y fecha futura), asi que una suscripcion pasada de fecha
+        // nunca esta «por vencer», se haya marcado ya o no. Si algun dia ese filtro se
+        // relaja, el orden SI pasa a importar y esto hay que volver a pensarlo.
+        var vencidas = await VencerExpiradasAsync(ct);
+        var avisadas = await AvisarPorVencerAsync(ct);
+        return new ResumenDelDiario(vencidas, avisadas);
     }
 
     public async Task<IReadOnlyList<SuscripcionPorVencer>> PorVencerAsync(

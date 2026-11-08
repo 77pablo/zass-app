@@ -1,7 +1,7 @@
 namespace Zass.Dominio.Comun;
 
 /// <summary>
-/// A-09 · CC-08. Una fila por trabajo programado: cuando le toca correr y quien lo tiene
+/// A-09 · CC-08 · TBL-32. Una fila por trabajo programado: cuando le toca correr y quien lo tiene
 /// reservado ahora mismo.
 ///
 /// Existe porque el planificador corre en TODAS las replicas de la API (N-02: de 2 a 10 en

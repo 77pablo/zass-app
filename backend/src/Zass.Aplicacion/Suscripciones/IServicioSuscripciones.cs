@@ -55,6 +55,15 @@ public interface IServicioSuscripciones
     Task<IReadOnlyList<SuscripcionPorVencer>> PorVencerAsync(
         int dentroDeDias, CancellationToken ct = default);
 
+    /// <summary>
+    /// El trabajo diario entero: vence lo pasado de fecha y encola los avisos de las que
+    /// estan por vencer. Devuelve que hizo, para que el planificador lo deje registrado.
+    ///
+    /// Es seguro llamarlo dos veces el mismo dia: los avisos llevan clave determinista
+    /// (CC-04), asi que el segundo no manda un segundo correo.
+    /// </summary>
+    Task<ResumenDelDiario> CorrerDiarioAsync(CancellationToken ct = default);
+
     Task<IReadOnlyList<PlanDto>> PlanesActivosAsync(CancellationToken ct = default);
 
     /// <summary>
@@ -81,6 +90,15 @@ public sealed record SuscripcionDto(
     DateTime? VigenteHasta,
     int DiasRestantes,
     bool RenovacionAutomatica);
+
+/// <summary>
+/// Que hizo la corrida diaria. Lo guarda el planificador en <c>ultimo_resumen</c>, asi que
+/// son numeros y nunca datos de una persona.
+/// </summary>
+public sealed record ResumenDelDiario(int Vencidas, int Avisadas)
+{
+    public override string ToString() => $"{Vencidas} vencidas, {Avisadas} avisadas";
+}
 
 /// <summary>Lo minimo para armar el aviso: a quien y cuanto le queda.</summary>
 public sealed record SuscripcionPorVencer(
