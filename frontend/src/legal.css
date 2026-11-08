@@ -1,0 +1,55 @@
+/* Paginas legales (/terminos y /privacidad). Solo usa los tokens de index.css; no lo modifica. */
+
+.legal { padding: 56px 0 96px; }
+.legal .contenedor { max-width: 760px; }
+
+.legal h1 {
+  font-size: clamp(2rem, 5vw, 3.25rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+  text-wrap: balance;
+}
+.legal .legal-fecha { margin-top: 14px; color: var(--suave); font-size: 0.9375rem; font-weight: 600; }
+
+.legal h2 {
+  margin-top: 44px;
+  font-size: 1.375rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+.legal p, .legal li { margin-top: 12px; color: var(--texto); line-height: 1.7; }
+.legal ul { padding-left: 1.25rem; }
+.legal li { margin-top: 8px; }
+.legal a { color: var(--amarillo); text-underline-offset: 3px; }
+.legal a:hover { color: var(--amarillo-hondo); }
+
+/* Un dato que falta llenar se ve distinto a proposito: que nadie lo publique sin darse cuenta. */
+.legal .legal-pendiente {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--amarillo-suave);
+  border: 1px dashed var(--amarillo);
+  font-weight: 700;
+}
+
+.legal-borrador {
+  margin: 0 0 28px;
+  padding: 14px 18px;
+  border: 1px solid var(--amarillo);
+  border-radius: 12px;
+  background: var(--amarillo-suave);
+  color: var(--texto);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+}
+.legal .legal-borrador { margin-top: 0; }
+
+.legal-tabla { width: 100%; margin-top: 16px; border-collapse: collapse; font-size: 0.9375rem; }
+.legal-tabla th, .legal-tabla td { padding: 10px 12px; border-bottom: 1px solid var(--linea); text-align: left; vertical-align: top; }
+.legal-tabla th { color: var(--suave); font-weight: 700; }
+
+/* Texto de aceptacion en el registro. */
+.aceptacion { margin-top: 14px; font-size: 0.875rem; color: var(--suave); font-weight: 600; line-height: 1.5; }
+.aceptacion a { color: var(--texto); }

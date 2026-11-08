@@ -3,6 +3,7 @@ import { personasEnZona } from '../api/comunidad'
 import { useCatalogo, useComunidad } from '../api/useCargado'
 import type { Zona } from '../api/catalogo'
 import { capitalizar, personas } from '../marco/texto'
+import { useMeta } from '../marco/useMeta'
 import { useTitulo } from '../marco/useTitulo'
 
 /** Los barrios agrupados por sector, en el orden en que la API los entrega. */
@@ -14,6 +15,7 @@ function porSector(zonas: Zona[]): [string, Zona[]][] {
 
 export function Barrios() {
   useTitulo('Barrios')
+  useMeta({ descripcion: 'Encuentra a gente de tu barrio: cuántos profesionales y oficios hay en cada zona de la ciudad. Buscar en ZASS! es gratis.' })
   const catalogo = useCatalogo()
   const comunidad = useComunidad()
 

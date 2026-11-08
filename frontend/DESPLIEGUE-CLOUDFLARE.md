@@ -44,3 +44,28 @@ Publicar solo el sitio sin API deja una página que dice «No se pudo conectar»
 ## Secretos
 
 Nada de esto lleva claves en el código. `API_ORIGEN` es una variable del proyecto de Cloudflare, no un archivo del repositorio.
+
+## SEO: fichas con meta del lado del servidor, sitemap y robots
+
+Google ve una SPA casi vacía, así que hay tres Functions y dos archivos estáticos (probados con `Request`/`Response` y un `fetch` simulado, **no en Cloudflare real**):
+
+| Ruta | Archivo | Qué hace |
+|---|---|---|
+| `/prestadores/:slug` | `functions/prestadores/[slug].js` | Pide la ficha a la API (`GET /api/prestadores/{slug}`) y devuelve `index.html` con `<title>`, descripción, canonical, Open Graph, Twitter Card y JSON-LD (`ProfessionalService`) de esa ficha. Ficha inexistente: la app con `noindex` y **404**. API caída, lenta (4 s) o con respuesta rara: la app normal, **200**, `s-maxage=10`; nunca un 500. Ficha ok: `s-maxage=300`. |
+| `/sitemap.xml` | `functions/sitemap.xml.js` | Portada, páginas fijas y TODAS las fichas visibles (lee `GET /api/prestadores/mapa` por cursor, de a 1000). Con más de 50 000 URLs entrega un **índice** que apunta a `/sitemaps/1.xml`, `/sitemaps/2.xml`… (`functions/sitemaps/[n].js`). Caché de 1 h en el borde. Si la API falla: 503 con `Retry-After`, nunca un sitemap a medias. |
+| `/robots.txt` | `public/robots.txt` | Apunta al sitemap y bloquea `/api/`, `/mi-ficha`, `/interno`, `/entrar`, `/crear-cuenta`, `/recuperar-contrasena`, `/restablecer-contrasena`, `/verificar-correo`. |
+| imagen al compartir | `public/og-zass.png` | 1200×630. Se regenera con `node scripts/generar-imagen-og.mjs` (Playwright sobre `scripts/og-plantilla.html`). |
+
+**Variables del proyecto Pages** (además de `API_ORIGEN`):
+
+- `SITIO_ORIGEN` (opcional, `https://zass.cl` por omisión): el origen que va en canonical, Open Graph y sitemap. Tiene que ser `https://…`; cualquier otra cosa se ignora.
+- `SITEMAP_MAX_PAGINAS` (opcional, 45 por omisión): páginas de 1000 fichas que el sitemap recorre. **Plan gratis de Cloudflare: 50 subpeticiones por invocación**, así que 45 000 fichas es el techo; más allá, el sitemap se corta en silencio. Con plan de pago se puede subir (hasta 1000 subpeticiones) y el índice de sitemaps ya está listo. Con menos de 45 000 fichas no hay nada que tocar.
+
+**Lo que NO es obvio:**
+
+1. **`_headers` no se aplica a las respuestas de las Functions**, solo a los archivos estáticos. Por eso `functions/_comun/seo.js` repite las mismas cabeceras (`CABECERAS_DE_SEGURIDAD`) en la ficha y en el sitemap, y una prueba compara ese objeto con el bloque `/*` de `public/_headers` para que no se separen. Si cambias la CSP en `_headers`, cámbiala también ahí.
+2. **La CSP no necesita cambios.** El JSON-LD es `<script type="application/ld+json">`: un bloque de datos, no se ejecuta, y `script-src 'self'` sigue prohibiendo scripts en línea. Una prueba comprueba que la CSP no tenga `unsafe-inline` en `script-src`.
+3. `index.html` lleva las marcas `<!--seo:inicio-->` y `<!--seo:fin-->`: lo que está entre ellas es lo que la Function reemplaza por las etiquetas de cada ficha. Si las quitas, las fichas salen sin meta (una prueba lo detecta). Vite las conserva al compilar (comprobado).
+4. Todo texto que viene de la API (nombres, descripciones, zonas) es contenido de usuarios: se escapa para HTML y se escapa aparte para JSON-LD (`<`, `>`, `&`, separadores de línea), y solo se usa una lista blanca de campos (nombre, oficio, zonas, descripción). El contacto (teléfono, WhatsApp, correo, sitio) **no** va en las etiquetas aunque la API lo entregue.
+5. La Function manda `X-Forwarded-For` con la IP del visitante (como el proxy de `/api`), para que el límite de peticiones de la API no cuente a Cloudflare entero como un solo cliente. El sitemap hace ≈ N/1000 llamadas a `/api/prestadores/mapa` cada hora como mucho (grupo de límite **P**, 100 cada 15 min por IP): con 45 000 fichas son 45 llamadas por regeneración, bajo el límite.
+6. Una ficha cuyo slug sea exactamente `mapa` no sería alcanzable por la API (la ruta literal `/api/prestadores/mapa` gana a `/api/prestadores/{slug}`). Es un caso casi imposible, pero conviene reservar ese slug en el backend cuando se toque la generación de slugs.

@@ -3,10 +3,12 @@ import { personasEnRubro } from '../api/comunidad'
 import { useCatalogo, useComunidad } from '../api/useCargado'
 import { Icono } from '../marco/Icono'
 import { capitalizar, personas } from '../marco/texto'
+import { useMeta } from '../marco/useMeta'
 import { useTitulo } from '../marco/useTitulo'
 
 export function Oficios() {
   useTitulo('Oficios')
+  useMeta({ descripcion: 'Los oficios que puedes encontrar cerca de ti en ZASS!: corretaje de propiedades, derecho, contabilidad, arquitectura, técnicos y más.' })
   const catalogo = useCatalogo()
   const comunidad = useComunidad()
 
