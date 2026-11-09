@@ -4,6 +4,7 @@ import { Comunas } from './paginas/Comunas'
 import { CrearCuenta } from './paginas/CrearCuenta'
 import { Entrar } from './paginas/Entrar'
 import { Ficha } from './paginas/Ficha'
+import { MiAgenda } from './paginas/MiAgenda'
 import { MiFicha } from './paginas/MiFicha'
 import { MisCitas } from './paginas/MisCitas'
 import { NoEncontrada } from './paginas/NoEncontrada'
@@ -37,6 +38,7 @@ export function App() {
         <Route path="entrar" element={<Entrar />} />
         <Route path="crear-cuenta" element={<CrearCuenta />} />
         <Route path="mi-ficha" element={<MiFicha />} />
+        <Route path="mi-agenda" element={<MiAgenda />} />
         <Route path="mis-citas" element={<MisCitas />} />
         <Route path="ofrecer-servicios" element={<OfrecerServicios />} />
         <Route path="verificar-correo" element={<VerificarCorreo />} />

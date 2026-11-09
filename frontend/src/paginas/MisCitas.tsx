@@ -95,6 +95,12 @@ export function MisCitas() {
   return (
     <div className="contenedor ficha-pagina citas">
       <h1 className="pagina-titulo">Mis citas</h1>
+      {esPrestador && (
+        <p className="bloque-texto">
+          Aquí llegan las horas que te piden. Para elegir cuándo atiendes o bloquear fechas, entra a{' '}
+          <Link to="/mi-agenda">Mi agenda</Link>.
+        </p>
+      )}
 
       {citas.length === 0 && (
         <p className="bloque-texto bloque-vacio">

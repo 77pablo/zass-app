@@ -1400,3 +1400,11 @@ Decisión de Pablo: **buscar y ver fichas no exige cuenta; contactar sí**, y **
 - **Comprobado:** 654 + 16 + 597 pruebas de backend y 326 de interfaz en verde. **Se mutó** el filtro del contacto (cayeron 2 pruebas) y el caso de uso de activar (cayeron 2).
 - **NO hecho / ojo:** el contacto sigue sin registrar quién contactó a quién (TBL-21), así que contactar por WhatsApp no habilita reseña; solo agendar lo hace. **Esto NO está en producción**: el backend tiene que desplegarse ANTES que el frontend, porque `Ofrecer mis servicios` llama a un endpoint nuevo. Falta además actualizar el documento de especificación (CS-04 es nuevo y API-05 cambió).
 - **Rendimiento en celular:** se publicó (desactivar blur, orbes y brillos en pantallas chicas). No se pudo medir en un teléfono real.
+
+---
+
+## Agenda del prestador — 8-nov-2026, noche (SIN COMMITEAR ANTES DE ESTA NOTA)
+
+`/mi-agenda`: disponibilidad por servicio + bloqueo de días, con 21 pruebas nuevas (348 de interfaz en total, en verde).
+**No se vio en un navegador todavía.** Falta endpoint para listar/quitar bloqueos (hoy no se pueden deshacer).
+Detalle y decisiones en `TRASPASO.md` («ÚLTIMA SESIÓN»). Diseño y plan de Codex en `docs/superpowers/`.

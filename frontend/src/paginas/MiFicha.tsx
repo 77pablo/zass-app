@@ -140,6 +140,7 @@ export function MiFicha() {
             <p className="persona-detalle">
               {[rubro && capitalizar(rubro.nombre), perfil.zonaPrincipal].filter(Boolean).join(' · ') || 'Aún sin oficio ni barrio'}
             </p>
+            <p className="persona-detalle"><Link to="/mi-agenda">Mi agenda</Link> · <Link to="/mis-citas">Mis citas</Link></p>
             <div className="fila-etiquetas">
               <span className={publicada ? 'sello' : 'dato'}>
                 {publicada ? 'Publicada: la ven en las búsquedas' : perfil.estado === 'Despublicado' ? 'En pausa: nadie la ve' : 'Borrador: nadie la ve todavía'}

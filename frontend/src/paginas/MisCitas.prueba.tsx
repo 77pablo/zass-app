@@ -64,6 +64,16 @@ describe('mis citas', () => {
     expect(await screen.findByText('pantalla de entrar')).toBeInTheDocument()
   })
 
+  it('quien ofrece servicios ve el acceso a su agenda; quien solo busca, no', async () => {
+    const { unmount } = pintar('dentro', ['buscador', 'prestador'])
+    expect(await screen.findByRole('link', { name: /mi agenda/i })).toHaveAttribute('href', '/mi-agenda')
+    unmount()
+
+    pintar('dentro', ['buscador'])
+    await screen.findByRole('heading', { name: /mis citas/i })
+    expect(screen.queryByRole('link', { name: /mi agenda/i })).not.toBeInTheDocument()
+  })
+
   it('sin citas invita a buscar', async () => {
     pintar()
 

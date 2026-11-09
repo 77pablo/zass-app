@@ -6,6 +6,47 @@ y `frontend/DESPLIEGUE-CLOUDFLARE.md` (guías de despliegue). **Aquí no hay nin
 
 ---
 
+## ⭐ PRIORIDAD DECIDIDA POR PABLO (manda sobre el orden de abajo)
+
+**Primero terminar la web entera. Los despliegues y los secretos quedan para después.**
+
+- **Ahora:** construir lo que falta del producto (§7 B): pantalla de agenda del prestador, pantalla de reseñas,
+  decisión sobre el registro de contacto, MOD-12 tarjetas NFC, página de planes. Trabajar y probar **en local**.
+- **Después (no ahora):** Manual Deploy en Render, publicar el sitio y rotar los 3 secretos (§3 y §6).
+- **Ojo por esa decisión:** `zass.cl` sigue sirviendo el backend viejo hasta que se despliegue; no pasa nada
+  mientras no se publique el sitio nuevo, pero **no publicar el sitio sin antes desplegar el backend** (§6).
+  Y los 3 secretos expuestos siguen siendo válidos hasta que se roten: no compartir este chat ni los archivos de `zass-secretos`.
+- Seguir sin hacer commit ni push sin que Pablo lo pida.
+
+---
+
+## 🟡 ÚLTIMA SESIÓN (Claude, 8-nov noche): agenda del prestador, a medio cerrar
+
+Siguiendo `docs/superpowers/specs/2026-11-08-sitio-completo-design.md` y `docs/superpowers/plans/2026-11-08-agenda-prestador.md`
+(escritos por Codex; **sin código suyo**). Hecho y **en verde** (`tsc` limpio, **348 pruebas de interfaz**, 0 avisos de lint en lo nuevo):
+
+- `funciones/agenda/servicio.ts`: `miDisponibilidad` (API-32), `guardarDisponibilidad` (API-33, horas `HH:mm:ss`), `crearBloqueo` (API-34),
+  `DIAS`, `horaCorta`, `inicioDeDiaEnChile` (medianoche de Chile en UTC; verano UTC-3, invierno UTC-4). 8 pruebas nuevas.
+- `paginas/MiAgenda.tsx` (+ `.prueba.tsx`, 13 pruebas): ruta `/mi-agenda`. Editor de franjas por servicio (día, desde, hasta, duración),
+  validación local igual a la del servidor, errores que conservan lo escrito, y bloqueo de días completos.
+  **Se mutaron** el «día siguiente» del bloqueo y la validación previa: en ambos cayeron pruebas.
+- Navegación: «Mi agenda» en la cabecera (escritorio y menú móvil) solo para prestadores, y enlaces desde `Mis citas` y `Mi ficha`.
+- Estilos de agenda en `index.css`.
+
+**Desviaciones deliberadas del plan de Codex** (para no duplicar): `Mis citas` YA confirma, rechaza y marca asistencia de las citas
+que te piden, así que `/mi-agenda` **no** repite «Citas que te han pedido»: solo cubre **disponibilidad y bloqueos** y enlaza a `Mis citas`.
+
+**Pendiente de esta fase:**
+1. **Mirarla en un navegador** (nadie la ha visto renderizada; solo hay pruebas de comportamiento). Se iba a hacer con `vite preview` +
+   Playwright interceptando `/api/*`; el servidor se detuvo antes. Revisar escritorio y móvil.
+2. **Falta backend: quitar y listar bloqueos.** Hoy un bloqueo creado por error **no se puede deshacer** (no hay `GET`/`DELETE /api/mi/bloqueos`);
+   la pantalla lo advierte. Es un hueco real de producto: añadir endpoints + pruebas (mutadas) + botón «Quitar».
+3. Aún no hay pantalla para **reprogramar desde el lado del prestador** (diferido en el plan).
+4. Sin commitear: ver `git status`. Nada de esto está publicado ni desplegado.
+5. Siguen las fases 2 (reseñas), 3 (planes/suscripción visible, sin precios inventados) y 4 (pulido) del diseño de Codex, sin empezar.
+
+---
+
 ## 1. Qué es
 
 Plataforma web comunitaria de servicios locales en Chile. Quien **ofrece** un servicio (abogado, contador,

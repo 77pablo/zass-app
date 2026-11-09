@@ -108,6 +108,76 @@ export const reprogramarCita = (id: string, bloqueNuevoId: string, clave: string
 export const registrarAsistencia = (id: string, asistio: boolean) =>
   enviar<Cita>(`/api/citas/${id}/asistencia`, { asistio })
 
+// ---------------------------------------------------------------- mi disponibilidad (prestador)
+
+/** 1 lunes a 7 domingo, como TBL-16 y como lo valida el servidor. */
+export const DIAS = [
+  { valor: 1, nombre: 'Lunes' }, { valor: 2, nombre: 'Martes' }, { valor: 3, nombre: 'Miércoles' },
+  { valor: 4, nombre: 'Jueves' }, { valor: 5, nombre: 'Viernes' }, { valor: 6, nombre: 'Sábado' },
+  { valor: 7, nombre: 'Domingo' },
+] as const
+
+/**
+ * Una franja recurrente. Las horas son LOCALES de Chile («lunes de 09:00 a 13:00»), no instantes: el servidor
+ * las convierte al generar los bloques. Viajan como `HH:mm` en la pantalla y como `HH:mm:ss` en el cuerpo.
+ */
+export interface Franja {
+  diaSemana: number
+  horaInicio: string
+  horaFin: string
+  duracionBloqueMin: number
+}
+
+/** API-32. Un servicio mio con sus franjas; los que aun no tienen horas vienen con la lista vacia. */
+export interface DisponibilidadDeServicio {
+  prestadorServicioId: string
+  servicio: string
+  modoAgenda: string
+  franjas: (Franja & { id: string })[]
+}
+
+/** API-34. */
+export interface Bloqueo {
+  id: string
+  desdeEn: string
+  hastaEn: string
+  motivo: string | null
+}
+
+/** `09:00:00` (lo que manda el servidor) -> `09:00` (lo que entiende un campo de hora). */
+export const horaCorta = (hora: string) => hora.slice(0, 5)
+
+/** `09:00` -> `09:00:00`: un TimeOnly de .NET no acepta la forma sin segundos. */
+const conSegundos = (hora: string) => (hora.length === 5 ? `${hora}:00` : hora)
+
+/** API-32. */
+export function miDisponibilidad(): Promise<DisponibilidadDeServicio[]> {
+  return obtener<DisponibilidadDeServicio[]>('/api/mi/disponibilidad')
+}
+
+/**
+ * API-33. Reemplaza TODAS las franjas de UN servicio y regenera sus bloques. Una lista vacia es valida y es
+ * como se quitan las horas de un servicio. Devuelve cuantos bloques quedaron.
+ */
+export function guardarDisponibilidad(prestadorServicioId: string, franjas: Franja[]): Promise<{ bloquesGenerados: number }> {
+  return enviar<{ bloquesGenerados: number }>('/api/mi/disponibilidad', {
+    prestadorServicioId,
+    franjas: franjas.map((f) => ({
+      diaSemana: f.diaSemana,
+      horaInicio: conSegundos(f.horaInicio),
+      horaFin: conSegundos(f.horaFin),
+      duracionBloqueMin: f.duracionBloqueMin,
+    })),
+  }, 'PUT')
+}
+
+/** API-34 (CS-11). Un feriado o una ausencia. El motivo es opcional: vacio viaja como null. */
+export function crearBloqueo(desdeEn: string, hastaEn: string, motivo: string): Promise<Bloqueo> {
+  return enviar<Bloqueo>('/api/mi/bloqueos', {
+    desdeEn, hastaEn, motivo: motivo.trim() === '' ? null : motivo.trim(),
+  }, 'POST')
+}
+
 // ---------------------------------------------------------------- hora de Chile
 
 const ZONA = 'America/Santiago'
@@ -141,4 +211,27 @@ export function porDia(bloques: Bloque[]): { dia: string; titulo: string; bloque
     grupos.set(k, [...(grupos.get(k) ?? []), b])
   }
   return [...grupos].map(([dia, bs]) => ({ dia, titulo: diaDeChile(bs[0].inicioEn), bloques: bs }))
+}
+
+/** Cuantos ms hay que sumarle a un instante UTC para tener la hora de pared de Chile en ese momento. */
+function desfaseDeChile(instante: number): number {
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: ZONA, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(new Date(instante))
+  const n = (tipo: string) => Number(partes.find((p) => p.type === tipo)?.value)
+  return Date.UTC(n('year'), n('month') - 1, n('day'), n('hour'), n('minute'), n('second')) - instante
+}
+
+/**
+ * `2026-12-24` -> el instante UTC en que ese dia EMPIEZA en Chile. Sirve para bloquear dias completos: se manda
+ * desde el inicio del primero hasta el inicio del dia siguiente al ultimo. Se calcula con la zona de Chile y no
+ * con la del navegador, y se corrige dos veces porque el desfase depende del instante que se busca (horario de verano).
+ */
+export function inicioDeDiaEnChile(dia: string): string {
+  const [a, m, d] = dia.split('-').map(Number)
+  const medianoche = Date.UTC(a, m - 1, d)
+  let t = medianoche
+  for (let i = 0; i < 2; i++) t = medianoche - desfaseDeChile(t)
+  return new Date(t).toISOString()
 }
