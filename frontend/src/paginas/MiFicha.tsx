@@ -10,6 +10,7 @@ import {
   type MiCredencial, type MiPerfil, type ServicioOfrecido, type ServicioParaGuardar, type Suscripcion, type ZonaCubierta,
 } from '../funciones/perfil/servicio'
 import { erroresDelServidor, LIMITES, validarDatos, type ErroresDelFormulario } from '../funciones/perfil/validacion'
+import { describirSuscripcion } from '../funciones/perfil/estadoSuscripcion'
 import { Icono } from '../marco/Icono'
 import { Monograma } from '../marco/Monograma'
 import { capitalizar, duracion, pesos } from '../marco/texto'
@@ -56,7 +57,7 @@ export function MiFicha() {
     let vigente = true
     Promise.all([
       miPerfil(), misServicios(), miCobertura(),
-      // La suscripcion todavia no existe antes de publicar por primera vez: un 404 aqui es normal.
+      // Antes de publicar el servidor responde 200 con estado "sin suscripcion"; el catch cubre cualquier otro fallo y, sin dato, no se muestra nada.
       miSuscripcion().catch(() => null),
       misCredenciales(),
     ])
@@ -112,6 +113,9 @@ export function MiFicha() {
   const activos = servicios.filter((s) => s.activo)
   const falta = perfil.faltaParaPublicar
   const publicada = perfil.estado === 'Publicado'
+  const estadoSusc = describirSuscripcion(suscripcion)
+  // Publicada no es lo mismo que visible: sin suscripcion vigente la busqueda la esconde (RN-S3-09).
+  const sinVisibilidad = publicada && suscripcion !== null && !suscripcion.vigente
 
   async function cambiarPublicacion() {
     setTrabajando(true)
@@ -142,11 +146,11 @@ export function MiFicha() {
             </p>
             <p className="persona-detalle"><Link to="/mi-agenda">Mi agenda</Link> · <Link to="/mis-citas">Mis citas</Link></p>
             <div className="fila-etiquetas">
-              <span className={publicada ? 'sello' : 'dato'}>
-                {publicada ? 'Publicada: la ven en las búsquedas' : perfil.estado === 'Despublicado' ? 'En pausa: nadie la ve' : 'Borrador: nadie la ve todavía'}
+              <span className={publicada && !sinVisibilidad ? 'sello' : 'dato'}>
+                {publicada ? (sinVisibilidad ? 'Publicada, pero fuera de las búsquedas' : 'Publicada: la ven en las búsquedas') : perfil.estado === 'Despublicado' ? 'En pausa: nadie la ve' : 'Borrador: nadie la ve todavía'}
               </span>
-              {suscripcion?.enPrueba && suscripcion.vigente && (
-                <span className="dato">Prueba · {suscripcion.diasRestantes} días</span>
+              {estadoSusc && !estadoSusc.alerta && (
+                <span className="dato">{estadoSusc.texto}</span>
               )}
             </div>
           </div>
@@ -167,6 +171,7 @@ export function MiFicha() {
       </header>
 
       {avisoAccion && <p className="aviso-linea" role="alert">{avisoAccion}</p>}
+      {estadoSusc?.alerta && <p className="aviso-linea" role="status">{estadoSusc.texto}</p>}
 
       {!publicada && (
         <section className="guia" aria-label="Lo que falta para publicar">
