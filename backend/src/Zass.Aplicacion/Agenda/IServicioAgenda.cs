@@ -38,6 +38,17 @@ public interface IServicioAgenda
     Task<Resultado<BloqueoDto>> BloquearFechaAsync(
         BloquearFechaCmd cmd, CancellationToken ct = default);
 
+    /// <summary>CS-11. Los bloqueos que aún no terminaron, del más próximo al más lejano.</summary>
+    Task<IReadOnlyList<BloqueoDto>> MisBloqueosAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default);
+
+    /// <summary>
+    /// CS-11. Deshace un bloqueo. Uno ajeno responde igual que uno inexistente. No toca los
+    /// bloques: las horas vuelven a ofrecerse porque el bloqueo se cruza al consultar.
+    /// </summary>
+    Task<Resultado<bool>> QuitarBloqueoAsync(
+        Guid perfilPrestadorId, Guid bloqueoId, CancellationToken ct = default);
+
     // ------------------------------------------------------------- CU-12 paso 2-4: el calendario
 
     /// <summary>

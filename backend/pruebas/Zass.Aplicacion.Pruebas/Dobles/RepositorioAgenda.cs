@@ -103,6 +103,22 @@ public sealed class RepositorioAgendaEnMemoria : IRepositorioAgenda
 
     public void AgregarBloqueo(BloqueoAgenda bloqueo) => _base.BloqueosAgenda.Add(bloqueo);
 
+    public Task<IReadOnlyList<BloqueoAgenda>> BloqueosVigentesDeAsync(
+        Guid perfilPrestadorId, DateTime ahora, CancellationToken ct = default)
+    {
+        IReadOnlyList<BloqueoAgenda> r = _base.BloqueosAgenda
+            .Where(x => x.PerfilPrestadorId == perfilPrestadorId && x.HastaEn > ahora)
+            .OrderBy(x => x.DesdeEn).ThenBy(x => x.Id).ToList();
+        return Task.FromResult(r);
+    }
+
+    public Task<BloqueoAgenda?> BloqueoDeAsync(
+        Guid perfilPrestadorId, Guid bloqueoId, CancellationToken ct = default) =>
+        Task.FromResult(_base.BloqueosAgenda
+            .FirstOrDefault(x => x.Id == bloqueoId && x.PerfilPrestadorId == perfilPrestadorId));
+
+    public void QuitarBloqueo(BloqueoAgenda bloqueo) => _base.BloqueosAgenda.Remove(bloqueo);
+
     // ------------------------------------------------------- CC-01 (sin bloquear nada)
 
     public Task<BloqueHorario?> TomarBloqueAsync(Guid bloqueId, CancellationToken ct = default)

@@ -582,6 +582,19 @@ public interface IRepositorioAgenda
 
     void AgregarBloqueo(BloqueoAgenda bloqueo);
 
+    /// <summary>Los bloqueos que aún no terminaron. Los pasados no sirven para nada en pantalla.</summary>
+    Task<IReadOnlyList<BloqueoAgenda>> BloqueosVigentesDeAsync(
+        Guid perfilPrestadorId, DateTime ahora, CancellationToken ct = default);
+
+    /// <summary>
+    /// Rastreado, y con el dueño dentro de la consulta: un bloqueo ajeno no se distingue de
+    /// uno que no existe.
+    /// </summary>
+    Task<BloqueoAgenda?> BloqueoDeAsync(
+        Guid perfilPrestadorId, Guid bloqueoId, CancellationToken ct = default);
+
+    void QuitarBloqueo(BloqueoAgenda bloqueo);
+
     // ------------------------------------------------------- CC-01: el bloqueo de fila
 
     /// <summary>

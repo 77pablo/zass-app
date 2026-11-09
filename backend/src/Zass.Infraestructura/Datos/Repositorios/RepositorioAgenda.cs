@@ -91,6 +91,22 @@ public sealed class RepositorioAgendaEfCore : IRepositorioAgenda
 
     public void AgregarBloqueo(BloqueoAgenda bloqueo) => _ctx.BloqueosAgenda.Add(bloqueo);
 
+    public async Task<IReadOnlyList<BloqueoAgenda>> BloqueosVigentesDeAsync(
+        Guid perfilPrestadorId, DateTime ahora, CancellationToken ct = default) =>
+        await _ctx.BloqueosAgenda
+            .Where(x => x.PerfilPrestadorId == perfilPrestadorId && x.HastaEn > ahora)
+            .OrderBy(x => x.DesdeEn).ThenBy(x => x.Id)
+            .ToListAsync(ct);
+
+    public Task<BloqueoAgenda?> BloqueoDeAsync(
+        Guid perfilPrestadorId, Guid bloqueoId, CancellationToken ct = default) =>
+        _ctx.BloqueosAgenda
+            .AsTracking()
+            .FirstOrDefaultAsync(
+                x => x.Id == bloqueoId && x.PerfilPrestadorId == perfilPrestadorId, ct);
+
+    public void QuitarBloqueo(BloqueoAgenda bloqueo) => _ctx.BloqueosAgenda.Remove(bloqueo);
+
     // ------------------------------------------------------- CC-01
 
     /// <summary>
