@@ -103,6 +103,37 @@ public static class EndpointsAgenda
             .RequireRateLimiting(Tasa.General)
             .WithName("API-34");
 
+        // CS-11 - Mis bloqueos vigentes.
+        grupo.MapGet("/bloqueos", async (
+                IServicioAgenda agenda, ServicioPerfiles perfiles, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+
+                var mio = await perfiles.MiPerfilPrestadorAsync(usuarioId.Value);
+                if (!mio.Exito) return Respuestas.Problema(mio);
+
+                return Results.Ok(await agenda.MisBloqueosAsync(mio.Valor!.Id));
+            })
+            .RequireRateLimiting(Tasa.General)
+            .WithName("API-34-listar");
+
+        // CS-11 - Quita un bloqueo mío. Uno ajeno da 404, igual que uno que no existe.
+        grupo.MapDelete("/bloqueos/{id:guid}", async (
+                Guid id, IServicioAgenda agenda, ServicioPerfiles perfiles, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+
+                var mio = await perfiles.MiPerfilPrestadorAsync(usuarioId.Value);
+                if (!mio.Exito) return Respuestas.Problema(mio);
+
+                var r = await agenda.QuitarBloqueoAsync(mio.Valor!.Id, id);
+                return r.Exito ? Results.NoContent() : Respuestas.Problema(r);
+            })
+            .RequireRateLimiting(Tasa.General)
+            .WithName("API-34-quitar");
+
         // API-37 - Mis citas, de los dos lados. El perfil es opcional: un buscador sin
         // perfil de prestador ve solo las que pidió, y eso no es un error.
         grupo.MapGet("/citas", async (

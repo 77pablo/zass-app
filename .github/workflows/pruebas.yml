@@ -1,0 +1,49 @@
+name: Pruebas
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgis/postgis:17-3.5
+        env:
+          POSTGRES_USER: zass
+          POSTGRES_PASSWORD: zass_ci_clave_local
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U zass -d postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Compilar
+        run: dotnet build backend/Zass.sln -c Debug
+
+      - name: Pruebas de aplicacion
+        run: dotnet test backend/pruebas/Zass.Aplicacion.Pruebas --no-build
+
+      - name: Pruebas de arquitectura
+        run: dotnet test backend/pruebas/Zass.Arquitectura.Pruebas --no-build
+
+      - name: Pruebas de integracion
+        env:
+          ZASS_CADENA_PRUEBAS: Host=127.0.0.1;Port=5432;Database=zass_pruebas;Username=zass;Password=zass_ci_clave_local
+        run: dotnet test backend/pruebas/Zass.Integracion.Pruebas --no-build

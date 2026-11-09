@@ -28,6 +28,7 @@ public class ApiAgendaPruebas : IAsyncLifetime
     private Guid _servicioOfrecido;
     private int _servicioCatalogo;
     private Guid _bloque;
+    private Guid _perfilAjeno;
 
     public async Task InitializeAsync()
     {
@@ -115,6 +116,8 @@ public class ApiAgendaPruebas : IAsyncLifetime
         {
             await ctx.Database.ExecuteSqlRawAsync(
                 """
+                DELETE FROM bloqueos_agenda WHERE perfil_prestador_id = {2};
+                DELETE FROM perfiles_prestador WHERE id = {2};
                 DELETE FROM contactos    WHERE perfil_prestador_id = {0};
                 DELETE FROM cambios_cita WHERE cita_id IN (SELECT id FROM citas WHERE perfil_prestador_id = {0});
                 DELETE FROM citas        WHERE perfil_prestador_id = {0};
@@ -125,7 +128,7 @@ public class ApiAgendaPruebas : IAsyncLifetime
                 DELETE FROM prestador_servicios WHERE perfil_prestador_id = {0};
                 DELETE FROM servicios    WHERE id = {1};
                 DELETE FROM perfiles_prestador WHERE id = {0};
-                """, _perfil, _servicioCatalogo);
+                """, _perfil, _servicioCatalogo, _perfilAjeno);
 
             var usuarios = await ctx.Usuarios
                 .Where(u => u.Correo.EndsWith($"-{_marca}@zass.local")).ToListAsync();
@@ -318,6 +321,182 @@ public class ApiAgendaPruebas : IAsyncLifetime
             (await _cliente.GetAsync("/api/mi/citas")).StatusCode);
     }
 
+        // ------------------------------------------------------------- CS-11, listar y quitar bloqueos
+
+    /// <summary>El buscador de la sesión pasa a ser dueño del perfil del fixture (hay un perfil por usuario).</summary>
+    private async Task HacerloDuenoDelPerfilAsync(string correo)
+    {
+        using var ctx = ContextoDePrueba.Crear();
+        var usuario = await ctx.Usuarios.SingleAsync(u => u.Correo == correo);
+        var perfil = await ctx.PerfilesPrestador.SingleAsync(p => p.Id == _perfil);
+        perfil.UsuarioId = usuario.Id;
+        await ctx.SaveChangesAsync();
+    }
+
+    private async Task<Guid> UnBloqueoAsync(Guid perfilId, DateTime desde, DateTime hasta)
+    {
+        using var ctx = ContextoDePrueba.Crear();
+        var bloqueo = new BloqueoAgenda
+        {
+            PerfilPrestadorId = perfilId, DesdeEn = desde, HastaEn = hasta, Motivo = "Prueba",
+        };
+        ctx.Set<BloqueoAgenda>().Add(bloqueo);
+        await ctx.SaveChangesAsync();
+        return bloqueo.Id;
+    }
+
+    /// <summary>Otro prestador, con su propio perfil y un bloqueo. Se borra en DisposeAsync.</summary>
+    private async Task<Guid> UnBloqueoAjenoAsync()
+    {
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var dueno = new Usuario
+            {
+                Correo = $"apiag-o-{_marca}@zass.local", HashContrasena = "x",
+                Nombre = "Otra Persona", CorreoVerificado = true,
+            };
+            ctx.Usuarios.Add(dueno);
+            var rubro = await ctx.Rubros.FirstAsync(r => r.Activo);
+            var perfil = new PerfilPrestador
+            {
+                UsuarioId = dueno.Id, RubroId = rubro.Id, Slug = $"apiag-o-{_marca}",
+                NombrePublico = "Otro estudio", Estado = EstadoPerfil.Publicado,
+                PublicadoEn = DateTime.UtcNow.AddDays(-2),
+            };
+            ctx.PerfilesPrestador.Add(perfil);
+            await ctx.SaveChangesAsync();
+            _perfilAjeno = perfil.Id;
+        }
+        var ahora = DateTime.UtcNow;
+        return await UnBloqueoAsync(_perfilAjeno, ahora.AddDays(3), ahora.AddDays(3).AddHours(2));
+    }
+
+    private async Task<bool> ExisteElBloqueoAsync(Guid id)
+    {
+        using var ctx = ContextoDePrueba.Crear();
+        return await ctx.Set<BloqueoAgenda>().AnyAsync(b => b.Id == id);
+    }
+
+    private async Task<HttpResponseMessage> QuitarBloqueoAsync(Guid id, bool conCsrf = true)
+    {
+        var p = new HttpRequestMessage(HttpMethod.Delete, $"/api/mi/bloqueos/{id}");
+        if (conCsrf) p.Headers.Add("X-CSRF-Token", await CsrfAsync());
+        return await _cliente.SendAsync(p);
+    }
+
+    [Fact]
+    public async Task Listar_y_quitar_bloqueos_exigen_sesion()
+    {
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _cliente.GetAsync("/api/mi/bloqueos")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await QuitarBloqueoAsync(Guid.NewGuid(), conCsrf: false)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Quitar_un_bloqueo_sin_csrf_da_403_y_no_lo_borra()
+    {
+        var correo = await UnBuscadorConSesionAsync();
+        await HacerloDuenoDelPerfilAsync(correo);
+        var ahora = DateTime.UtcNow;
+        var id = await UnBloqueoAsync(_perfil, ahora.AddDays(5), ahora.AddDays(5).AddHours(1));
+
+        var r = await QuitarBloqueoAsync(id, conCsrf: false);
+
+        Assert.Equal(HttpStatusCode.Forbidden, r.StatusCode);
+        Assert.True(await ExisteElBloqueoAsync(id));
+    }
+
+    [Fact]
+    public async Task Quitar_un_bloqueo_ajeno_da_404_y_no_lo_borra()
+    {
+        var correo = await UnBuscadorConSesionAsync();
+        await HacerloDuenoDelPerfilAsync(correo);   // tiene perfil: llega hasta el filtro de dueño
+        var ajeno = await UnBloqueoAjenoAsync();
+
+        var r = await QuitarBloqueoAsync(ajeno);
+
+        Assert.Equal(HttpStatusCode.NotFound, r.StatusCode);
+        Assert.True(await ExisteElBloqueoAsync(ajeno));
+    }
+
+    [Fact]
+    public async Task Quitar_un_bloqueo_sin_perfil_de_prestador_da_404()
+    {
+        await UnBuscadorConSesionAsync();   // buscador puro, sin perfil
+        var ajeno = await UnBloqueoAjenoAsync();
+
+        Assert.Equal(HttpStatusCode.NotFound, (await QuitarBloqueoAsync(ajeno)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await QuitarBloqueoAsync(Guid.NewGuid())).StatusCode);
+        Assert.True(await ExisteElBloqueoAsync(ajeno));
+    }
+
+    [Fact]
+    public async Task Quitar_el_propio_da_204_lo_borra_y_repetirlo_da_404()
+    {
+        var correo = await UnBuscadorConSesionAsync();
+        await HacerloDuenoDelPerfilAsync(correo);
+        var ahora = DateTime.UtcNow;
+        var id = await UnBloqueoAsync(_perfil, ahora.AddDays(5), ahora.AddDays(5).AddHours(1));
+
+        Assert.Equal(HttpStatusCode.NoContent, (await QuitarBloqueoAsync(id)).StatusCode);
+        Assert.False(await ExisteElBloqueoAsync(id));
+        Assert.Equal(HttpStatusCode.NotFound, (await QuitarBloqueoAsync(id)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Mis_bloqueos_trae_solo_los_propios_y_vigentes()
+    {
+        var correo = await UnBuscadorConSesionAsync();
+        await HacerloDuenoDelPerfilAsync(correo);
+        var ahora = DateTime.UtcNow;
+        var vigente = await UnBloqueoAsync(_perfil, ahora.AddDays(5), ahora.AddDays(5).AddHours(1));
+        await UnBloqueoAsync(_perfil, ahora.AddDays(-3), ahora.AddDays(-3).AddHours(1));   // ya pasó
+        await UnBloqueoAjenoAsync();                                                       // de otro
+
+        var r = await _cliente.GetAsync("/api/mi/bloqueos");
+
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        var ids = (await r.Content.ReadFromJsonAsync<JsonDocument>())!.RootElement
+            .EnumerateArray().Select(x => x.GetProperty("id").GetGuid()).ToList();
+        Assert.Equal(new[] { vigente }, ids);
+    }
+        private async Task<string> EstadoPublicoDelBloqueAsync()
+    {
+        var r = await _cliente.GetAsync(
+            $"/api/prestadores/{_slug}/bloques?servicio={_servicioOfrecido}");
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        var json = (await r.Content.ReadFromJsonAsync<JsonDocument>())!.RootElement;
+        return json.GetProperty("bloques").EnumerateArray()
+            .Single(b => b.GetProperty("id").GetGuid() == _bloque)
+            .GetProperty("estado").GetString()!;
+    }
+
+    [Fact]
+    public async Task El_calendario_vuelve_a_mostrar_libre_al_quitar_el_bloqueo()
+    {
+        var correo = await UnBuscadorConSesionAsync();
+        await HacerloDuenoDelPerfilAsync(correo);
+        Assert.Equal("libre", await EstadoPublicoDelBloqueAsync());
+
+        var ahora = DateTime.UtcNow;
+        var crear = new HttpRequestMessage(HttpMethod.Post, "/api/mi/bloqueos")
+        {
+            Content = JsonContent.Create(new
+            {
+                desdeEn = ahora.AddHours(12), hastaEn = ahora.AddDays(2), motivo = "Prueba",
+            }),
+        };
+        crear.Headers.Add("X-CSRF-Token", await CsrfAsync());
+        var creado = await _cliente.SendAsync(crear);
+        Assert.Equal(HttpStatusCode.Created, creado.StatusCode);
+        var id = (await creado.Content.ReadFromJsonAsync<JsonDocument>())!.RootElement
+            .GetProperty("id").GetGuid();
+
+        Assert.Equal("bloqueado", await EstadoPublicoDelBloqueAsync());
+
+        Assert.Equal(HttpStatusCode.NoContent, (await QuitarBloqueoAsync(id)).StatusCode);
+
+        Assert.Equal("libre", await EstadoPublicoDelBloqueAsync());
+    }
     // ------------------------------------------------------------- API-35, el calendario público
 
     [Fact]

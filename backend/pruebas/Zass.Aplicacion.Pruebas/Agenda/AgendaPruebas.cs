@@ -595,4 +595,58 @@ public class AgendaPruebas
 
         Assert.Equal(habilita, await _servicio.CitaRealizadaAsync(_buscador.Id, _prestador.Id));
     }
+
+    // ------------------------------------------------------------- CS-11: listar y quitar bloqueos
+
+    private Task<Resultado<BloqueoDto>> PonerBloqueo(
+        Guid perfilId, DateTime desde, DateTime hasta, string? motivo = null) =>
+        _servicio.BloquearFechaAsync(new BloquearFechaCmd(perfilId, desde, hasta, motivo));
+
+    [Fact]
+    public async Task MisBloqueos_devuelve_solo_los_propios_y_vigentes_del_mas_cercano_al_mas_lejano()
+    {
+        var lejano = await PonerBloqueo(_prestador.Id, Ahora.AddDays(10), Ahora.AddDays(11));
+        var proximo = await PonerBloqueo(_prestador.Id, Ahora.AddDays(2), Ahora.AddDays(3));
+        var enCurso = await PonerBloqueo(_prestador.Id, Ahora.AddHours(-2), Ahora.AddHours(5));
+        await PonerBloqueo(_prestador.Id, Ahora.AddDays(-3), Ahora.AddDays(-2));   // ya terminó
+        await PonerBloqueo(Guid.NewGuid(), Ahora.AddDays(2), Ahora.AddDays(3));    // de otro prestador
+
+        var lista = await _servicio.MisBloqueosAsync(_prestador.Id);
+
+        Assert.Equal(
+            new[] { enCurso.Valor!.Id, proximo.Valor!.Id, lejano.Valor!.Id },
+            lista.Select(x => x.Id).ToArray());
+    }
+
+    [Fact]
+    public async Task QuitarBloqueo_borra_el_propio()
+    {
+        var bloqueo = (await PonerBloqueo(_prestador.Id, Ahora.AddDays(2), Ahora.AddDays(3))).Valor!;
+
+        var r = await _servicio.QuitarBloqueoAsync(_prestador.Id, bloqueo.Id);
+
+        Assert.True(r.Exito);
+        Assert.DoesNotContain(_base.BloqueosAgenda, x => x.Id == bloqueo.Id);
+    }
+
+    [Fact]
+    public async Task QuitarBloqueo_de_otro_prestador_da_NoEncontrado_y_no_lo_borra()
+    {
+        var bloqueo = (await PonerBloqueo(_prestador.Id, Ahora.AddDays(2), Ahora.AddDays(3))).Valor!;
+
+        var r = await _servicio.QuitarBloqueoAsync(Guid.NewGuid(), bloqueo.Id);
+
+        Assert.False(r.Exito);
+        Assert.Equal(Fallas.NoEncontrado, r.Codigo);
+        Assert.Contains(_base.BloqueosAgenda, x => x.Id == bloqueo.Id);
+    }
+
+    [Fact]
+    public async Task QuitarBloqueo_inexistente_da_NoEncontrado()
+    {
+        var r = await _servicio.QuitarBloqueoAsync(_prestador.Id, Guid.NewGuid());
+
+        Assert.False(r.Exito);
+        Assert.Equal(Fallas.NoEncontrado, r.Codigo);
+    }
 }

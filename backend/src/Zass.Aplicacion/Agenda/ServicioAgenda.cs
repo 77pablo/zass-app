@@ -238,6 +238,31 @@ public sealed class ServicioAgenda : IServicioAgenda
             bloqueo.Id, bloqueo.DesdeEn, bloqueo.HastaEn, bloqueo.Motivo));
     }
 
+    public async Task<IReadOnlyList<BloqueoDto>> MisBloqueosAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        var vigentes = await _repo.BloqueosVigentesDeAsync(perfilPrestadorId, _reloj.Ahora, ct);
+        return vigentes.Select(b => new BloqueoDto(b.Id, b.DesdeEn, b.HastaEn, b.Motivo)).ToList();
+    }
+
+    public async Task<Resultado<bool>> QuitarBloqueoAsync(
+        Guid perfilPrestadorId, Guid bloqueoId, CancellationToken ct = default)
+    {
+        var bloqueo = await _repo.BloqueoDeAsync(perfilPrestadorId, bloqueoId, ct);
+        if (bloqueo is null)
+            return Resultado.Falla<bool>(Fallas.NoEncontrado, "Ese bloqueo no existe.");
+
+        _repo.QuitarBloqueo(bloqueo);
+
+        // Igual que al crearlo: solo las fechas, nunca el motivo.
+        _auditor.Registrar(Auditar.Entrada(
+            "desbloquear_agenda", "bloqueo_agenda", bloqueo.Id, _reloj.Ahora,
+            actorId: null, contexto: new { bloqueo.DesdeEn, bloqueo.HastaEn }));
+        await _trabajo.GuardarAsync(ct);
+
+        return Resultado.Ok(true);
+    }
+
     // ------------------------------------------------------------- CU-12 pasos 2-4: el calendario
 
     public async Task<Resultado<CalendarioDto>> BloquesLibresAsync(
