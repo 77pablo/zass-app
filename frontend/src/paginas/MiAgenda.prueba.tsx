@@ -20,12 +20,16 @@ let disponibilidad: unknown[]
 let llamadas: { ruta: string; metodo: string; cuerpo?: unknown }[]
 let alGuardar: () => Response
 let alBloquear: () => Response
+let bloqueos: unknown[]
+let alQuitar: () => Response
 
 beforeEach(() => {
   disponibilidad = [CORTE, TINTURA]
   llamadas = []
   alGuardar = () => json({ bloquesGenerados: 16 })
   alBloquear = () => json({ id: 'b1', desdeEn: '', hastaEn: '', motivo: null }, 201)
+  bloqueos = [{ id: 'b1', desdeEn: '2026-12-24T03:00:00.000Z', hastaEn: '2026-12-26T03:00:00.000Z', motivo: 'Navidad' }]
+  alQuitar = () => new Response(null, { status: 204 })
   olvidarCsrf()
   vi.stubGlobal('fetch', vi.fn(async (ruta: string, opciones?: RequestInit) => {
     if (ruta === '/api/auth/csrf') return json({ token: 't' })
@@ -35,6 +39,8 @@ beforeEach(() => {
     })
     if (ruta === '/api/mi/disponibilidad' && (opciones?.method ?? 'GET') === 'GET') return json(disponibilidad)
     if (ruta === '/api/mi/disponibilidad') return alGuardar()
+    if (ruta === '/api/mi/bloqueos' && (opciones?.method ?? 'GET') === 'GET') return json(bloqueos)
+    if (ruta.startsWith('/api/mi/bloqueos/') && (opciones?.method ?? 'GET') === 'DELETE') return alQuitar()
     if (ruta === '/api/mi/bloqueos') return alBloquear()
     return json({}, 404)
   }))
@@ -57,6 +63,8 @@ function pintar(sesion: EstadoDeSesion = 'dentro', roles = ['buscador', 'prestad
 
 const tarjeta = (servicio: string) => screen.getByRole('region', { name: servicio })
 const guardados = () => llamadas.filter((l) => l.metodo === 'PUT')
+const creados = () => llamadas.filter((l) => l.ruta === '/api/mi/bloqueos' && l.metodo === 'POST')
+const borrados = () => llamadas.filter((l) => l.ruta.startsWith('/api/mi/bloqueos/') && l.metodo === 'DELETE')
 
 describe('mi agenda (prestador)', () => {
   it('sin sesion manda a entrar', async () => {
@@ -176,8 +184,8 @@ describe('mi agenda (prestador)', () => {
     await userEvent.type(within(b).getByLabelText(/motivo/i), 'Navidad')
     await userEvent.click(within(b).getByRole('button', { name: /bloquear/i }))
 
-    await waitFor(() => expect(llamadas.some((l) => l.ruta === '/api/mi/bloqueos')).toBe(true))
-    const envio = llamadas.find((l) => l.ruta === '/api/mi/bloqueos')!
+    await waitFor(() => expect(creados()).toHaveLength(1))
+    const envio = creados()[0]
     // Verano en Chile = UTC-3: el 24 empieza a las 03:00Z y el bloqueo llega hasta el inicio del 26.
     expect(envio.cuerpo).toEqual({
       desdeEn: '2026-12-24T03:00:00.000Z', hastaEn: '2026-12-26T03:00:00.000Z', motivo: 'Navidad',
@@ -194,15 +202,79 @@ describe('mi agenda (prestador)', () => {
     await userEvent.type(within(b).getByLabelText('Hasta el día'), '2026-12-24')
     await userEvent.click(within(b).getByRole('button', { name: /bloquear/i }))
 
-    expect(llamadas.some((l) => l.ruta === '/api/mi/bloqueos')).toBe(false)
+    expect(creados()).toHaveLength(0)
     expect(await within(b).findByText(/no puede ser anterior/i)).toBeInTheDocument()
   })
 
-  it('avisa que los bloqueos no se pueden quitar desde aqui, para que nadie bloquee a ciegas', async () => {
+  it('lista los bloqueos vigentes con sus fechas en dia chileno y el motivo', async () => {
     pintar()
-    await screen.findByRole('region', { name: 'Corte de pelo' })
+    const b = await screen.findByRole('region', { name: /bloquear fechas/i })
 
-    expect(screen.getByText(/todavía no se pueden quitar/i)).toBeInTheDocument()
+    // hastaEn es el inicio del dia SIGUIENTE al ultimo: el 26 no debe aparecer.
+    expect(await within(b).findByText('Del 24-12-2026 al 25-12-2026')).toBeInTheDocument()
+    expect(within(b).getByText(/navidad/i)).toBeInTheDocument()
+  })
+
+  it('cuando no hay ningun bloqueo lo dice', async () => {
+    bloqueos = []
+    pintar()
+    const b = await screen.findByRole('region', { name: /bloquear fechas/i })
+
+    expect(await within(b).findByText(/no tienes fechas bloqueadas/i)).toBeInTheDocument()
+  })
+
+  it('un bloqueo de un solo dia se muestra como un dia, no como un rango', async () => {
+    bloqueos = [{ id: 'b2', desdeEn: '2027-01-01T03:00:00.000Z', hastaEn: '2027-01-02T03:00:00.000Z', motivo: null }]
+    pintar()
+    const b = await screen.findByRole('region', { name: /bloquear fechas/i })
+
+    expect(await within(b).findByText('El 01-01-2027')).toBeInTheDocument()
+    expect(within(b).queryByText(/del .* al /i)).not.toBeInTheDocument()
+  })
+
+  it('quitar un bloqueo lo manda con DELETE y lo saca de la lista', async () => {
+    bloqueos = [
+      { id: 'b1', desdeEn: '2026-12-24T03:00:00.000Z', hastaEn: '2026-12-26T03:00:00.000Z', motivo: 'Navidad' },
+      { id: 'b2', desdeEn: '2027-01-01T03:00:00.000Z', hastaEn: '2027-01-02T03:00:00.000Z', motivo: null },
+    ]
+    pintar()
+    const b = await screen.findByRole('region', { name: /bloquear fechas/i })
+    await within(b).findByText('Del 24-12-2026 al 25-12-2026')
+
+    await userEvent.click(within(b).getByRole('button', { name: /quitar bloqueo 1/i }))
+
+    await waitFor(() => expect(borrados()).toHaveLength(1))
+    expect(borrados()[0].ruta).toBe('/api/mi/bloqueos/b1')
+    expect(await within(b).findByText('El 01-01-2027')).toBeInTheDocument()
+    expect(within(b).queryByText('Del 24-12-2026 al 25-12-2026')).not.toBeInTheDocument()
+    expect(await within(b).findByText(/bloqueo quitado/i)).toBeInTheDocument()
+  })
+
+  it('si no puede quitarlo lo dice, deja reintentar y el bloqueo sigue en la lista', async () => {
+    alQuitar = () => json({ title: 'Conflicto', detail: 'Ese bloqueo ya no existe.' }, 404)
+    pintar()
+    const b = await screen.findByRole('region', { name: /bloquear fechas/i })
+    await within(b).findByText('Del 24-12-2026 al 25-12-2026')
+
+    await userEvent.click(within(b).getByRole('button', { name: /quitar bloqueo 1/i }))
+
+    expect(await within(b).findByRole('alert')).toHaveTextContent(/ese bloqueo ya no existe/i)
+    expect(within(b).getByText('Del 24-12-2026 al 25-12-2026')).toBeInTheDocument()
+    await waitFor(() => expect(within(b).getByRole('button', { name: /quitar bloqueo 1/i })).toBeEnabled())
+  })
+
+  it('si no puede cargar los bloqueos lo dice y deja reintentar sin tumbar la pagina', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (ruta: string) => {
+      if (ruta === '/api/auth/csrf') return json({ token: 't' })
+      if (ruta === '/api/mi/disponibilidad') return json(disponibilidad)
+      return json({ title: 'x', detail: 'Servidor caído.' }, 500)
+    }))
+    pintar()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/servidor caído/i)
+    expect(screen.getByRole('button', { name: /reintentar/i })).toBeInTheDocument()
+    // El horario no se cae por una pestaña que fallo.
+    expect(screen.getByRole('region', { name: 'Corte de pelo' })).toBeInTheDocument()
   })
 
   it('las solicitudes de hora se atienden en Mis citas: enlaza ahi y no las duplica', async () => {

@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   agendar, cancelarCita, claveDeDia, horaDeChile, nuevaClaveDeIdempotencia, porDia,
-  reprogramarCita, calendarioDe, miDisponibilidad, guardarDisponibilidad, crearBloqueo, DIAS, inicioDeDiaEnChile, type Bloque,
+  reprogramarCita, calendarioDe, miDisponibilidad, guardarDisponibilidad, crearBloqueo,
+  listarBloqueos, quitarBloqueo, DIAS, inicioDeDiaEnChile, type Bloque,
 } from './servicio'
 
 const obtener = vi.fn()
@@ -164,5 +165,29 @@ describe('inicioDeDiaEnChile (para bloquear dias completos)', () => {
     const iso = inicioDeDiaEnChile('2026-12-25')
     expect(claveDeDia(iso)).toBe('2026-12-25')
     expect(horaDeChile(iso)).toBe('00:00')
+  })
+})
+
+describe('mis bloqueos (API-34)', () => {
+  it('lista los bloqueos con GET y sin cuerpo', async () => {
+    await listarBloqueos()
+
+    expect(obtener).toHaveBeenCalledWith('/api/mi/bloqueos')
+    expect(enviar).not.toHaveBeenCalled()
+  })
+
+  it('quita un bloqueo con DELETE por su id y sin cuerpo', async () => {
+    await quitarBloqueo('b7')
+
+    const [ruta, cuerpo, metodo] = enviar.mock.calls[0]
+    expect(ruta).toBe('/api/mi/bloqueos/b7')
+    expect(cuerpo).toBeUndefined()
+    expect(metodo).toBe('DELETE')
+  })
+
+  it('codifica el id en la ruta: un id con slash no debe abrir otra ruta', async () => {
+    await quitarBloqueo('a/b')
+
+    expect(enviar.mock.calls[0][0]).toBe('/api/mi/bloqueos/a%2Fb')
   })
 })

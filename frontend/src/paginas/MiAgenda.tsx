@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { ErrorApi } from '../api/cliente'
 import {
-  crearBloqueo, DIAS, guardarDisponibilidad, horaCorta, inicioDeDiaEnChile, miDisponibilidad,
-  type DisponibilidadDeServicio, type Franja,
+  crearBloqueo, claveDeDia, DIAS, guardarDisponibilidad, horaCorta, inicioDeDiaEnChile, listarBloqueos,
+  miDisponibilidad, quitarBloqueo,
+  type Bloqueo, type DisponibilidadDeServicio, type Franja,
 } from '../funciones/agenda/servicio'
 import { useTitulo } from '../marco/useTitulo'
 import { useSesion } from '../sesion/contexto'
@@ -29,6 +30,31 @@ function errorDeFranja(f: Franja): string | null {
     return 'La franja es más corta que una hora de atención: alarga el horario o acorta la duración.'
   }
   return null
+}
+
+/** '2026-12-25' -> '2026-12-24'. Solo para restar dias de una clave ya en dia chileno. */
+function diaAnterior(clave: string): string {
+  const d = new Date(`${clave}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() - 1)
+  return d.toISOString().slice(0, 10)
+}
+
+/** '2026-12-24' -> '24-12-2026', como se escribe la fecha en Chile. */
+function fechaCorta(clave: string): string {
+  const [a, m, d] = clave.split('-')
+  return `${d}-${m}-${a}`
+}
+
+/**
+ * Un bloqueo viaja desde el inicio del primer dia hasta el inicio del dia SIGUIENTE al ultimo
+ * (asi el servidor bloquea dias completos). A la persona le importa el ultimo dia real, no ese
+ * inicio que cae un dia despues.
+ */
+function rangoDeBloqueo(b: Bloqueo): string {
+  const primero = claveDeDia(b.desdeEn)
+  const ultimo = diaAnterior(claveDeDia(b.hastaEn))
+  const fin = ultimo < primero ? primero : ultimo
+  return primero === fin ? `El ${fechaCorta(primero)}` : `Del ${fechaCorta(primero)} al ${fechaCorta(fin)}`
 }
 
 /**
@@ -230,6 +256,18 @@ function BloquearFechas() {
   const [motivo, setMotivo] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [aviso, setAviso] = useState<{ tono: 'malo' | 'bueno'; texto: string } | null>(null)
+  const [bloqueos, setBloqueos] = useState<Bloqueo[] | null>(null)
+  const [errorBloqueos, setErrorBloqueos] = useState<string | null>(null)
+  const [quitando, setQuitando] = useState<string | null>(null)
+  const [recarga, setRecarga] = useState(0)
+
+  useEffect(() => {
+    let vigente = true
+    listarBloqueos()
+      .then((bs) => { if (vigente) { setBloqueos(bs); setErrorBloqueos(null) } })
+      .catch((e: unknown) => { if (vigente) setErrorBloqueos(mensajeDe(e, 'No pudimos cargar tus bloqueos.')) })
+    return () => { vigente = false }
+  }, [recarga])
 
   const enviar = useCallback(async (e: FormEvent) => {
     e.preventDefault()
@@ -250,6 +288,7 @@ function BloquearFechas() {
       await crearBloqueo(inicioDeDiaEnChile(desde), inicioDeDiaEnChile(siguiente.toISOString().slice(0, 10)), motivo)
       setAviso({ tono: 'bueno', texto: `Bloqueaste del ${desde} al ${hasta}: nadie podrá agendar esos días.` })
       setDesde(''); setHasta(''); setMotivo('')
+      setRecarga((n) => n + 1)
     } catch (er) {
       setAviso({ tono: 'malo', texto: mensajeDe(er, 'No pudimos bloquear esas fechas. Intenta de nuevo.') })
     } finally {
@@ -257,12 +296,27 @@ function BloquearFechas() {
     }
   }, [desde, hasta, motivo, enviando])
 
+  async function quitar(id: string) {
+    if (quitando !== null) return
+    setQuitando(id); setAviso(null)
+    try {
+      await quitarBloqueo(id)
+      setAviso({ tono: 'bueno', texto: 'Bloqueo quitado: esas fechas vuelven a estar disponibles.' })
+      setBloqueos((bs) => (bs ?? []).filter((b) => b.id !== id))
+    } catch (e) {
+      // El bloqueo sigue ahi: decir que se quito cuando no se quito seria peor que el fallo.
+      setAviso({ tono: 'malo', texto: mensajeDe(e, 'No pudimos quitar ese bloqueo. Intenta de nuevo.') })
+    } finally {
+      setQuitando(null)
+    }
+  }
+
   return (
     <section className="bloque" role="region" aria-label="Bloquear fechas">
       <h2>Bloquear fechas</h2>
       <p className="bloque-texto">
         Para un feriado, vacaciones o una ausencia. Las horas ya agendadas esos días no se tocan.
-        <strong> Los bloqueos todavía no se pueden quitar desde aquí</strong>: revisa bien las fechas antes de guardar.
+        Si te equivocas, aquí abajo puedes quitar un bloqueo: esas fechas vuelven a estar disponibles.
       </p>
       <form className="franja-campos" onSubmit={(e) => { void enviar(e) }} noValidate>
         <label className="campo-etiqueta">Desde el día
@@ -283,6 +337,32 @@ function BloquearFechas() {
       </form>
       {aviso && (
         <p className={`aviso aviso--${aviso.tono}`} role={aviso.tono === 'malo' ? 'alert' : 'status'}>{aviso.texto}</p>
+      )}
+
+      <h3>Bloqueos vigentes</h3>
+      {errorBloqueos ? (
+        <p className="aviso aviso--malo" role="alert">
+          {errorBloqueos}{' '}
+          <button type="button" className="enlace" onClick={() => setRecarga((n) => n + 1)}>Reintentar</button>
+        </p>
+      ) : bloqueos === null ? (
+        <p className="cargando-linea" role="status">Cargando tus bloqueos…</p>
+      ) : bloqueos.length === 0 ? (
+        <p className="bloque-texto bloque-vacio">Ahora mismo no tienes fechas bloqueadas.</p>
+      ) : (
+        <ul className="franjas">
+          {bloqueos.map((b, i) => (
+            <li key={b.id} className="franja">
+              <span>{rangoDeBloqueo(b)}</span>
+              {b.motivo && <span className="bloque-texto">· {b.motivo}</span>}
+              <button type="button" className="boton boton--chico" disabled={quitando !== null}
+                aria-label={`Quitar bloqueo ${i + 1}`}
+                onClick={() => { void quitar(b.id) }}>
+                {quitando === b.id ? 'Quitando…' : 'Quitar'}
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
     </section>
   )

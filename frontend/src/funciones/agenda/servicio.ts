@@ -178,6 +178,16 @@ export function crearBloqueo(desdeEn: string, hastaEn: string, motivo: string): 
   }, 'POST')
 }
 
+/** API-34 (CS-11). Los bloqueos vigentes de mi agenda. */
+export function listarBloqueos(): Promise<Bloqueo[]> {
+  return obtener<Bloqueo[]>('/api/mi/bloqueos')
+}
+
+/** API-34 (CS-11). Quita un bloqueo mio. Un bloqueo ajeno responde 404 y no borra nada. */
+export function quitarBloqueo(id: string): Promise<void> {
+  return enviar<void>(`/api/mi/bloqueos/${encodeURIComponent(id)}`, undefined, 'DELETE')
+}
+
 // ---------------------------------------------------------------- hora de Chile
 
 const ZONA = 'America/Santiago'
