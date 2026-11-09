@@ -841,6 +841,14 @@ option { background: var(--panel-2); color: var(--texto); }
 .dato--apagado { opacity: 0.65; }
 
 
+/* Mi agenda (prestador) */
+.agenda-servicio { display: grid; gap: 12px; }
+.franjas { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.franja { padding: 14px; border: 1px solid var(--linea); border-radius: 14px; background: var(--vidrio); }
+.franja-campos { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.franja-campos .campo-etiqueta { display: grid; gap: 6px; font-weight: 600; }
+.franja .aviso, .agenda-servicio .aviso, .agenda-prestador .aviso { margin: 10px 0 0; }
+
 /* Contacto que pide cuenta */
 .contacto-cuenta { display: grid; gap: 12px; }
 .contacto-cuenta p { margin: 0; }

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   agendar, cancelarCita, claveDeDia, horaDeChile, nuevaClaveDeIdempotencia, porDia,
-  reprogramarCita, calendarioDe, type Bloque,
+  reprogramarCita, calendarioDe, miDisponibilidad, guardarDisponibilidad, crearBloqueo, DIAS, inicioDeDiaEnChile, type Bloque,
 } from './servicio'
 
 const obtener = vi.fn()
@@ -102,5 +102,67 @@ describe('hora de Chile', () => {
 
     expect(grupos.map((g) => g.dia)).toEqual(['2026-11-09', '2026-11-10'])
     expect(grupos[0].bloques.map((b) => horaDeChile(b.inicioEn))).toEqual(['09:00', '22:00'])
+  })
+})
+
+describe('mi disponibilidad (API-32 a API-34)', () => {
+  it('lee mis reglas de atencion servicio por servicio', async () => {
+    await miDisponibilidad()
+
+    expect(obtener).toHaveBeenCalledWith('/api/mi/disponibilidad')
+  })
+
+  it('guarda las franjas de UN servicio con PUT y las horas como HH:mm:ss', async () => {
+    await guardarDisponibilidad('ps1', [
+      { diaSemana: 1, horaInicio: '09:00', horaFin: '13:00', duracionBloqueMin: 30 },
+    ])
+
+    const [ruta, cuerpo, metodo] = enviar.mock.calls[0]
+    expect(ruta).toBe('/api/mi/disponibilidad')
+    expect(metodo).toBe('PUT')
+    // El servidor lee TimeOnly: «09:00» sin segundos no es un TimeOnly valido para el.
+    expect(cuerpo).toEqual({
+      prestadorServicioId: 'ps1',
+      franjas: [{ diaSemana: 1, horaInicio: '09:00:00', horaFin: '13:00:00', duracionBloqueMin: 30 }],
+    })
+  })
+
+  it('una lista vacia tambien se manda: asi se quitan todas las horas de un servicio', async () => {
+    await guardarDisponibilidad('ps1', [])
+
+    expect(enviar.mock.calls[0][1]).toEqual({ prestadorServicioId: 'ps1', franjas: [] })
+  })
+
+  it('crea un bloqueo con POST y sin motivo manda null, no una cadena vacia', async () => {
+    await crearBloqueo('2026-12-24T03:00:00.000Z', '2026-12-26T03:00:00.000Z', '  ')
+
+    const [ruta, cuerpo, metodo] = enviar.mock.calls[0]
+    expect(ruta).toBe('/api/mi/bloqueos')
+    expect(metodo).toBe('POST')
+    expect(cuerpo).toEqual({ desdeEn: '2026-12-24T03:00:00.000Z', hastaEn: '2026-12-26T03:00:00.000Z', motivo: null })
+  })
+
+  it('los dias van de 1 (lunes) a 7 (domingo), como TBL-16', () => {
+    expect(DIAS.map((d) => d.valor)).toEqual([1, 2, 3, 4, 5, 6, 7])
+    expect(DIAS[0].nombre).toBe('Lunes')
+    expect(DIAS[6].nombre).toBe('Domingo')
+  })
+})
+
+describe('inicioDeDiaEnChile (para bloquear dias completos)', () => {
+  // Chile esta en UTC-3 en verano y UTC-4 en invierno: la medianoche chilena NO es siempre la misma hora UTC.
+  it('en verano la medianoche de Chile son las 03:00 UTC', () => {
+    expect(inicioDeDiaEnChile('2026-12-24')).toBe('2026-12-24T03:00:00.000Z')
+  })
+
+  it('en invierno son las 04:00 UTC', () => {
+    expect(inicioDeDiaEnChile('2026-07-15')).toBe('2026-07-15T04:00:00.000Z')
+  })
+
+  it('sigue valiendo el dia chileno aunque el navegador este en otra zona', () => {
+    // Si se usara la zona del navegador, quien este en Madrid o Tokio bloquearia otro dia.
+    const iso = inicioDeDiaEnChile('2026-12-25')
+    expect(claveDeDia(iso)).toBe('2026-12-25')
+    expect(horaDeChile(iso)).toBe('00:00')
   })
 })

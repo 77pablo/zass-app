@@ -25,6 +25,7 @@ obj/
 node_modules/
 dist/
 .vite/
+.worktrees/
 
 # --- Archivos subidos en desarrollo ---
 almacenamiento/
