@@ -76,6 +76,22 @@ public interface IServicioSuscripciones
     /// lo lleva a tener suscripcion.
     /// </summary>
     Task<int> LimiteDeServiciosAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+
+    /// <summary>Cuantos de los 20 cupos del plan fundador quedan disponibles hoy.</summary>
+    Task<int> CuposFundadorDisponiblesAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Reserva temporalmente un cupo fundador para este prestador mientras inscribe su tarjeta.
+    /// Devuelve el numero de cupo (1..20) o falla con Conflicto si los 20 ya estan tomados.
+    /// </summary>
+    Task<Resultado<short>> ReservarCupoFundadorAsync(
+        Guid perfilPrestadorId, TimeSpan? duracion = null, CancellationToken ct = default);
+
+    /// <summary>Marca como definitivo el cupo fundador tras confirmarse el pago o la inscripcion.</summary>
+    Task<Resultado> ConfirmarCupoFundadorAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+
+    /// <summary>Libera el cupo fundador si el prestador cancela antes de pagar o pierde el beneficio.</summary>
+    Task<Resultado> LiberarCupoFundadorAsync(Guid perfilPrestadorId, CancellationToken ct = default);
 }
 
 /// <summary>

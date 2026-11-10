@@ -119,4 +119,84 @@ public sealed class RepositorioSuscripcionesEnMemoria : IRepositorioSuscripcione
 
     public void Agregar(Suscripcion suscripcion) => _base.Suscripciones.Add(suscripcion);
     public void AgregarPago(Pago pago) => _base.Pagos.Add(pago);
+    // ------------------------------------------------------------ Cupos fundador
+    //
+    // Misma logica que las sentencias SQL del repositorio real. El lock imita lo unico que
+    // la base garantiza de verdad: que dos llamadas no se lleven el mismo cupo. La
+    // concurrencia real se prueba en integracion, contra PostgreSQL.
+
+    private static bool Libre(CupoFundador c, DateTime ahora) =>
+        c.PerfilPrestadorId is null
+        || (c.ReservadoHasta is not null && c.ReservadoHasta <= ahora);
+
+    public Task<int> CuposFundadorDisponiblesAsync(DateTime ahora, CancellationToken ct = default)
+    {
+        lock (_base.CuposFundador)
+        {
+            return Task.FromResult(_base.CuposFundador.Count(c => Libre(c, ahora)));
+        }
+    }
+
+    public Task<short?> IntentarReservarCupoFundadorAsync(
+        Guid perfilPrestadorId, DateTime ahora, DateTime hasta, CancellationToken ct = default)
+    {
+        lock (_base.CuposFundador)
+        {
+            var propio = _base.CuposFundador.FirstOrDefault(c => c.PerfilPrestadorId == perfilPrestadorId);
+            if (propio is not null)
+            {
+                // Confirmado (sin plazo) no se toca; reservado se renueva.
+                if (propio.ReservadoHasta is not null) propio.ReservadoHasta = hasta;
+                return Task.FromResult<short?>(propio.Numero);
+            }
+
+            var libre = _base.CuposFundador.OrderBy(c => c.Numero).FirstOrDefault(c => Libre(c, ahora));
+            if (libre is null) return Task.FromResult<short?>(null);
+
+            libre.PerfilPrestadorId = perfilPrestadorId;
+            libre.ReservadoHasta = hasta;
+            return Task.FromResult<short?>(libre.Numero);
+        }
+    }
+
+    public Task<bool> ConfirmarCupoFundadorAsync(Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        lock (_base.CuposFundador)
+        {
+            var propio = _base.CuposFundador.FirstOrDefault(c => c.PerfilPrestadorId == perfilPrestadorId);
+            if (propio is null) return Task.FromResult(false);
+            propio.ReservadoHasta = null;
+            return Task.FromResult(true);
+        }
+    }
+
+    public Task<bool> LiberarCupoFundadorAsync(Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        lock (_base.CuposFundador)
+        {
+            var propio = _base.CuposFundador.FirstOrDefault(c => c.PerfilPrestadorId == perfilPrestadorId);
+            if (propio is null) return Task.FromResult(false);
+            propio.PerfilPrestadorId = null;
+            propio.ReservadoHasta = null;
+            return Task.FromResult(true);
+        }
+    }
+
+    public Task<int> LiberarReservasFundadorVencidasAsync(DateTime ahora, CancellationToken ct = default)
+    {
+        lock (_base.CuposFundador)
+        {
+            var vencidos = _base.CuposFundador
+                .Where(c => c.PerfilPrestadorId is not null
+                            && c.ReservadoHasta is not null
+                            && c.ReservadoHasta <= ahora)
+                .ToList();
+            foreach (var c in vencidos)
+            {
+                c.PerfilPrestadorId = null;
+                c.ReservadoHasta = null;
+            }
+            return Task.FromResult(vencidos.Count);
+        }
+    }
 }

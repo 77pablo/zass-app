@@ -1,4 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Npgsql;
+using NpgsqlTypes;
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
 using Zass.Dominio.Suscripciones;
@@ -115,4 +118,148 @@ public sealed class RepositorioSuscripcionesEfCore : IRepositorioSuscripciones
 
     public void Agregar(Suscripcion suscripcion) => _ctx.Suscripciones.Add(suscripcion);
     public void AgregarPago(Pago pago) => _ctx.Pagos.Add(pago);
+    // ------------------------------------------------------------ Cupos fundador
+    //
+    // TBL-33. Cada operacion es UNA sentencia SQL atomica que se ejecuta de inmediato,
+    // sin pasar por GuardarAsync: dos personas pagando a la vez no pueden quedarse con
+    // el mismo cupo, y eso solo lo garantiza la base, no una lectura previa en C#.
+    //
+    // Un cupo esta libre si no tiene perfil, o si su reserva ya vencio
+    // (reservado_hasta <= ahora). Confirmado = perfil y reservado_hasta nulo: nunca vence.
+
+    public Task<int> CuposFundadorDisponiblesAsync(
+        DateTime ahora, CancellationToken ct = default) =>
+        _ctx.CuposFundador.CountAsync(
+            c => c.PerfilPrestadorId == null
+                 || (c.ReservadoHasta != null && c.ReservadoHasta <= ahora),
+            ct);
+
+    public async Task<short?> IntentarReservarCupoFundadorAsync(
+        Guid perfilPrestadorId, DateTime ahora, DateTime hasta, CancellationToken ct = default)
+    {
+        // 1) Si el perfil ya tiene cupo, se devuelve el mismo (idempotente). Si estaba
+        //    solo reservado se renueva el plazo; si estaba confirmado no se toca el plazo.
+        var propio = await RenovarCupoPropioAsync(perfilPrestadorId, hasta, ct);
+        if (propio is not null) return propio;
+
+        // 2) Si no, se toma el libre mas bajo. SKIP LOCKED: quien llega mientras otro esta
+        //    tomando un cupo pasa al siguiente en vez de esperar o de llevarse el mismo.
+        //
+        //    Bajo mucha concurrencia la sentencia puede devolver 0 filas aunque queden
+        //    cupos (otra solicitud se llevo la fila justo antes del bloqueo). Por eso un
+        //    "null" no basta para decir "no hay": se cuenta y se reintenta, acotado.
+        for (var intento = 0; intento < 10; intento++)
+        {
+            try
+            {
+                var tomado = await TomarCupoLibreAsync(perfilPrestadorId, ahora, hasta, ct);
+                if (tomado is not null) return tomado;
+            }
+            catch (PostgresException e) when (e.SqlState == PostgresErrorCodes.UniqueViolation)
+            {
+                // Dos solicitudes del MISMO perfil a la vez: el indice unico parcial deja
+                // pasar una. La que pierde devuelve el cupo que gano la otra.
+                return await RenovarCupoPropioAsync(perfilPrestadorId, hasta, ct);
+            }
+
+            if (await CuposFundadorDisponiblesAsync(ahora, ct) == 0) return null;
+        }
+
+        return null;
+    }
+
+    public async Task<bool> ConfirmarCupoFundadorAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default) =>
+        await EjecutarAsync(
+            @"UPDATE cupos_fundador
+                 SET reservado_hasta = NULL
+               WHERE perfil_prestador_id = @perfil",
+            ct, Uuid("perfil", perfilPrestadorId)) > 0;
+
+    public async Task<bool> LiberarCupoFundadorAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default) =>
+        await EjecutarAsync(
+            @"UPDATE cupos_fundador
+                 SET perfil_prestador_id = NULL, reservado_hasta = NULL
+               WHERE perfil_prestador_id = @perfil",
+            ct, Uuid("perfil", perfilPrestadorId)) > 0;
+
+    public Task<int> LiberarReservasFundadorVencidasAsync(
+        DateTime ahora, CancellationToken ct = default) =>
+        EjecutarAsync(
+            @"UPDATE cupos_fundador
+                 SET perfil_prestador_id = NULL, reservado_hasta = NULL
+               WHERE perfil_prestador_id IS NOT NULL
+                 AND reservado_hasta IS NOT NULL
+                 AND reservado_hasta <= @ahora",
+            ct, Marca("ahora", ahora));
+
+    private Task<short?> RenovarCupoPropioAsync(
+        Guid perfilPrestadorId, DateTime hasta, CancellationToken ct) =>
+        EscalarAsync(
+            @"UPDATE cupos_fundador
+                 SET reservado_hasta = CASE WHEN reservado_hasta IS NULL THEN NULL ELSE @hasta END
+               WHERE perfil_prestador_id = @perfil
+           RETURNING numero",
+            ct, Uuid("perfil", perfilPrestadorId), Marca("hasta", hasta));
+
+    private Task<short?> TomarCupoLibreAsync(
+        Guid perfilPrestadorId, DateTime ahora, DateTime hasta, CancellationToken ct) =>
+        EscalarAsync(
+            @"UPDATE cupos_fundador
+                 SET perfil_prestador_id = @perfil, reservado_hasta = @hasta
+               WHERE numero = (SELECT numero
+                                 FROM cupos_fundador
+                                WHERE perfil_prestador_id IS NULL
+                                   OR (reservado_hasta IS NOT NULL AND reservado_hasta <= @ahora)
+                                ORDER BY numero
+                                LIMIT 1
+                                  FOR UPDATE SKIP LOCKED)
+                 AND (perfil_prestador_id IS NULL
+                      OR (reservado_hasta IS NOT NULL AND reservado_hasta <= @ahora))
+           RETURNING numero",
+            ct, Uuid("perfil", perfilPrestadorId), Marca("hasta", hasta), Marca("ahora", ahora));
+
+    private async Task<short?> EscalarAsync(
+        string sql, CancellationToken ct, params NpgsqlParameter[] parametros)
+    {
+        await _ctx.Database.OpenConnectionAsync(ct);
+        try
+        {
+            await using var cmd = _ctx.Database.GetDbConnection().CreateCommand();
+            cmd.CommandText = sql;
+            cmd.Transaction = _ctx.Database.CurrentTransaction?.GetDbTransaction();
+            foreach (var p in parametros) cmd.Parameters.Add(p);
+            var r = await cmd.ExecuteScalarAsync(ct);
+            return r is short n ? n : null;
+        }
+        finally
+        {
+            await _ctx.Database.CloseConnectionAsync();
+        }
+    }
+
+    private async Task<int> EjecutarAsync(
+        string sql, CancellationToken ct, params NpgsqlParameter[] parametros)
+    {
+        await _ctx.Database.OpenConnectionAsync(ct);
+        try
+        {
+            await using var cmd = _ctx.Database.GetDbConnection().CreateCommand();
+            cmd.CommandText = sql;
+            cmd.Transaction = _ctx.Database.CurrentTransaction?.GetDbTransaction();
+            foreach (var p in parametros) cmd.Parameters.Add(p);
+            return await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally
+        {
+            await _ctx.Database.CloseConnectionAsync();
+        }
+    }
+
+    private static NpgsqlParameter Uuid(string nombre, Guid valor) =>
+        new(nombre, NpgsqlDbType.Uuid) { Value = valor };
+
+    private static NpgsqlParameter Marca(string nombre, DateTime valor) =>
+        new(nombre, NpgsqlDbType.TimestampTz) { Value = valor };
 }

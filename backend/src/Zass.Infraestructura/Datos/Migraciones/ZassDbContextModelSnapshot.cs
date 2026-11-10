@@ -6066,6 +6066,113 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.ToTable("respuestas_resena");
                 });
 
+            modelBuilder.Entity("Zass.Dominio.Suscripciones.CupoFundador", b =>
+                {
+                    b.Property<short>("Numero")
+                        .HasColumnType("smallint")
+                        .HasColumnName("numero");
+
+                    b.Property<Guid?>("PerfilPrestadorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("perfil_prestador_id");
+
+                    b.Property<DateTime?>("ReservadoHasta")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reservado_hasta");
+
+                    b.HasKey("Numero")
+                        .HasName("p_k_cupos_fundador");
+
+                    b.HasIndex("PerfilPrestadorId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_cupo_fundador_perfil")
+                        .HasFilter("perfil_prestador_id IS NOT NULL");
+
+                    b.ToTable("cupos_fundador");
+
+                    b.HasData(
+                        new
+                        {
+                            Numero = (short)1
+                        },
+                        new
+                        {
+                            Numero = (short)2
+                        },
+                        new
+                        {
+                            Numero = (short)3
+                        },
+                        new
+                        {
+                            Numero = (short)4
+                        },
+                        new
+                        {
+                            Numero = (short)5
+                        },
+                        new
+                        {
+                            Numero = (short)6
+                        },
+                        new
+                        {
+                            Numero = (short)7
+                        },
+                        new
+                        {
+                            Numero = (short)8
+                        },
+                        new
+                        {
+                            Numero = (short)9
+                        },
+                        new
+                        {
+                            Numero = (short)10
+                        },
+                        new
+                        {
+                            Numero = (short)11
+                        },
+                        new
+                        {
+                            Numero = (short)12
+                        },
+                        new
+                        {
+                            Numero = (short)13
+                        },
+                        new
+                        {
+                            Numero = (short)14
+                        },
+                        new
+                        {
+                            Numero = (short)15
+                        },
+                        new
+                        {
+                            Numero = (short)16
+                        },
+                        new
+                        {
+                            Numero = (short)17
+                        },
+                        new
+                        {
+                            Numero = (short)18
+                        },
+                        new
+                        {
+                            Numero = (short)19
+                        },
+                        new
+                        {
+                            Numero = (short)20
+                        });
+                });
+
             modelBuilder.Entity("Zass.Dominio.Suscripciones.Pago", b =>
                 {
                     b.Property<Guid>("Id")
@@ -6751,6 +6858,17 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasConstraintName("f_k_respuestas_resena_resenas_resena_id");
 
                     b.Navigation("Resena");
+                });
+
+            modelBuilder.Entity("Zass.Dominio.Suscripciones.CupoFundador", b =>
+                {
+                    b.HasOne("Zass.Dominio.Identidad.PerfilPrestador", "PerfilPrestador")
+                        .WithMany()
+                        .HasForeignKey("PerfilPrestadorId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("f_k_cupos_fundador_perfiles_prestador_perfil_prestador_id");
+
+                    b.Navigation("PerfilPrestador");
                 });
 
             modelBuilder.Entity("Zass.Dominio.Suscripciones.Pago", b =>

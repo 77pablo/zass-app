@@ -103,3 +103,25 @@ public class Pago
 
     public Suscripcion? Suscripcion { get; set; }
 }
+
+/// <summary>
+/// TBL-33. Cupos del plan fundador: exactamente 20 filas, una por numero.
+/// perfil_prestador_id nulo = cupo libre. El indice unico parcial
+/// (ux_cupo_fundador_perfil) impide que un mismo perfil tome dos cupos.
+/// La reserva temporal (reservado_hasta) evita que dos inscripciones
+/// simultaneas tomen el mismo cupo; si vence sin pago confirmado, el
+/// trabajo diario la libera.
+/// </summary>
+public class CupoFundador
+{
+    /// <summary>1..20. PK fija, sembrada con el esquema; nunca se genera.</summary>
+    public short Numero { get; set; }
+
+    /// <summary>Perfil que reservo u ocupo el cupo. Nulo = libre.</summary>
+    public Guid? PerfilPrestadorId { get; set; }
+
+    /// <summary>Hasta cuando vale la reserva temporal. Con perfil asignado y fecha nula = cupo confirmado.</summary>
+    public DateTime? ReservadoHasta { get; set; }
+
+    public PerfilPrestador? PerfilPrestador { get; set; }
+}
