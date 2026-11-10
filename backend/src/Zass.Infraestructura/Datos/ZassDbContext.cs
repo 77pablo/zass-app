@@ -662,24 +662,52 @@ public class ZassDbContext : DbContext
             e.Property(x => x.Codigo).HasMaxLength(30).IsRequired();
             e.Property(x => x.Nombre).HasMaxLength(80).IsRequired();
 
-            // El plan de prueba se siembra con el esquema, igual que los roles de
-            // TBL-02. Sin el, IniciarPruebaAsync no tiene con que arrancar y NADIE
-            // llegaria nunca a estar vigente: con RN-S3-09, eso es una busqueda
-            // permanentemente vacia. Precio y nombre de los planes de pago siguen sin
-            // decidirse; este no es uno de ellos, es la puerta de entrada.
-            e.HasData(new Plan
-            {
-                Id = 1,
-                Codigo = "prueba",
-                Nombre = "Prueba",
-                Descripcion = "30 dias para publicar el perfil y aparecer en las busquedas.",
-                PrecioMensual = 0,
-                DiasPrueba = 30,
-                MaxServicios = 10,
-                MaxTarjetas = 1,
-                PermiteCredenciales = true,
-                Activo = true,
-            });
+            // Los tres planes se siembran con el esquema, igual que los roles de
+            // TBL-02. Sin el de prueba, IniciarPruebaAsync no tiene con que arrancar
+            // y NADIE llegaria nunca a estar vigente: con RN-S3-09, eso seria una
+            // busqueda permanentemente vacia. Los de pago son la salida de la
+            // prueba: mensual es el precio normal; fundador son los primeros 20
+            // cupos a precio de lanzamiento (el cupo vive en su propia tabla).
+            e.HasData(
+                new Plan
+                {
+                    Id = 1,
+                    Codigo = "prueba",
+                    Nombre = "Prueba",
+                    Descripcion = "30 dias para publicar el perfil y aparecer en las busquedas.",
+                    PrecioMensual = 0,
+                    DiasPrueba = 30,
+                    MaxServicios = 10,
+                    MaxTarjetas = 1,
+                    PermiteCredenciales = true,
+                    Activo = true,
+                },
+                new Plan
+                {
+                    Id = 2,
+                    Codigo = "mensual",
+                    Nombre = "ZASS! Mensual",
+                    Descripcion = "Publica tu perfil, apareces en las busquedas y recibes solicitudes de hora. 7990 pesos al mes; cancela cuando quieras.",
+                    PrecioMensual = 7990,
+                    DiasPrueba = 0,
+                    MaxServicios = 10,
+                    MaxTarjetas = 1,
+                    PermiteCredenciales = true,
+                    Activo = true,
+                },
+                new Plan
+                {
+                    Id = 3,
+                    Codigo = "fundador",
+                    Nombre = "ZASS! Fundador",
+                    Descripcion = "Precio de lanzamiento para las primeras 20 personas: 5990 pesos al mes mientras mantengas tu suscripcion activa.",
+                    PrecioMensual = 5990,
+                    DiasPrueba = 0,
+                    MaxServicios = 10,
+                    MaxTarjetas = 1,
+                    PermiteCredenciales = true,
+                    Activo = true,
+                });
         });
 
         b.Entity<Suscripcion>(e =>
