@@ -6194,6 +6194,32 @@ namespace Zass.Infraestructura.Datos.Migraciones
                             Nombre = "Prueba",
                             PermiteCredenciales = true,
                             PrecioMensual = 0
+                        },
+                        new
+                        {
+                            Id = (short)2,
+                            Activo = true,
+                            Codigo = "mensual",
+                            Descripcion = "Publica tu perfil, apareces en las busquedas y recibes solicitudes de hora. 7990 pesos al mes; cancela cuando quieras.",
+                            DiasPrueba = (short)0,
+                            MaxServicios = 10,
+                            MaxTarjetas = 1,
+                            Nombre = "ZASS! Mensual",
+                            PermiteCredenciales = true,
+                            PrecioMensual = 7990
+                        },
+                        new
+                        {
+                            Id = (short)3,
+                            Activo = true,
+                            Codigo = "fundador",
+                            Descripcion = "Precio de lanzamiento para las primeras 20 personas: 5990 pesos al mes mientras mantengas tu suscripcion activa.",
+                            DiasPrueba = (short)0,
+                            MaxServicios = 10,
+                            MaxTarjetas = 1,
+                            Nombre = "ZASS! Fundador",
+                            PermiteCredenciales = true,
+                            PrecioMensual = 5990
                         });
                 });
 
