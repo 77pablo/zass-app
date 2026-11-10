@@ -24,6 +24,14 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
     /// Cada umbral manda UN aviso y no mas, porque la clave de idempotencia lo incluye.
     /// </summary>
     public static readonly int[] DiasDeAviso = { 7, 1 };
+    /// <summary>
+    /// Cuanto se guarda un cupo fundador mientras la persona inscribe su tarjeta. Pasado
+    /// ese plazo sin confirmar, el cupo vuelve a estar disponible para otra persona.
+    /// </summary>
+    public static readonly TimeSpan DuracionReservaPorDefecto = TimeSpan.FromMinutes(25);
+
+    /// <summary>Tope de una reserva: evita que un llamado erroneo deje un cupo bloqueado dias.</summary>
+    private static readonly TimeSpan DuracionReservaMaxima = TimeSpan.FromHours(24);
 
     private readonly IRepositorioSuscripciones _repo;
     private readonly IUnidadDeTrabajo _trabajo;
@@ -282,9 +290,70 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
         // relaja, el orden SI pasa a importar y esto hay que volver a pensarlo.
         var vencidas = await VencerExpiradasAsync(ct);
         var avisadas = await AvisarPorVencerAsync(ct);
+        // Reservas de cupo fundador que vencieron sin confirmarse: el cupo vuelve a quedar
+        // libre. Las confirmadas no se tocan. No cambia ResumenDelDiario a proposito.
+        await _repo.LiberarReservasFundadorVencidasAsync(_reloj.Ahora, ct);
         return new ResumenDelDiario(vencidas, avisadas);
     }
 
+    // ------------------------------------------------------------- Cupos fundador
+
+    public Task<int> CuposFundadorDisponiblesAsync(CancellationToken ct = default) =>
+        _repo.CuposFundadorDisponiblesAsync(_reloj.Ahora, ct);
+
+    public async Task<Resultado<short>> ReservarCupoFundadorAsync(
+        Guid perfilPrestadorId, TimeSpan? duracion = null, CancellationToken ct = default)
+    {
+        var plazo = duracion ?? DuracionReservaPorDefecto;
+        if (plazo <= TimeSpan.Zero || plazo > DuracionReservaMaxima)
+            return Resultado.Falla<short>(
+                Fallas.Validacion, "La duracion de la reserva no es valida.");
+
+        if (!await _repo.ExistePerfilPrestadorAsync(perfilPrestadorId, ct))
+            return Resultado.Falla<short>(Fallas.NoEncontrado, "Ese perfil de prestador no existe.");
+
+        var ahora = _reloj.Ahora;
+        var numero = await _repo.IntentarReservarCupoFundadorAsync(
+            perfilPrestadorId, ahora, ahora.Add(plazo), ct);
+
+        if (numero is null)
+            return Resultado.Falla<short>(
+                Fallas.Conflicto, "Ya no quedan cupos del plan fundador.");
+
+        _auditor.Registrar(Auditar.Entrada(
+            "cupo_fundador_reservado", "perfiles_prestador", perfilPrestadorId, ahora,
+            contexto: new { cupo = numero.Value, minutos = (int)plazo.TotalMinutes }));
+        await _trabajo.GuardarAsync(ct);
+
+        return Resultado.Ok(numero.Value);
+    }
+
+    public async Task<Resultado> ConfirmarCupoFundadorAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        var confirmado = await _repo.ConfirmarCupoFundadorAsync(perfilPrestadorId, ct);
+        if (!confirmado)
+            return Resultado.Falla(
+                Fallas.Conflicto, "Este perfil no tiene un cupo fundador que confirmar.");
+
+        _auditor.Registrar(Auditar.Entrada(
+            "cupo_fundador_confirmado", "perfiles_prestador", perfilPrestadorId, _reloj.Ahora));
+        await _trabajo.GuardarAsync(ct);
+        return Resultado.Ok();
+    }
+
+    public async Task<Resultado> LiberarCupoFundadorAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        // Idempotente: liberar lo que no se tiene no es un error de nadie.
+        var libero = await _repo.LiberarCupoFundadorAsync(perfilPrestadorId, ct);
+        if (!libero) return Resultado.Ok();
+
+        _auditor.Registrar(Auditar.Entrada(
+            "cupo_fundador_liberado", "perfiles_prestador", perfilPrestadorId, _reloj.Ahora));
+        await _trabajo.GuardarAsync(ct);
+        return Resultado.Ok();
+    }
     public async Task<IReadOnlyList<SuscripcionPorVencer>> PorVencerAsync(
         int dentroDeDias, CancellationToken ct = default)
     {

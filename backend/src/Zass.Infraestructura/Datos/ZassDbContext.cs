@@ -61,6 +61,7 @@ public class ZassDbContext : DbContext
     public DbSet<Plan> Planes => Set<Plan>();
     public DbSet<Suscripcion> Suscripciones => Set<Suscripcion>();
     public DbSet<Pago> Pagos => Set<Pago>();
+    public DbSet<CupoFundador> CuposFundador => Set<CupoFundador>();
 
     // Transversal
     public DbSet<Notificacion> Notificaciones => Set<Notificacion>();
@@ -732,6 +733,44 @@ public class ZassDbContext : DbContext
             e.HasIndex(x => new { x.SuscripcionId, x.CreadoEn });
             e.HasOne(x => x.Suscripcion).WithMany(s => s.Pagos)
                 .HasForeignKey(x => x.SuscripcionId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<CupoFundador>(e =>
+        {
+            e.HasKey(x => x.Numero);
+            e.Property(x => x.Numero).ValueGeneratedNever();
+            // Un perfil, un cupo: la base misma lo impide con el indice parcial
+            // (los nulos no cuentan, asi que todos los libres pueden ser nulos).
+            e.HasIndex(x => x.PerfilPrestadorId).IsUnique()
+                .HasFilter("perfil_prestador_id IS NOT NULL")
+                .HasDatabaseName("ux_cupo_fundador_perfil");
+            // Si el perfil se borra, el cupo vuelve a quedar libre: SetNull, no cascade.
+            e.HasOne(x => x.PerfilPrestador).WithMany()
+                .HasForeignKey(x => x.PerfilPrestadorId).OnDelete(DeleteBehavior.SetNull);
+            // Exactamente 20 cupos, sembrados con el esquema como los planes de TBL-29.
+            // La tabla es chica a proposito: el trabajo diario que libera reservas
+            // vencidas hace un seq scan de 20 filas y no necesita indice.
+            e.HasData(
+                    new CupoFundador { Numero = 1 },
+                    new CupoFundador { Numero = 2 },
+                    new CupoFundador { Numero = 3 },
+                    new CupoFundador { Numero = 4 },
+                    new CupoFundador { Numero = 5 },
+                    new CupoFundador { Numero = 6 },
+                    new CupoFundador { Numero = 7 },
+                    new CupoFundador { Numero = 8 },
+                    new CupoFundador { Numero = 9 },
+                    new CupoFundador { Numero = 10 },
+                    new CupoFundador { Numero = 11 },
+                    new CupoFundador { Numero = 12 },
+                    new CupoFundador { Numero = 13 },
+                    new CupoFundador { Numero = 14 },
+                    new CupoFundador { Numero = 15 },
+                    new CupoFundador { Numero = 16 },
+                    new CupoFundador { Numero = 17 },
+                    new CupoFundador { Numero = 18 },
+                    new CupoFundador { Numero = 19 },
+                    new CupoFundador { Numero = 20 });
         });
     }
 
