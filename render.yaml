@@ -24,6 +24,6 @@ services:
       - key: Zass__ProxiesDeConfianza
         sync: false         # rangos de Cloudflare + red del balanceador de Render (ver guía)
       - key: Zass__SaltosDeProxy
-        value: "2"
+        value: "3"
       - key: Zass__ExigirHttps
         value: "true"

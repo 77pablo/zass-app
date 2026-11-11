@@ -34,7 +34,7 @@ En .NET el `:` de la configuración se escribe `__` en una variable de entorno (
 | `Zass__ClaveDireccionesBase64` | **sí, secreta** | Clave AES-256 que cifra las direcciones de los prestadores: 32 bytes en Base64 (por ejemplo `openssl rand -base64 32`). **Si se pierde, las direcciones guardadas no se pueden descifrar**: guárdala también fuera de Render. No la cambies con datos ya guardados. |
 | `Zass__ExigirHttps` | no (por omisión `true`) | En producción no puede ser `false`: la API se niega a arrancar. |
 | `Zass__ProxiesDeConfianza` | sí, detrás de proxy | Lista (separada por comas) de IP/CIDR desde las que la API cree `X-Forwarded-For` y `X-Forwarded-Proto`. Vacía = no se lee ninguna cabecera reenviada. Ver sección 4. |
-| `Zass__SaltosDeProxy` | no (por omisión `2`) | Cuántos proxies se recorren hacia atrás en `X-Forwarded-For` (1 a 5). Dos cubren Cloudflare + balanceador de Render; ver el comentario en `ProxiesDeConfianza.cs`. |
+| `Zass__SaltosDeProxy` | no (por omisión `2`) | Cuántos proxies se recorren hacia atrás en `X-Forwarded-For` (1 a 5). En el despliegue actual se usa `3` (Cloudflare + balanceador de Render; coincide con `render.yaml` y Render). Ver el comentario en `ProxiesDeConfianza.cs`. |
 | `Zass__Tasa__P/A/G/S/Salud` | no | Límites de peticiones por IP cada 15 min. Los valores por omisión son los de `seguridad.md` (Salud: 2000, grupo propio para las sondas). **No los subas en producción sin medirlo.** |
 
 ## 3. Pasos
@@ -79,8 +79,8 @@ Detrás de proxies, la conexión que ve la API es la del proxy. Sin corregirlo, 
 * Con la lista, solo se leen si la conexión directa viene de una de esas redes. Se recorre `X-Forwarded-For` de derecha a izquierda hasta la primera IP que no es de confianza (máximo `SaltosDeProxy`): lo que un atacante escriba a la izquierda no se lee. `0.0.0.0/0` y `::/0` se rechazan al arrancar.
 * El límite, `Ip(http)` de la auditoría/sesiones, `Request.IsHttps`/esquema (cookies Secure, HSTS) usan la IP y el esquema ya corregidos.
 
-**Qué poner en `Zass__ProxiesDeConfianza`:** (a) los rangos publicados de Cloudflare (ver `frontend/DESPLIEGUE-CLOUDFLARE.md`) y (b) la red desde la que el balanceador de Render llega al contenedor.
-**La parte (b) no pude verificarla** (no hay cuenta de Render): confírmala en la documentación de Render y, tras el primer despliegue, mirando qué IP guarda la API (sección 7, punto 4). Si en `ip_origen` aparece una IP de Render o de Cloudflare en vez de la del visitante, falta esa red en la lista.
+**Qué poner en `Zass__ProxiesDeConfianza`:** (a) los rangos publicados de Cloudflare (ver `frontend/DESPLIEGUE-CLOUDFLARE.md`), (b) la red desde la que el balanceador de Render llega al contenedor (`10.0.0.0/8`, medido: llega desde 10.x) y, si hace falta para acceso local/directo, `127.0.0.1` y `::1`.
+Tras el primer despliegue, comprueba mirando qué IP guarda la API (sección 7, punto 4). Si en `ip_origen` aparece una IP de Render o de Cloudflare en vez de la del visitante, falta esa red en la lista.
 
 **Riesgo residual (conócelo):** los rangos de Cloudflare son compartidos por todos sus clientes. Alguien con su propia cuenta de Cloudflare podría pedirle a la API directamente (salvo que ocultes la URL de Render) con un `X-Forwarded-For` inventado y esquivar el límite por IP. La mitigación completa es un secreto compartido entre la Pages Function y la API (cabecera que la API exige); no está implementado. Mientras tanto, no publiques la URL `onrender.com`.
 

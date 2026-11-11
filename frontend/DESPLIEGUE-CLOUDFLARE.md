@@ -53,7 +53,7 @@ Es una lista de IP/CIDR separada por comas, en la variable de entorno `Zass__Pro
 
    Para armar la variable (una línea, separada por comas):
    `curl -s https://www.cloudflare.com/ips-v4 https://www.cloudflare.com/ips-v6 | tr '\n' ',' | sed 's/,$//'`
-2. **La red desde la que el balanceador del alojamiento llega a la API** (en Render, su red interna; confírmala en la documentación de Render: la API ve esa IP como conexión directa y, si no está en la lista, ignora todo `X-Forwarded-For`).
+2. **La red desde la que el balanceador del alojamiento llega a la API.** En Render llega desde `10.0.0.0/8` (red interna). Si necesitas acceso local/directo, agrega `127.0.0.1` y `::1`. Comprueba tras desplegar: si la API ve esa IP como conexión directa y no está en la lista, ignora todo `X-Forwarded-For`.
 
 Vuelve a consultar los rangos de Cloudflare de vez en cuando (cambian rara vez, pero cambian) y actualiza la variable. Comprobación tras desplegar: inicia sesión desde tu celular con datos móviles y mira `SELECT ip_origen FROM sesiones ORDER BY creada_en DESC LIMIT 3;`: debe aparecer tu IP pública, no una de Cloudflare ni de Render.
 
