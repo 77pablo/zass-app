@@ -1,96 +1,167 @@
-# Cómo trabajar en ZASS!
+# Cómo colaborar en ZASS!
 
-Guía para quien se suma al repositorio. Si algo de aquí no calza con lo que ves, avisa antes de improvisar.
+Este documento sirve para montar el proyecto por primera vez y para trabajar en él a diario. Las reglas para Claude Code están en `CLAUDE.md`. El estado del proyecto está en `ESTADO.md`, que es la fuente de verdad. El `README.md` está desactualizado: no te guíes por él.
 
 ## Requisitos
 
-- Windows, Git, .NET SDK 8 y Node 26 (es lo que usa el CI: `8.0.x` y `26`).
-- No hace falta ser administrador: PostgreSQL es portable y vive dentro de la carpeta del repo.
-- Si tienes también el SDK de .NET 10: el repo no fija versión (no hay `global.json`), así que `dotnet` usa el más nuevo. El proyecto apunta a `net8.0`. Si ves algo raro al compilar, avisa.
+- Windows 10 u 11 con Git.
+- .NET SDK 8. Si tienes también el SDK 10, `dotnet` puede elegir ese; el repo todavía no tiene `global.json`. Si algo falla por eso, avisa a Pablo.
+- Node.js 26.
+- No hace falta instalar PostgreSQL ni tener permisos de administrador: se usa una copia portable.
 
-## Primera vez en tu máquina
+## 1. Clonar
 
-1. Clona el repo y entra a la carpeta.
+```powershell
+cd C:\Users\<tu-usuario>
+git clone https://github.com/77pablo/zass-app.git
+cd zass-app
+git log --oneline -1
+```
 
-2. Pídele a Pablo `pgsql.zip` (por un canal privado, nunca por GitHub) y descomprímelo en la raíz del repo, de modo que exista `herramientas\pgsql\bin\initdb.exe`. Trae PostgreSQL 16 y PostGIS.
+Debe mostrar `41857d9` o un commit posterior en `main`.
 
-3. Crea tu base local (una sola vez). Crea `datos-pg`, el rol `zass`, las bases `zass` y `zass_pruebas`, y guarda una clave aleatoria en `.clave-pg.txt`. Si algo ya existe, se detiene sin pisarlo.
+## 2. PostgreSQL portable
 
-        powershell -NoProfile -ExecutionPolicy Bypass -File .\preparar-postgres.ps1
+Pablo te pasa `pgsql.zip` por un canal privado. **No está en GitHub y nunca debe subirse.**
 
-   Después, para apagar y volver a encender: `detener-postgres.bat` e `iniciar-postgres.bat`. Escucha en el puerto 5433.
+Antes de extraerlo, compara su hash con el que te envió Pablo por el chat del equipo:
 
-4. Secretos de la API. Son tuyos y de tu máquina: no son los de producción, y se guardan fuera del repo (User Secrets).
+```powershell
+Get-FileHash "<ruta>\pgsql.zip" -Algorithm SHA256 | Select-Object -ExpandProperty Hash
+```
 
-        $clave = (Get-Content .clave-pg.txt -Raw).Trim()
-        dotnet user-secrets set "Zass:CadenaConexion" "Host=127.0.0.1;Port=5433;Database=zass;Username=zass;Password=$clave" --project backend\src\Zass.Api
-        $b = New-Object byte[] 32
-        [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b)
-        dotnet user-secrets set "Zass:ClaveDireccionesBase64" ([Convert]::ToBase64String($b)) --project backend\src\Zass.Api
+Extráelo **dentro de `herramientas\`**. El zip ya trae la carpeta `pgsql` adentro, así que no lo descomprimas en la raíz del repo:
 
-5. Migra tu base de desarrollo (la API no migra sola al arrancar):
+```powershell
+New-Item -ItemType Directory -Force herramientas | Out-Null
+tar.exe -xf "<ruta>\pgsql.zip" -C herramientas
+Test-Path .\herramientas\pgsql\bin\initdb.exe
+```
 
-        $env:ASPNETCORE_ENVIRONMENT = "Development"
-        dotnet run --project backend\src\Zass.Api -- --migrar
-        Remove-Item Env:\ASPNETCORE_ENVIRONMENT
+Debe decir `True`. Si dice `False`, revisa que no exista `herramientas\pgsql\pgsql` (doble carpeta) y avisa a Pablo con el error completo.
 
-   Debe terminar con código 0. Es idempotente.
+`herramientas\` está en `.gitignore`.
 
-6. Herramientas y dependencias:
+## 3. Crear el clúster local (una sola vez)
 
-        cd backend
-        dotnet tool restore
-        cd ..\frontend
-        npm ci
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\preparar-postgres.ps1
+```
 
-7. Certificado de desarrollo, una vez por máquina: `dotnet dev-certs https --trust`.
+Crea `datos-pg\` en el puerto 5433, guarda la clave del rol `zass` en `.clave-pg.txt`, arranca el servidor y crea las bases `zass` y `zass_pruebas`. Debe terminar con código 0. Si imprime `DETENIDO:`, pega el mensaje completo a Pablo.
 
-8. Para ver todo andando: `ver-zass.bat` (base, API en `https://localhost:7277` e interfaz en `https://localhost:5173`). Para apagarlo: `cerrar-zass.bat`.
+`datos-pg\`, `registros\` y `.clave-pg.txt` están en `.gitignore`. No compartas ni pegues su contenido en ningún chat.
 
-## Pruebas
+Para levantar y bajar el servidor: `.\iniciar-postgres.bat` y `.\detener-postgres.bat`.
 
-- Backend, con la base arriba: `cd backend` y `dotnet test`.
-- Frontend: `cd frontend`, y luego `npm run prueba`, `npx tsc -b` y `npx oxlint`.
-- Las pruebas de integración usan la base `zass_pruebas` (la crean y migran solas) y se niegan a correr contra `zass`.
-- Nunca corras dos suites de integración a la vez: se pisan entre sí y dan rojos falsos.
-- La prueba `Dos_reservas_simultaneas_reciben_filas_distintas` falló una vez en CI y pasó al repetir la corrida con el mismo commit. Si te falla, repite la corrida y avisa; no la "arregles" a ciegas.
+## 4. Secretos de la API (User Secrets)
 
-## Flujo de ramas
+Desde `backend\src\Zass.Api`:
 
-- Nadie trabaja en `main`. Cada tarea va en su rama:
+```powershell
+cd backend\src\Zass.Api
+$clave = (Get-Content ..\..\..\.clave-pg.txt -Raw).Trim()
+dotnet user-secrets set "Zass:CadenaConexion" "Host=127.0.0.1;Port=5433;Database=zass;Username=zass;Password=$clave"
+$b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b)
+dotnet user-secrets set "Zass:ClaveDireccionesBase64" ([Convert]::ToBase64String($b))
+dotnet user-secrets list | ForEach-Object { ($_ -split '=')[0] }
+cd ..\..\..
+```
 
-        git checkout main
-        git pull
-        git checkout -b nombre-corto-de-la-tarea
+La última línea debe listar solo los nombres `Zass:CadenaConexion` y `Zass:ClaveDireccionesBase64`, sin valores. La clave de direcciones es local: no es la de producción.
 
-- Ramas cortas, una funcionalidad completa por rama (de punta a punta, no por capa).
-- Sube la rama y abre un Pull Request hacia `main`. El CI (`Pruebas`) corre solo y debe quedar verde: compilar, pruebas de aplicación, de arquitectura y de integración, y en el frontend `tsc`, `vitest` y `oxlint`.
-- Pablo revisa y hace el merge.
-- Un verde no prueba nada por sí solo. Para una prueba nueva, rompe el código a propósito en una rama desechable (`mut-algo`, que nunca se mergea) y comprueba que cae justo esa prueba.
+## 5. Migrar la base local
 
-## Migraciones de EF: una persona a la vez
+```powershell
+$env:ASPNETCORE_ENVIRONMENT = "Development"
+dotnet run --project backend\src\Zass.Api -- --migrar
+```
 
-`ZassDbContextModelSnapshot.cs` es un archivo generado de miles de líneas y casi no se puede fusionar a mano.
+Código de salida 0. Es idempotente: se puede correr de nuevo sin daño.
 
-- Antes de crear una migración, avisa a la otra persona. Ella hace `git pull` antes de crear la suya.
-- Si hay conflicto en el snapshot, no lo resuelvas a mano: descarta tu migración y vuelve a generarla después de traer los cambios.
-- Una migración ya mergeada no se edita: se crea otra.
-- Para crearla, con la variable apuntando a tu base local y solo en esa sesión de PowerShell:
+## 6. Herramientas y dependencias
 
-        cd backend
-        $env:ZASS_CADENA_CONEXION = "Host=127.0.0.1;Port=5433;Database=zass_pruebas;Username=zass;Password=$((Get-Content ..\.clave-pg.txt -Raw).Trim())"
-        dotnet ef migrations add NombreDeLaMigracion --project src\Zass.Infraestructura --startup-project src\Zass.Infraestructura
-        Remove-Item Env:\ZASS_CADENA_CONEXION
+```powershell
+cd backend;  dotnet tool restore;  cd ..
+cd frontend; npm ci;               cd ..
+dotnet dev-certs https --trust
+```
 
-- Esa variable nunca se define como variable permanente de Windows ni apunta a Neon. Las migraciones en producción las aplica solo Pablo.
+## 7. Levantar y ver
+
+```powershell
+.\ver-zass.bat
+```
+
+Levanta la base si no está arriba, la API en `https://localhost:7277` y la interfaz en `https://localhost:5173`, y abre el navegador. Para cerrar todo: `.\cerrar-zass.bat`.
+
+## 8. Pruebas
+
+Antes de tocar nada, todo debe estar verde:
+
+```powershell
+cd backend;  dotnet test;  cd ..
+cd frontend; npm run prueba; npx tsc -b; npx oxlint; cd ..
+```
+
+Referencia: backend 674 (aplicación) + 613 (integración) + 16 (arquitectura); frontend 373 pruebas en 28 archivos.
+
+- Las pruebas de integración usan la base `zass_pruebas`. Nunca corras dos suites de integración a la vez.
+- Smart App Control de Windows puede bloquear en local las DLL de pruebas y `oxlint`. Si pasa, dilo: el backend se valida en GitHub Actions.
+
+## Flujo de trabajo
+
+1. Nadie trabaja directamente en `main`.
+2. Cada tarea va en una rama corta: `git checkout main`, `git pull origin main`, `git checkout -b <nombre-corto>`.
+3. Antes de abrir el PR: `git pull origin main` y las pruebas otra vez.
+4. Un PR por funcionalidad. Si trae varias, se parte.
+5. El PR se abre con el nivel en el título (`[N1]`, `[N2]` o `[N3]`) y con la plantilla completa, que aparece sola al abrirlo.
+6. Actions debe estar en verde. Nada se mergea en rojo.
+7. Mientras un PR espera revisión, sigue con otra tarea desde `main` actualizado. Nunca sigas desde una rama que aún no se aprobó.
+
+## Niveles de revisión
+
+| Nivel | Qué incluye | Quién mergea | Revisión de Pablo |
+|---|---|---|---|
+| **N1** | Texto, estilos o pruebas nuevas sin cambio de código de producción | Quien abre el PR, con CI verde y la mutación anotada | Después, en la siguiente ventana |
+| **N2** | Endpoints o lógica con el patrón existente (sesión, CSRF, `Tasa.*`), sin migración | Pablo | En la ventana: endpoints y pruebas |
+| **N3** | Migraciones, seguridad (autenticación, CSRF, límites, cabeceras), `Program.cs`, correo, infraestructura, secretos, pagos, copias | Pablo | Todo el PR |
+
+- Si dudas entre dos niveles, va el más alto.
+- Un PR que mezcla niveles se sube al más alto o se parte.
+- **Cambios de `frontend\`:** hasta que Pablo confirme cómo despliega Cloudflare Pages, son N2 como mínimo.
+- **Ventanas:** Pablo revisa dos veces al día, en las horas que avise en el chat del equipo. Un PR que llega fuera de ventana entra en la siguiente.
+
+## Migraciones de EF: una a la vez
+
+- Antes de crear una migración, avisa en el chat. No empieces otra hasta que la anterior esté en `main` y los demás hayan hecho `git pull`.
+- Nunca edites una migración ya mergeada: se agrega una nueva.
+- Comando: `dotnet ef migrations add <Nombre> --project backend\src\Zass.Infraestructura --startup-project backend\src\Zass.Infraestructura`. Con `--startup-project backend\src\Zass.Api` falla.
+- `ZASS_CADENA_CONEXION` solo en la sesión de la terminal, apuntando a la base local. Nunca guardada.
+- Toda migración es N3. Las migraciones de producción las corre solo Pablo.
+
+## Pruebas nuevas: mutación obligatoria
+
+- Toda prueba nueva se valida rompiendo el código a propósito en una rama `mut-<algo>`. Se comprueba que la prueba cae.
+- En el PR se anota qué se cambió y qué prueba cayó.
+- Después se borra la rama `mut-*`.
+- Un verde por sí solo no prueba nada.
 
 ## Secretos
 
-- No subas ni pegues en ningún chat: `.clave-pg.txt`, User Secrets, `.env`, cadenas de conexión ni claves de API.
-- No tendrás acceso a los paneles de Render, Neon, Cloudflare ni Resend. Si algo de ahí te hace falta, pídeselo a Pablo.
-- Si una clave se filtra, avisa de inmediato.
+- Nunca en el repo, en el chat, en capturas ni en commits: ni `.clave-pg.txt`, ni User Secrets, ni `zass-secretos`, ni cadenas de conexión.
+- Nunca contra producción. Nunca `--migrar` ni `database update` contra algo que no sea tu base local.
 
 ## Documentos compartidos
 
-- `ESTADO.md` y `TRASPASO.md` los edita una sola persona (Pablo), o cada quien al final de su rama, nunca los dos a la vez.
-- `ESTADO.md` es la fuente de verdad del estado del proyecto. El `README.md` está desactualizado.
+- `ESTADO.md` y `TRASPASO.md` los edita solo Pablo. Al final de cada PR deja el párrafo «Para ESTADO.md» de tres líneas.
+- Los identificadores de los documentos (CU-, TBL-, API-, RN-, MOD-) se respetan. Si el código y el documento no coinciden, se avisa; no se corrige en silencio.
+- Textos visibles nuevos (botones, avisos): se proponen en el PR y Pablo los aprueba.
+
+## Seguridad en endpoints
+
+Sesión cuando corresponda, CSRF en todo lo que no sea GET, límite de peticiones `Tasa.*` y validación de entrada. 403 y 404 responden igual, a propósito (`seguridad.md` §5).
+
+## Si algo no calza
+
+Si la tarea no coincide con el código real, o toca una zona N3 sin que se haya dicho, para y pregunta. No adaptes el brief por tu cuenta.
