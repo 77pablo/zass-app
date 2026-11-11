@@ -376,10 +376,9 @@ Pablo o un campo nuevo. Sin pantalla de reseñas.
 
 **Cosas que conviene saber y que quedan abiertas:**
 
-- **Un rojo intermitente sin resolver**: `Dos_reservas_simultaneas_reciben_filas_distintas` (correo) falló una
-  vez en la suite completa y pasa sola y en las siguientes corridas. Probable causa: otra prueba deja avisos
-  `Programada` en `zass_pruebas` en ese instante (el `InitializeAsync` de esa clase los borra, pero la carrera
-  existe). **No se investigó a fondo.** Si reaparece, mirar `notificaciones` en `zass_pruebas`.
+- **Resuelto el rojo intermitente (PR #4, commit 8e12792)**: `Dos_reservas_simultaneas_reciben_filas_distintas` (correo) era un defecto de `ProcesadorDeCorreo.TomarLoteAsync`, no contaminación entre pruebas. Con estadísticas de tabla casi vacía,
+  PostgreSQL planificaba `WHERE id IN (SELECT ... LIMIT @lote FOR UPDATE SKIP LOCKED)` como Nested Loop Semi Join que reejecutaba la subconsulta por fila y el UPDATE tomaba de más (10 con lote 5 en CI PG 17.5; reproducible en PG 18).
+  Podía afectar a producción (Neon PG 18). Se arregló con `WITH lote AS MATERIALIZED (...)` y prueba determinista `Un_lote_nunca_trae_mas_avisos_que_TamanoDeLote_aunque_el_plan_reejecute_la_subconsulta` que cae con el código viejo.
 - **HECHAS las tres transiciones que dispara el tiempo** (T5, T8, T11), en `Planificador` (reemplaza a
   `TrabajoDiario`; dos filas en `trabajos_de_fondo`: `suscripciones-diario` y `citas-periodico`, esta cada 15 min).
   Cada cita se procesa en SU transacción y se relee el estado dentro de ella. **Comprobado**: contra la base, una
