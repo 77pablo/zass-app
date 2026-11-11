@@ -150,7 +150,7 @@ Commit `b678b42` (+ merge `f21045b`), **commits ya subidos a GitHub (push hecho 
 
 **A. Seguridad / operación (hacer pronto)**
 1. Rotar los 3 secretos del §3.
-2. `render.yaml` dice `Zass__SaltosDeProxy: "2"` pero **en Render real vale 3** (medido). Actualizar el archivo y `DESPLIEGUE-API.md`/`DESPLIEGUE-CLOUDFLARE.md`, y agregar `10.0.0.0/8`, `::1` y `127.0.0.1` a la guía de `ProxiesDeConfianza` (el balanceador de Render llega desde 10.x).
+2. `render.yaml` actualizado a `Zass__SaltosDeProxy: "3"` (coincide con Render real). Falta actualizar `DESPLIEGUE-API.md`/`DESPLIEGUE-CLOUDFLARE.md` y agregar `10.0.0.0/8`, `::1` y `127.0.0.1` a la guía de `ProxiesDeConfianza` (el balanceador de Render llega desde 10.x).
 3. **Defecto abierto de la IP del visitante:** por `zass.cl` la API ve una IP de Cloudflare, no la del visitante (la Pages Function pone `X-Forwarded-For` pero Cloudflare lo pierde en el salto Function→Render). Directo a Render sí funciona y las IP falsas se ignoran. Arreglo propuesto: la función manda la IP en una cabecera propia (ej. `X-Zass-IP-Cliente`) y la API la lee con `ForwardedHeadersOptions.ForwardedForHeaderName`, con prueba por HTTP. Efecto actual: el límite de peticiones se cuenta por salida de Cloudflare, no por persona. No es un agujero de seguridad.
 4. Copias de seguridad: existe `.github/workflows/copia-base-de-datos.yml` (revisar que esté activo y con secretos en GitHub).
 5. Plan gratis de Render: se duerme y la primera visita tarda ~1 min. Antes de abrir al público, pasar a un plan que no duerma o añadir una sonda de despertar.
@@ -159,7 +159,7 @@ Commit `b678b42` (+ merge `f21045b`), **commits ya subidos a GitHub (push hecho 
 1. **Pantalla de agenda del prestador** (MOD-06): horarios/bloques, confirmar o rechazar (modo manual), marcar asistencia. El backend ya existe.
 2. **Pantalla de reseñas** (MOD-11): escribir y ver. Decidir antes: la cita `NoAsistio` no habilita reseña; `estados-cita.md` dice que si faltó el prestador sí, pero la cita no guarda **quién** faltó (decisión de Pablo o campo nuevo).
 3. **Registro de contacto:** contactar por WhatsApp/teléfono no deja registro (TBL-21 `contacto`), por eso no habilita reseña; solo agendar lo hace. Decidir si se registra un «contacto iniciado» al ver el contacto con sesión.
-4. **MOD-12 Tarjetas NFC** (no empezado). Antes hace falta la pregunta 4 de la sección 9 de `ESTADO.md`. Regla ya decidida: la tarjeta de un prestador sin suscripción **sí abre** la ficha con aviso, **sin contactar ni agendar** (RN-S6-10).
+4. **MOD-12 Tarjetas NFC** (no empezado). La pregunta 4 de la sección 9 de `ESTADO.md` ya está respondida (8-nov-2026): la tarjeta de un prestador sin suscripción **sí abre** la ficha con aviso, **sin contactar ni agendar** (RN-S6-10).
 5. **Página de planes / premium visible pero bloqueado** (idea de Pablo, estilo Instagram: comparar básico vs premium a la vista). Es para **prestadores** (el buscador no paga). Cualquier número de «clientes hoy» **debe ser real** (publicidad engañosa es sancionable en Chile); con pocos usuarios, mostrar acumulados.
 6. **Entrar con Google** reduciría mucho la fricción del registro (idea mía, no decidida).
 7. Pantalla de «recuperar» y otras ya existen; falta revisar el flujo completo en móvil real.
