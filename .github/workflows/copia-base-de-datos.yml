@@ -24,10 +24,11 @@ jobs:
           FRASE_COPIAS: ${{ secrets.FRASE_COPIAS }}
         run: |
           set -euo pipefail
-          test -n "$NEON_URL_COPIAS" && test -n "$FRASE_COPIAS"
+          test -n "$NEON_URL_COPIAS" || { echo "Falta el secreto NEON_URL_COPIAS" >&2; exit 1; }
+          test -n "$FRASE_COPIAS" || { echo "Falta el secreto FRASE_COPIAS" >&2; exit 1; }
           # El cliente de pg_dump debe ser de la misma versión mayor que el servidor (o mayor).
-          # Cambia «17» si tu proyecto de Neon usa otra.
-          docker run --rm -e NEON_URL_COPIAS postgres:17 \
+          # Neon corre Postgres 18 (comprobado el 11-nov-2026). Cambia «18» si el proyecto cambia de versión.
+          docker run --rm -e NEON_URL_COPIAS postgres:18 \
             sh -c 'pg_dump --format=custom --no-owner --no-privileges "$NEON_URL_COPIAS"' \
             > zass.dump
           test -s zass.dump
