@@ -76,7 +76,6 @@ cd frontend && npm run prueba
 | `herramientas/` | La instancia portable de PostgreSQL y PostGIS: 1,2 GB |
 | `datos-pg/`, `registros/` | Los datos y los registros del clúster local |
 | `.clave-pg.txt`, `certificados/` | Un secreto y una clave privada |
-| `appsettings.Development.json` | Sube los límites de tasa para poder desarrollar. En producción mandan los valores del código |
 | `node_modules/` | 300 MB. `npm install` dentro de `frontend` |
 
 La API necesita dos ajustes que nunca se versionan y viven en User Secrets:
