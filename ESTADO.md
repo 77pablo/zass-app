@@ -428,7 +428,7 @@ el tipo `FichaPublica`, pero no se comprobó que compile el frontend ni que sus 
 4. Después, la pantalla de reseñas (API-46 a API-53).
 Mantener la línea de diseño de `diseno/prototipo-comunidad.html`: sitio de comunidad, no formulario.
 
-**Pendiente de decisión de Pablo:** la cita `NoAsistio` hoy no habilita reseña (la cita no guarda quién faltó).
+**Decidido por Pablo (11-nov-2026):** la cita `NoAsistio` será completa con migración N3 (guarda quién faltó). Si faltó el prestador, el cliente sí reseña; si faltó el cliente, no hay reseña; si se contradicen, se bloquea la reseña y pasa a cola interna.
 
 ### Segunda tanda de agentes (8-nov-2026, noche) — CÓMO RETOMAR
 
@@ -1408,3 +1408,44 @@ Decisión de Pablo: **buscar y ver fichas no exige cuenta; contactar sí**, y **
 `/mi-agenda`: disponibilidad por servicio + bloqueo de días, con 21 pruebas nuevas (348 de interfaz en total, en verde).
 **No se vio en un navegador todavía.** Falta endpoint para listar/quitar bloqueos (hoy no se pueden deshacer).
 Detalle y decisiones en `TRASPASO.md` («ÚLTIMA SESIÓN»). Diseño y plan de Codex en `docs/superpowers/`.
+
+
+---
+
+## Sesión de decisiones y traspaso a Joaquín (11-nov-2026)
+
+Trabajo en paralelo acordado entre Pablo (infraestructura, revisión, decisiones) y Joaquín (código principal). Reglas de revisión documentadas en `CONTRIBUIR.md` y `CLAUDE.md` bajo esquema N1/N2/N3.
+
+### Tareas de infraestructura y documentación cerradas (Pablo)
+
+- **P1 (Copia diaria en GitHub Actions):**
+  - Workflow `.github/workflows/copia-base-de-datos.yml` actualizado a `postgres:18` (coincide con Neon 18.6).
+  - Secretos `NEON_URL_COPIAS` y `FRASE_COPIAS` configurados y probados en GitHub Actions (PR #3 mergeado).
+  - Corrida manual #4 en `main` verde (18 s).
+  - Descifrado de artefacto probado localmente con éxito (PGDMP, 106.319 bytes, AES256).
+  - Frase de descifrado respaldada fuera del PC.
+  - Pendiente menor: verificar restauración con pg_restore 18 en base local cuando se requiera.
+
+- **P2 (Proxies de Render):**
+  - `render.yaml` actualizado a `Zass__SaltosDeProxy: "3"` (coincide con el servicio en producción).
+  - `DESPLIEGUE-API.md` y `frontend/DESPLIEGUE-CLOUDFLARE.md` actualizados con el rango privado `10.0.0.0/8`, `::1` y `127.0.0.1` (PR #2 mergeado).
+
+- **P4 (Duda de MOD-12 NFC resuelta):**
+  - La pregunta 4 de la sección 9 ya estaba respondida (8-nov-2026): prestador sin suscripción activa mantiene ficha con aviso y sin botones de contacto/agendar (RN-S6-10). Actualizado en `TRASPASO.md` (PR #2 mergeado).
+
+### Decisiones de producto tomadas por Pablo (11-nov-2026)
+
+| Tema | Decisión acordada | Impacto técnico |
+|---|---|---|
+| **Fundador que cancela o falla cobro** | Tiene **14 días de plazo** desde que vence el período pagado (`vigente_hasta`). Si vuelve dentro de esos 14 días, recupera su precio de $5.990. Si no vuelve, el cupo **desaparece para siempre** (no vuelve a la bolsa de los 20). Si cancela o falla el primer cobro *antes de haber pagado ni una vez*, el cupo sí se libera para otra persona. | Requiere migración N3 para marcar cupo fundador como definitivamente perdido tras 14 días. Términos y condiciones deben reflejar la excepción. |
+| **Gracia por cobro fallido** | **3 días** de gracia con servicio activo mientras la pasarela reintenta (corren dentro de los 14 días, no se suman). | Revisar constantes/configuración de gracia (baja de 5 a 3 días). |
+| **NoAsistio en citas** | **Modelo completo:** cada parte solo puede acusar a la otra (prestador acusa «cliente no vino», cliente acusa «prestador no vino»). Si faltó el prestador, el cliente **sí puede reseñar**. Si faltó el cliente, **no hay reseña**. Si se contradicen, la reseña se bloquea de inmediato y la cita va a la cola interna de revisión. | Requiere migración N3 (columna para registrar quién faltó). |
+| **Contacto directo (sin cita)** | Se agrega botón **«ya me atendió»** que marca el cliente desde su vista. La reseña queda rotulada «contacto directo, sin cita». | Nuevo endpoint y ajuste en modelo de reseñas. |
+| **MOD-12 (Tarjeta NFC)** | Al tocar la tarjeta, abre la **ficha completa** del prestador directamente. Sin migración nueva de base de datos. | Caso de uso y endpoints de redirección/lectura. Tarea J4 de Joaquín. |
+| **Prueba gratuita de 30 días** | **Única por prestador.** Paso 1: por cuenta con correo verificado. Paso 2 (a futuro): verificación por número de celular (SMS/WhatsApp). | Sin cambios inmediatos en base para el paso 1. |
+
+### Reparto inicial de tareas a Joaquín
+
+- **J1 (N3):** `correo-lote-estricto` (reproducir y corregir intermitencia en prueba `Dos_reservas_simultaneas_reciben_filas_distintas`).
+- **J2 (N2):** `bloqueos-quitar` (endpoints y UI para listar y quitar bloqueos de agenda propios).
+- **J3 (N2):** `revision-visual-agenda-ficha` (revisión visual en celular y escritorio de `/mi-agenda` y `/mi-ficha`).
