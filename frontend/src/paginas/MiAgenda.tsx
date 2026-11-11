@@ -100,6 +100,7 @@ export function MiAgenda() {
   if (error) {
     return (
       <div className="contenedor ficha-pagina">
+        {/* MUTACION 2: sin h1 en el estado de error */}
         <p className="aviso-linea" role="alert">
           {error}{' '}
           <button type="button" className="enlace" onClick={() => { setError(null); setRecarga((n) => n + 1) }}>
@@ -110,7 +111,12 @@ export function MiAgenda() {
     )
   }
   if (servicios === null) {
-    return <div className="contenedor ficha-pagina"><p className="cargando-linea" role="status">Cargando tu horario…</p></div>
+    return (
+      <div className="contenedor ficha-pagina">
+        <h1 className="pagina-titulo">Mi agenda</h1>
+        <p className="cargando-linea" role="status">Cargando tu horario…</p>
+      </div>
+    )
   }
 
   return (
@@ -217,9 +223,10 @@ function TarjetaDeServicio({ servicio }: { servicio: DisponibilidadDeServicio })
                     {DURACIONES.map((m) => <option key={m} value={m}>{m} min</option>)}
                   </select>
                 </label>
-                <button type="button" className="boton boton--chico" aria-label={`Quitar franja ${n}`}
+                <button type="button" className="boton boton--chico"
+                  aria-label={`Quitar franja ${n}` /* MUTACION 3: nombre viejo */}
                   onClick={() => { setFranjas((fs) => fs.filter((_, k) => k !== i)); setErrores({}); setListo(null) }}>
-                  Quitar
+                  Quitar horario
                 </button>
               </div>
               {errores[i] && <p className="aviso aviso--malo">{errores[i]}</p>}
@@ -286,7 +293,10 @@ function BloquearFechas() {
       const siguiente = new Date(`${hasta}T12:00:00Z`)
       siguiente.setUTCDate(siguiente.getUTCDate() + 1)
       await crearBloqueo(inicioDeDiaEnChile(desde), inicioDeDiaEnChile(siguiente.toISOString().slice(0, 10)), motivo)
-      setAviso({ tono: 'bueno', texto: `Bloqueaste del ${desde} al ${hasta}: nadie podrá agendar esos días.` })
+      // J3 #3 y #4 (texto propuesto): mismo formato que la lista, y un solo día se dice como un día.
+      const unDia = desde === hasta
+      const cuando = `del ${desde} al ${hasta}`   // MUTACION 1: fecha cruda, sin «el» para un dia
+      setAviso({ tono: 'bueno', texto: `Bloqueaste ${cuando}: nadie podrá agendar ${unDia ? 'ese día' : 'esos días'}.` })
       setDesde(''); setHasta(''); setMotivo('')
       setRecarga((n) => n + 1)
     } catch (er) {
@@ -352,13 +362,13 @@ function BloquearFechas() {
       ) : (
         <ul className="franjas">
           {bloqueos.map((b, i) => (
-            <li key={b.id} className="franja">
+            <li key={b.id} className="franja franja--bloqueo">
               <span>{rangoDeBloqueo(b)}</span>
-              {b.motivo && <span className="bloque-texto">· {b.motivo}</span>}
+              {b.motivo && <span className="franja-motivo">· {b.motivo}</span>}
               <button type="button" className="boton boton--chico" disabled={quitando !== null}
-                aria-label={`Quitar bloqueo ${i + 1}`}
+                aria-label={`Quitar bloqueo ${i + 1} (${rangoDeBloqueo(b)})`}
                 onClick={() => { void quitar(b.id) }}>
-                {quitando === b.id ? 'Quitando…' : 'Quitar'}
+                {quitando === b.id ? 'Quitando…' : 'Quitar bloqueo'}
               </button>
             </li>
           ))}
