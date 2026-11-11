@@ -1,6 +1,7 @@
 using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Npgsql;
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
 using Zass.Dominio.Identidad;
@@ -498,5 +499,130 @@ public class ProcesadorDeCorreoPruebas : IAsyncLifetime
         Assert.Equal(5, a.Count);
         Assert.Equal(5, b.Count);
         Assert.Empty(a.Intersect(b));
+    }
+
+    // ------------------------------------------------------------ el lote respeta su tamaño
+
+    /// <summary>
+    /// La forma de reserva que falló en CI (J1), tal cual estaba. NO es la consulta del
+    /// procesador: es la referencia con la que se comprueba que las estadísticas de la prueba
+    /// empujan al planificador al plan malo. Por eso la precondición sigue valiendo después de
+    /// cambiar la consulta de producción.
+    /// </summary>
+    private const string FormaQueFalloEnCi = """
+        UPDATE notificaciones SET estado = 'Enviando', intentos = intentos + 1, programada_para = @reserva
+        WHERE id IN (
+            SELECT id FROM notificaciones
+            WHERE canal = 'Correo' AND tipo = ANY(@tipos)
+              AND estado IN ('Programada', 'Enviando') AND programada_para <= @ahora
+            ORDER BY programada_para
+            LIMIT @lote
+            FOR UPDATE SKIP LOCKED)
+        RETURNING id
+        """;
+
+    private Notificacion AvisoAislado(int i, EstadoEnvio estado, DateTime programadaPara) => new()
+    {
+        DestinatarioId = Guid.NewGuid(),   // la copia aislada no lleva la FK a usuarios
+        Tipo = TipoNotificacion.CorreoVerificacion,
+        Canal = CanalNotificacion.Correo,
+        ClaveIdempotencia = $"prueba:{Guid.NewGuid():N}",
+        Asunto = "x",
+        Cuerpo = CargaDeAviso.ConToken($"T{i}"),
+        Estado = estado,
+        ProgramadaPara = programadaPara,
+    };
+
+    /// <summary>
+    /// Copia de notificaciones en un esquema propio y desechable, con las estadísticas que había
+    /// en CI cuando falló: analizada casi vacía, así que el planificador estima ~1 fila en la
+    /// tabla y 1 elegible. Después llegan los avisos de verdad.
+    /// El ANALYZE es de la copia: las estadísticas de public.notificaciones no se tocan.
+    /// Devuelve el esquema y la cadena de conexión que lo pone primero en search_path.
+    /// </summary>
+    private async Task<(string Esquema, string Cadena)> CopiaConEstadisticasDeCiAsync(int elegibles)
+    {
+        var esquema = "lote_aislado_" + Guid.NewGuid().ToString("N")[..12];
+        using (var ctx = ContextoDePrueba.Crear())
+            await ctx.Database.ExecuteSqlRawAsync(
+                "CREATE SCHEMA " + esquema + "; "
+                + "CREATE TABLE " + esquema + ".notificaciones (LIKE public.notificaciones INCLUDING ALL) "
+                + "WITH (autovacuum_enabled = false);");
+
+        // Sin esquema por defecto en el modelo, «notificaciones» se resuelve por search_path.
+        var cadena = new NpgsqlConnectionStringBuilder(Conexion.Cadena) { SearchPath = esquema + ",public" }
+            .ConnectionString;
+
+        using (var ctx = Aislado(cadena))
+        {
+            // UNA fila ya enviada: el ANALYZE deja «1 fila en 1 página», y como los avisos nuevos
+            // caben en esa misma página el planificador sigue creyendo que la tabla tiene ~1 fila.
+            // Así estaba en CI (Index Scan … rows=1 en el lado externo). Con 40 elige Hash Semi Join.
+            ctx.Notificaciones.Add(AvisoAislado(0, EstadoEnvio.Enviada, _reloj.Ahora.AddDays(-1)));
+            await ctx.SaveChangesAsync();
+            await ctx.Database.ExecuteSqlRawAsync("ANALYZE notificaciones");
+
+            for (var i = 0; i < elegibles; i++)
+                ctx.Notificaciones.Add(AvisoAislado(i, EstadoEnvio.Programada, _reloj.Ahora.AddSeconds(-1)));
+            await ctx.SaveChangesAsync();
+        }
+        return (esquema, cadena);
+    }
+
+    private static ZassDbContext Aislado(string cadena) =>
+        new(new DbContextOptionsBuilder<ZassDbContext>().UseNpgsql(cadena).Options);
+
+    private static async Task BorrarEsquemaAsync(string esquema)
+    {
+        using var ctx = ContextoDePrueba.Crear();
+        await ctx.Database.ExecuteSqlRawAsync("DROP SCHEMA " + esquema + " CASCADE");
+    }
+
+    /// <summary>
+    /// Precondición: con estas estadísticas, la forma que falló en CI se planifica con la
+    /// subconsulta del lado interno de un Nested Loop Semi Join (la que se reejecuta). Si este
+    /// PostgreSQL elige otro plan, la prueba no estaría probando nada y se dice en vez de dar verde.
+    /// </summary>
+    private async Task ExigirPlanQueReejecutaLaSubconsultaAsync(string cadena, int lote)
+    {
+        using var ctx = Aislado(cadena);
+        await ctx.Database.OpenConnectionAsync();
+        await using var cmd = ctx.Database.GetDbConnection().CreateCommand();
+        cmd.CommandText = "EXPLAIN " + FormaQueFalloEnCi;
+        cmd.Parameters.Add(new NpgsqlParameter("reserva", NpgsqlTypes.NpgsqlDbType.TimestampTz)
+            { Value = _reloj.Ahora.AddSeconds(120) });
+        cmd.Parameters.Add(new NpgsqlParameter("ahora", NpgsqlTypes.NpgsqlDbType.TimestampTz) { Value = _reloj.Ahora });
+        cmd.Parameters.Add(new NpgsqlParameter("lote", NpgsqlTypes.NpgsqlDbType.Integer) { Value = lote });
+        cmd.Parameters.Add(new NpgsqlParameter("tipos", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Varchar)
+            { Value = new[] { nameof(TipoNotificacion.CorreoVerificacion) } });
+
+        var plan = new System.Text.StringBuilder();
+        await using (var r = await cmd.ExecuteReaderAsync())
+            while (await r.ReadAsync()) plan.AppendLine(r.GetString(0));
+
+        Assert.True(plan.ToString().Contains("Nested Loop Semi Join"),
+            "Precondición: con estas estadísticas el plan no es el que reproduce J1 (Nested Loop Semi Join):\n" + plan);
+    }
+
+    [Fact]
+    public async Task Un_lote_nunca_trae_mas_avisos_que_TamanoDeLote_aunque_el_plan_reejecute_la_subconsulta()
+    {
+        const int lote = 5;
+        var (esquema, cadena) = await CopiaConEstadisticasDeCiAsync(elegibles: 10);
+        try
+        {
+            await ExigirPlanQueReejecutaLaSubconsultaAsync(cadena, lote);
+
+            _o.TamanoDeLote = lote;
+            using var ctx = Aislado(cadena);
+            var tomados = await Procesador(ctx, ManejadorFalso.Responde(HttpStatusCode.Created))
+                .TomarLoteAsync(default);
+
+            Assert.Equal(lote, tomados.Count);
+        }
+        finally
+        {
+            await BorrarEsquemaAsync(esquema);
+        }
     }
 }

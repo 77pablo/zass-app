@@ -93,20 +93,29 @@ public sealed class ProcesadorDeCorreo
     /// tarda este UPDATE; la reserva que protege el envío es el estado «Enviando» con
     /// <c>programada_para</c> en el futuro. Si el trabajador muere a mitad, vencida la
     /// reserva otro retoma el aviso (y el intento ya quedó contado).
+    ///
+    /// La selección va en una CTE <c>MATERIALIZED</c> y no en <c>WHERE id IN (subconsulta)</c>:
+    /// con estadísticas de tabla casi vacía PostgreSQL puede planificar el IN como un Nested Loop
+    /// Semi Join que reejecuta la subconsulta por cada fila, y entonces el UPDATE toma más filas
+    /// que el LIMIT (J1: 10 con lote 5, visto en CI con PG 17.5 y en local con PG 18).
+    /// MATERIALIZED obliga a evaluarla una sola vez.
     /// </summary>
     internal async Task<List<Guid>> TomarLoteAsync(CancellationToken ct)
     {
         var ahora = _reloj.Ahora;
         const string sql = """
-            UPDATE notificaciones SET estado = 'Enviando', intentos = intentos + 1, programada_para = @reserva
-            WHERE id IN (
+            WITH lote AS MATERIALIZED (
                 SELECT id FROM notificaciones
                 WHERE canal = 'Correo' AND tipo = ANY(@tipos)
                   AND estado IN ('Programada', 'Enviando') AND programada_para <= @ahora
                 ORDER BY programada_para
                 LIMIT @lote
                 FOR UPDATE SKIP LOCKED)
-            RETURNING id
+            UPDATE notificaciones n
+               SET estado = 'Enviando', intentos = n.intentos + 1, programada_para = @reserva
+              FROM lote
+             WHERE n.id = lote.id
+            RETURNING n.id
             """;
 
         await _ctx.Database.OpenConnectionAsync(ct);
