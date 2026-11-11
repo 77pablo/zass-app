@@ -302,7 +302,7 @@ function BloquearFechas() {
     try {
       await quitarBloqueo(id)
       setAviso({ tono: 'bueno', texto: 'Bloqueo quitado: esas fechas vuelven a estar disponibles.' })
-      setBloqueos((bs) => (bs ?? []).filter((b) => b.id !== id))
+      setBloqueos((bs) => bs ?? [])   // MUTACION: no lo saca de la lista
     } catch (e) {
       // El bloqueo sigue ahi: decir que se quito cuando no se quito seria peor que el fallo.
       setAviso({ tono: 'malo', texto: mensajeDe(e, 'No pudimos quitar ese bloqueo. Intenta de nuevo.') })

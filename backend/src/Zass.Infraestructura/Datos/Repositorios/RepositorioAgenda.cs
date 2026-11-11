@@ -103,7 +103,7 @@ public sealed class RepositorioAgendaEfCore : IRepositorioAgenda
         _ctx.BloqueosAgenda
             .AsTracking()
             .FirstOrDefaultAsync(
-                x => x.Id == bloqueoId && x.PerfilPrestadorId == perfilPrestadorId, ct);
+                x => x.Id == bloqueoId, ct);   // MUTACION: sin filtro de dueño
 
     public void QuitarBloqueo(BloqueoAgenda bloqueo) => _ctx.BloqueosAgenda.Remove(bloqueo);
 
