@@ -11,6 +11,7 @@ import { useTitulo } from '../marco/useTitulo'
 import { useSesion } from '../sesion/contexto'
 import { AgendarHora } from './AgendarHora'
 import { NoEncontrada } from './NoEncontrada'
+import { SinContactoPorAhora, SinHorasPorAhora } from './SinSuscripcion'
 
 /** Solo http(s): un `javascript:` en el sitio web de alguien no se vuelve un enlace. */
 function enlaceSeguro(url: string): string | null {
@@ -100,6 +101,9 @@ export function Ficha() {
   const sitio = c.sitioWeb ? enlaceSeguro(c.sitioWeb) : null
   const wasap = c.whatsapp ? c.whatsapp.replace(/\D/g, '') : ''
   const hayContacto = Boolean(c.telefono || wasap || c.correo || sitio)
+  // RN-S6-10: la ficha se ve entera, pero sin contactar ni agendar. El servidor ya mando el
+  // contacto vacio; aqui solo se DICE, para que no parezca una ficha a medio cargar.
+  const alDia = ficha.suscripcionVigente
 
   return (
     <div className="contenedor ficha-pagina">
@@ -155,12 +159,16 @@ export function Ficha() {
             )}
           </section>
 
-          <AgendarHora
-            slug={ficha.slug}
-            nombre={ficha.nombrePublico}
-            servicios={ficha.servicios}
-            elegidoInicial={{ servicio: busqueda.get('servicio'), bloque: busqueda.get('bloque') }}
-          />
+          {alDia ? (
+            <AgendarHora
+              slug={ficha.slug}
+              nombre={ficha.nombrePublico}
+              servicios={ficha.servicios}
+              elegidoInicial={{ servicio: busqueda.get('servicio'), bloque: busqueda.get('bloque') }}
+            />
+          ) : (
+            <SinHorasPorAhora nombre={ficha.nombrePublico} />
+          )}
 
           {ficha.credenciales.length > 0 && (
             <section className="bloque">
@@ -219,7 +227,9 @@ export function Ficha() {
         <aside className="lateral" aria-label="Contacto">
           <div className="lateral-caja">
             <h2>Hablar con {ficha.nombrePublico.split(' ')[0]}</h2>
-            {ficha.contactoRequiereCuenta ? (
+            {!alDia ? (
+              <SinContactoPorAhora nombre={ficha.nombrePublico} />
+            ) : ficha.contactoRequiereCuenta ? (
               <div className="contacto-cuenta">
                 <p>
                   Para hablar con {ficha.nombrePublico.split(' ')[0]} crea tu cuenta gratis.
@@ -268,9 +278,11 @@ export function Ficha() {
                 Esta persona todavía no publicó cómo contactarla.
               </p>
             )}
-            <p className="letra-chica">
-              Contactar no te cuesta nada: hablas directo con quien te atiende.
-            </p>
+            {alDia && (
+              <p className="letra-chica">
+                Contactar no te cuesta nada: hablas directo con quien te atiende.
+              </p>
+            )}
           </div>
         </aside>
       </div>

@@ -43,6 +43,8 @@ const FICHA = {
   promedioCalificacion: null, totalResenas: 2,
   contacto: { telefono: null, whatsapp: '+56 9 5550 0101', correo: null, sitioWeb: 'javascript:alert(1)' },
   publicadoEn: null,
+  // RN-S6-10: la API siempre lo manda. Sin esto, la ficha se pintaria como la de un impago.
+  suscripcionVigente: true,
 }
 const BUSQUEDA = {
   resultados: [{
