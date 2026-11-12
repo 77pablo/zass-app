@@ -93,7 +93,17 @@ export function datosDeFicha(ficha) {
   const principal = (zonas.find((z) => z.principal) ?? zonas[0])?.nombre ?? ''
   const descripcion = NOMBRE(ficha.descripcion)
 
-  return { nombre, oficio, zonas: zonas.map((z) => z.nombre), principal, descripcion }
+  // RN-S6-10. La ficha de quien dejo de pagar SIGUE respondiendo 200 —se abre por la tarjeta
+  // NFC, por un enlace guardado o por un enlace compartido—, pero no entra al indice: con
+  // RN-S3-09 ya no esta en la busqueda ni en el mapa del sitio, y esta era la otra puerta.
+  //
+  // `=== false` y no `!== true` a proposito: si la API no mandara el campo (una version vieja
+  // durante un despliegue), se indexa como siempre. Al reves, un campo ausente sacaria del
+  // indice a TODAS las fichas de golpe, que es un daño mucho mayor y mucho mas lento de
+  // deshacer que indexar unas horas de mas a un impago.
+  const indexable = ficha.suscripcionVigente !== false
+
+  return { nombre, oficio, zonas: zonas.map((z) => z.nombre), principal, descripcion, indexable }
 }
 
 /** «Corretaje de propiedades en Centro»; sin zona, solo el oficio; sin nada, cadena vacia. */
@@ -117,7 +127,14 @@ export function descripcionDeFicha(d) {
   return recortar(base, 160)
 }
 
-/** El bloque de <head> de una ficha. Cada valor pasa por escaparHtml o jsonParaScript. */
+/**
+ * El bloque de &lt;head&gt; de una ficha. Cada valor pasa por escaparHtml o jsonParaScript.
+ *
+ * Con `d.indexable` en falso (RN-S6-10) la ficha conserva sus etiquetas —quien la comparta por
+ * WhatsApp sigue viendo de quien es— pero se va con `noindex, nofollow` y SIN los datos
+ * estructurados: anunciar un `ProfessionalService` que ahora mismo no se puede ni contactar ni
+ * agendar seria decirle a Google algo que la pagina ya no cumple.
+ */
 export function metaDeFicha(d, slug, origen) {
   const url = `${origen}/prestadores/${encodeURIComponent(slug)}`
   const titulo = tituloDeFicha(d)
@@ -135,6 +152,7 @@ export function metaDeFicha(d, slug, origen) {
   }
 
   return [
+    ...(d.indexable ? [] : [`<meta name="robots" content="noindex, nofollow" />`]),
     `<title>${escaparHtml(titulo)}</title>`,
     `<meta name="description" content="${escaparHtml(descripcion)}" />`,
     `<link rel="canonical" href="${escaparHtml(url)}" />`,
@@ -151,7 +169,7 @@ export function metaDeFicha(d, slug, origen) {
     `<meta name="twitter:title" content="${escaparHtml(titulo)}" />`,
     `<meta name="twitter:description" content="${escaparHtml(descripcion)}" />`,
     `<meta name="twitter:image" content="${escaparHtml(imagen)}" />`,
-    `<script type="application/ld+json">${jsonParaScript(ld)}</script>`,
+    ...(d.indexable ? [`<script type="application/ld+json">${jsonParaScript(ld)}</script>`] : []),
   ].join('\n    ')
 }
 
