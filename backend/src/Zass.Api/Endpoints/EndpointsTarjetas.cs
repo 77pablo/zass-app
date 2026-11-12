@@ -51,7 +51,7 @@ public static class EndpointsTarjetas
     internal static string Destino(EscaneoResuelto r) => r.Destino switch
     {
         DestinoTarjeta.Ficha => "/prestadores/" + Uri.EscapeDataString(r.Slug!),
-        DestinoTarjeta.PerfilNoDisponible => PaginaNoDisponible,
+        DestinoTarjeta.PerfilNoDisponible => PaginaNoValida,
         DestinoTarjeta.Activacion => PaginaSinActivar,
         _ => PaginaNoValida,
     };
