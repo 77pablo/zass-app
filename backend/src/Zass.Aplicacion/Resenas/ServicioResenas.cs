@@ -217,7 +217,10 @@ public sealed class ServicioResenas : IServicioResenas
                 AutorId = cmd.BuscadorId,
                 Calificacion = (short)cmd.Calificacion,
                 Comentario = comentario,
-                Tipo = TipoResena.Servicio,
+                // CU-16 flujo 4C: con el prestador ausente la reseña es limitada y nace marcada
+                // como «por inasistencia». Lo decide la elegibilidad, que es quien miró la cita.
+                // Antes esto era siempre `Servicio` y el valor `Inasistencia` no lo escribía nadie.
+                Tipo = elegibilidad.Tipo,
                 Estado = EstadoResena.Publicada,
                 Aspectos = aspectos.ToList(),
                 Editada = false,

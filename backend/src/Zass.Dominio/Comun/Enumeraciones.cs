@@ -31,6 +31,17 @@ public enum EstadoCita
     Reprogramada, PendienteAsistencia, Realizada, NoAsistio
 }
 
+/// <summary>
+/// T10 de estados-cita.md: «Marcar no asistio … **Indica quien falto**». Quien falto a una cita
+/// que no ocurrio, segun lo que haya dicho cada parte (decision de Pablo, 11-nov-2026).
+///
+/// Cada parte solo puede acusar a la OTRA, asi que estos valores no se eligen desde afuera: se
+/// deducen de quien hablo. <see cref="Discrepancia"/> NO significa «faltaron los dos»: significa
+/// que cada uno acusa al otro y el sistema no sabe cual es verdad. Es un desenlace distinto, y
+/// peor, porque no se puede resolver solo mirando la cita.
+/// </summary>
+public enum FaltaEnCita { Nadie, Cliente, Prestador, Discrepancia }
+
 public enum TipoCambio
 {
     Creacion, Confirmacion, Rechazo, Cancelacion, Reprogramacion, Asistencia

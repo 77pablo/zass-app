@@ -490,6 +490,24 @@ public class ZassDbContext : DbContext
             e.Property(x => x.NotaBuscador).HasMaxLength(500);
             e.Property(x => x.Version).IsConcurrencyToken();          // CC-02
 
+            // T10 · «Indica quien falto». Texto, como los demas enums, y NOT NULL con 'Nadie'
+            // por omision: las citas que ya existen no ocurrieron en disputa.
+            e.Property(x => x.QuienFalto).HasConversion<string>().HasMaxLength(20)
+                .IsRequired().HasDefaultValue(FaltaEnCita.Nadie);
+
+            // «Quien falto» solo tiene sentido si la cita no ocurrio. Esto impide el estado
+            // imposible: una cita realizada con alguien marcado como ausente. No es decoracion:
+            // si una ruta nueva olvidara limpiarlo, la elegibilidad de resena empezaria a decir
+            // que si justo donde la decision de Pablo dice que no.
+            e.ToTable(t => t.HasCheckConstraint("ck_cita_quien_falto",
+                "quien_falto = 'Nadie' OR estado = 'NoAsistio'"));
+
+            // La cola interna de revision se consulta por aqui. Parcial: las citas en disputa
+            // son una minoria, y un indice sobre toda la columna no serviria para encontrarlas.
+            e.HasIndex(x => x.QuienFalto)
+                .HasFilter("quien_falto = 'Discrepancia'")
+                .HasDatabaseName("ix_cita_en_disputa");
+
             // ---------------------------------------------------------------
             // R-1 · LA RESTRICCION MAS IMPORTANTE DEL SISTEMA
             // Un bloque admite exactamente una cita activa. Indice unico parcial:

@@ -112,6 +112,23 @@ public interface IServicioAgenda
     Task<Resultado<CitaDto>> RegistrarAsistenciaAsync(
         Guid citaId, AutorDeCambio autor, bool asistio, CancellationToken ct = default);
 
+    /// <summary>
+    /// La otra mitad de T10 (decision de Pablo, 11-nov-2026): solo el BUSCADOR, y solo despues
+    /// de la hora. Dice que el prestador no llego.
+    ///
+    /// Que no reciba «a quien acuso» no es un olvido: cada parte solo puede acusar a la otra, y
+    /// la unica forma de garantizarlo es que ese valor no se pueda elegir desde fuera.
+    /// </summary>
+    Task<Resultado<CitaDto>> AcusarAusenciaDelPrestadorAsync(
+        Guid citaId, AutorDeCambio autor, CancellationToken ct = default);
+
+    /// <summary>
+    /// La cola interna de revision: las citas en las que cada parte acusa a la otra. Mientras
+    /// una cita este aqui, su resena esta bloqueada.
+    /// </summary>
+    Task<IReadOnlyList<Zass.Dominio.Agenda.Cita>> CitasEnDisputaAsync(
+        int maximo = 200, CancellationToken ct = default);
+
     // ------------------------------------------------------------- A-09: lo que mueve el tiempo
 
     /// <summary>

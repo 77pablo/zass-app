@@ -350,6 +350,14 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasColumnType("uuid")
                         .HasColumnName("prestador_servicio_id");
 
+                    b.Property<string>("QuienFalto")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Nadie")
+                        .HasColumnName("quien_falto");
+
                     b.Property<int>("Version")
                         .IsConcurrencyToken()
                         .HasColumnType("integer")
@@ -378,6 +386,10 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.HasIndex("PrestadorServicioId")
                         .HasDatabaseName("i_x_citas_prestador_servicio_id");
 
+                    b.HasIndex("QuienFalto")
+                        .HasDatabaseName("ix_cita_en_disputa")
+                        .HasFilter("quien_falto = 'Discrepancia'");
+
                     b.HasIndex("BuscadorId", "Estado")
                         .HasDatabaseName("i_x_citas_buscador_id_estado");
 
@@ -387,6 +399,8 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.ToTable("citas", t =>
                         {
                             t.HasCheckConstraint("ck_cita_origen", "cita_origen_id IS NULL OR cita_origen_id <> id");
+
+                            t.HasCheckConstraint("ck_cita_quien_falto", "quien_falto = 'Nadie' OR estado = 'NoAsistio'");
                         });
                 });
 

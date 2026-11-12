@@ -56,9 +56,9 @@ public static class ReglasDeResenas
             return contacto.Cita?.Estado switch
             {
                 EstadoCita.Realizada => Si(contacto.Id),
-                EstadoCita.NoAsistio => No(
-                    MotivoDeNoElegibilidad.CitaNoAsistio,
-                    "Esta cita quedó marcada como inasistencia y por ahora no permite dejar reseña."),
+                // Decisión de Pablo (11-nov-2026) y cuadro de elegibilidad de S5 §3. Una cita
+                // que no ocurrió ya no es un solo caso: depende de quién faltó.
+                EstadoCita.NoAsistio => PorInasistencia(contacto),
                 EstadoCita.Solicitada or EstadoCita.Confirmada or EstadoCita.PendienteAsistencia => No(
                     MotivoDeNoElegibilidad.CitaSinRealizar,
                     "Todavía no hay experiencia que reseñar: la cita aún no se realiza."),
@@ -93,6 +93,40 @@ public static class ReglasDeResenas
         static ResultadoElegibilidad No(MotivoDeNoElegibilidad m, string mensaje) =>
             new(false, null, m, mensaje, null);
     }
+
+    /// <summary>
+    /// Una cita que no ocurrió, según quién faltó (decisión de Pablo del 11-nov-2026, y cuadro
+    /// de elegibilidad de S5 §3):
+    ///
+    /// <list type="bullet">
+    /// <item>Faltó el PRESTADOR: el cliente sí reseña, pero una reseña LIMITADA, de tipo
+    /// inasistencia (CU-16 flujo 4C): opina sobre el plantón, no sobre un servicio que nunca
+    /// recibió.</item>
+    /// <item>Faltó el CLIENTE: no hay reseña. No se presentó.</item>
+    /// <item>Se contradicen: la reseña se bloquea DE INMEDIATO y la cita queda en la cola
+    /// interna de revisión. Dos versiones opuestas y ninguna prueba; publicar la de quien
+    /// llegue primero sería darle la razón.</item>
+    /// <item><see cref="FaltaEnCita.Nadie"/> con la cita en `no_asistio` no debería existir:
+    /// la única forma de llegar a ese estado es acusando. Si aparece, es una fila anterior a
+    /// esta regla o un error, y se trata como el caso que no habilita.</item>
+    /// </list>
+    /// </summary>
+    private static ResultadoElegibilidad PorInasistencia(Contacto contacto) =>
+        contacto.Cita!.QuienFalto switch
+        {
+            FaltaEnCita.Prestador => new ResultadoElegibilidad(
+                true, contacto.Id, MotivoDeNoElegibilidad.Ninguno, null, null,
+                TipoResena.Inasistencia),
+
+            FaltaEnCita.Discrepancia => new ResultadoElegibilidad(
+                false, null, MotivoDeNoElegibilidad.CitaEnDisputa,
+                "Tú y el prestador dijeron cosas distintas sobre esta cita. La estamos revisando, "
+                + "y por ahora no se puede reseñar.", null),
+
+            _ => new ResultadoElegibilidad(
+                false, null, MotivoDeNoElegibilidad.CitaNoAsistio,
+                "Esta cita quedó marcada como inasistencia tuya, así que no habilita reseña.", null),
+        };
 
     // ------------------------------------------------ datos personales (CU-16 paso 5)
 

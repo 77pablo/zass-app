@@ -582,16 +582,28 @@ public class AgendaPruebas
         Assert.False(await _servicio.CitaRealizadaAsync(_buscador.Id, _prestador.Id));
     }
 
+    /// <summary>
+    /// Decisión de Pablo (11-nov-2026). Antes esta prueba decía que CUALQUIER `no_asistio`
+    /// habilitaba, con el comentario «si faltó el prestador, se puede reseñar» — y la cita no
+    /// guardaba quién había faltado, así que también habilitaba cuando el ausente era el
+    /// cliente. Ahora hay que decir quién.
+    /// </summary>
     [Theory]
-    [InlineData(EstadoCita.Realizada, true)]
-    [InlineData(EstadoCita.NoAsistio, true)]   // si faltó el prestador, se puede reseñar
-    [InlineData(EstadoCita.Confirmada, false)]
-    [InlineData(EstadoCita.Cancelada, false)]
-    [InlineData(EstadoCita.PendienteAsistencia, false)]
-    public async Task Solo_una_cita_cumplida_habilita_a_resenar(EstadoCita estado, bool habilita)
+    [InlineData(EstadoCita.Realizada, FaltaEnCita.Nadie, true)]
+    [InlineData(EstadoCita.NoAsistio, FaltaEnCita.Prestador, true)]      // plantón: sí reseña
+    [InlineData(EstadoCita.NoAsistio, FaltaEnCita.Cliente, false)]       // no se presentó
+    [InlineData(EstadoCita.NoAsistio, FaltaEnCita.Discrepancia, false)]  // cada uno dice una cosa
+    [InlineData(EstadoCita.NoAsistio, FaltaEnCita.Nadie, false)]         // fila vieja: no habilita
+    [InlineData(EstadoCita.Confirmada, FaltaEnCita.Nadie, false)]
+    [InlineData(EstadoCita.Cancelada, FaltaEnCita.Nadie, false)]
+    [InlineData(EstadoCita.PendienteAsistencia, FaltaEnCita.Nadie, false)]
+    public async Task Solo_una_cita_cumplida_habilita_a_resenar(
+        EstadoCita estado, FaltaEnCita quienFalto, bool habilita)
     {
         await AgendarAsync(UnBloque());
-        _base.Citas.Single().Estado = estado;
+        var cita = _base.Citas.Single();
+        cita.Estado = estado;
+        cita.QuienFalto = quienFalto;
 
         Assert.Equal(habilita, await _servicio.CitaRealizadaAsync(_buscador.Id, _prestador.Id));
     }
