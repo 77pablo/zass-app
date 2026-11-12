@@ -282,7 +282,7 @@ function FilaDeCita({ cita, mio, alCambiar }: {
 
       {formulario === 'reprogramar' && (
         <ReprogramarCita
-          cita={cita} miPerfil={mio}
+          cita={cita}
           alTerminar={() => { setFormulario(null); alCambiar() }}
           alCerrar={() => setFormulario(null)}
         />

@@ -1,4 +1,4 @@
-using Zass.Aplicacion.Catalogo;
+﻿using Zass.Aplicacion.Catalogo;
 using Zass.Aplicacion.Comun;
 using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Puertos;
@@ -875,6 +875,7 @@ public sealed class ServicioAgenda : IServicioAgenda
         c.PrestadorServicioId,
         c.PerfilPrestadorId,
         c.PerfilPrestador?.NombrePublico ?? "",
+        c.PerfilPrestador?.Slug ?? "",
         c.NotaBuscador,
         c.ExpiraEn,
         nueva);

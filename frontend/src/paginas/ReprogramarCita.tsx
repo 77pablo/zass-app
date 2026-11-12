@@ -5,7 +5,6 @@ import {
   calendarioDe, diaDeChile, horaDeChile, nuevaClaveDeIdempotencia, porDia, reprogramarCita,
   type Bloque, type Calendario, type Cita,
 } from '../funciones/agenda/servicio'
-import { slugDelPrestador } from '../funciones/agenda/slug-del-prestador'
 
 const DIAS_VISIBLES = 7
 const LARGO_MOTIVO = 300
@@ -25,10 +24,9 @@ type Carga =
  *
  * El panel no promete ningun aviso a la otra parte: hoy el servidor no manda ninguno.
  */
-export function ReprogramarCita({ cita, miPerfil, alTerminar, alCerrar }: {
+export function ReprogramarCita({ cita, alTerminar, alCerrar }: {
   cita: Cita
   /** Mi perfil de prestador, si tengo uno. Sirve para resolver el slug sin salir a buscarlo. */
-  miPerfil: { id: string; slug: string } | null
   alTerminar: () => void
   alCerrar: () => void
 }) {
@@ -46,13 +44,13 @@ export function ReprogramarCita({ cita, miPerfil, alTerminar, alCerrar }: {
 
   useEffect(() => {
     let vigente = true
-    slugDelPrestador(cita, miPerfil)
-      .then(async (slug) => {
-        if (slug === null) {
-          if (vigente) setCarga({ tipo: 'sin-ficha' })
-          return
-        }
-        const calendario = await calendarioDe(slug, cita.prestadorServicioId)
+    // API-37 devuelve el slug del prestador, asi que el calendario se pide directo.
+    if (cita.prestadorSlug === '') {
+      setCarga({ tipo: 'sin-ficha' })
+      return
+    }
+    calendarioDe(cita.prestadorSlug, cita.prestadorServicioId)
+      .then((calendario) => {
         if (vigente) setCarga({ tipo: 'ok', calendario })
       })
       .catch((e: unknown) => {
@@ -62,8 +60,8 @@ export function ReprogramarCita({ cita, miPerfil, alTerminar, alCerrar }: {
         })
       })
     return () => { vigente = false }
-    // `cita` y `miPerfil` son estables mientras el panel esta abierto: la lista se recarga entera.
-  }, [cita, miPerfil, intento])
+    // `cita` es estable mientras el panel esta abierto: la lista se recarga entera.
+  }, [cita, intento])
 
   const libres = useMemo(
     () => (carga.tipo === 'ok' ? carga.calendario.bloques.filter((b) => b.estado === 'libre') : []),

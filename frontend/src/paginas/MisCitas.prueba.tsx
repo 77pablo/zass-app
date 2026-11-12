@@ -17,6 +17,7 @@ function cita(extra: Record<string, unknown>) {
     id: 'c', codigo: 'ZS-0001', estado: 'Confirmada', modo: 'Automatico',
     inicioEn: '2026-11-20T13:00:00Z', finEn: '2026-11-20T13:30:00Z', servicio: 'Consulta inicial',
     prestadorServicioId: 's', perfilPrestadorId: 'perfil-otro', prestador: 'Estudio Espinoza',
+    prestadorSlug: 'estudio-espinoza',
     notaBuscador: null, expiraEn: null, nueva: false, ...extra,
   }
 }
@@ -277,7 +278,6 @@ describe('reprogramar (CU-14)', () => {
 
   it('el cliente elige otra hora del mismo servicio y el cambio viaja con su clave de idempotencia', async () => {
     citas = [cita({ id: 'a', inicioEn: enHoras(48) })]
-    encontrados = [{ perfilId: 'perfil-otro', slug: 'estudio-espinoza' }]
     bloquesLibres = LIBRES
     alAccionar = () => json({ ...cita({ id: 'nueva', codigo: 'ZS-NUEVA' }), nueva: true }, 201)
     pintar()
@@ -291,11 +291,12 @@ describe('reprogramar (CU-14)', () => {
     expect(llamadas[0].cuerpo).toEqual({ bloqueNuevoId: 'b2', motivo: null })
     expect(llamadas[0].cabeceras['Idempotency-Key']).toMatch(/^[0-9a-f-]{36}$/)
     expect(calendariosPedidos[0]).toContain('/api/prestadores/estudio-espinoza/bloques')
+    // El slug viene en la cita (API-37): no se sale a buscar al prestador por su nombre.
+    expect(busquedasHechas).toBe(0)
   })
 
   it('solo ofrece las horas libres: una ocupada no se puede elegir', async () => {
     citas = [cita({ id: 'a', inicioEn: enHoras(48) })]
-    encontrados = [{ perfilId: 'perfil-otro', slug: 'estudio-espinoza' }]
     bloquesLibres = LIBRES
     pintar()
 
@@ -305,7 +306,6 @@ describe('reprogramar (CU-14)', () => {
 
   it('al terminar muestra el codigo nuevo y dice que la resena sigue en pie (RN-S4-05)', async () => {
     citas = [cita({ id: 'a', inicioEn: enHoras(48) })]
-    encontrados = [{ perfilId: 'perfil-otro', slug: 'estudio-espinoza' }]
     bloquesLibres = LIBRES
     alAccionar = () => json({ ...cita({ id: 'nueva', codigo: 'ZS-NUEVA' }), nueva: true }, 201)
     pintar()
@@ -321,7 +321,6 @@ describe('reprogramar (CU-14)', () => {
   /** Flujo 5A: nada cambio, la cita vieja sigue en pie, y el por que tiene que quedar a la vista. */
   it('si la hora se tomo recien recarga el calendario y deja el aviso visible', async () => {
     citas = [cita({ id: 'a', inicioEn: enHoras(48) })]
-    encontrados = [{ perfilId: 'perfil-otro', slug: 'estudio-espinoza' }]
     bloquesLibres = LIBRES
     alAccionar = () => json({ title: 'Conflicto', detail: 'Alguien tomó esa hora recién. Elige otra, por favor.' }, 409)
     pintar()
@@ -338,7 +337,6 @@ describe('reprogramar (CU-14)', () => {
   /** CC-04: el reintento es el MISMO envio; elegir otra hora es otra intencion. */
   it('reintentar reusa la clave, y cambiar de hora estrena una nueva', async () => {
     citas = [cita({ id: 'a', inicioEn: enHoras(48) })]
-    encontrados = [{ perfilId: 'perfil-otro', slug: 'estudio-espinoza' }]
     bloquesLibres = LIBRES
     alAccionar = () => json({ title: 'caida' }, 500)
     pintar()
@@ -369,7 +367,7 @@ describe('reprogramar (CU-14)', () => {
   })
 
   it('el prestador si mueve su hora dentro de las 2 h, y abre su calendario sin salir a buscarlo', async () => {
-    citas = [cita({ id: 'a', inicioEn: enHoras(1), perfilPrestadorId: MI_PERFIL })]
+    citas = [cita({ id: 'a', inicioEn: enHoras(1), perfilPrestadorId: MI_PERFIL, prestadorSlug: MI_SLUG })]
     bloquesLibres = LIBRES
     pintar('dentro', ['prestador'])
 
@@ -388,9 +386,8 @@ describe('reprogramar (CU-14)', () => {
   })
 
   /** Sin slug no hay calendario publico que abrir: se dice, no se deja un panel vacio. */
-  it('si no se puede resolver la ficha del prestador, lo dice y ofrece buscarlo', async () => {
-    citas = [cita({ id: 'a', inicioEn: enHoras(48) })]
-    encontrados = [{ perfilId: 'otro-cualquiera', slug: 'otra-persona' }]
+  it('si la cita viene sin slug del prestador, lo dice y ofrece buscarlo', async () => {
+    citas = [cita({ id: 'a', inicioEn: enHoras(48), prestadorSlug: '' })]
     pintar()
 
     await userEvent.click(await screen.findByRole('button', { name: 'Reprogramar' }))

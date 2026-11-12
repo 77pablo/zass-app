@@ -44,6 +44,8 @@ export interface Cita {
   prestadorServicioId: string
   perfilPrestadorId: string
   prestador: string
+  /** El calendario (API-35) solo se puede pedir por slug, y reprogramar necesita abrirlo. */
+  prestadorSlug: string
   notaBuscador: string | null
   /** Solo en las manuales: si el prestador no responde antes, la hora se libera (RN-S4-03). */
   expiraEn: string | null
