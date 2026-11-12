@@ -1,6 +1,8 @@
 # ZASS! — estado del desarrollo
 
-**Última sesión:** 9 de noviembre de 2026 (se rescataron las dos ramas de agentes que habían quedado sin
+**Última sesión:** 12 de noviembre de 2026 — ver **«Sesión del 12-nov»** justo debajo.
+
+**Sesión anterior:** 9 de noviembre de 2026 (se rescataron las dos ramas de agentes que habían quedado sin
 verificar —`verificacion` y `fondo`—, se construyó el planificador A-09 y **MOD-06 Agenda** entero en el
 backend, sin la pantalla). **Lo que sigue pendiente está en «Sesión del 9-nov» más abajo.**
 
@@ -10,6 +12,117 @@ repositorio en GitHub).
 
 Este archivo existe para retomar sin reconstruir contexto. Dice **qué está hecho y
 comprobado**, **qué no**, y **el siguiente paso exacto**.
+
+---
+
+## Sesión del 12-nov-2026 — dónde retomar
+
+### Lo que quedó HECHO y COMPROBADO
+
+| Rama | Qué | Estado |
+|---|---|---|
+| `cupos-fundador-50` | Cupos fundador de 20 a 50 | **FUSIONADA EN `main` Y SUBIDA** (`a567914`). **Neon NO fue migrada**: ese paso lo hace Pablo desde Render |
+| `agente/mis-citas` | Reprogramar (API-41) + agrupar por día chileno + `CitaDto` trae el `slug` | Commiteada (`4c014fb`, `a1a248d`), **sin subir** |
+
+**Pruebas corridas por mí, no por informe ajeno:** 674 aplicación + 16 arquitectura + 614
+integración + 392 interfaz, todo en verde.
+
+**La prueba de concurrencia de cupos no tenía ningún defecto.** Fallaba con
+`53300: sorry, too many clients already` porque el PostgreSQL local admitía **50** conexiones
+(`datos-pg/postgresql.conf` lo fijaba al final del archivo, pisando el 100 de más arriba) y la
+prueba de 60 solicitantes necesita 61. Subido a **200**; copia en `postgresql.conf.antes-de-200`.
+Esa carpeta está en `.gitignore`: no entra a ningún commit. CI no necesita cambios (97 utilizables,
+pico medido ~61). El arnés ahora comprueba la holgura ANTES de empezar y falla diciendo que no es
+un defecto del reparto.
+
+`/mis-citas` **ya existía** en `main` desde `b678b42` con cancelar, confirmar, rechazar y
+asistencia; este archivo decía que no existía. Reparto aclarado: `/mi-agenda` = reglas de atención
+(qué horas ofrezco, qué días bloqueo); `/mis-citas` = ciclo de una cita, de los dos lados.
+
+**CU-14 precondición P2 corregida en la documentación** (y sitio regenerado): cancelar acepta
+`confirmada` o `solicitada`; **reprogramar solo `confirmada`**, que es lo que hace el código
+(`ServicioAgenda.cs:575`) y lo que dice `estados-cita.md`.
+
+### Las dos ramas de agentes que se cayeron por el límite de 5 horas
+
+Volvió a pasar lo del 8-nov: **el límite de la ventana, no la capacidad**. Esta vez el trabajo SÍ
+quedó guardado y revisado.
+
+| Rama | Qué dejó | Qué falta |
+|---|---|---|
+| `agente/revision-joaquin` (`4c51433`) | **RN-S6-10 implementada**: la ficha se ve entera pero sin contactar ni agendar; el contacto se vacía **en el servidor**; `BloquesLibresAsync` ya mira la suscripción; campo `SuscripcionVigente` en el DTO y en el frontend | **Dejó TRES mutantes vivos** (`var vigente = true`, calendario sin guarda, `const alDia = true`). Revertidos y reconstruidos; el árbol se comprobó después: 682 aplicación + 378 interfaz, `tsc -b` limpio. **Pero NO corrió sus mutaciones**, así que no está demostrado que sus guardas caigan; integración sin correr; y **nunca llegó el informe de la revisión de J3 y J4**, que era su primera tarea. **NO FUSIONAR así** |
+| `agente/resenas-pantalla` (`f7c435e`) | Cliente de API ampliado y las carpetas `funciones/resenas` y `componentes/resenas` | Sin compilar, sin pruebas, sin informe. Sin mutantes |
+
+### Revisión de J3 y J4 de Joaquín — HECHA (12-nov, tarde)
+
+| Rama | Veredicto | Qué falta |
+|---|---|---|
+| J3 `revision-visual-agenda-ficha` (`ee96db1`) | **FUSIONABLE** | Que Pablo apruebe 3 textos visibles (regla 12 de `CONTRIBUIR.md`) |
+| J4 `tarjeta-abre-ficha` (`a45934b`) | **FUSIONABLE CON CAMBIOS** | Restaurar el **BOM UTF-8** de `Program.cs`, que J4 le quitó sin querer (comprobado: `main` empieza con `ef bb bf`, J4 no) + 3 textos |
+
+Números medidos aquí, no los del autor: J4 da 701 aplicación + 17 arquitectura + 628 integración +
+391 interfaz; J3 da 374 de interfaz. Las mutaciones de `origin/mut-tarjeta-endpoint` caen las 5
+prometidas; las de `origin/mut-j3-agenda` caen **3 de 5**.
+
+**Dos hallazgos que valen más que el veredicto:**
+1. **El aviso de J2 se repite en J4 y es estructural.** Las 4 mutaciones del endpoint de tarjetas
+   dejan las **701 pruebas de aplicación en verde**: no existe ninguna unitaria que toque
+   `EndpointsTarjetas`. Solo la integración las protege.
+2. **En J3, las 2 mutaciones de CSS no ponen nada en rojo.** jsdom no calcula estilos, así que el
+   objetivo táctil de 44 px y el `text-indent` no están protegidos por ninguna prueba: ese veredicto
+   visual depende de que alguien lo mire en un navegador.
+
+Sin comprobar en J4: que Cloudflare Pages **no** enrute `/T/…` a la Function (todo el respaldo en
+mayúsculas depende de eso, y solo se ve desplegando); y que `X-Forwarded-For` llegue bien a la tasa P
+— API-54 hereda el defecto de IP conocido, así que si la cadena trae más de 3 saltos **todos los
+escaneos de tarjeta contarían como una sola IP**.
+
+### RN-S6-10 — hecha, en `agente/rn-s6-10` (sin fusionar)
+
+`92aaf00` la regla; `494be16` el `noindex`. La ficha del impago se ve entera, pero el contacto **se
+vacía en el servidor** (esconder botones dejaría el teléfono viajando en el JSON), el calendario
+responde **409 y no 404**, y la página sale con `noindex` y **sin JSON-LD**. Pablo decidió el
+12-nov que la ficha impaga **no sea indexable**. Acumulado: 682 + 16 + 617 + 382 en verde.
+
+La bandera se lee como `suscripcionVigente !== false` a propósito: si la API dejara de mandar el
+campo, se indexa como siempre, en vez de sacar del índice **todas** las fichas de golpe. Pega menor
+conocida: el borde cachea 5 min, así que quien vuelva a pagar puede seguir con `noindex` un rato.
+
+### NoAsistio (N3) — estuvo BLOQUEADA, ya no
+
+`CONTRIBUIR.md:135-137` prohíbe empezar una migración antes de que la anterior esté en `main`. Por eso
+no se empezó hasta fusionar los cupos. **Ya está fusionada**, así que C puede partir de `main`
+actualizado. Verificado para quien la retome: los **cuatro sitios de elegibilidad dan tres respuestas
+distintas** ante `NoAsistio`, y `HuboCitaRealizadaAsync` **sí tiene llamador real**
+(`ServicioAgenda.cs:863`), así que no es código muerto. Decidido: borrar los dos `HabilitaResena()`
+y dejar viva solo la respuesta de `ReglasDeResenas`.
+
+### Textos visibles pendientes de Pablo
+
+Bloquean J3 y J4. J3: «Quitar horario», «Quitar bloqueo», «Bloqueaste el 01-01-2027: nadie podrá
+agendar ese día.» · J4: «Esta tarjeta no es válida.», «Este perfil no está disponible por ahora.»,
+«Esta tarjeta todavía no está activa.» Pablo dijo el 12-nov que **los reescribe él**.
+
+### El siguiente paso exacto
+
+1. **Terminar la revisión de J3 y J4 de Joaquín**, que nadie hizo: `origin/revision-visual-agenda-ficha`
+   y `origin/tarjeta-abre-ficha` siguen sin fusionar. **J1 ya está en `main`**. Las tres ramas
+   `origin/mut-*` son mutaciones desechables que sirven de evidencia: comprobar que de verdad ponen rojo.
+2. **Cerrar `agente/revision-joaquin`**: correr integración y las mutaciones que no alcanzó.
+3. Abrir el PR de `cupos-fundador-50` y fusionar `agente/mis-citas`.
+4. **Nadie ha visto ninguna de estas pantallas en un navegador de verdad.** Todo es `fetch` simulado
+   en jsdom. `/mis-citas`, `AgendarHora` y la ficha sin suscripción están sin mirar.
+
+### Decisiones de lanzamiento tomadas por Pablo el 12-nov
+
+Primer mes gratis y después **$5.990/mes congelado para siempre**; mensual normal $7.990. La
+**tarjeta NFC va aparte, a precio normal**. Inscripción por `zass.cl/registro` **+ un Google Forms
+opcional** cuyo gancho es un **cupón de descuento** para el primer mes pagado. **Sin filtro de zona.**
+Al llegar al cupo 50, **se cierra y punto** (sin lista de espera).
+
+Eso deja por construir, y **nada de esto existe**: el mes gratis, el campo de cupón/código de
+descuento, y cerrar el registro fundador al llegar a 50. Sigue sin decidir **de cuánto es el cupón**
+y **la forma de cobro**.
 
 ---
 
@@ -410,7 +523,7 @@ el tipo `FichaPublica`, pero no se comprobó que compile el frontend ni que sus 
 
 **Siguiente paso exacto: la pantalla de la agenda** (el backend está completo, falta casi todo el frontend):
 0. **HECHO**: `enviar` ya admite cabeceras propias (4º parámetro) y repite la MISMA `Idempotency-Key` en sus
-   reintentos internos; 4 pruebas, y se mutó el reintento para ver que caen. **Las 287 pruebas de interfaz pasan y
+   reintentos internos; 4 pruebas, y se mutó el reintento para ver que caen. **Las pruebas de interfaz pasan y
    `tsc -b` compila limpio** (esto cierra el hueco anotado arriba).
 1. **HECHO** `frontend/src/funciones/agenda/servicio.ts` (+10 pruebas): las siete llamadas (API-35 a API-42), la
    clave de idempotencia (`nuevaClaveDeIdempotencia`, UNA por intención) y los ayudantes de hora de Chile
@@ -422,8 +535,15 @@ el tipo `FichaPublica`, pero no se comprobó que compile el frontend ni que sus 
    suelta la elección, recarga el calendario y deja el aviso visible: **un defecto real que cazó su propia prueba**
    (el aviso vivía dentro del panel que desaparecía; se reintrodujo y la prueba cae). **Falta verlo en un navegador:
    no se abrió el sitio, solo pruebas con fetch simulado.** El enlace «Ver mis citas» apunta a `/mis-citas`, que
-   **todavía no existe** (paso 3).
-3. Página «Mis citas» (API-37) con cancelar/reprogramar y, para el prestador, confirmar/rechazar/asistencia.
+   **sí existe** desde `b678b42` (este punto estaba equivocado).
+3. **HECHO (12-nov-2026, rama `agente/mis-citas`, commit `4c014fb`, sin fusionar).** La página «Mis citas»
+   ya existía en `main` con cancelar, confirmar, rechazar y marcar asistencia. Lo que faltaba de verdad y se
+   construyó: **reprogramar** (API-41, RN-S4-05) y **agrupar por día CHILENO**. 23 pruebas nuevas; las de
+   interfaz pasan de 373 a **396 en 29 archivos**, `tsc -b` limpio, 12 mutantes probados y los 12 en rojo.
+   **No se abrió un navegador de verdad: todo es `fetch` simulado en jsdom.** Reparto aclarado:
+   `/mi-agenda` = reglas de atención (qué horas ofrezco, qué días bloqueo); `/mis-citas` = ciclo de una cita,
+   de los dos lados. Pendiente relacionado: `CitaDto` no trae el `slug` y API-35 solo se puede pedir por slug,
+   así que hay un apaño en el frontend (`slug-del-prestador.ts`) que se borra cuando el backend lo devuelva.
 4. Después, la pantalla de reseñas (API-46 a API-53).
 Mantener la línea de diseño de `diseno/prototipo-comunidad.html`: sitio de comunidad, no formulario.
 
@@ -1448,3 +1568,57 @@ Trabajo en paralelo acordado entre Pablo (infraestructura, revisión, decisiones
 - **J1 (N3):** `correo-lote-estricto` (reproducir y corregir intermitencia en prueba `Dos_reservas_simultaneas_reciben_filas_distintas`).
 - **J2 (N2):** `bloqueos-quitar` (endpoints y UI para listar y quitar bloqueos de agenda propios).
 - **J3 (N2):** `revision-visual-agenda-ficha` (revisión visual en celular y escritorio de `/mi-agenda` y `/mi-ficha`).
+
+---
+
+## 11-nov-2026 — medición y correcciones
+
+**Defecto de IP: la causa que decían `ESTADO.md:1368` y `TRASPASO.md:154`/`:197` es FALSA.** La API está
+ella misma detrás de Cloudflare (`zass-api.onrender.com` → CNAME a
+`gcp-us-west1-1.origin.onrender.com.cdn.cloudflare.net`; responde `Server: cloudflare` + `CF-RAY`), y
+Cloudflare **añade** a `X-Forwarded-For`, no la sobreescribe. Luego la cadena trae **≥3 entradas** y la
+hipótesis principal es que `Zass__SaltosDeProxy=3` se queda corto. Prueba pendiente, **sin código**:
+subirlo en el panel de Render y entrar desde datos móviles. El arreglo que proponían los documentos
+(cabecera propia + `ForwardedForHeaderName`) puede ser innecesario.
+
+**Copias:** el ciclo volcado→cifrado→descifrado→`pg_restore` quedó probado entero en local (PostGIS y
+columna generada incluidas, base idéntica hasta el md5 de las filas), pero con herramientas **16.4**.
+El volcado real lo hace `pg_dump` **18**, y `pg_restore` 16.4 lo rechaza (probado: cabecera 1.17 →
+«versión no soportada»). Una restauración de emergencia **NO se puede hacer hoy en este PC**: falta un
+cliente 18 (Docker, binarios portables o job de Actions). Además `--no-owner --no-privileges` en el
+`pg_dump` con `--format=custom` **no hacen nada**: van en el `pg_restore`.
+
+**Pruebas, corridas y en verde:** 674 aplicación + **614** integración + 16 arquitectura + 373 frontend
+en 28 archivos. `CONTRIBUIR.md` dice 613 de integración: es **614**. `CLAUDE.md:3` dice PostgreSQL 18 y
+el entorno local es **16.4** (producción en Neon sí es 18).
+
+### Otras lecturas verificadas ese día
+
+- **J2 ya está en `main`** (`c0022e5`, `dc242a3`): los endpoints de listar y quitar bloqueos existen, así
+  que `ESTADO.md:1407` y `TRASPASO.md:42-43` («falta endpoint para listar/quitar bloqueos») están
+  caducados. Joaquín lo verificó con mutación en `mut-bloqueos-dueno` (`19b50aa`, sin mergear). Ojo a su
+  aviso, confirmado: el doble de pruebas filtra por dueño por su cuenta, así que la unitaria no ve esa
+  mutación; solo la protege la de integración.
+- **J4 = API-54**, `GET /t/{segmento}` (grupo de tasa P), según `api-rest.md` de la documentación. La URL
+  impresa es `zass.cl/t/XXXX-XXXX`. **Nivel N3 sin migración**: el modelo ya existe entero (`Tarjeta`,
+  `EscaneoTarjeta`, tablas `tarjetas`/`escaneos` en la migración inicial, y `Tarjeta.Resolver()` ya
+  escrita y sin una sola prueba que la ejecute). Es N3 por `Program.cs`, infraestructura y seguridad.
+  API-55 a API-59 son otras tareas. Rama propuesta: `tarjeta-abre-ficha`.
+- **RN-S6-10 no está implementada en ningún sitio**, y hay un hueco relacionado: `BloquesLibresAsync`
+  (`ServicioAgenda.cs:268-296`) **no mira la suscripción**, solo que el perfil esté publicado. Hoy un
+  prestador impago muestra calendario con horas y el error salta recién al confirmar (`:364`).
+- **La agenda no emite ninguna notificación:** `ServicioAgenda` no recibe `INotificaciones` (solo
+  identidad, reseñas y suscripciones la usan), y no hay plantilla de correo para citas. La opción B de
+  NoAsistio («el prestador responde en 72 h») hoy **no tiene por dónde avisarle**.
+- **La elegibilidad para reseñar está escrita en cuatro sitios y solo uno está vivo:**
+  `ReglasDeResenas.EvaluarContacto` (rechaza `NoAsistio`). `HuboCitaRealizadaAsync` la acepta, pero solo
+  se alcanza desde pruebas; y los dos `HabilitaResena()` (`Agenda/Entidades.cs:150`,
+  `Reputacion/Entidades.cs:33`) son código muerto, sin un llamador. No es un fallo en producción: es una
+  mina para quien conecte cualquiera de los tres.
+- **Verificado del cupo fundador:** `LiberarCupoFundadorAsync` suelta también un cupo **confirmado** (el
+  `UPDATE` no filtra por `reservado_hasta`) y 3 pruebas lo fijan; la reserva dura 25 min y la prueba 30
+  días; `Suscripcion.Cancelar()` **no tiene llamadores**; y la «gracia de 3 días» **no existe en el
+  código** (cero coincidencias).
+- `render.yaml` ya dice `Zass__SaltosDeProxy: "3"`, así que la nota de `:1366` («aún dice 2») está
+  caducada. Lo que sigue mal es el comentario de `ProxiesDeConfianza.cs:30-39`, que razona la cadena sin
+  contar el Cloudflare de delante de Render.
