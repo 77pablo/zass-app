@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { Marco } from './marco/Marco'
 import { Comunas } from './paginas/Comunas'
 import { CrearCuenta } from './paginas/CrearCuenta'
+import { DejarResena } from './paginas/DejarResena'
 import { Entrar } from './paginas/Entrar'
 import { Ficha } from './paginas/Ficha'
 import { MiAgenda } from './paginas/MiAgenda'
@@ -14,6 +15,7 @@ import { PaginaBuscar } from './paginas/PaginaBuscar'
 import { Portada } from './paginas/Portada'
 import { Privacidad } from './paginas/Privacidad'
 import { Profesionales } from './paginas/Profesionales'
+import { ResenasDelPrestador } from './paginas/ResenasDelPrestador'
 import { Terminos } from './paginas/Terminos'
 import { RecuperarContrasena, RestablecerContrasena, VerificarCorreo } from './paginas/Recuperacion'
 
@@ -28,6 +30,9 @@ export function App() {
         <Route index element={<Portada />} />
         <Route path="buscar" element={<PaginaBuscar />} />
         <Route path="prestadores/:slug" element={<Ficha />} />
+        {/* S5: leer lo que dicen es publico; escribir una reseña pide cuenta y elegibilidad (CU-16). */}
+        <Route path="prestadores/:slug/resenas" element={<ResenasDelPrestador />} />
+        <Route path="prestadores/:slug/resena" element={<DejarResena />} />
         <Route path="comunas" element={<Comunas />} />
         {/* La pagina se llamaba «barrios» cuando solo existia Temuco: los enlaces viejos siguen funcionando. */}
         <Route path="barrios" element={<Navigate to="/comunas" replace />} />

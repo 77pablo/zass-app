@@ -27,6 +27,20 @@ export const DETALLE_MAXIMO = 1000
  */
 export const largo = (texto: string): number => [...texto].length
 
+/**
+ * Lo que significa cada nota. Va junto al selector porque un "4" suelto no le dice nada a nadie,
+ * y dos personas que entienden cosas distintas por un 4 dejan reseñas que no se pueden comparar.
+ */
+const QUE_SIGNIFICA: Record<number, string> = {
+  1: 'Muy malo',
+  2: 'Malo',
+  3: 'Aceptable',
+  4: 'Bueno',
+  5: 'Excelente',
+}
+
+export const significado = (valor: number): string => QUE_SIGNIFICA[valor] ?? ''
+
 /** CU-16 paso 6. Lista cerrada, la misma de `ReglasDeResenas.AspectosPermitidos`. */
 export const ASPECTOS = [
   { valor: 'puntualidad', etiqueta: 'Puntualidad' },

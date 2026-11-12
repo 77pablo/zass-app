@@ -6,17 +6,6 @@ const VALORES = Array.from(
   (_, i) => CALIFICACION_MINIMA + i,
 )
 
-/** Lo que significa cada nota. Sale junto al selector: "4" no le dice nada a nadie. */
-const QUE_SIGNIFICA: Record<number, string> = {
-  1: 'Muy malo',
-  2: 'Malo',
-  3: 'Aceptable',
-  4: 'Bueno',
-  5: 'Excelente',
-}
-
-export const significado = (valor: number): string => QUE_SIGNIFICA[valor] ?? ''
-
 const nombre = (valor: number) =>
   valor === 1 ? '1 estrella' : `${valor} estrellas`
 
