@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   agendar, cancelarCita, claveDeDia, horaDeChile, nuevaClaveDeIdempotencia, porDia,
   reprogramarCita, calendarioDe, miDisponibilidad, guardarDisponibilidad, crearBloqueo,
-  listarBloqueos, quitarBloqueo, DIAS, inicioDeDiaEnChile, type Bloque,
+  listarBloqueos, quitarBloqueo, DIAS, inicioDeDiaEnChile, agruparPorDiaChileno,
+  sePuedeReprogramar, horasHasta, type Bloque, type Cita,
 } from './servicio'
 
 const obtener = vi.fn()
@@ -189,5 +190,68 @@ describe('mis bloqueos (API-34)', () => {
     await quitarBloqueo('a/b')
 
     expect(enviar.mock.calls[0][0]).toBe('/api/mi/bloqueos/a%2Fb')
+  })
+})
+
+describe('agrupar citas por dia chileno', () => {
+  const laCita = (id: string, inicioEn: string) => ({ id, inicioEn })
+
+  it('una cita de las 23:30 de Chile cae en SU dia, aunque en UTC ya sea el siguiente', () => {
+    // 2026-11-20T02:30Z son las 23:30 del jueves 19 en Chile (UTC-3 en noviembre).
+    const dias = agruparPorDiaChileno([laCita('a', '2026-11-20T02:30:00Z')])
+
+    expect(dias).toHaveLength(1)
+    expect(dias[0].dia).toBe('2026-11-19')
+    expect(dias[0].titulo).toContain('19 de noviembre')
+  })
+
+  it('junta en un solo grupo las del mismo dia chileno y las ordena por hora', () => {
+    const dias = agruparPorDiaChileno([
+      laCita('tarde', '2026-11-20T20:00:00Z'),
+      laCita('manana', '2026-11-20T13:00:00Z'),
+    ])
+
+    expect(dias).toHaveLength(1)
+    expect(dias[0].items.map((c) => c.id)).toEqual(['manana', 'tarde'])
+  })
+
+  it('en orden descendente el dia mas reciente va primero, y dentro del dia la hora mas tarde', () => {
+    const dias = agruparPorDiaChileno([
+      laCita('vieja', '2026-11-18T13:00:00Z'),
+      laCita('manana', '2026-11-20T13:00:00Z'),
+      laCita('tarde', '2026-11-20T20:00:00Z'),
+    ], 'desc')
+
+    expect(dias.map((d) => d.dia)).toEqual(['2026-11-20', '2026-11-18'])
+    expect(dias[0].items.map((c) => c.id)).toEqual(['tarde', 'manana'])
+  })
+})
+
+describe('quien puede mover una hora', () => {
+  const ahora = Date.parse('2026-11-20T12:00:00Z')
+  const laCita = (estado: string, inicioEn: string) =>
+    ({ estado, inicioEn } as Pick<Cita, 'estado' | 'inicioEn'>)
+
+  it('el buscador puede con mas de 2 horas por delante', () => {
+    expect(sePuedeReprogramar(laCita('Confirmada', '2026-11-20T15:00:00Z'), false, ahora)).toBe(true)
+  })
+
+  it('el buscador NO puede dentro de las 2 horas (5B de CU-14)', () => {
+    expect(sePuedeReprogramar(laCita('Confirmada', '2026-11-20T13:30:00Z'), false, ahora)).toBe(false)
+  })
+
+  it('el prestador si puede dentro de las 2 horas: es su agenda', () => {
+    expect(sePuedeReprogramar(laCita('Confirmada', '2026-11-20T13:30:00Z'), true, ahora)).toBe(true)
+  })
+
+  /** El servidor solo acepta reprogramar desde `Confirmada`; ofrecerlo en otra seria mentir. */
+  it('ningun estado que no sea Confirmada se puede mover, ni siquiera para el prestador', () => {
+    for (const estado of ['Solicitada', 'PendienteAsistencia', 'Realizada', 'Cancelada']) {
+      expect(sePuedeReprogramar(laCita(estado, '2026-11-25T13:00:00Z'), true, ahora)).toBe(false)
+    }
+  })
+
+  it('horasHasta es negativo cuando la hora ya paso', () => {
+    expect(horasHasta('2026-11-20T10:00:00Z', ahora)).toBe(-2)
   })
 })

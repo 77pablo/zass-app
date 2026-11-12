@@ -2,12 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { ErrorApi } from '../api/cliente'
 import {
-  cancelarCita, confirmarCita, diaDeChile, horaDeChile, misCitas, nuevaClaveDeIdempotencia,
-  registrarAsistencia, rechazarCita, type Cita, type EstadoDeCita,
+  agruparPorDiaChileno, cancelarCita, confirmarCita, horaDeChile, misCitas,
+  nuevaClaveDeIdempotencia, registrarAsistencia, rechazarCita, sePuedeReprogramar,
+  type Cita, type EstadoDeCita,
 } from '../funciones/agenda/servicio'
 import { miPerfil } from '../funciones/perfil/servicio'
 import { useSesion } from '../sesion/contexto'
 import { useTitulo } from '../marco/useTitulo'
+import { ReprogramarCita } from './ReprogramarCita'
 
 const ETIQUETA: Record<EstadoDeCita, string> = {
   Solicitada: 'Esperando confirmación',
@@ -22,6 +24,9 @@ const ETIQUETA: Record<EstadoDeCita, string> = {
 
 const ACTIVAS: EstadoDeCita[] = ['Solicitada', 'Confirmada']
 
+/** Lo justo para saber si una cita es mia como prestador y para abrir mi propio calendario. */
+type MiPerfil = { id: string; slug: string }
+
 function mensajeDe(e: unknown, porDefecto: string): string {
   return e instanceof ErrorApi ? e.mensaje : porDefecto
 }
@@ -31,13 +36,16 @@ function mensajeDe(e: unknown, porDefecto: string): string {
  * servicio, las que le pidieron. De que lado esta cada una se decide comparando el perfil de la
  * cita con el propio, no con un rol: una misma persona puede ser las dos cosas con distintas
  * personas.
+ *
+ * Esta pantalla es el ciclo de UNA cita (CU-14 y CS-12). Las reglas de atencion —que horas
+ * ofrece, que dias bloquea— son otra cosa y viven en «Mi agenda»: aqui solo se enlaza.
  */
 export function MisCitas() {
   const { estado, usuario } = useSesion()
   useTitulo('Mis citas')
 
   const [citas, setCitas] = useState<Cita[] | null>(null)
-  const [miPerfilId, setMiPerfilId] = useState<string | null>(null)
+  const [mio, setMio] = useState<MiPerfil | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [recarga, setRecarga] = useState(0)
 
@@ -49,17 +57,20 @@ export function MisCitas() {
     Promise.all([
       misCitas(),
       // Sin ficha todavia (o sin cuenta de prestador) no es un error: solo no hay "mi lado".
-      esPrestador ? miPerfil().then((p) => p.id).catch(() => null) : Promise.resolve(null),
+      esPrestador
+        ? miPerfil().then((p): MiPerfil => ({ id: p.id, slug: p.slug })).catch(() => null)
+        : Promise.resolve(null),
     ])
-      .then(([lista, perfilId]) => {
+      .then(([lista, perfil]) => {
         if (!vigente) return
-        setCitas(lista); setMiPerfilId(perfilId); setError(null)
+        setCitas(lista); setMio(perfil); setError(null)
       })
       .catch((e: unknown) => { if (vigente) setError(mensajeDe(e, 'No pudimos cargar tus citas.')) })
     return () => { vigente = false }
   }, [estado, esPrestador, recarga])
 
   const recargar = useCallback(() => setRecarga((n) => n + 1), [])
+  const miPerfilId = mio?.id ?? null
 
   const grupos = useMemo(() => {
     const todas = citas ?? []
@@ -68,8 +79,7 @@ export function MisCitas() {
       porMarcar: todas.filter((c) => c.estado === 'PendienteAsistencia' && c.perfilPrestadorId === miPerfilId),
       anteriores: todas
         .filter((c) => !ACTIVAS.includes(c.estado)
-          && !(c.estado === 'PendienteAsistencia' && c.perfilPrestadorId === miPerfilId))
-        .reverse(),
+          && !(c.estado === 'PendienteAsistencia' && c.perfilPrestadorId === miPerfilId)),
     }
   }, [citas, miPerfilId])
 
@@ -114,44 +124,59 @@ export function MisCitas() {
           <p className="bloque-texto">
             Ya pasó la hora. Si no la marcas en 72 horas se da por realizada.
           </p>
-          <ul className="citas-lista">
-            {grupos.porMarcar.map((c) => (
-              <FilaDeCita key={c.id} cita={c} miPerfilId={miPerfilId} alCambiar={recargar} />
-            ))}
-          </ul>
+          <PorDia citas={grupos.porMarcar} orden="desc" mio={mio} alCambiar={recargar} />
         </section>
       )}
 
       {grupos.proximas.length > 0 && (
         <section className="bloque" aria-labelledby="citas-proximas">
           <h2 id="citas-proximas">Próximas</h2>
-          <ul className="citas-lista">
-            {grupos.proximas.map((c) => (
-              <FilaDeCita key={c.id} cita={c} miPerfilId={miPerfilId} alCambiar={recargar} />
-            ))}
-          </ul>
+          <PorDia citas={grupos.proximas} orden="asc" mio={mio} alCambiar={recargar} />
         </section>
       )}
 
       {grupos.anteriores.length > 0 && (
         <section className="bloque" aria-labelledby="citas-anteriores">
           <h2 id="citas-anteriores">Anteriores</h2>
-          <ul className="citas-lista">
-            {grupos.anteriores.map((c) => (
-              <FilaDeCita key={c.id} cita={c} miPerfilId={miPerfilId} alCambiar={recargar} />
-            ))}
-          </ul>
+          <PorDia citas={grupos.anteriores} orden="desc" mio={mio} alCambiar={recargar} />
         </section>
       )}
     </div>
   )
 }
 
-type Formulario = 'cancelar' | 'rechazar' | null
+/**
+ * Un dia CHILENO por grupo, con la fecha de titulo y las horas debajo. Agrupar por el dia del
+ * navegador pondria la cita de las 22:00 de un jueves bajo el viernes para quien mira desde
+ * Europa: la hora que importa es la de pared de Chile, que es la que el prestador publico.
+ */
+function PorDia({ citas, orden, mio, alCambiar }: {
+  citas: Cita[]
+  orden: 'asc' | 'desc'
+  mio: MiPerfil | null
+  alCambiar: () => void
+}) {
+  return (
+    <ul className="citas-dias">
+      {agruparPorDiaChileno(citas, orden).map((d) => (
+        <li key={d.dia}>
+          <h3 className="citas-dia">{d.titulo}</h3>
+          <ul className="citas-lista">
+            {d.items.map((c) => (
+              <FilaDeCita key={c.id} cita={c} mio={mio} alCambiar={alCambiar} />
+            ))}
+          </ul>
+        </li>
+      ))}
+    </ul>
+  )
+}
 
-function FilaDeCita({ cita, miPerfilId, alCambiar }: {
+type Formulario = 'cancelar' | 'rechazar' | 'reprogramar' | null
+
+function FilaDeCita({ cita, mio, alCambiar }: {
   cita: Cita
-  miPerfilId: string | null
+  mio: MiPerfil | null
   alCambiar: () => void
 }) {
   const [formulario, setFormulario] = useState<Formulario>(null)
@@ -162,8 +187,12 @@ function FilaDeCita({ cita, miPerfilId, alCambiar }: {
   const [enviando, setEnviando] = useState(false)
   const [fallo, setFallo] = useState<string | null>(null)
 
-  const comoPrestador = miPerfilId !== null && cita.perfilPrestadorId === miPerfilId
+  const comoPrestador = mio !== null && cita.perfilPrestadorId === mio.id
   const activa = ACTIVAS.includes(cita.estado)
+  const puedeReprogramar = sePuedeReprogramar(cita, comoPrestador)
+  // 5B de CU-14: al buscador se le cierra la puerta a las 2 horas, pero se le dice por que y
+  // que le queda. Al prestador nunca se le cierra, asi que este aviso no es para el.
+  const tardeParaMover = cita.estado === 'Confirmada' && !comoPrestador && !puedeReprogramar
 
   async function correr(accion: () => Promise<unknown>) {
     if (enviando) return
@@ -180,7 +209,10 @@ function FilaDeCita({ cita, miPerfilId, alCambiar }: {
   }
 
   function abrir(cual: Exclude<Formulario, null>) {
-    setFormulario(cual); setFallo(null); setClave(nuevaClaveDeIdempotencia())
+    setFormulario(cual); setFallo(null)
+    // La de reprogramar nace al elegir la hora nueva, dentro del panel: hasta entonces no hay
+    // intencion que proteger.
+    setClave(cual === 'cancelar' ? nuevaClaveDeIdempotencia() : null)
   }
 
   return (
@@ -195,8 +227,9 @@ function FilaDeCita({ cita, miPerfilId, alCambiar }: {
         <span className={activa ? 'dato' : 'dato dato--apagado'}>{ETIQUETA[cita.estado]}</span>
       </div>
 
+      {/* El dia ya lo pone el titulo del grupo; aqui solo la hora, en hora de Chile. */}
       <p className="cita-cuando">
-        {diaDeChile(cita.inicioEn)}, {horaDeChile(cita.inicioEn)} h
+        {horaDeChile(cita.inicioEn)} h
         <span className="cita-codigo">{cita.codigo}</span>
       </p>
 
@@ -228,6 +261,12 @@ function FilaDeCita({ cita, miPerfilId, alCambiar }: {
           </>
         )}
 
+        {puedeReprogramar && formulario !== 'reprogramar' && (
+          <button type="button" className="boton boton--chico" onClick={() => abrir('reprogramar')}>
+            Reprogramar
+          </button>
+        )}
+
         {activa && (
           <button type="button" className="boton boton--chico" onClick={() => abrir('cancelar')}>
             Cancelar
@@ -235,7 +274,21 @@ function FilaDeCita({ cita, miPerfilId, alCambiar }: {
         )}
       </div>
 
-      {formulario !== null && (
+      {tardeParaMover && (
+        <p className="cita-nota">
+          Faltan menos de 2 horas: ya no puedes cambiarla de hora. Puedes cancelarla explicando el motivo.
+        </p>
+      )}
+
+      {formulario === 'reprogramar' && (
+        <ReprogramarCita
+          cita={cita} miPerfil={mio}
+          alTerminar={() => { setFormulario(null); alCambiar() }}
+          alCerrar={() => setFormulario(null)}
+        />
+      )}
+
+      {(formulario === 'cancelar' || formulario === 'rechazar') && (
         <div className="cita-formulario">
           <label className="campo-nota">
             <span>

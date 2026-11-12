@@ -21,19 +21,48 @@ function cita(extra: Record<string, unknown>) {
   }
 }
 
+const MI_SLUG = 'estudio-mio'
+
+/** Un bloque libre del calendario (API-35). El id se usa tal cual al reprogramar. */
+function bloque(id: string, inicioEn: string, estado = 'libre') {
+  return { id, inicioEn, finEn: inicioEn, estado }
+}
+
 let citas: unknown[]
 let llamadas: { ruta: string; cabeceras: Record<string, string>; cuerpo?: unknown }[]
 let alAccionar: () => Response
+/** Lo que devuelve API-35, y las rutas con que se pidio: sirve para ver que se recargo. */
+let bloquesLibres: ReturnType<typeof bloque>[]
+let calendariosPedidos: string[]
+/** Lo que devuelve el buscador publico (API-63) al resolver el slug de un prestador ajeno. */
+let encontrados: { perfilId: string; slug: string }[]
+let busquedasHechas: number
 
 beforeEach(() => {
   citas = []
   llamadas = []
   alAccionar = () => json({}, 200)
+  bloquesLibres = []
+  calendariosPedidos = []
+  encontrados = []
+  busquedasHechas = 0
   olvidarCsrf()
   vi.stubGlobal('fetch', vi.fn(async (ruta: string, opciones?: RequestInit) => {
     if (ruta === '/api/auth/csrf') return json({ token: 't' })
     if (ruta === '/api/mi/citas') return json(citas)
-    if (ruta === '/api/mi/perfil-prestador') return json({ id: MI_PERFIL })
+    if (ruta === '/api/mi/perfil-prestador') return json({ id: MI_PERFIL, slug: MI_SLUG })
+    if (ruta.startsWith('/api/buscar')) {
+      busquedasHechas++
+      return json({ resultados: encontrados, total: encontrados.length, pagina: 1, hayMas: false })
+    }
+    if (ruta.includes('/bloques')) {
+      calendariosPedidos.push(ruta)
+      return json({
+        prestadorServicioId: 's', perfilPrestadorId: 'perfil-otro', servicio: 'Consulta inicial',
+        modoAgenda: 'Automatico', duracionMinutos: 30, anticipacionMinimaHoras: 2,
+        bloques: bloquesLibres,
+      })
+    }
     llamadas.push({
       ruta, cabeceras: (opciones?.headers ?? {}) as Record<string, string>,
       cuerpo: opciones?.body ? JSON.parse(String(opciones.body)) : undefined,
@@ -196,5 +225,177 @@ describe('cancelar', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Cancelar la hora' }))
 
     expect(await screen.findByRole('heading', { name: 'Anteriores' })).toBeInTheDocument()
+  })
+})
+
+/** Horas contadas desde AHORA: la regla de las 2 horas se mide contra el reloj, no contra una fecha. */
+const enHoras = (n: number) => new Date(Date.now() + n * 3_600_000).toISOString()
+
+describe('las citas se agrupan por dia CHILENO', () => {
+  it('dos citas del mismo dia chileno van bajo un solo titulo aunque en UTC sean dos dias', async () => {
+    citas = [
+      // 02:30Z del 20 son las 23:30 del jueves 19 en Chile; 20:00Z del 19, las 17:00 del 19.
+      cita({ id: 'a', codigo: 'ZS-NOCHE', estado: 'Cancelada', inicioEn: '2026-11-20T02:30:00Z' }),
+      cita({ id: 'b', codigo: 'ZS-TARDE', estado: 'Cancelada', inicioEn: '2026-11-19T20:00:00Z' }),
+    ]
+    pintar()
+
+    const anteriores = (await screen.findByRole('heading', { name: 'Anteriores' })).closest('section')!
+    const dias = within(anteriores).getAllByRole('heading', { level: 3 })
+    expect(dias).toHaveLength(1)
+    expect(dias[0]).toHaveTextContent(/19 de noviembre/)
+    expect(within(anteriores).getByText(/23:30 h/)).toBeInTheDocument()
+  })
+
+  it('en el historial el dia mas reciente va primero', async () => {
+    citas = [
+      cita({ id: 'a', codigo: 'ZS-VIEJA', estado: 'Cancelada', inicioEn: '2026-11-10T13:00:00Z' }),
+      cita({ id: 'b', codigo: 'ZS-NUEVA', estado: 'Cancelada', inicioEn: '2026-11-19T13:00:00Z' }),
+    ]
+    pintar()
+
+    const anteriores = (await screen.findByRole('heading', { name: 'Anteriores' })).closest('section')!
+    const dias = within(anteriores).getAllByRole('heading', { level: 3 })
+    expect(dias.map((d) => d.textContent)).toEqual([
+      expect.stringContaining('19 de noviembre'),
+      expect.stringContaining('10 de noviembre'),
+    ])
+  })
+})
+
+describe('reprogramar (CU-14)', () => {
+  const LIBRES = [
+    bloque('b1', '2026-12-10T18:00:00Z'),   // 15:00 en Chile
+    bloque('b2', '2026-12-10T19:00:00Z'),   // 16:00 en Chile
+    bloque('b3', '2026-12-10T20:00:00Z', 'ocupado'),
+  ]
+
+  async function abrirElPanel() {
+    await userEvent.click(await screen.findByRole('button', { name: 'Reprogramar' }))
+    return screen.findByRole('button', { name: '15:00' })
+  }
+
+  it('el cliente elige otra hora del mismo servicio y el cambio viaja con su clave de idempotencia', async () => {
+    citas = [cita({ id: 'a', inicioEn: enHoras(48) })]
+    encontrados = [{ perfilId: 'perfil-otro', slug: 'estudio-espinoza' }]
+    bloquesLibres = LIBRES
+    alAccionar = () => json({ ...cita({ id: 'nueva', codigo: 'ZS-NUEVA' }), nueva: true }, 201)
+    pintar()
+
+    await abrirElPanel()
+    await userEvent.click(screen.getByRole('button', { name: '16:00' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar el cambio' }))
+
+    await waitFor(() => expect(llamadas).toHaveLength(1))
+    expect(llamadas[0].ruta).toBe('/api/citas/a/reprogramar')
+    expect(llamadas[0].cuerpo).toEqual({ bloqueNuevoId: 'b2', motivo: null })
+    expect(llamadas[0].cabeceras['Idempotency-Key']).toMatch(/^[0-9a-f-]{36}$/)
+    expect(calendariosPedidos[0]).toContain('/api/prestadores/estudio-espinoza/bloques')
+  })
+
+  it('solo ofrece las horas libres: una ocupada no se puede elegir', async () => {
+    citas = [cita({ id: 'a', inicioEn: enHoras(48) })]
+    encontrados = [{ perfilId: 'perfil-otro', slug: 'estudio-espinoza' }]
+    bloquesLibres = LIBRES
+    pintar()
+
+    await abrirElPanel()
+    expect(screen.queryByRole('button', { name: '17:00' })).not.toBeInTheDocument()
+  })
+
+  it('al terminar muestra el codigo nuevo y dice que la resena sigue en pie (RN-S4-05)', async () => {
+    citas = [cita({ id: 'a', inicioEn: enHoras(48) })]
+    encontrados = [{ perfilId: 'perfil-otro', slug: 'estudio-espinoza' }]
+    bloquesLibres = LIBRES
+    alAccionar = () => json({ ...cita({ id: 'nueva', codigo: 'ZS-NUEVA' }), nueva: true }, 201)
+    pintar()
+
+    await abrirElPanel()
+    await userEvent.click(screen.getByRole('button', { name: '15:00' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar el cambio' }))
+
+    expect(await screen.findByText('ZS-NUEVA')).toBeInTheDocument()
+    expect(screen.getByText(/no te quita la posibilidad de reseñar/)).toBeInTheDocument()
+  })
+
+  /** Flujo 5A: nada cambio, la cita vieja sigue en pie, y el por que tiene que quedar a la vista. */
+  it('si la hora se tomo recien recarga el calendario y deja el aviso visible', async () => {
+    citas = [cita({ id: 'a', inicioEn: enHoras(48) })]
+    encontrados = [{ perfilId: 'perfil-otro', slug: 'estudio-espinoza' }]
+    bloquesLibres = LIBRES
+    alAccionar = () => json({ title: 'Conflicto', detail: 'Alguien tomó esa hora recién. Elige otra, por favor.' }, 409)
+    pintar()
+
+    await abrirElPanel()
+    await userEvent.click(screen.getByRole('button', { name: '15:00' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar el cambio' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Alguien tomó esa hora recién/)
+    await waitFor(() => expect(calendariosPedidos).toHaveLength(2))
+    expect(screen.queryByRole('button', { name: 'Confirmar el cambio' })).not.toBeInTheDocument()
+  })
+
+  /** CC-04: el reintento es el MISMO envio; elegir otra hora es otra intencion. */
+  it('reintentar reusa la clave, y cambiar de hora estrena una nueva', async () => {
+    citas = [cita({ id: 'a', inicioEn: enHoras(48) })]
+    encontrados = [{ perfilId: 'perfil-otro', slug: 'estudio-espinoza' }]
+    bloquesLibres = LIBRES
+    alAccionar = () => json({ title: 'caida' }, 500)
+    pintar()
+
+    await abrirElPanel()
+    await userEvent.click(screen.getByRole('button', { name: '15:00' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar el cambio' }))
+    await screen.findByRole('alert')
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar el cambio' }))
+    await waitFor(() => expect(llamadas).toHaveLength(2))
+
+    await userEvent.click(screen.getByRole('button', { name: '16:00' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar el cambio' }))
+    await waitFor(() => expect(llamadas).toHaveLength(3))
+
+    const clave = (n: number) => llamadas[n].cabeceras['Idempotency-Key']
+    expect(clave(1)).toBe(clave(0))
+    expect(clave(2)).not.toBe(clave(0))
+  })
+
+  it('a menos de 2 horas el cliente ya no puede moverla, y se le dice que le queda', async () => {
+    citas = [cita({ id: 'a', inicioEn: enHoras(1) })]
+    pintar()
+
+    expect(await screen.findByText(/Faltan menos de 2 horas/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Reprogramar' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancelar' })).toBeInTheDocument()
+  })
+
+  it('el prestador si mueve su hora dentro de las 2 h, y abre su calendario sin salir a buscarlo', async () => {
+    citas = [cita({ id: 'a', inicioEn: enHoras(1), perfilPrestadorId: MI_PERFIL })]
+    bloquesLibres = LIBRES
+    pintar('dentro', ['prestador'])
+
+    await abrirElPanel()
+    expect(calendariosPedidos[0]).toContain(`/api/prestadores/${MI_SLUG}/bloques`)
+    expect(busquedasHechas).toBe(0)
+    expect(screen.queryByText(/Faltan menos de 2 horas/)).not.toBeInTheDocument()
+  })
+
+  it('una cita que todavia no esta confirmada no se puede mover', async () => {
+    citas = [cita({ id: 'a', estado: 'Solicitada', inicioEn: enHoras(48) })]
+    pintar()
+
+    await screen.findByText('Esperando confirmación')
+    expect(screen.queryByRole('button', { name: 'Reprogramar' })).not.toBeInTheDocument()
+  })
+
+  /** Sin slug no hay calendario publico que abrir: se dice, no se deja un panel vacio. */
+  it('si no se puede resolver la ficha del prestador, lo dice y ofrece buscarlo', async () => {
+    citas = [cita({ id: 'a', inicioEn: enHoras(48) })]
+    encontrados = [{ perfilId: 'otro-cualquiera', slug: 'otra-persona' }]
+    pintar()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Reprogramar' }))
+
+    expect(await screen.findByText(/No pudimos abrir el calendario/)).toBeInTheDocument()
+    expect(calendariosPedidos).toHaveLength(0)
   })
 })

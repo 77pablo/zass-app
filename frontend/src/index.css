@@ -829,7 +829,12 @@ option { background: var(--panel-2); color: var(--texto); }
 .agenda--lista { border-color: var(--neon); }
 
 /* ---------------------------------------------------------------- mis citas */
-.citas-lista { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 14px; }
+.citas-dias { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 22px; }
+.citas-dia {
+  margin: 0; font-size: 0.9375rem; font-weight: 600; text-transform: capitalize;
+  color: var(--suave); letter-spacing: 0.01em;
+}
+.citas-lista { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 14px; }
 .cita { padding: 16px; border: 1px solid var(--linea); border-radius: 14px; background: var(--vidrio); }
 .cita-cabecera { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
 .cita-con { display: block; color: var(--suave); font-size: 0.9375rem; }
@@ -838,6 +843,7 @@ option { background: var(--panel-2); color: var(--texto); }
 .cita-nota { margin: 8px 0 0; color: var(--suave); font-style: italic; }
 .cita-acciones { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
 .cita-formulario { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--linea); }
+.cita-subtitulo { margin: 0 0 6px; font-size: 1rem; }
 .dato--apagado { opacity: 0.65; }
 
 

@@ -245,3 +245,49 @@ export function inicioDeDiaEnChile(dia: string): string {
   for (let i = 0; i < 2; i++) t = medianoche - desfaseDeChile(t)
   return new Date(t).toISOString()
 }
+
+/**
+ * Agrupa por dia CHILENO cualquier cosa que tenga instante de inicio. `porDia` ya hace esto con
+ * los bloques del calendario; las citas necesitan lo mismo y ademas poder ir del mas reciente al
+ * mas viejo, que es como se lee un historial. Se deja aparte para no tocar `porDia`, que ya esta
+ * probado contra el calendario.
+ */
+export function agruparPorDiaChileno<T extends { inicioEn: string }>(
+  items: T[],
+  orden: 'asc' | 'desc' = 'asc',
+): { dia: string; titulo: string; items: T[] }[] {
+  const grupos = new Map<string, T[]>()
+  for (const it of [...items].sort((a, b) => a.inicioEn.localeCompare(b.inicioEn))) {
+    const k = claveDeDia(it.inicioEn)
+    grupos.set(k, [...(grupos.get(k) ?? []), it])
+  }
+  const dias = [...grupos].map(([dia, xs]) => ({ dia, titulo: diaDeChile(xs[0].inicioEn), items: xs }))
+  if (orden === 'asc') return dias
+  return dias.reverse().map((d) => ({ ...d, items: [...d.items].reverse() }))
+}
+
+/**
+ * Seccion 5 de estados-cita.md: el buscador solo puede mover una hora con mas de 2 horas de
+ * anticipacion; el prestador siempre, porque es su agenda. El mismo numero que
+ * `ServicioAgenda.AnticipacionMinimaHoras`.
+ */
+export const ANTICIPACION_MINIMA_HORAS = 2
+
+/** Cuantas horas faltan para un instante. Negativo si ya paso. */
+export function horasHasta(iso: string, ahora: number = Date.now()): number {
+  return (new Date(iso).getTime() - ahora) / 3_600_000
+}
+
+/**
+ * Quien puede mover ESTA hora. El prestador puede dentro de las 2 h; el buscador no (5B de
+ * CU-14). Y solo desde `Confirmada`: el servidor rechaza cualquier otro estado.
+ */
+export function sePuedeReprogramar(
+  cita: Pick<Cita, 'estado' | 'inicioEn'>,
+  comoPrestador: boolean,
+  ahora: number = Date.now(),
+): boolean {
+  if (cita.estado !== 'Confirmada') return false
+  if (comoPrestador) return true
+  return horasHasta(cita.inicioEn, ahora) > ANTICIPACION_MINIMA_HORAS
+}
