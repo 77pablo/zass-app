@@ -36,7 +36,7 @@ public sealed class ServicioTarjetas : IServicioTarjetas
         if (urlEstable.Length != 9 || !FormaDeUrlEstable.IsMatch(urlEstable)) return NoValida;
 
         var tarjeta = await _repo.PorUrlEstableAsync(urlEstable, ct);
-        if (tarjeta is null) return NoValida;
+        if (tarjeta is null) return new EscaneoResuelto(DestinoTarjeta.PerfilNoDisponible, null);
 
         var destino = tarjeta.Resolver();
         // Solo cuenta lo que llega a una ficha: el prestador ve sus escaneos (API-58), y una

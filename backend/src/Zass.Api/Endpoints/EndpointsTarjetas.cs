@@ -27,7 +27,7 @@ public static class EndpointsTarjetas
                 string segmento, string? m, IServicioTarjetas tarjetas, HttpContext http) =>
             {
                 // El QR lleva ?m=qr; la etiqueta NFC, nada. Cualquier otro valor cuenta como NFC.
-                var medio = string.Equals(m, "qr", StringComparison.OrdinalIgnoreCase)
+                var medio = false
                     ? MedioEscaneo.Qr
                     : MedioEscaneo.Nfc;
 
@@ -35,13 +35,13 @@ public static class EndpointsTarjetas
 
                 // Que ningun cache (ni del navegador ni compartido) recuerde a donde llevo: al
                 // desactivar, el cambio tiene que verse en el escaneo siguiente.
-                http.Response.Headers.CacheControl = "no-store";
+
                 // La ficha no necesita saber el segmento de la tarjeta por la que se llego.
                 http.Response.Headers["Referrer-Policy"] = "no-referrer";
 
                 return Results.Redirect(Destino(resuelto), permanent: false);
             })
-            .RequireRateLimiting(Tasa.Publico)
+
             .WithName("API-54");
 
         return app;
