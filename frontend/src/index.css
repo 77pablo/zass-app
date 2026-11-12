@@ -857,10 +857,17 @@ option { background: var(--panel-2); color: var(--texto); }
 .agenda-prestador h3 { margin: 28px 0 12px; }
 /* J3 #2: rango, motivo y botón en una fila que se parte bien. Clase propia: .franja también es la tarjeta de horario. */
 .franja--bloqueo { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
-.franja-motivo { flex: 1 1 12rem; min-width: 0; overflow-wrap: anywhere; }
+.franja-motivo { flex: 1 1 16rem; min-width: 0; overflow-wrap: anywhere; }
 .franja--bloqueo .boton { margin-left: auto; }
 /* J3 #10: en la agenda, el mismo aro de foco que botones y enlaces (línea 51). Sugerido para todo el sitio. */
 .agenda-prestador .campo-entrada:focus-visible { outline: 3px solid var(--amarillo); outline-offset: 2px; }
+/* J3 #15 (propuesta): en la agenda, cada título empieza donde empieza el texto de su campo
+   (1 px de borde + 16 px de relleno de .campo-entrada), no en el borde del cuadro.
+   Solo desde 380 px: a 360 la sangría dejaba un campo por línea y alargaba mucho la agenda. */
+@media (min-width: 380px) {
+  .agenda-prestador .franja-campos .campo-etiqueta { text-indent: 17px; }
+  .agenda-prestador .franja-campos .campo-entrada { text-indent: 0; }
+}
 
 /* Contacto que pide cuenta */
 .contacto-cuenta { display: grid; gap: 12px; }
