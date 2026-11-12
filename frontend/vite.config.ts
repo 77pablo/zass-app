@@ -68,5 +68,11 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/configuracion-pruebas.ts'],
     css: false,
+    // 15 s, no los 5 s de serie. Con la maquina cargada, vitest levanta un jsdom
+    // por archivo (son mas de 30) y dos pruebas lentas de verdad -el sitemap con
+    // 51.000 fichas y la de credenciales- pasaban de los 5 s y salian en rojo al
+    // azar. Corriendolas solas dan 41/41 en verde: era el reloj, no la aplicacion.
+    // Un rojo intermitente es peor que un rojo: ensena a no creerle a CI.
+    testTimeout: 15_000,
   },
 })
