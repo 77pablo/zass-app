@@ -701,7 +701,7 @@ public class ZassDbContext : DbContext
                     Id = 3,
                     Codigo = "fundador",
                     Nombre = "ZASS! Fundador",
-                    Descripcion = "Precio de lanzamiento para las primeras 20 personas: 5990 pesos al mes mientras mantengas tu suscripcion activa.",
+                    Descripcion = "Precio de lanzamiento para las primeras 50 personas: 5990 pesos al mes mientras mantengas tu suscripcion activa.",
                     PrecioMensual = 5990,
                     DiasPrueba = 0,
                     MaxServicios = 10,
@@ -747,9 +747,9 @@ public class ZassDbContext : DbContext
             // Si el perfil se borra, el cupo vuelve a quedar libre: SetNull, no cascade.
             e.HasOne(x => x.PerfilPrestador).WithMany()
                 .HasForeignKey(x => x.PerfilPrestadorId).OnDelete(DeleteBehavior.SetNull);
-            // Exactamente 20 cupos, sembrados con el esquema como los planes de TBL-29.
+            // Exactamente 50 cupos, sembrados con el esquema como los planes de TBL-29.
             // La tabla es chica a proposito: el trabajo diario que libera reservas
-            // vencidas hace un seq scan de 20 filas y no necesita indice.
+            // vencidas hace un seq scan de 50 filas y no necesita indice.
             e.HasData(
                     new CupoFundador { Numero = 1 },
                     new CupoFundador { Numero = 2 },
@@ -770,7 +770,37 @@ public class ZassDbContext : DbContext
                     new CupoFundador { Numero = 17 },
                     new CupoFundador { Numero = 18 },
                     new CupoFundador { Numero = 19 },
-                    new CupoFundador { Numero = 20 });
+                    new CupoFundador { Numero = 20 },
+                    new CupoFundador { Numero = 21 },
+                    new CupoFundador { Numero = 22 },
+                    new CupoFundador { Numero = 23 },
+                    new CupoFundador { Numero = 24 },
+                    new CupoFundador { Numero = 25 },
+                    new CupoFundador { Numero = 26 },
+                    new CupoFundador { Numero = 27 },
+                    new CupoFundador { Numero = 28 },
+                    new CupoFundador { Numero = 29 },
+                    new CupoFundador { Numero = 30 },
+                    new CupoFundador { Numero = 31 },
+                    new CupoFundador { Numero = 32 },
+                    new CupoFundador { Numero = 33 },
+                    new CupoFundador { Numero = 34 },
+                    new CupoFundador { Numero = 35 },
+                    new CupoFundador { Numero = 36 },
+                    new CupoFundador { Numero = 37 },
+                    new CupoFundador { Numero = 38 },
+                    new CupoFundador { Numero = 39 },
+                    new CupoFundador { Numero = 40 },
+                    new CupoFundador { Numero = 41 },
+                    new CupoFundador { Numero = 42 },
+                    new CupoFundador { Numero = 43 },
+                    new CupoFundador { Numero = 44 },
+                    new CupoFundador { Numero = 45 },
+                    new CupoFundador { Numero = 46 },
+                    new CupoFundador { Numero = 47 },
+                    new CupoFundador { Numero = 48 },
+                    new CupoFundador { Numero = 49 },
+                    new CupoFundador { Numero = 50 });
         });
     }
 

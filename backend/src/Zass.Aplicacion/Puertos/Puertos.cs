@@ -178,13 +178,13 @@ public interface IRepositorioSuscripciones
     void Agregar(Suscripcion suscripcion);
     void AgregarPago(Pago pago);
 
-    /// <summary>Cuantos de los 20 cupos fundador estan libres o con reserva expirada.</summary>
+    /// <summary>Cuantos de los 50 cupos fundador estan libres o con reserva expirada.</summary>
     Task<int> CuposFundadorDisponiblesAsync(DateTime ahora, CancellationToken ct = default);
 
     /// <summary>
-    /// Reserva atomicamente uno de los 20 cupos fundador hasta <paramref name="hasta"/>.
+    /// Reserva atomicamente uno de los 50 cupos fundador hasta <paramref name="hasta"/>.
     /// Idempotente si <paramref name="perfilPrestadorId"/> ya tiene uno asignado.
-    /// Devuelve el numero (1..20), o null si los 20 estan ocupados.
+    /// Devuelve el numero (1..50), o null si los 50 estan ocupados.
     /// </summary>
     Task<short?> IntentarReservarCupoFundadorAsync(
         Guid perfilPrestadorId, DateTime ahora, DateTime hasta, CancellationToken ct = default);

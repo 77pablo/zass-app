@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Xunit.Sdk;
 using Zass.Aplicacion.Suscripciones;
@@ -12,7 +12,7 @@ namespace Zass.Integracion.Pruebas;
 /// <summary>
 /// Estas pruebas van solas: no se ejecutan en paralelo con ninguna otra clase. Los cupos
 /// son filas compartidas y la reserva usa SKIP LOCKED, asi que una transaccion ajena con
-/// un cupo bloqueado haria que esta recibiera menos de 20.
+/// un cupo bloqueado haria que esta recibiera menos de 50.
 /// </summary>
 [CollectionDefinition(Nombre, DisableParallelization = true)]
 public sealed class ColeccionCuposFundador
@@ -26,7 +26,7 @@ public sealed class ColeccionCuposFundador
 /// Las pruebas de aplicacion ya cubrieron las reglas con listas en memoria. Aqui se prueba lo
 /// que una lista no puede contestar: que el sembrado quedo en el esquema, que el indice unico
 /// parcial rechaza, que los parametros de Npgsql funcionan, y sobre todo que treinta personas
-/// pidiendo cupo a la vez se reparten exactamente veinte, sin repetir ninguno.
+/// pidiendo cupo a la vez se reparten exactamente cincuenta, sin repetir ninguno.
 /// </summary>
 [Collection(ColeccionCuposFundador.Nombre)]
 public class CuposFundadorIntegracionPruebas : IDisposable
@@ -135,11 +135,39 @@ public class CuposFundadorIntegracionPruebas : IDisposable
     }
 
     /// <summary>
+    /// Estas pruebas abren una conexion fisica de verdad por solicitante, todas vivas a la
+    /// vez. Si el servidor no admite tantas, Npgsql falla con 53300 ("sorry, too many clients
+    /// already") AL ABRIR, antes de probar el reparto, y el rojo parece un defecto de la
+    /// logica de cupos cuando en realidad es configuracion del servidor. Esto lo dice claro
+    /// y antes de empezar.
+    /// </summary>
+    private static async Task ExigirHolguraDeConexionesAsync(int cuantas)
+    {
+        using var ctx = ContextoDePrueba.Crear();
+        var conexion = (NpgsqlConnection)ctx.Database.GetDbConnection();
+        await conexion.OpenAsync();
+        using var consulta = new NpgsqlCommand(
+            "SELECT current_setting('max_connections')::int "
+            + "- current_setting('superuser_reserved_connections')::int "
+            + "- (SELECT count(*) FROM pg_stat_activity)", conexion);
+        var libres = Convert.ToInt32(await consulta.ExecuteScalarAsync());
+
+        // +1 por la conexion de la propia prueba, que tambien esta abierta mientras corren.
+        if (libres < cuantas + 1)
+            throw new XunitException(
+                $"Hacen falta {cuantas + 1} conexiones simultaneas y al servidor le quedan {libres}. "
+                + "Esto NO es un defecto del reparto de cupos: sube max_connections en el servidor "
+                + "(local: datos-pg/postgresql.conf y reiniciar con detener/iniciar-postgres.bat).");
+    }
+
+    /// <summary>
     /// Lanza una tarea por perfil, todas con su propio contexto y su propia conexion ya
     /// abierta, y las suelta a la vez. Devuelve lo que cada una obtuvo, en el mismo orden.
     /// </summary>
     private static async Task<short?[]> PedirTodosALaVezAsync(IReadOnlyList<Guid> perfiles)
     {
+        await ExigirHolguraDeConexionesAsync(perfiles.Count);
+
         var puerta = new TaskCompletionSource();
         var ahora = DateTime.UtcNow;
 
@@ -160,7 +188,7 @@ public class CuposFundadorIntegracionPruebas : IDisposable
     // ------------------------------------------------------------ Sembrado
 
     [Fact]
-    public async Task Los_tres_planes_y_los_20_cupos_vinieron_con_el_esquema()
+    public async Task Los_tres_planes_y_los_50_cupos_vinieron_con_el_esquema()
     {
         var planes = await _prueba.Ctx.Planes.AsNoTracking().ToListAsync();
 
@@ -175,7 +203,7 @@ public class CuposFundadorIntegracionPruebas : IDisposable
         Assert.Equal(0, fundador.DiasPrueba);
 
         var cupos = await Cupos();
-        Assert.Equal(Enumerable.Range(1, 20).Select(n => (short)n), cupos.Select(c => c.Numero));
+        Assert.Equal(Enumerable.Range(1, 50).Select(n => (short)n), cupos.Select(c => c.Numero));
         Assert.All(cupos, c =>
         {
             Assert.Null(c.PerfilPrestadorId);
@@ -212,7 +240,7 @@ public class CuposFundadorIntegracionPruebas : IDisposable
 
         var cupo = (await Cupos()).Single(c => c.Numero == 1);
         Assert.Null(cupo.PerfilPrestadorId);
-        Assert.Equal(20, await _repo.CuposFundadorDisponiblesAsync(DateTime.UtcNow));
+        Assert.Equal(50, await _repo.CuposFundadorDisponiblesAsync(DateTime.UtcNow));
     }
 
     // ------------------------------------------------------------ El servicio contra la base
@@ -225,7 +253,7 @@ public class CuposFundadorIntegracionPruebas : IDisposable
         var reservado = await _servicio.ReservarCupoFundadorAsync(perfil.Id);
         Assert.True(reservado.Exito);
         Assert.Equal((short)1, reservado.Valor);
-        Assert.Equal(19, await _servicio.CuposFundadorDisponiblesAsync());
+        Assert.Equal(49, await _servicio.CuposFundadorDisponiblesAsync());
         var tras = (await Cupos()).Single(c => c.Numero == 1);
         Assert.Equal(perfil.Id, tras.PerfilPrestadorId);
         Assert.NotNull(tras.ReservadoHasta);
@@ -236,7 +264,7 @@ public class CuposFundadorIntegracionPruebas : IDisposable
         Assert.Null(confirmado.ReservadoHasta);
 
         Assert.True((await _servicio.LiberarCupoFundadorAsync(perfil.Id)).Exito);
-        Assert.Equal(20, await _servicio.CuposFundadorDisponiblesAsync());
+        Assert.Equal(50, await _servicio.CuposFundadorDisponiblesAsync());
         Assert.Null((await Cupos()).Single(c => c.Numero == 1).PerfilPrestadorId);
     }
 
@@ -263,10 +291,10 @@ public class CuposFundadorIntegracionPruebas : IDisposable
         var t = DateTime.UtcNow;
 
         var deA = await _repo.IntentarReservarCupoFundadorAsync(a.Id, t, t.AddMinutes(25));
-        Assert.Equal(19, await _repo.CuposFundadorDisponiblesAsync(t.AddMinutes(24)));
+        Assert.Equal(49, await _repo.CuposFundadorDisponiblesAsync(t.AddMinutes(24)));
 
         var tarde = t.AddMinutes(26);
-        Assert.Equal(20, await _repo.CuposFundadorDisponiblesAsync(tarde));
+        Assert.Equal(50, await _repo.CuposFundadorDisponiblesAsync(tarde));
 
         var deB = await _repo.IntentarReservarCupoFundadorAsync(b.Id, tarde, tarde.AddMinutes(25));
         Assert.Equal(deA, deB);
@@ -297,14 +325,14 @@ public class CuposFundadorIntegracionPruebas : IDisposable
     // ------------------------------------------------------------ Concurrencia real
 
     /// <summary>
-    /// Lo que justifica todo el diseno: treinta personas piden cupo en el mismo instante y
-    /// la base reparte exactamente veinte, cada uno a UNA sola persona. Se repite cinco
+    /// Lo que justifica todo el diseno: sesenta personas piden cupo en el mismo instante y
+    /// la base reparte exactamente cincuenta, cada uno a UNA sola persona. Se repite cinco
     /// veces porque una carrera que sale bien una vez no demuestra nada.
     /// </summary>
     [Fact]
-    public async Task Treinta_pidiendo_a_la_vez_se_reparten_exactamente_veinte_cupos_sin_repetir()
+    public async Task Sesenta_pidiendo_a_la_vez_se_reparten_exactamente_cincuenta_cupos_sin_repetir()
     {
-        var (perfiles, usuarios) = await CrearConCommitAsync(30);
+        var (perfiles, usuarios) = await CrearConCommitAsync(60);
         try
         {
             for (var ronda = 1; ronda <= 5; ronda++)
@@ -314,15 +342,15 @@ public class CuposFundadorIntegracionPruebas : IDisposable
                 var resultados = await PedirTodosALaVezAsync(perfiles);
 
                 var ganados = resultados.Where(x => x is not null).Select(x => x!.Value).ToList();
-                Assert.True(ganados.Count == 20, $"Ronda {ronda}: ganaron {ganados.Count}, se esperaban 20.");
+                Assert.True(ganados.Count == 50, $"Ronda {ronda}: ganaron {ganados.Count}, se esperaban 50.");
                 Assert.Equal(
-                    Enumerable.Range(1, 20).Select(n => (short)n),
+                    Enumerable.Range(1, 50).Select(n => (short)n),
                     ganados.OrderBy(n => n));
                 Assert.Equal(10, resultados.Count(x => x is null));
 
                 // Lo que cada tarea cree haber ganado coincide con lo que dice la base.
                 var cupos = await LeerCuposAsync();
-                Assert.Equal(20, cupos.Count(c => c.PerfilPrestadorId is not null));
+                Assert.Equal(50, cupos.Count(c => c.PerfilPrestadorId is not null));
                 for (var i = 0; i < perfiles.Count; i++)
                 {
                     if (resultados[i] is short n)
@@ -359,7 +387,7 @@ public class CuposFundadorIntegracionPruebas : IDisposable
                 Assert.Single(resultados.Distinct());
                 var cupos = await LeerCuposAsync();
                 Assert.Equal(1, cupos.Count(c => c.PerfilPrestadorId == perfiles[0]));
-                Assert.Equal(19, cupos.Count(c => c.PerfilPrestadorId is null));
+                Assert.Equal(49, cupos.Count(c => c.PerfilPrestadorId is null));
             }
         }
         finally

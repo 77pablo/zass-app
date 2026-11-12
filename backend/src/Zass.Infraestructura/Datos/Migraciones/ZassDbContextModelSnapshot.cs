@@ -6170,6 +6170,126 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         new
                         {
                             Numero = (short)20
+                        },
+                        new
+                        {
+                            Numero = (short)21
+                        },
+                        new
+                        {
+                            Numero = (short)22
+                        },
+                        new
+                        {
+                            Numero = (short)23
+                        },
+                        new
+                        {
+                            Numero = (short)24
+                        },
+                        new
+                        {
+                            Numero = (short)25
+                        },
+                        new
+                        {
+                            Numero = (short)26
+                        },
+                        new
+                        {
+                            Numero = (short)27
+                        },
+                        new
+                        {
+                            Numero = (short)28
+                        },
+                        new
+                        {
+                            Numero = (short)29
+                        },
+                        new
+                        {
+                            Numero = (short)30
+                        },
+                        new
+                        {
+                            Numero = (short)31
+                        },
+                        new
+                        {
+                            Numero = (short)32
+                        },
+                        new
+                        {
+                            Numero = (short)33
+                        },
+                        new
+                        {
+                            Numero = (short)34
+                        },
+                        new
+                        {
+                            Numero = (short)35
+                        },
+                        new
+                        {
+                            Numero = (short)36
+                        },
+                        new
+                        {
+                            Numero = (short)37
+                        },
+                        new
+                        {
+                            Numero = (short)38
+                        },
+                        new
+                        {
+                            Numero = (short)39
+                        },
+                        new
+                        {
+                            Numero = (short)40
+                        },
+                        new
+                        {
+                            Numero = (short)41
+                        },
+                        new
+                        {
+                            Numero = (short)42
+                        },
+                        new
+                        {
+                            Numero = (short)43
+                        },
+                        new
+                        {
+                            Numero = (short)44
+                        },
+                        new
+                        {
+                            Numero = (short)45
+                        },
+                        new
+                        {
+                            Numero = (short)46
+                        },
+                        new
+                        {
+                            Numero = (short)47
+                        },
+                        new
+                        {
+                            Numero = (short)48
+                        },
+                        new
+                        {
+                            Numero = (short)49
+                        },
+                        new
+                        {
+                            Numero = (short)50
                         });
                 });
 
@@ -6320,7 +6440,7 @@ namespace Zass.Infraestructura.Datos.Migraciones
                             Id = (short)3,
                             Activo = true,
                             Codigo = "fundador",
-                            Descripcion = "Precio de lanzamiento para las primeras 20 personas: 5990 pesos al mes mientras mantengas tu suscripcion activa.",
+                            Descripcion = "Precio de lanzamiento para las primeras 50 personas: 5990 pesos al mes mientras mantengas tu suscripcion activa.",
                             DiasPrueba = (short)0,
                             MaxServicios = 10,
                             MaxTarjetas = 1,

@@ -34,9 +34,9 @@ public sealed class BaseEnMemoria : IUnidadDeTrabajo
     public List<Plan> Planes { get; } = new();
     public List<Suscripcion> Suscripciones { get; } = new();
     public List<Pago> Pagos { get; } = new();
-    /// <summary>Los 20 cupos fundador, todos libres al empezar (como los siembra la migracion).</summary>
+    /// <summary>Los 50 cupos fundador, todos libres al empezar (como los siembra la migracion).</summary>
     public List<CupoFundador> CuposFundador { get; } =
-        Enumerable.Range(1, 20).Select(n => new CupoFundador { Numero = (short)n }).ToList();
+        Enumerable.Range(1, 50).Select(n => new CupoFundador { Numero = (short)n }).ToList();
     public List<Credencial> Credenciales { get; } = new();
     public List<EntidadCertificadora> Entidades { get; } = new();
     public List<Disponibilidad> Disponibilidades { get; } = new();

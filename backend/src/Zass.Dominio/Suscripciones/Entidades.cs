@@ -105,7 +105,7 @@ public class Pago
 }
 
 /// <summary>
-/// TBL-33. Cupos del plan fundador: exactamente 20 filas, una por numero.
+/// TBL-33. Cupos del plan fundador: exactamente 50 filas, una por numero.
 /// perfil_prestador_id nulo = cupo libre. El indice unico parcial
 /// (ux_cupo_fundador_perfil) impide que un mismo perfil tome dos cupos.
 /// La reserva temporal (reservado_hasta) evita que dos inscripciones
@@ -114,7 +114,7 @@ public class Pago
 /// </summary>
 public class CupoFundador
 {
-    /// <summary>1..20. PK fija, sembrada con el esquema; nunca se genera.</summary>
+    /// <summary>1..50. PK fija, sembrada con el esquema; nunca se genera.</summary>
     public short Numero { get; set; }
 
     /// <summary>Perfil que reservo u ocupo el cupo. Nulo = libre.</summary>

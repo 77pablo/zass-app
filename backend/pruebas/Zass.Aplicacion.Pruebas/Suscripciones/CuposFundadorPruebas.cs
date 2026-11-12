@@ -7,7 +7,7 @@ using Zass.Dominio.Suscripciones;
 namespace Zass.Aplicacion.Pruebas.Suscripciones;
 
 /// <summary>
-/// MOD-13 - cupos del plan fundador (TBL-33). Los 20 primeros prestadores pagan precio de
+/// MOD-13 - cupos del plan fundador (TBL-33). Los 50 primeros prestadores pagan precio de
 /// lanzamiento: el cupo se reserva un rato mientras inscriben la tarjeta, se confirma al
 /// quedar inscrita y se libera si cancelan o la reserva vence sin confirmarse.
 ///
@@ -46,7 +46,7 @@ public class CuposFundadorPruebas
     [Fact]
     public async Task Al_empezar_los_20_cupos_estan_disponibles()
     {
-        Assert.Equal(20, await Disponibles());
+        Assert.Equal(50, await Disponibles());
     }
 
     // ------------------------------------------------------------ Reservar
@@ -60,7 +60,7 @@ public class CuposFundadorPruebas
 
         Assert.True(r.Exito);
         Assert.Equal((short)1, r.Valor);
-        Assert.Equal(19, await Disponibles());
+        Assert.Equal(49, await Disponibles());
         Assert.Equal(p.Id, Cupo(1).PerfilPrestadorId);
     }
 
@@ -73,11 +73,11 @@ public class CuposFundadorPruebas
         Assert.Equal(Ahora.AddMinutes(25), Cupo(r.Valor).ReservadoHasta);
 
         _reloj.Avanzar(TimeSpan.FromMinutes(24));
-        Assert.Equal(19, await Disponibles());
+        Assert.Equal(49, await Disponibles());
 
         // Justo al cumplirse el plazo ya no esta guardado (reservado_hasta <= ahora).
         _reloj.Avanzar(TimeSpan.FromMinutes(1));
-        Assert.Equal(20, await Disponibles());
+        Assert.Equal(50, await Disponibles());
     }
 
     [Fact]
@@ -90,7 +90,7 @@ public class CuposFundadorPruebas
 
         Assert.True(segunda.Exito);
         Assert.Equal(primera.Valor, segunda.Valor);
-        Assert.Equal(19, await Disponibles());
+        Assert.Equal(49, await Disponibles());
         Assert.Equal(1, _base.CuposFundador.Count(c => c.PerfilPrestadorId == p.Id));
     }
 
@@ -107,17 +107,17 @@ public class CuposFundadorPruebas
     }
 
     [Fact]
-    public async Task Los_20_primeros_reciben_cupos_distintos_y_el_21_recibe_Conflicto()
+    public async Task Los_50_primeros_reciben_cupos_distintos_y_el_51_recibe_Conflicto()
     {
         var numeros = new List<short>();
-        for (var i = 0; i < 20; i++)
+        for (var i = 0; i < 50; i++)
         {
             var r = await _servicio.ReservarCupoFundadorAsync(UnPrestador().Id);
             Assert.True(r.Exito);
             numeros.Add(r.Valor);
         }
 
-        Assert.Equal(Enumerable.Range(1, 20).Select(n => (short)n), numeros.OrderBy(n => n));
+        Assert.Equal(Enumerable.Range(1, 50).Select(n => (short)n), numeros.OrderBy(n => n));
         Assert.Equal(0, await Disponibles());
 
         var registrosAntes = _auditor.Registros.Count;
@@ -137,7 +137,7 @@ public class CuposFundadorPruebas
         var deA = await _servicio.ReservarCupoFundadorAsync(a.Id);
 
         _reloj.Avanzar(TimeSpan.FromMinutes(26));
-        Assert.Equal(20, await Disponibles());
+        Assert.Equal(50, await Disponibles());
 
         var deB = await _servicio.ReservarCupoFundadorAsync(b.Id);
 
@@ -162,7 +162,7 @@ public class CuposFundadorPruebas
             Assert.Equal(Fallas.Validacion, r.Codigo);
         }
 
-        Assert.Equal(20, await Disponibles());
+        Assert.Equal(50, await Disponibles());
         Assert.Empty(_auditor.Registros);
     }
 
@@ -173,7 +173,7 @@ public class CuposFundadorPruebas
 
         Assert.False(r.Exito);
         Assert.Equal(Fallas.NoEncontrado, r.Codigo);
-        Assert.Equal(20, await Disponibles());
+        Assert.Equal(50, await Disponibles());
     }
 
     // ------------------------------------------------------------ Confirmar
@@ -189,7 +189,7 @@ public class CuposFundadorPruebas
         await _servicio.CorrerDiarioAsync();
 
         Assert.True(confirmar.Exito);
-        Assert.Equal(19, await Disponibles());
+        Assert.Equal(49, await Disponibles());
         Assert.Equal(p.Id, Cupo(r.Valor).PerfilPrestadorId);
         Assert.Null(Cupo(r.Valor).ReservadoHasta);
     }
@@ -227,12 +227,12 @@ public class CuposFundadorPruebas
         var p = UnPrestador();
         var r = await _servicio.ReservarCupoFundadorAsync(p.Id);
         await _servicio.ConfirmarCupoFundadorAsync(p.Id);
-        Assert.Equal(19, await Disponibles());
+        Assert.Equal(49, await Disponibles());
 
         var liberar = await _servicio.LiberarCupoFundadorAsync(p.Id);
 
         Assert.True(liberar.Exito);
-        Assert.Equal(20, await Disponibles());
+        Assert.Equal(50, await Disponibles());
         Assert.Null(Cupo(r.Valor).PerfilPrestadorId);
         Assert.Null(Cupo(r.Valor).ReservadoHasta);
     }
@@ -246,7 +246,7 @@ public class CuposFundadorPruebas
 
         Assert.True(r.Exito);
         Assert.Empty(_auditor.Registros);
-        Assert.Equal(20, await Disponibles());
+        Assert.Equal(50, await Disponibles());
     }
 
     // ------------------------------------------------------------ Auditoria
