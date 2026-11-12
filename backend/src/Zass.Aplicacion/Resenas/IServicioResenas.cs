@@ -50,6 +50,14 @@ public interface IServicioResenas
         Guid reporteId, Guid moderadorId, bool retirar, string motivo,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// API-64. Las reseñas que escribí, de la más nueva a la más vieja. Sin esto, la ventana de
+    /// edición de 72 h (CS-16) solo existiría en la pantalla donde se acaba de publicar: quien
+    /// volviera al día siguiente no tendría forma de llegar a su propia reseña.
+    /// </summary>
+    Task<Resultado<IReadOnlyList<MiResenaDto>>> MisResenasAsync(
+        Guid autorId, CancellationToken ct = default);
+
     /// <summary>MOD-11 `ResenasPublicas`. Lo que ve cualquiera: sin autor y sin estado interno.</summary>
     Task<Resultado<PaginaDeResenas>> ResenasPublicasAsync(
         Guid perfilPrestadorId, string? cursor, CancellationToken ct = default);
@@ -138,8 +146,23 @@ public sealed record ResenaDto(
 public sealed record RespuestaPublicaDto(string Texto, DateTime PublicadaEn, DateTime? EditadaEn);
 
 /// <summary>
+/// De dónde salió el derecho a reseñar. Es lo ÚNICO del contacto que sale hacia fuera: decir
+/// "hubo cita" o "no la hubo" no permite cruzar a nadie con nada, mientras que el id del
+/// contacto o la fecha de la cita sí (CU-16 §7).
+///
+/// `Directo` es la decisión de Pablo del 11-nov-2026: la reseña de quien marcó "ya me atendió"
+/// se rotula «contacto directo, sin cita», para que quien la lee sepa que ZASS! no vio ese
+/// servicio pasar por su agenda.
+///
+/// Los nombres evitan a propósito las palabras "contacto" y "estado": lo público se comprueba
+/// leyendo los BYTES de la respuesta, y esas pruebas prohíben que aparezcan.
+/// </summary>
+public enum OrigenDeResena { Cita, Directo }
+
+/// <summary>
 /// Lo que ve CUALQUIERA. Lo que NO tiene es lo importante (CU-16 §7 y RN-S1-07): ni autor, ni
-/// su correo, ni el estado interno, ni el contacto o la cita que la habilitó.
+/// su correo, ni el estado interno, ni el contacto o la cita que la habilitó. El `Origen` dice
+/// si hubo cita o no, y nada más que eso.
 /// </summary>
 public sealed record ResenaPublicaDto(
     Guid Id,
@@ -147,9 +170,29 @@ public sealed record ResenaPublicaDto(
     string Comentario,
     IReadOnlyList<string> Aspectos,
     TipoResena Tipo,
+    OrigenDeResena Origen,
     bool Editada,
     DateTime PublicadaEn,
     RespuestaPublicaDto? Respuesta);
+
+/// <summary>
+/// Una reseña MIA (API-64): lo que necesita su autor para reconocerla, saber a quién se la dejó
+/// y si todavía puede cambiarla. Lleva el estado porque una reseña retirada en moderación sigue
+/// siendo suya y merece explicación, no desaparecer sin más.
+/// </summary>
+public sealed record MiResenaDto(
+    Guid Id,
+    string PerfilNombre,
+    string PerfilSlug,
+    int Calificacion,
+    string Comentario,
+    IReadOnlyList<string> Aspectos,
+    TipoResena Tipo,
+    OrigenDeResena Origen,
+    EstadoResena Estado,
+    bool Editada,
+    DateTime PublicadaEn,
+    DateTime EditableHasta);
 
 public sealed record PaginaDeResenas(
     IReadOnlyList<ResenaPublicaDto> Resenas, string? SiguienteCursor);

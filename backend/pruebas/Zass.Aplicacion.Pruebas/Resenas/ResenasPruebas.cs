@@ -1295,4 +1295,94 @@ public class ResenasPruebas
 
         Assert.Equal(Fallas.NoEncontrado, r.Codigo);
     }
+
+    // ------------------------------------------------------------- API-64 · mis reseñas
+
+    [Fact]
+    public async Task Mis_resenas_traen_solo_las_mias()
+    {
+        var mia = await UnaPublicada();
+        var otroAutor = UnUsuario("buscador");
+        var ajena = await UnaPublicada(autor: otroAutor);
+
+        var mias = (await _servicio.MisResenasAsync(_ana.Id)).Valor!;
+
+        Assert.Equal(new[] { mia.Id }, mias.Select(r => r.Id));
+        Assert.DoesNotContain(mias, r => r.Id == ajena.Id);
+    }
+
+    [Fact]
+    public async Task Mis_resenas_dicen_a_quien_se_la_deje_y_hasta_cuando_puedo_cambiarla()
+    {
+        var resena = await UnaPublicada();
+
+        var mia = Assert.Single((await _servicio.MisResenasAsync(_ana.Id)).Valor!);
+
+        Assert.Equal(_perfil.NombrePublico, mia.PerfilNombre);
+        Assert.Equal(_perfil.Slug, mia.PerfilSlug);
+        Assert.Equal(resena.PublicadaEn + ReglasDeResenas.PlazoDeEdicion, mia.EditableHasta);
+        Assert.Equal(EstadoResena.Publicada, mia.Estado);
+    }
+
+    /// <summary>
+    /// Una reseña retirada en moderación sigue siendo de quien la escribió. Esconderla de su
+    /// autor haría que desapareciera sin explicación, y la pantalla no podría decir qué pasó.
+    /// </summary>
+    [Fact]
+    public async Task Una_resena_retirada_sigue_apareciendo_entre_las_mias_con_su_estado()
+    {
+        var resena = await UnaPublicada();
+        resena.Retirar();
+
+        var mia = Assert.Single((await _servicio.MisResenasAsync(_ana.Id)).Valor!);
+
+        Assert.Equal(EstadoResena.Retirada, mia.Estado);
+    }
+
+    // ------------------------------------------------------------- el origen (11-nov-2026)
+
+    [Fact]
+    public async Task Mis_resenas_distinguen_la_cita_del_contacto_directo()
+    {
+        var cita = UnaCita(EstadoCita.Realizada);
+        var porCita = await _servicio.PublicarAsync(
+            Pub(UnContacto(cita: cita), clave: "con-cita"));
+        var otroPerfil = UnPerfil(UnUsuario("prestador"));
+        var directa = await _servicio.PublicarAsync(
+            Pub(UnContacto(perfil: otroPerfil), clave: "sin-cita"));
+        Assert.True(porCita.Exito && directa.Exito);
+
+        var mias = (await _servicio.MisResenasAsync(_ana.Id)).Valor!;
+
+        Assert.Equal(OrigenDeResena.Cita, mias.Single(r => r.Id == porCita.Valor!.Resena!.Id).Origen);
+        Assert.Equal(OrigenDeResena.Directo, mias.Single(r => r.Id == directa.Valor!.Resena!.Id).Origen);
+    }
+
+    /// <summary>
+    /// Decisión de Pablo del 11-nov-2026: quien reseña tras marcar "ya me atendió" queda
+    /// rotulado «contacto directo, sin cita», y eso tiene que viajar en lo PÚBLICO, que es
+    /// donde se lee. Lo que no viaja es con qué contacto ni con qué cita (CU-16 §7).
+    /// </summary>
+    [Fact]
+    public async Task Lo_publico_dice_si_hubo_cita_o_fue_contacto_directo_y_nada_mas()
+    {
+        var cita = UnaCita(EstadoCita.Realizada);
+        await _servicio.PublicarAsync(Pub(UnContacto(cita: cita), clave: "con-cita"));
+        var otroAutor = UnUsuario("buscador");
+        await _servicio.PublicarAsync(
+            Pub(UnContacto(otroAutor), autor: otroAutor, clave: "sin-cita"));
+
+        var pagina = (await _servicio.ResenasPublicasAsync(_perfil.Id, null)).Valor!;
+        var json = JsonSerializer.Serialize(pagina, new JsonSerializerOptions
+        {
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        });
+
+        Assert.Equal(
+            new[] { OrigenDeResena.Directo, OrigenDeResena.Cita },
+            pagina.Resenas.Select(r => r.Origen));
+        Assert.DoesNotContain(cita.Id.ToString(), json);
+        Assert.DoesNotContain("cita\"", json, StringComparison.OrdinalIgnoreCase);   // ningún campo de cita
+        Assert.DoesNotContain("contacto", json, StringComparison.OrdinalIgnoreCase);
+    }
 }

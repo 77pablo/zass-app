@@ -165,6 +165,7 @@ public class ResenasApiPruebas : IAsyncLifetime
     [Theory]
     [InlineData("POST", "/api/contactos")]
     [InlineData("GET", "/api/mi/elegibilidad?perfilId=00000000-0000-0000-0000-000000000001")]
+    [InlineData("GET", "/api/mi/resenas")]
     [InlineData("POST", "/api/resenas")]
     [InlineData("PUT", "/api/resenas/00000000-0000-0000-0000-000000000001")]
     [InlineData("POST", "/api/resenas/00000000-0000-0000-0000-000000000001/respuesta")]
@@ -303,6 +304,40 @@ public class ResenasApiPruebas : IAsyncLifetime
         Assert.DoesNotContain("editableHasta", crudo, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("contacto", crudo, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("usuario", crudo, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// API-64. Lo que de verdad separa mis reseñas de las de cualquier otro es el FILTRO POR
+    /// AUTOR de la consulta, y eso solo se puede comprobar contra la base: la sesión decide
+    /// quién soy y no hay ningún parámetro con el que pedir las de otra persona.
+    /// </summary>
+    [Fact]
+    public async Task Mis_reseñas_son_solo_las_mias_y_traen_el_plazo_de_edicion()
+    {
+        var (autor, prestador, contactoId) = await ConContactoMaduroAsync();
+        var miaId = await PublicadaAsync(autor, contactoId, cal: 4);
+
+        // Otra persona, otro prestador, otra reseña: no puede aparecer en la lista del primero.
+        var otroPrestador = await UnaPersonaAsync("prestador", publicado: true);
+        var otroAutor = await UnaPersonaAsync("buscador");
+        var otroContacto = await otroAutor.EnviarAsync(HttpMethod.Post, "/api/contactos",
+            new { perfilId = otroPrestador.PerfilId, origen = "Ficha", canal = "Telefono" });
+        var otroContactoId = await IdAsync(otroContacto);
+        await EnvejecerContactoAsync(otroContactoId, TimeSpan.FromDays(8));
+        var ajenaId = await PublicadaAsync(otroAutor, otroContactoId);
+
+        var mias = (await autor.Http.GetFromJsonAsync<JsonDocument>("/api/mi/resenas"))!.RootElement;
+
+        var ids = mias.EnumerateArray().Select(r => r.GetProperty("id").GetGuid()).ToList();
+        Assert.Equal(new[] { miaId }, ids);
+        Assert.DoesNotContain(ajenaId, ids);
+
+        var mia = mias.EnumerateArray().Single();
+        Assert.Equal(prestador.Slug, mia.GetProperty("perfilSlug").GetString());
+        Assert.Equal("Publicada", mia.GetProperty("estado").GetString());
+        // Sin cita de por medio: es el «contacto directo, sin cita» que se rotula en la pantalla.
+        Assert.Equal("Directo", mia.GetProperty("origen").GetString());
+        Assert.True(mia.GetProperty("editableHasta").GetDateTime() > DateTime.UtcNow.AddHours(71));
     }
 
     [Fact]
