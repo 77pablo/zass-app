@@ -467,6 +467,8 @@ main:focus { outline: none; }
 .persona { display: flex; gap: 24px; align-items: center; }
 .persona h1 { font-size: clamp(2rem, 5.4vw, 3.5rem); font-weight: 800; letter-spacing: -0.04em; line-height: 1; }
 .persona-detalle { margin-top: 8px; font-weight: 700; color: var(--suave); }
+/* J3 #12b: los enlaces «Mi agenda · Mis citas» de Mi ficha, a 44 px de alto para tocarlos. Solo Mi ficha pone enlaces aquí. */
+.persona-detalle a { display: inline-flex; align-items: center; min-height: 44px; }
 .persona .fila-etiquetas { margin-top: 14px; }
 @media (max-width: 560px) { .persona { flex-direction: column; align-items: flex-start; gap: 18px; } .monograma--g { width: 80px; height: 80px; font-size: 1.8rem; } }
 
@@ -848,6 +850,17 @@ option { background: var(--panel-2); color: var(--texto); }
 .franja-campos { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
 .franja-campos .campo-etiqueta { display: grid; gap: 6px; font-weight: 600; }
 .franja .aviso, .agenda-servicio .aviso, .agenda-prestador .aviso { margin: 10px 0 0; }
+/* J3 #1: el botón de la fila mide lo mismo que los campos (52 px), así no queda más abajo. */
+.franja-campos .boton { min-height: 52px; }
+/* J3 #5: aire entre el texto y el formulario de bloqueo, y antes de «Bloqueos vigentes». */
+.agenda-prestador .bloque-texto + .franja-campos { margin-top: 16px; }
+.agenda-prestador h3 { margin: 28px 0 12px; }
+/* J3 #2: rango, motivo y botón en una fila que se parte bien. Clase propia: .franja también es la tarjeta de horario. */
+.franja--bloqueo { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.franja-motivo { flex: 1 1 12rem; min-width: 0; overflow-wrap: anywhere; }
+.franja--bloqueo .boton { margin-left: auto; }
+/* J3 #10: en la agenda, el mismo aro de foco que botones y enlaces (línea 51). Sugerido para todo el sitio. */
+.agenda-prestador .campo-entrada:focus-visible { outline: 3px solid var(--amarillo); outline-offset: 2px; }
 
 /* Contacto que pide cuenta */
 .contacto-cuenta { display: grid; gap: 12px; }

@@ -121,7 +121,7 @@ describe('mi agenda (prestador)', () => {
     await screen.findByRole('region', { name: 'Corte de pelo' })
     const t = tarjeta('Corte de pelo')
 
-    await userEvent.click(within(t).getByRole('button', { name: /quitar franja 1/i }))
+    await userEvent.click(within(t).getByRole('button', { name: 'Quitar horario 1 (lunes de 09:00 a 13:00)' }))
     await userEvent.click(within(t).getByRole('button', { name: /guardar horario/i }))
 
     await waitFor(() => expect(guardados()).toHaveLength(1))
@@ -191,6 +191,23 @@ describe('mi agenda (prestador)', () => {
       desdeEn: '2026-12-24T03:00:00.000Z', hastaEn: '2026-12-26T03:00:00.000Z', motivo: 'Navidad',
     })
     expect(await within(b).findByText(/bloqueaste/i)).toBeInTheDocument()
+  })
+
+  it('el aviso de bloqueo usa la fecha como en la lista, y con un solo dia lo dice como un dia', async () => {
+    pintar()
+    await screen.findByRole('region', { name: 'Corte de pelo' })
+    const b = screen.getByRole('region', { name: /bloquear fechas/i })
+
+    await userEvent.type(within(b).getByLabelText('Desde el día'), '2026-12-24')
+    await userEvent.type(within(b).getByLabelText('Hasta el día'), '2026-12-25')
+    await userEvent.click(within(b).getByRole('button', { name: /bloquear/i }))
+    expect(await within(b).findByText('Bloqueaste del 24-12-2026 al 25-12-2026: nadie podrá agendar esos días.'))
+      .toBeInTheDocument()
+
+    await userEvent.type(within(b).getByLabelText('Desde el día'), '2027-01-01')
+    await userEvent.type(within(b).getByLabelText('Hasta el día'), '2027-01-01')
+    await userEvent.click(within(b).getByRole('button', { name: /bloquear/i }))
+    expect(await within(b).findByText('Bloqueaste el 01-01-2027: nadie podrá agendar ese día.')).toBeInTheDocument()
   })
 
   it('no bloquea si el ultimo dia es anterior al primero', async () => {
@@ -291,5 +308,6 @@ describe('mi agenda (prestador)', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/servidor caído/i)
     expect(screen.getByRole('button', { name: /reintentar/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Mi agenda' })).toBeInTheDocument()
   })
 })
