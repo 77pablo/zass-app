@@ -487,7 +487,12 @@ public class ResenasApiPruebas : IAsyncLifetime
 
         var aviso = await autor.EnviarAsync(HttpMethod.Post, "/api/resenas", CuerpoResena(contactoId, 5, texto), "k1");
         Assert.Equal(HttpStatusCode.UnprocessableEntity, aviso.StatusCode);
+        // api-rest.md: TODOS los errores viajan como problem+json, tambien este, que es el unico
+        // que ademas lleva datos que hay que mostrar.
+        Assert.Equal("application/problem+json", aviso.Content.Headers.ContentType!.MediaType);
         var cuerpo = (await aviso.Content.ReadFromJsonAsync<JsonDocument>())!.RootElement;
+        Assert.Equal("Revisa tu comentario", cuerpo.GetProperty("title").GetString());
+        Assert.Contains("datos personales", cuerpo.GetProperty("detail").GetString()!);
         Assert.True(cuerpo.GetProperty("requiereConfirmacion").GetBoolean());
         Assert.NotEmpty(cuerpo.GetProperty("fragmentos").EnumerateArray());
         using (var ctx = ContextoDePrueba.Crear())

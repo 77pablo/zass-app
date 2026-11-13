@@ -250,15 +250,15 @@ async function conAvisoDeDatos(llamar: () => Promise<Resena>): Promise<Desenlace
     return { tipo: 'publicada', resena: await llamar() }
   } catch (e) {
     if (e instanceof ErrorApi && e.estado === 422 && e.datos.requiereConfirmacion === true) {
+      // Ahora que este 422 viaja como problem+json (api-rest.md), su texto esta en `detail` y el
+      // cliente ya lo dejo en `e.mensaje`: rescatarlo a mano seria codigo que no vigila nada. Lo
+      // unico propio de este caso son los `fragmentos`, que viajan como extension del problema.
       const crudos = e.datos.fragmentos
-      // Este 422 no viaja como problem+json: su texto va en `detalle`, no en `detail`, asi que
-      // el mensaje generico del cliente no sirve. Ver la discrepancia anotada en el informe.
-      const detalle = e.datos.detalle
       return {
         tipo: 'datos-personales',
         aviso: {
           fragmentos: Array.isArray(crudos) ? crudos.map(String) : [],
-          mensaje: typeof detalle === 'string' && detalle !== '' ? detalle : e.mensaje,
+          mensaje: e.mensaje,
         },
       }
     }

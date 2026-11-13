@@ -286,12 +286,21 @@ public static class EndpointsResenas
         ? Results.Problem(title: "No elegible", detail: r.Mensaje, statusCode: StatusCodes.Status403Forbidden)
         : Respuestas.Problema(r);
 
-    /// <summary>CU-16 4E: el texto parece traer datos personales. 422 con los fragmentos y la forma de seguir.</summary>
-    private static IResult Advertencia(ResultadoPublicacion r) => Results.Json(new
-    {
-        titulo = "Revisa tu comentario",
-        detalle = "Tu comentario parece incluir datos personales. Puedes corregirlo o enviarlo igual (se revisará).",
-        requiereConfirmacion = true,
-        fragmentos = r.DatosPersonalesDetectados,
-    }, statusCode: StatusCodes.Status422UnprocessableEntity);
+    /// <summary>
+    /// CU-16 4E: el texto parece traer datos personales. 422 con los fragmentos y la forma de seguir.
+    ///
+    /// Va como `application/problem+json`, que es lo que api-rest.md exige para TODOS los errores.
+    /// Lo propio de este caso (`requiereConfirmacion` y los `fragmentos` señalados) viaja como
+    /// extensiones del problema: RFC 7807 las permite y salen al mismo nivel que `title` y
+    /// `detail`, asi que el cliente las lee igual que antes.
+    /// </summary>
+    private static IResult Advertencia(ResultadoPublicacion r) => Results.Problem(
+        title: "Revisa tu comentario",
+        detail: "Tu comentario parece incluir datos personales. Puedes corregirlo o enviarlo igual (se revisará).",
+        statusCode: StatusCodes.Status422UnprocessableEntity,
+        extensions: new Dictionary<string, object?>
+        {
+            ["requiereConfirmacion"] = true,
+            ["fragmentos"] = r.DatosPersonalesDetectados,
+        });
 }
