@@ -162,6 +162,20 @@ export async function crearCredencial(datos: DatosDeCredencial): Promise<void> {
   await enviar('/api/mi/credenciales', { ...datos, entidadId: null })
 }
 
+/**
+ * API-27. Manda a revision una credencial propia. No lleva cuerpo: la credencial se dice en la
+ * ruta y la persona se decide con la sesion.
+ *
+ * La API contesta 204 y NO devuelve la credencial, asi que quien llama tiene que volver a pedir
+ * la lista con `misCredenciales()` para ver el estado nuevo.
+ *
+ * Si la bandera de lanzamiento `Zass:Verificacion:PermitirSinDocumentos` esta apagada, una
+ * credencial sin respaldo se rechaza con 422 (RN-S2-01) en vez de pasar a revision.
+ */
+export async function enviarCredencialARevision(id: string): Promise<void> {
+  await enviar(`/api/mi/credenciales/${encodeURIComponent(id)}/enviar`)
+}
+
 /** API-28. Elimina la credencial y sus archivos. */
 export async function eliminarCredencial(id: string): Promise<void> {
   await enviar(`/api/mi/credenciales/${encodeURIComponent(id)}`, undefined, 'DELETE')

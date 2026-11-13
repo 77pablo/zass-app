@@ -3,7 +3,7 @@ import { ErrorApi } from '../api/cliente'
 import { Aviso } from '../componentes/Aviso'
 import { Campo } from '../componentes/Campo'
 import {
-  crearCredencial, eliminarCredencial,
+  crearCredencial, eliminarCredencial, enviarCredencialARevision,
   type MiCredencial, type TipoDeCredencial,
 } from '../funciones/perfil/servicio'
 import { Icono } from '../marco/Icono'
@@ -30,9 +30,26 @@ function mensajeDe(e: unknown, porDefecto: string): string {
 }
 
 /**
- * CU-05, la parte que no necesita archivos: declarar, ver y eliminar. Subir documentos y enviar a
- * revision esperan a MOD-08; hasta entonces una credencial se queda en borrador, y la pantalla
- * lo dice en vez de prometer una revision que no puede ocurrir.
+ * El 422 de API-27 solo puede ser uno: la credencial no tiene documento de respaldo y la bandera
+ * `Zass:Verificacion:PermitirSinDocumentos` esta apagada (RN-S2-01). El servidor lo dice como
+ * «Sube al menos un documento de respaldo», y subir documentos NO existe todavia (MOD-08):
+ * repetir su mensaje tal cual manda a la persona a hacer algo que la interfaz no le ofrece. Por
+ * eso este caso lleva su propio texto, y el resto si muestra el motivo del servidor.
+ */
+function motivoDelEnvio(e: unknown): string {
+  if (e instanceof ErrorApi && e.estado === 422) {
+    return 'Todavía no podemos revisarla: para eso hace falta un documento de respaldo y subir '
+      + 'archivos aún no está disponible. Tu credencial sigue guardada como borrador.'
+  }
+  return mensajeDe(e, 'No pudimos enviarla a revisión. Intenta de nuevo.')
+}
+
+/**
+ * CU-05, la parte que no necesita archivos: declarar, ver, enviar a revision y eliminar. Subir
+ * documentos espera a MOD-08, pero enviar a revision NO: API-27 acepta una credencial sin
+ * respaldo mientras la bandera de lanzamiento este activa, y sin este boton el sello
+ * «Verificada» era inalcanzable y el filtro «Solo verificados» de la busqueda no devolvia a
+ * nadie.
  */
 export function MisCredenciales({
   credenciales, alCambiar,
@@ -41,6 +58,10 @@ export function MisCredenciales({
   const [confirmando, setConfirmando] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string>()
   const [trabajando, setTrabajando] = useState(false)
+  const [enviando, setEnviando] = useState<string | null>(null)
+  // El error va junto a la credencial que lo causo, no arriba: con varias en la lista, un aviso
+  // suelto en la cabecera no dice de cual habla.
+  const [falloEnvio, setFalloEnvio] = useState<{ id: string; mensaje: string } | null>(null)
 
   async function eliminar(id: string) {
     setTrabajando(true)
@@ -53,6 +74,20 @@ export function MisCredenciales({
       setAviso(mensajeDe(e, 'No pudimos eliminarla. Intenta de nuevo.'))
     } finally {
       setTrabajando(false)
+    }
+  }
+
+  async function enviarARevision(id: string) {
+    setEnviando(id)
+    setFalloEnvio(null)
+    try {
+      await enviarCredencialARevision(id)
+      // API-27 responde 204, sin la credencial: el estado nuevo se ve al volver a pedir la lista.
+      alCambiar()
+    } catch (e) {
+      setFalloEnvio({ id, mensaje: motivoDelEnvio(e) })
+    } finally {
+      setEnviando(null)
     }
   }
 
@@ -89,6 +124,19 @@ export function MisCredenciales({
                     {[etiquetaDeTipo(c.tipo), c.entidad, c.obtenidaEn.slice(0, 4)].filter(Boolean).join(' · ')}
                   </small>
                   <span className={estado.sello ? 'sello' : 'dato'}>{estado.texto}</span>
+                  {c.estado === 'Borrador' && (
+                    <button
+                      type="button" className="editar" disabled={enviando !== null}
+                      onClick={() => void enviarARevision(c.id)}
+                    >
+                      <Icono nombre="sello" />
+                      {enviando === c.id ? 'Enviando…' : 'Enviar a revisión'}
+                      <span className="solo-lector"> {c.nombre}</span>
+                    </button>
+                  )}
+                  {falloEnvio?.id === c.id && (
+                    <p className="campo-error" role="alert">{falloEnvio.mensaje}</p>
+                  )}
                 </div>
                 {confirmando === c.id ? (
                   <span className="credencial-confirmar">
@@ -120,8 +168,9 @@ export function MisCredenciales({
 
       {credenciales.some((c) => c.estado === 'Borrador') && (
         <p className="letra-chica">
-          Por ahora una credencial queda como borrador y solo la ves tú: todavía no puedes subir
-          documentos ni enviarla a revisión.
+          Un borrador solo lo ves tú. Envíalo a revisión y lo revisamos a mano, una por una;
+          mientras lo hacemos, en tu ficha aparece como declarado por ti. Subir documentos
+          todavía no está disponible.
         </p>
       )}
     </section>

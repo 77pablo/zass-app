@@ -53,12 +53,22 @@ describe('Tus credenciales', () => {
     expect(screen.getByText(texto, { selector: '.sello, .dato' })).toBeInTheDocument()
   })
 
-  it('un borrador avisa que todavía no se puede enviar a revisión, y sin borradores no lo dice', () => {
+  it('un borrador explica qué es la revisión, y sin borradores no lo dice', () => {
     const { rerender } = render(<MisCredenciales credenciales={[una('Borrador')]} alCambiar={() => {}} />)
-    expect(screen.getByText(/todavía no puedes subir documentos ni enviarla a revisión/)).toBeInTheDocument()
+    expect(screen.getByText(/Envíalo a revisión y lo revisamos a mano/)).toBeInTheDocument()
 
     rerender(<MisCredenciales credenciales={[una('Verificada')]} alCambiar={() => {}} />)
-    expect(screen.queryByText(/todavía no puedes subir documentos/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Envíalo a revisión/)).not.toBeInTheDocument()
+  })
+
+  // Lo que la pantalla decia hasta hoy: que enviar a revision era imposible. API-27 existe desde
+  // antes, asi que el sello «Verificada» era inalcanzable solo por este texto y por la falta del
+  // boton. El candado es literal a proposito: si alguien vuelve a escribir la frase, cae.
+  it('ya no dice que enviarla a revisión sea imposible', () => {
+    render(<MisCredenciales credenciales={[una('Borrador')]} alCambiar={() => {}} />)
+
+    expect(screen.queryByText(/todavía no puedes subir documentos ni enviarla a revisión/)).toBeNull()
+    expect(screen.queryByText(/no puedes.*enviarla a revisión/)).toBeNull()
   })
 
   it('muestra tipo, entidad y año', () => {
@@ -168,6 +178,106 @@ describe('Tus credenciales', () => {
     await u.click(screen.getByRole('button', { name: /Sí, eliminar/ }))
     await vi.waitFor(() => expect(alCambiar).toHaveBeenCalledTimes(1))
     expect(llamadas).toEqual([{ ruta: '/api/mi/credenciales/id-Abogado', metodo: 'DELETE', cuerpo: undefined }])
+  })
+
+  describe('enviar a revisión (API-27)', () => {
+    it('un borrador se manda con POST a /enviar y sin cuerpo, y avisa para recargar', async () => {
+      const u = userEvent.setup()
+      const alCambiar = vi.fn()
+      render(<MisCredenciales credenciales={[una('Borrador')]} alCambiar={alCambiar} />)
+
+      await u.click(screen.getByRole('button', { name: /^Enviar a revisión/ }))
+
+      await vi.waitFor(() => expect(alCambiar).toHaveBeenCalledTimes(1))
+      // La ruta y el metodo son los de API-27 tal cual: POST /api/mi/credenciales/{id}/enviar.
+      expect(llamadas).toEqual([
+        { ruta: '/api/mi/credenciales/id-Abogado/enviar', metodo: 'POST', cuerpo: undefined },
+      ])
+    })
+
+    it('el identificador va escapado en la ruta', async () => {
+      const u = userEvent.setup()
+      const c = { ...una('Borrador'), id: 'a/b c' }
+      render(<MisCredenciales credenciales={[c]} alCambiar={() => {}} />)
+
+      await u.click(screen.getByRole('button', { name: /^Enviar a revisión/ }))
+
+      await vi.waitFor(() => expect(llamadas).toHaveLength(1))
+      expect(llamadas[0].ruta).toBe('/api/mi/credenciales/a%2Fb%20c/enviar')
+    })
+
+    it.each(['EnRevision', 'Verificada', 'Rechazada', 'Vencida'] as const)(
+      'una credencial %s no ofrece el botón', (estado) => {
+        render(<MisCredenciales credenciales={[una(estado)]} alCambiar={() => {}} />)
+
+        expect(screen.queryByRole('button', { name: /^Enviar a revisión/ })).toBeNull()
+      })
+
+    it('mientras va la llamada el botón dice que está enviando y no se puede pulsar de nuevo', async () => {
+      const u = userEvent.setup()
+      let soltar: (() => void) | undefined
+      const espera = new Promise<void>((r) => { soltar = r })
+      vi.stubGlobal('fetch', vi.fn(async (ruta: string, opciones?: RequestInit) => {
+        if (ruta === '/api/auth/csrf') return json({ token: 't' })
+        llamadas.push({ ruta, metodo: opciones?.method })
+        await espera
+        return respuesta
+      }))
+      render(<MisCredenciales credenciales={[una('Borrador')]} alCambiar={() => {}} />)
+
+      await u.click(screen.getByRole('button', { name: /^Enviar a revisión/ }))
+
+      const boton = await screen.findByRole('button', { name: /^Enviando…/ })
+      expect(boton).toBeDisabled()
+      soltar?.()
+      await vi.waitFor(() => expect(llamadas).toHaveLength(1))
+    })
+
+    // Con la bandera Zass:Verificacion:PermitirSinDocumentos apagada, API-27 contesta 422 con
+    // «Sube al menos un documento de respaldo», y subir documentos no existe (MOD-08). Repetir
+    // ese mensaje manda a la persona a hacer algo que la pantalla no le ofrece.
+    it('si la bandera está apagada explica qué pasa en vez de pedir un documento imposible', async () => {
+      const u = userEvent.setup()
+      const alCambiar = vi.fn()
+      respuesta = json({
+        title: 'Regla de negocio',
+        detail: 'Sube al menos un documento de respaldo antes de enviar a revision.',
+      }, 422)
+      render(<MisCredenciales credenciales={[una('Borrador')]} alCambiar={alCambiar} />)
+
+      await u.click(screen.getByRole('button', { name: /^Enviar a revisión/ }))
+
+      expect(await screen.findByText(/subir archivos aún no está disponible/)).toBeInTheDocument()
+      expect(screen.getByText(/sigue guardada como borrador/)).toBeInTheDocument()
+      expect(screen.queryByText(/Sube al menos un documento/)).toBeNull()
+      expect(alCambiar).not.toHaveBeenCalled()
+      expect(screen.getByRole('button', { name: /^Enviar a revisión/ })).toBeEnabled()
+    })
+
+    it('cualquier otro rechazo muestra el motivo del servidor', async () => {
+      const u = userEvent.setup()
+      respuesta = json({ title: 'Conflicto', detail: 'Esta credencial ya está en revisión.' }, 409)
+      render(<MisCredenciales credenciales={[una('Borrador')]} alCambiar={() => {}} />)
+
+      await u.click(screen.getByRole('button', { name: /^Enviar a revisión/ }))
+
+      expect(await screen.findByText('Esta credencial ya está en revisión.')).toBeInTheDocument()
+    })
+
+    it('el error se muestra junto a la credencial que falló, no junto a la otra', async () => {
+      const u = userEvent.setup()
+      respuesta = json({ title: 'Conflicto', detail: 'Esta credencial ya está en revisión.' }, 409)
+      const uno = una('Borrador', 'Abogado')
+      const dos = una('Borrador', 'Tasador')
+      render(<MisCredenciales credenciales={[uno, dos]} alCambiar={() => {}} />)
+
+      await u.click(screen.getByRole('button', { name: /^Enviar a revisión\s?Tasador/ }))
+
+      const error = await screen.findByText('Esta credencial ya está en revisión.')
+      const fila = error.closest('li')
+      expect(fila?.textContent).toContain('Tasador')
+      expect(fila?.textContent).not.toContain('Abogado')
+    })
   })
 
   it('«No» cancela la eliminación sin llamar a la API', async () => {
