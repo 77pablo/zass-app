@@ -1,6 +1,6 @@
 # ZASS! — reglas para Claude Code
 
-ZASS! es una plataforma comunitaria de servicios locales en Chile. Backend .NET 8 por capas (Dominio, Aplicación, Infraestructura, Api, con minimal APIs). Frontend React 19 + TypeScript + Vite. Base PostgreSQL 18 con PostGIS.
+ZASS! es una plataforma comunitaria de servicios locales en Chile. Backend .NET 8 por capas (Dominio, Aplicación, Infraestructura, Api, con minimal APIs). Frontend React 19 + TypeScript + Vite. Base PostgreSQL con PostGIS: **18 en producción (Neon)** y **16.4 en el clúster portable local**. No son la misma versión, y eso ya impidió una restauración de emergencia: `pg_restore` 16.4 rechaza un volcado de `pg_dump` 18.
 
 Antes de cualquier tarea, lee `CONTRIBUIR.md` (flujo y niveles de revisión) y la sección de `ESTADO.md` que corresponda. `ESTADO.md` es la fuente de verdad del estado del proyecto.
 
