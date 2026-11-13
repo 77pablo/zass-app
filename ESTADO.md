@@ -19,6 +19,87 @@ comprobado**, **qué no**, y **el siguiente paso exacto**.
 
 ## Sesión del 13-nov-2026 — dónde retomar
 
+### Tarde del 13-nov — lo que pasó DESPUÉS de lo que cuenta el resto de esta sección
+
+Lo de abajo (PR #9, PR #10, los 8 defectos) sigue siendo cierto, pero **ya no es el siguiente
+paso**. Esto es lo nuevo:
+
+**1. Todo está en `integracion/13-nov`, y es un solo merge.** Esa rama va **47 commits por
+delante de `main`**, está subida y su CI está en verde. Contiene el contenido de los **cuatro**
+PR abiertos (#6, #7, #9, #10) y de las **seis** ramas de agentes, comprobado uno por uno con
+`git merge-base --is-ancestor`, no por los títulos de los commits. `main` no tiene nada que
+ella no tenga. **El siguiente paso es un PR `integracion/13-nov` -> `main`, no cuatro
+fusiones en orden.**
+
+**Ojo con un verde que miente hoy mismo:** `gh run list --branch main` muestra un `success`
+arriba, pero es el workflow *Copia de la base de datos*. El de *Pruebas* sobre `main` sigue en
+**failure** del 12-nov.
+
+**2. RN-S4-11, decisión de Pablo.** Una cita ya confirmada **se puede reprogramar aunque la
+suscripción del prestador haya vencido**. Lo ya comprometido se honra: el impago pierde la
+búsqueda (RN-S3-09), las horas nuevas y los botones de contacto, pero no lo que otra persona ya
+tenía agendado. Mismo criterio que RN-S6-10.
+
+Lo que este archivo tenía como pendiente —«decidir si `ReprogramarAsync` comprueba la
+suscripción»— **está cerrado, y no hubo código que escribir**: el comportamiento elegido es el
+que ya tenía. Lo que faltaba era que la especificación lo dijera. Escrito en
+`subsistema-4-agendamiento-y-notificaciones.md` (la regla) y en
+`cu-14-reprogramar-o-cancelar-cita.md` (flujo alternativo **5H**), y el sitio regenerado y
+comprobado en el HTML. **No era un defecto del código: era un hueco del documento.**
+
+**3. Tres defectos de interfaz arreglados (commit `021cf74`), los tres detrás de pruebas en
+verde.** Salieron de una revisión de código que por error corrió sobre la carpeta vieja
+`C:/Users/pdani/zass-app`; se comprobó a mano que existían también aquí antes de tocar nada.
+
+| Defecto | Cómo se confirmó |
+|---|---|
+| `errorDeFranja` no rechazaba hora vacía: vaciar **solo «Desde»** manda `horaInicio: ""`, el servidor falla al convertir a `TimeOnly` **antes** de validar, y la pantalla solo puede decir «No se pudo completar la operación» sin marcar campo | Ejecutando la función con los tres casos: los otros dos sí daban error, solo ese se escapaba |
+| `inicioDeDiaEnChile` se iba al **día anterior** el domingo del cambio de hora de septiembre (la medianoche chilena no existe: el reloj salta de 00:00 a 01:00). `2026-09-06` devolvía las 23:00 del sábado | Recorriendo los **730 días** de 2026 y 2027: antes fallaban los dos domingos de septiembre, ahora **0** |
+| `robots.txt` no cubría `/mi-agenda`, `/mis-citas` ni `/mis-resenas`, y **cuatro** pantallas del panel no pedían `noindex` | Leyendo el archivo y las rutas de `App.tsx`. La revisión había visto solo `/mi-agenda`: eran tres rutas y cuatro pantallas |
+
+**Las pruebas se comprobaron en rojo antes del arreglo**: revirtiendo los tres archivos y
+dejando las pruebas puestas, **8 caían**. La del cambio de hora recorre los 730 días porque el
+defecto existía justo porque las dos pruebas que había miraban un día de verano y uno de
+invierno. Y la de `robots.txt` **ya no se escribe a mano**: compara la lista con las rutas que
+`App.tsx` declara, así que la próxima pantalla del panel no se puede escapar.
+
+Interfaz: **488/488** (eran 478). `tsc -b` limpio.
+
+**4. Un cuarto hallazgo de esa revisión estaba caducado**, y conviene saberlo: decía que los
+bloqueos no se pueden deshacer. Sí se pueden: existen `GET /api/mi/bloqueos`,
+`DELETE /api/mi/bloqueos/{id}` y el botón «Quitar este bloqueo».
+
+### Lo que de verdad bloquea el lanzamiento del lunes 23
+
+Medido hoy, no recordado. Lo que el mensaje de un colaborador daba por pendiente —los PR, los
+seis textos de J3/J4, el BOM de `Program.cs`— **ya estaba hecho**. Lo que sigue abierto:
+
+| # | Qué falta | De quién depende |
+|---|---|---|
+| 1 | Fusionar `integracion/13-nov` -> `main`. Llave de todo: la regla de **una migración de EF a la vez** convierte este merge pendiente en un bloqueo de desarrollo | Nosotros |
+| 2 | **El cupo fundador no está enchufado a nada.** La lógica existe y su concurrencia está probada con 60 solicitantes a la vez, pero `grep "Fundador" backend/src/Zass.Api` está **vacío**, no hay `EndpointsSuscripciones.cs` y el frontend no menciona «fundador» ni «cupo». **Nadie puede tomar un cupo.** No es «falta cerrar al 50»: falta el camino entero | Joaquín |
+| 3 | **Mes gratis**: no existe, y los dos planes de pago tienen `dias_prueba = 0` **explícito**. El plan `prueba` de 30 días no es lo mismo | Joaquín |
+| 4 | **Cupón del 20 %**: cero menciones en todo el código. Necesita migración, así que espera al punto 1 | Joaquín |
+| 5 | **Cobro**: no hay puerto de pasarela, y `RegistrarPeriodoPagadoAsync` **solo lo llaman pruebas**. La forma de cobro sigue sin decidir, pero no tiene que frenar: la base ya tiene `Suscripcion.ReferenciaPasarela` y la tabla `pagos` | Joaquín, detrás de un puerto |
+| 6 | **Avisos de cita por correo: no construidos.** El enum declara `CitaSolicitada/Confirmada/Rechazada/Cancelada/Reprogramada`, pero la agenda **nunca encola nada** y `Plantillas.TienePlantilla` no incluye ningún tipo `Cita*` | Nosotros, tras el punto 1 |
+| 7 | **Migrar Neon** (producción sigue con **20** cupos, no 50) — y son **dos** migraciones: `CuposFundadorA50` y `NoAsistioQuienFalto` | Solo Pablo |
+| 8 | **Manual Deploy en Render** (`autoDeploy: false`) y **rotar los 3 secretos** | Solo Pablo |
+
+**Tres cosas que nadie tenía en la lista y pesan:**
+
+1. **El correo de reseñas falla en el modo peligroso.** En `main` la reseña **sí** se encola,
+   pero `Plantillas.cs` de `main` no reconoce el tipo, y el despacho deriva de
+   `TienePlantilla` qué filas consulta: esas notificaciones quedan **`Programada` para
+   siempre, con 0 intentos y sin error**. Quien mire la cola verá avisos «en camino» que nunca
+   van a salir. El arreglo (`75612f2`) está solo en `integracion/13-nov`.
+2. **Render está en `plan: free`** y el envío de correo y el `Planificador` son
+   `BackgroundService` **dentro del proceso de la API**. Dormido por inactividad no vacía la
+   cola. Riesgo de arquitectura para el lanzamiento.
+3. **El cobro es la única parte del producto sin documento rector:** `01-casos-de-uso/` llega
+   hasta el subsistema 6 y **no hay subsistema S7**; `api-rest.md` no numera ningún endpoint de
+   suscripción.
+
+
 ### Lo primero: `main` ya tiene arreglo, y la causa no era lo que parecía
 
 **El rojo de `main` era UNA prueba y no era un defecto del producto.** Con `gh` autenticado se pudo
