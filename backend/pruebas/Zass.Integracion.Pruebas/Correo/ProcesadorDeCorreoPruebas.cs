@@ -417,10 +417,10 @@ public class ProcesadorDeCorreoPruebas : IAsyncLifetime
     [Fact]
     public async Task Un_aviso_sin_plantilla_ni_de_otro_canal_no_se_toca()
     {
-        // CitaConfirmada, no PerfilPublicado: este ultimo YA tiene plantilla desde el 13-nov-2026.
-        // La prueba necesita un tipo que de verdad no la tenga, o no estaria probando nada.
+        // Recordatorio24h: PerfilPublicado tiene plantilla desde el 13-nov-2026 y CitaConfirmada
+        // desde JQ-1. La prueba necesita un tipo que de verdad no la tenga, o no estaria probando nada.
         var u = await CrearUsuarioAsync();
-        var otroTipo = await EncolarAsync(u.Id, "x", TipoNotificacion.CitaConfirmada, cuerpo: "Tu cita quedo confirmada");
+        var otroTipo = await EncolarAsync(u.Id, "x", TipoNotificacion.Recordatorio24h, cuerpo: "Faltan 24 horas para tu cita");
         var m = ManejadorFalso.Responde(HttpStatusCode.Created);
 
         Assert.Equal(0, await CicloAsync(m));
@@ -429,7 +429,7 @@ public class ProcesadorDeCorreoPruebas : IAsyncLifetime
         var n = await LeerAsync(otroTipo);
         Assert.Equal(EstadoEnvio.Programada, n.Estado);
         Assert.Equal(0, n.Intentos);
-        Assert.Equal("Tu cita quedo confirmada", n.Cuerpo);
+        Assert.Equal("Faltan 24 horas para tu cita", n.Cuerpo);
     }
 
     [Fact]

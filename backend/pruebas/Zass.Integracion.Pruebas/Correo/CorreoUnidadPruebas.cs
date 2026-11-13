@@ -177,10 +177,10 @@ public class CorreoUnidadPruebas
     [Fact]
     public void Un_tipo_sin_plantilla_no_se_renderiza()
     {
-        // PerfilPublicado estuvo aqui: se encolaba y se quedaba en la cola sin plantilla. Ya la
-        // tiene. CitaConfirmada sigue abierta a conciencia (MOD-06 no manda correos todavia).
-        Assert.Null(Plantillas.Renderizar(TipoNotificacion.CitaConfirmada, "Ana", "https://zass.cl", CargaDeAviso.Purgada));
-        Assert.False(Plantillas.TienePlantilla(TipoNotificacion.CitaConfirmada));
+        // PerfilPublicado estuvo aqui, y despues CitaConfirmada: las dos tienen plantilla (la
+        // segunda desde JQ-1). Recordatorio24h sigue abierto a conciencia: nadie lo encola todavia.
+        Assert.Null(Plantillas.Renderizar(TipoNotificacion.Recordatorio24h, "Ana", "https://zass.cl", CargaDeAviso.Purgada));
+        Assert.False(Plantillas.TienePlantilla(TipoNotificacion.Recordatorio24h));
     }
 
     // ------------------------------------------------------------ CU-03: la ficha publicada
@@ -356,6 +356,170 @@ public class CorreoUnidadPruebas
         var huecos = encolados.Except(pendientes).Where(t => !Plantillas.TienePlantilla(t)).ToArray();
 
         Assert.Empty(huecos);
+    }
+
+    // ------------------------------------------------------------ avisos de cita (JQ-1)
+
+    /// <summary>
+    /// El hueco de las resenas, cerrado para las citas por el lado del enum: si manana alguien
+    /// agrega un tipo «Cita…» y lo encola sin plantilla, el despacho no lo mira nunca y la fila
+    /// queda «Programada» para siempre. Esta prueba lo dice el mismo dia.
+    /// </summary>
+    [Fact]
+    public void Todo_tipo_de_cita_del_enum_tiene_plantilla()
+    {
+        var huecos = Enum.GetValues<TipoNotificacion>()
+            .Where(t => t.ToString().StartsWith("Cita", StringComparison.Ordinal))
+            .Where(t => !Plantillas.TienePlantilla(t))
+            .ToArray();
+
+        Assert.Empty(huecos);
+    }
+
+    /// <summary>
+    /// El candado con literal: la prueba de arriba recorre el enum, y si alguien renombrara los
+    /// tipos o el prefijo, pasaria en verde sin mirar nada. Aqui van los cinco escritos a mano.
+    /// </summary>
+    [Theory]
+    [InlineData(TipoNotificacion.CitaSolicitada)]
+    [InlineData(TipoNotificacion.CitaConfirmada)]
+    [InlineData(TipoNotificacion.CitaRechazada)]
+    [InlineData(TipoNotificacion.CitaCancelada)]
+    [InlineData(TipoNotificacion.CitaReprogramada)]
+    public void Los_cinco_avisos_de_cita_tienen_plantilla_y_no_guardan_ningun_secreto(TipoNotificacion tipo)
+    {
+        Assert.True(Plantillas.TienePlantilla(tipo));
+        Assert.False(Plantillas.LlevaToken(tipo));
+    }
+
+    /// <summary>
+    /// Que el recorrido del enum encuentre los cinco, y no cero: un filtro que no calza con
+    /// ningun nombre deja la prueba del recorrido vacia y verde.
+    /// </summary>
+    [Fact]
+    public void El_recorrido_del_enum_encuentra_los_cinco_tipos_de_cita()
+    {
+        var deCita = Enum.GetValues<TipoNotificacion>()
+            .Count(t => t.ToString().StartsWith("Cita", StringComparison.Ordinal));
+
+        Assert.Equal(5, deCita);
+    }
+
+    /// <summary>
+    /// Ninguna exige nada de la carga: con carga vacia, purgada, en prosa o con un rol raro, el
+    /// correo sale igual. Un aviso que no se renderiza pasa a «Fallida» y no llega.
+    /// </summary>
+    [Theory]
+    [InlineData(TipoNotificacion.CitaSolicitada)]
+    [InlineData(TipoNotificacion.CitaConfirmada)]
+    [InlineData(TipoNotificacion.CitaRechazada)]
+    [InlineData(TipoNotificacion.CitaCancelada)]
+    [InlineData(TipoNotificacion.CitaReprogramada)]
+    public void Los_avisos_de_cita_se_renderizan_con_cualquier_carga(TipoNotificacion tipo)
+    {
+        foreach (var carga in new[]
+                 { "", "{}", "Tu hora cambió.", CargaDeAviso.Purgada, "{\"rol\":\"otro\"}", "{\"rol\":\"prestador\"}" })
+            Assert.NotNull(Plantillas.Renderizar(tipo, "Ana", "https://zass.cl", carga));
+    }
+
+    /// <summary>
+    /// Los enlaces, escritos a mano. «Mi agenda» NO es destino de ningun aviso: ahi se definen
+    /// horarios, y las citas se responden y se cambian en «Mis citas», para las dos partes.
+    /// </summary>
+    [Theory]
+    [InlineData(TipoNotificacion.CitaSolicitada, "{\"rol\":\"prestador\"}", "https://zass.cl/mis-citas")]
+    [InlineData(TipoNotificacion.CitaConfirmada, "{\"rol\":\"prestador\"}", "https://zass.cl/mis-citas")]
+    [InlineData(TipoNotificacion.CitaConfirmada, "{\"rol\":\"buscador\"}", "https://zass.cl/mis-citas")]
+    [InlineData(TipoNotificacion.CitaRechazada, "{\"rol\":\"buscador\"}", "https://zass.cl/buscar")]
+    [InlineData(TipoNotificacion.CitaCancelada, "{\"rol\":\"prestador\"}", "https://zass.cl/mis-citas")]
+    [InlineData(TipoNotificacion.CitaCancelada, "{\"rol\":\"buscador\"}", "https://zass.cl/buscar")]
+    [InlineData(TipoNotificacion.CitaReprogramada, "{\"rol\":\"prestador\"}", "https://zass.cl/mis-citas")]
+    [InlineData(TipoNotificacion.CitaReprogramada, "{\"rol\":\"buscador\"}", "https://zass.cl/mis-citas")]
+    public void Cada_aviso_de_cita_enlaza_donde_la_persona_puede_hacer_algo(
+        TipoNotificacion tipo, string carga, string enlace)
+    {
+        var r = Plantillas.Renderizar(tipo, "Ana", "https://zass.cl/", carga)!;
+
+        Assert.Contains(enlace, r.Texto);
+        Assert.Contains($"href=\"{enlace}\"", r.Html);
+        Assert.DoesNotContain("zass.cl//", r.Texto);
+        Assert.DoesNotContain("/mi-agenda", r.Texto);
+    }
+
+    /// <summary>
+    /// El rol cambia el texto: a quien cancelo no le llega su propia cancelacion, le llega a la
+    /// otra parte, y «la persona canceló» y «el prestador canceló» no son intercambiables. Los
+    /// asuntos van escritos a mano, sin derivarlos de la plantilla.
+    /// </summary>
+    [Theory]
+    [InlineData(TipoNotificacion.CitaConfirmada, "prestador", "Tienes una hora nueva en ZASS!", "Alguien agendó una hora contigo")]
+    [InlineData(TipoNotificacion.CitaConfirmada, "buscador", "Tu hora quedó confirmada en ZASS!", "Tu hora quedó confirmada")]
+    [InlineData(TipoNotificacion.CitaCancelada, "prestador", "Se canceló una hora en ZASS!", "La persona que tenía una hora contigo la canceló")]
+    [InlineData(TipoNotificacion.CitaCancelada, "buscador", "Se canceló una hora en ZASS!", "El prestador canceló la hora que tenías")]
+    [InlineData(TipoNotificacion.CitaReprogramada, "prestador", "Una cita cambió de hora en ZASS!", "La persona que tenía una hora contigo la cambió")]
+    [InlineData(TipoNotificacion.CitaReprogramada, "buscador", "Tu hora cambió en ZASS!", "El prestador cambió tu hora")]
+    public void El_rol_de_la_carga_elige_el_texto(TipoNotificacion tipo, string rol, string asunto, string frase)
+    {
+        var r = Plantillas.Renderizar(tipo, "Ana", "https://zass.cl", $"{{\"rol\":\"{rol}\"}}")!;
+
+        Assert.Equal(asunto, r.Asunto);
+        Assert.Contains(frase, r.Texto);
+    }
+
+    /// <summary>
+    /// Sin rol, la de solicitud va al prestador (es el unico que la recibe) y las demas al
+    /// buscador. Un rol desconocido cuenta como sin rol.
+    /// </summary>
+    [Theory]
+    [InlineData(TipoNotificacion.CitaSolicitada, "Tienes una solicitud de hora en ZASS!")]
+    [InlineData(TipoNotificacion.CitaConfirmada, "Tu hora quedó confirmada en ZASS!")]
+    [InlineData(TipoNotificacion.CitaRechazada, "Tu solicitud de hora no se confirmó en ZASS!")]
+    [InlineData(TipoNotificacion.CitaCancelada, "Se canceló una hora en ZASS!")]
+    [InlineData(TipoNotificacion.CitaReprogramada, "Tu hora cambió en ZASS!")]
+    public void Sin_rol_cada_aviso_de_cita_cae_en_su_destinatario_habitual(TipoNotificacion tipo, string asunto)
+    {
+        foreach (var carga in new[] { "{}", "{\"rol\":\"otro\"}" })
+        {
+            var r = Plantillas.Renderizar(tipo, "Ana", "https://zass.cl", carga)!;
+            Assert.Equal(asunto, r.Asunto);
+        }
+        // Y el cuerpo sin rol es el del buscador, no el del prestador.
+        if (tipo is TipoNotificacion.CitaCancelada)
+            Assert.Contains("El prestador canceló",
+                Plantillas.Renderizar(tipo, "Ana", "https://zass.cl", "{}")!.Texto);
+    }
+
+    /// <summary>
+    /// La regla de este modulo: solo el nombre del propio destinatario. El asunto se ve en la
+    /// pantalla bloqueada, asi que ni siquiera ese nombre va ahi; y el nombre se escapa en el HTML.
+    /// </summary>
+    [Theory]
+    [InlineData(TipoNotificacion.CitaSolicitada)]
+    [InlineData(TipoNotificacion.CitaConfirmada)]
+    [InlineData(TipoNotificacion.CitaRechazada)]
+    [InlineData(TipoNotificacion.CitaCancelada)]
+    [InlineData(TipoNotificacion.CitaReprogramada)]
+    public void El_aviso_de_cita_no_pone_el_nombre_en_el_asunto_y_lo_escapa_en_el_html(TipoNotificacion tipo)
+    {
+        var r = Plantillas.Renderizar(tipo, "Luis <b>Pérez</b>", "https://zass.cl", "{}")!;
+
+        Assert.DoesNotContain("Luis", r.Asunto);
+        Assert.DoesNotContain("!", r.Asunto.Replace("ZASS!", ""));
+        Assert.Contains("Luis <b>Pérez</b>", r.Texto);
+        Assert.DoesNotContain("<b>Pérez</b>", r.Html);
+        Assert.Contains("ZASS!", r.Asunto);
+    }
+
+    /// <summary>
+    /// La solicitud promete un plazo, y el plazo es el de la regla: si alguien cambia
+    /// <c>PlazoDeRespuestaManual</c>, este texto miente. Va el 24 a mano, no la constante.
+    /// </summary>
+    [Fact]
+    public void La_solicitud_dice_el_plazo_de_24_horas()
+    {
+        Assert.Equal(TimeSpan.FromHours(24), Zass.Aplicacion.Agenda.ServicioAgenda.PlazoDeRespuestaManual);
+        Assert.Contains("24 horas",
+            Plantillas.Renderizar(TipoNotificacion.CitaSolicitada, "Ana", "https://zass.cl", "{}")!.Texto);
     }
 
     // ------------------------------------------------------------ carga con token

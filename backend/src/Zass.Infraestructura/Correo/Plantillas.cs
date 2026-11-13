@@ -1,4 +1,5 @@
 ﻿using System.Net;
+using Zass.Aplicacion.Agenda;
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
 
@@ -46,6 +47,16 @@ public static class Plantillas
     }
 
     /// <summary>
+    /// «Mis citas», para las DOS partes: ahi el prestador confirma, rechaza, cancela o cambia una
+    /// hora, y el buscador ve, cambia o cancela las suyas. «Mi agenda» no sirve para estos avisos:
+    /// es donde el prestador define horarios y bloqueos, y ella misma remite a «Mis citas».
+    /// </summary>
+    public static string EnlaceDeMisCitas(string urlPublica) => $"{urlPublica.TrimEnd('/')}/mis-citas";
+
+    /// <summary>La busqueda: lo util cuando una hora no se dio y hay que encontrar otra.</summary>
+    public static string EnlaceDeBusqueda(string urlPublica) => $"{urlPublica.TrimEnd('/')}/buscar";
+
+    /// <summary>
     /// Los tipos que este modulo sabe entregar. Los demas se quedan encolados sin gastar
     /// intentos: encolar no es enviar, y el dia que tengan plantilla saldran solos.
     /// </summary>
@@ -56,7 +67,12 @@ public static class Plantillas
              or TipoNotificacion.ResenaRespondida
              or TipoNotificacion.SuscripcionPorVencer
              or TipoNotificacion.SuscripcionVencida
-             or TipoNotificacion.PerfilPublicado;
+             or TipoNotificacion.PerfilPublicado
+             or TipoNotificacion.CitaSolicitada
+             or TipoNotificacion.CitaConfirmada
+             or TipoNotificacion.CitaRechazada
+             or TipoNotificacion.CitaCancelada
+             or TipoNotificacion.CitaReprogramada;
 
     /// <summary>
     /// Los que llevan un secreto en la carga. Importa porque de esos el cuerpo se purga en
@@ -96,8 +112,26 @@ public static class Plantillas
         TipoNotificacion.ResenaNueva => ResenaNueva(nombre, EnlaceDelPanel(urlPublica)),
         TipoNotificacion.ResenaRespondida =>
             Respondida(nombre, EnlaceDeLaFicha(urlPublica, CargaDeAviso.LeerCampo(carga, "slug"))),
+        // Las cinco de citas (JQ-1) tampoco exigen nada: sin rol en la carga caen en la parte
+        // que mas probablemente lo recibe (la solicitud va siempre al prestador; las demas, al
+        // buscador). Un aviso con el texto del otro lado es un defecto; uno que no sale, peor.
+        TipoNotificacion.CitaSolicitada => CitaSolicitada(nombre, EnlaceDeMisCitas(urlPublica)),
+        TipoNotificacion.CitaConfirmada => EsParaPrestador(carga)
+            ? CitaConfirmadaAlPrestador(nombre, EnlaceDeMisCitas(urlPublica))
+            : CitaConfirmadaAlBuscador(nombre, EnlaceDeMisCitas(urlPublica)),
+        TipoNotificacion.CitaRechazada => CitaRechazada(nombre, EnlaceDeBusqueda(urlPublica)),
+        TipoNotificacion.CitaCancelada => EsParaPrestador(carga)
+            ? CitaCanceladaAlPrestador(nombre, EnlaceDeMisCitas(urlPublica))
+            : CitaCanceladaAlBuscador(nombre, EnlaceDeBusqueda(urlPublica)),
+        TipoNotificacion.CitaReprogramada => EsParaPrestador(carga)
+            ? CitaReprogramadaAlPrestador(nombre, EnlaceDeMisCitas(urlPublica))
+            : CitaReprogramadaAlBuscador(nombre, EnlaceDeMisCitas(urlPublica)),
         _ => null,
     };
+
+    /// <summary>Solo un rol prestador explicito cambia el texto; cualquier otra carga va al buscador.</summary>
+    private static bool EsParaPrestador(string carga) =>
+        CargaDeAviso.LeerCampo(carga, AvisosDeCita.CampoRol) == AvisosDeCita.RolPrestador;
 
     // El asunto es fijo y NUNCA lleva el token ni el nombre: los asuntos se ven en
     // notificaciones de pantalla bloqueada y en registros intermedios.
@@ -263,6 +297,114 @@ public static class Plantillas
             "Ver la respuesta", enlace,
             "Si la respuesta incumple las reglas, puedes reportarla desde la ficha.");
         return new("Respondieron tu reseña en ZASS!", texto, html);
+    }
+
+    // ------------------------------------------------------------ citas (JQ-1)
+    //
+    // Ninguna lleva fecha, hora, servicio ni el nombre de la otra parte: el asunto se lee en la
+    // pantalla bloqueada, y el detalle esta a un clic, dentro de ZASS!. La fecha y la hora en el
+    // correo quedan como mejora posible (y, si llegan, se prueban en los domingos del cambio de
+    // hora).
+
+    /// <summary>CU-13: alguien pidio una hora en modo manual y el prestador tiene que responder.</summary>
+    public static CorreoRenderizado CitaSolicitada(string nombre, string enlace) => AvisoDeCita(
+        asunto: "Tienes una solicitud de hora en ZASS!",
+        titulo: "Tienes una solicitud de hora",
+        nombre,
+        parrafo: "Alguien pidió una hora contigo. Tienes 24 horas para confirmarla o "
+            + "rechazarla; si no respondes, la hora se libera sola.",
+        introEnlace: "Puedes responderla aquí",
+        boton: "Responder la solicitud", enlace,
+        aviso: "Si no puedes atender, recházala: así la persona alcanza a buscar otra hora.");
+
+    /// <summary>Modo automatico: la hora nacio confirmada y el prestador se entera por aqui.</summary>
+    public static CorreoRenderizado CitaConfirmadaAlPrestador(string nombre, string enlace) => AvisoDeCita(
+        asunto: "Tienes una hora nueva en ZASS!",
+        titulo: "Tienes una hora nueva",
+        nombre,
+        parrafo: "Alguien agendó una hora contigo y quedó confirmada. El detalle está en «Mis citas».",
+        introEnlace: "Puedes verla aquí",
+        boton: "Ver mis citas", enlace,
+        aviso: "Si no puedes atender, cancélala desde «Mis citas» lo antes posible: la persona recibirá un aviso.");
+
+    /// <summary>La hora quedo confirmada: porque el prestador respondio o porque su agenda es automatica.</summary>
+    public static CorreoRenderizado CitaConfirmadaAlBuscador(string nombre, string enlace) => AvisoDeCita(
+        asunto: "Tu hora quedó confirmada en ZASS!",
+        titulo: "Tu hora quedó confirmada",
+        nombre,
+        parrafo: "Tu hora quedó confirmada. El detalle está en «Mis citas», y desde ahí puedes "
+            + "cambiarla o cancelarla si te surge algo.",
+        introEnlace: "Puedes verla aquí",
+        boton: "Ver mis citas", enlace,
+        aviso: "Si ya no puedes ir, cancela con tiempo: a quien te iba a atender le sirve saberlo.");
+
+    /// <summary>
+    /// El prestador rechazo la solicitud, o no respondio en 24 horas y el planificador la rechazo
+    /// por el. El texto sirve para los dos casos y no culpa a nadie.
+    /// </summary>
+    public static CorreoRenderizado CitaRechazada(string nombre, string enlace) => AvisoDeCita(
+        asunto: "Tu solicitud de hora no se confirmó en ZASS!",
+        titulo: "Tu solicitud de hora no se confirmó",
+        nombre,
+        parrafo: "El prestador no pudo tomar la hora que pediste, o no alcanzó a responder a tiempo. "
+            + "Puedes pedir otra hora cuando quieras.",
+        introEnlace: "Puedes buscar otra aquí",
+        boton: "Buscar otra hora", enlace,
+        aviso: "Puedes volver a pedirle hora al mismo prestador o elegir otro.");
+
+    /// <summary>CU-14: el buscador cancelo; al prestador se le avisa que la hora quedo libre.</summary>
+    public static CorreoRenderizado CitaCanceladaAlPrestador(string nombre, string enlace) => AvisoDeCita(
+        asunto: "Se canceló una hora en ZASS!",
+        titulo: "Se canceló una hora",
+        nombre,
+        parrafo: "La persona que tenía una hora contigo la canceló. Esa hora quedó libre y otra "
+            + "persona ya puede tomarla.",
+        introEnlace: "Puedes revisar tus citas aquí",
+        boton: "Ver mis citas", enlace,
+        aviso: "No tienes que hacer nada: la hora vuelve sola a tu disponibilidad.");
+
+    /// <summary>CU-14: el prestador cancelo; el buscador necesita otra hora.</summary>
+    public static CorreoRenderizado CitaCanceladaAlBuscador(string nombre, string enlace) => AvisoDeCita(
+        asunto: "Se canceló una hora en ZASS!",
+        titulo: "Se canceló tu hora",
+        nombre,
+        parrafo: "El prestador canceló la hora que tenías. Puedes pedirle otra o buscar a alguien más.",
+        introEnlace: "Puedes buscar otra aquí",
+        boton: "Buscar otra hora", enlace,
+        aviso: "El detalle de la cita cancelada sigue en «Mis citas».");
+
+    /// <summary>CU-14: el buscador movio la hora; el prestador ve el horario nuevo en sus citas.</summary>
+    public static CorreoRenderizado CitaReprogramadaAlPrestador(string nombre, string enlace) => AvisoDeCita(
+        asunto: "Una cita cambió de hora en ZASS!",
+        titulo: "Una cita cambió de hora",
+        nombre,
+        parrafo: "La persona que tenía una hora contigo la cambió a otro horario. El nuevo ya está "
+            + "en «Mis citas».",
+        introEnlace: "Puedes revisarla aquí",
+        boton: "Ver mis citas", enlace,
+        aviso: "Si el horario nuevo no te acomoda, puedes cancelarlo desde «Mis citas».");
+
+    /// <summary>J7: el prestador movio la hora; el buscador ve el horario nuevo en sus citas.</summary>
+    public static CorreoRenderizado CitaReprogramadaAlBuscador(string nombre, string enlace) => AvisoDeCita(
+        asunto: "Tu hora cambió en ZASS!",
+        titulo: "Tu hora cambió",
+        nombre,
+        parrafo: "El prestador cambió tu hora a otro horario. El nuevo está en «Mis citas».",
+        introEnlace: "Puedes revisarla aquí",
+        boton: "Ver mis citas", enlace,
+        aviso: "Si el horario nuevo no te acomoda, puedes cambiarlo o cancelarlo desde «Mis citas».");
+
+    private static CorreoRenderizado AvisoDeCita(string asunto, string titulo, string nombre,
+        string parrafo, string introEnlace, string boton, string enlace, string aviso)
+    {
+        var texto =
+            $"Hola {nombre}:\n\n" +
+            $"{parrafo}\n\n" +
+            $"{introEnlace}:\n\n{enlace}\n\n" +
+            $"{aviso}\n\n" +
+            "— El equipo de ZASS!";
+        var html = Marco(titulo, $"Hola {H(nombre)}:", parrafo, boton, enlace, aviso);
+        return new(asunto, texto, html);
     }
 
     private static string H(string s) => WebUtility.HtmlEncode(s);
