@@ -13,6 +13,7 @@ import {
 import * as T from '../funciones/resenas/textos'
 import { useSesion } from '../sesion/contexto'
 import { useTitulo } from '../marco/useTitulo'
+import { useMeta } from '../marco/useMeta'
 
 const RUTA = '/mis-resenas'
 
@@ -36,6 +37,8 @@ function cuando(iso: string): string {
  * ordenar: dos criterios de orden son dos criterios que pueden discrepar.
  */
 export function MisResenas() {
+  // Pantalla del panel: fuera del indice de Google, igual que `robots.txt` (defensa doble).
+  useMeta({ noindex: true })
   const { estado } = useSesion()
   useTitulo(T.TITULO)
 

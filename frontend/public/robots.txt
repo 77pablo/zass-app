@@ -2,6 +2,9 @@
 User-agent: *
 Disallow: /api/
 Disallow: /mi-ficha
+Disallow: /mi-agenda
+Disallow: /mis-citas
+Disallow: /mis-resenas
 Disallow: /interno
 Disallow: /entrar
 Disallow: /crear-cuenta

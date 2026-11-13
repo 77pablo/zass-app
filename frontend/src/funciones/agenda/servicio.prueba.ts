@@ -167,6 +167,34 @@ describe('inicioDeDiaEnChile (para bloquear dias completos)', () => {
     expect(claveDeDia(iso)).toBe('2026-12-25')
     expect(horaDeChile(iso)).toBe('00:00')
   })
+
+  it('el domingo del cambio de hora de septiembre no se va al dia anterior', () => {
+    // Ese domingo la medianoche chilena NO EXISTE: el reloj salta de 00:00 a 01:00. Corrigiendo el
+    // desfase dos veces el resultado oscilaba y se quedaba en las 23:00 del SABADO, asi que bloquear
+    // desde el domingo se llevaba la ultima hora del sabado. El primer instante que existe es la 01:00.
+    expect(inicioDeDiaEnChile('2026-09-06')).toBe('2026-09-06T04:00:00.000Z')
+    expect(claveDeDia(inicioDeDiaEnChile('2026-09-06'))).toBe('2026-09-06')
+    expect(horaDeChile(inicioDeDiaEnChile('2026-09-06'))).toBe('01:00')
+
+    // Y no es cosa de 2026: el salto cae en el primer domingo de septiembre de cada anio.
+    expect(claveDeDia(inicioDeDiaEnChile('2027-09-05'))).toBe('2027-09-05')
+  })
+
+  it('el domingo del cambio de hora de abril (el dia que dura 25 h) tampoco se mueve', () => {
+    expect(claveDeDia(inicioDeDiaEnChile('2026-04-05'))).toBe('2026-04-05')
+    expect(horaDeChile(inicioDeDiaEnChile('2026-04-05'))).toBe('00:00')
+  })
+
+  it('ningun dia de 2026 ni de 2027 empieza fuera de su propio dia chileno', () => {
+    // El fallo de septiembre existia porque las pruebas miraban un dia de verano y uno de invierno.
+    // Esta recorre los 730 y compara con la zona de Chile, que es lo que el defecto habria delatado.
+    const malos: string[] = []
+    for (let t = Date.UTC(2026, 0, 1); t < Date.UTC(2028, 0, 1); t += 86400000) {
+      const dia = new Date(t).toISOString().slice(0, 10)
+      if (claveDeDia(inicioDeDiaEnChile(dia)) !== dia) malos.push(dia)
+    }
+    expect(malos).toEqual([])
+  })
 })
 
 describe('mis bloqueos (API-34)', () => {

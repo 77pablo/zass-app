@@ -161,6 +161,40 @@ describe('mi agenda (prestador)', () => {
     expect(await within(t).findByText(/término tiene que ser posterior/i)).toBeInTheDocument()
   })
 
+  it('no llama a la API si se vacia la hora de inicio, y lo dice junto a la franja', async () => {
+    // El `type="time"` se puede vaciar. Vaciar SOLO «Desde» pasaba las dos comprobaciones (`'13:00' <= ''`
+    // es falso, y la resta con `NaN` tambien), el PUT salia con `horaInicio: ""` y el servidor contestaba
+    // sin campo ni detalle: la pantalla solo podia decir «No se pudo completar la operacion».
+    pintar()
+    await screen.findByRole('region', { name: 'Corte de pelo' })
+    const t = tarjeta('Corte de pelo')
+
+    await userEvent.clear(within(t).getByLabelText('Desde, franja 1'))
+    await userEvent.click(within(t).getByRole('button', { name: /guardar horario/i }))
+
+    expect(guardados()).toHaveLength(0)
+    expect(await within(t).findByText(/pon la hora de inicio y la de término/i)).toBeInTheDocument()
+  })
+
+  it('tampoco si se vacian las dos horas', async () => {
+    pintar()
+    await screen.findByRole('region', { name: 'Corte de pelo' })
+    const t = tarjeta('Corte de pelo')
+
+    await userEvent.clear(within(t).getByLabelText('Desde, franja 1'))
+    await userEvent.clear(within(t).getByLabelText('Hasta, franja 1'))
+    await userEvent.click(within(t).getByRole('button', { name: /guardar horario/i }))
+
+    expect(guardados()).toHaveLength(0)
+    expect(await within(t).findByText(/pon la hora de inicio y la de término/i)).toBeInTheDocument()
+  })
+
+  it('la pantalla del panel pide quedar fuera del indice de Google', async () => {
+    pintar()
+    await screen.findByRole('region', { name: 'Corte de pelo' })
+    expect(document.head.querySelector('meta[name="robots"]')).toHaveAttribute('content', 'noindex, nofollow')
+  })
+
   it('no llama a la API si la franja es mas corta que una hora de atencion', async () => {
     pintar()
     await screen.findByRole('region', { name: 'Corte de pelo' })

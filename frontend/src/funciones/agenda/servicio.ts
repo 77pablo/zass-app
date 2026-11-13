@@ -238,14 +238,25 @@ function desfaseDeChile(instante: number): number {
 /**
  * `2026-12-24` -> el instante UTC en que ese dia EMPIEZA en Chile. Sirve para bloquear dias completos: se manda
  * desde el inicio del primero hasta el inicio del dia siguiente al ultimo. Se calcula con la zona de Chile y no
- * con la del navegador, y se corrige dos veces porque el desfase depende del instante que se busca (horario de verano).
+ * con la del navegador.
+ *
+ * El domingo del cambio de hora de septiembre la medianoche chilena NO EXISTE: el reloj salta de 00:00 a 01:00.
+ * Corregir el desfase dos veces oscilaba entre -4 h y -3 h y se quedaba en el lado malo, devolviendo las 23:00
+ * del dia anterior (bloquear desde ese domingo se llevaba la ultima hora del sabado). Asi que no se confia en la
+ * convergencia: se juntan los candidatos y se elige el PRIMER INSTANTE que de verdad cae en el dia chileno
+ * pedido, comprobandolo con `claveDeDia`. En un dia normal los candidatos coinciden y da lo mismo de siempre.
  */
 export function inicioDeDiaEnChile(dia: string): string {
   const [a, m, d] = dia.split('-').map(Number)
   const medianoche = Date.UTC(a, m - 1, d)
+  const candidatos: number[] = []
   let t = medianoche
-  for (let i = 0; i < 2; i++) t = medianoche - desfaseDeChile(t)
-  return new Date(t).toISOString()
+  for (let i = 0; i < 3; i++) {
+    t = medianoche - desfaseDeChile(t)
+    candidatos.push(t)
+  }
+  const delDiaPedido = candidatos.filter((c) => claveDeDia(new Date(c).toISOString()) === dia)
+  return new Date(Math.min(...(delDiaPedido.length > 0 ? delDiaPedido : candidatos))).toISOString()
 }
 
 /**

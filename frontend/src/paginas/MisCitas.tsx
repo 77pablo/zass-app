@@ -10,6 +10,7 @@ import { miPerfil } from '../funciones/perfil/servicio'
 import { useSesion } from '../sesion/contexto'
 import { useTitulo } from '../marco/useTitulo'
 import { ReprogramarCita } from './ReprogramarCita'
+import { useMeta } from '../marco/useMeta'
 
 const ETIQUETA: Record<EstadoDeCita, string> = {
   Solicitada: 'Esperando confirmación',
@@ -41,6 +42,8 @@ function mensajeDe(e: unknown, porDefecto: string): string {
  * ofrece, que dias bloquea— son otra cosa y viven en «Mi agenda»: aqui solo se enlaza.
  */
 export function MisCitas() {
+  // Pantalla del panel: fuera del indice de Google, igual que `robots.txt` (defensa doble).
+  useMeta({ noindex: true })
   const { estado, usuario } = useSesion()
   useTitulo('Mis citas')
 

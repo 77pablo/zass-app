@@ -18,6 +18,7 @@ import { useTitulo } from '../marco/useTitulo'
 import { useSesion } from '../sesion/contexto'
 import { EditorDeZonas } from './EditorDeZonas'
 import { MisCredenciales } from './MisCredenciales'
+import { useMeta } from '../marco/useMeta'
 
 interface Todo {
   perfil: MiPerfil
@@ -39,6 +40,8 @@ function mensajeDe(e: unknown, porDefecto: string): string {
  * no una lista de errores.
  */
 export function MiFicha() {
+  // Pantalla del panel: fuera del indice de Google, igual que `robots.txt` (defensa doble).
+  useMeta({ noindex: true })
   const { estado, usuario } = useSesion()
   const catalogo = useCatalogo()
   useTitulo('Mi ficha')

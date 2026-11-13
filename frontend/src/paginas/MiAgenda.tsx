@@ -8,6 +8,7 @@ import {
 } from '../funciones/agenda/servicio'
 import { useTitulo } from '../marco/useTitulo'
 import { useSesion } from '../sesion/contexto'
+import { useMeta } from '../marco/useMeta'
 
 /** Los mismos limites que valida el servidor (Zass.Aplicacion/Agenda/Validadores.cs). */
 const MAXIMO_FRANJAS = 30
@@ -23,6 +24,11 @@ function mensajeDe(e: unknown, porDefecto: string): string {
 
 /** Lo que el servidor rechazaria, dicho ANTES de mandarlo y junto a la franja que lo causa. */
 function errorDeFranja(f: Franja): string | null {
+  // Un `type="date|time"` se puede vaciar, y con la hora vacía las cuentas de abajo dan `NaN`: la
+  // comparación es falsa, el error no aparece y el PUT sale con `horaInicio: ""`. El servidor falla al
+  // convertirlo a `TimeOnly` ANTES de validar, así que contesta sin campo ni detalle y la pantalla
+  // solo puede decir «No se pudo completar la operación». Se ataja aquí, junto a la franja que lo causa.
+  if (!f.horaInicio || !f.horaFin) return 'Pon la hora de inicio y la de término.'
   if (f.horaFin <= f.horaInicio) return 'La hora de término tiene que ser posterior a la de inicio.'
   const [hi, mi] = f.horaInicio.split(':').map(Number)
   const [hf, mf] = f.horaFin.split(':').map(Number)
@@ -63,6 +69,8 @@ function rangoDeBloqueo(b: Bloqueo): string {
  * rechazarlas y marcar asistencia: repetirlo aquí serían dos lugares que se desincronizan.
  */
 export function MiAgenda() {
+  // Pantalla del panel: fuera del indice de Google, igual que `robots.txt` (defensa doble).
+  useMeta({ noindex: true })
   const { estado, usuario } = useSesion()
   useTitulo('Mi agenda')
   const esPrestador = usuario?.roles.includes('prestador') ?? false
