@@ -37,6 +37,11 @@ public sealed class BaseEnMemoria : IUnidadDeTrabajo
     /// <summary>Los 50 cupos fundador, todos libres al empezar (como los siembra la migracion).</summary>
     public List<CupoFundador> CuposFundador { get; } =
         Enumerable.Range(1, 50).Select(n => new CupoFundador { Numero = (short)n }).ToList();
+    /// <summary>TBL-36. Los cobros empezados. Vacia al empezar, como la tabla.</summary>
+    public List<IntentoDePago> IntentosDePago { get; } = new();
+    /// <summary>TBL-34 y su canje. Ningun cupon existe hasta que una prueba lo crea.</summary>
+    public List<Cupon> Cupones { get; } = new();
+    public List<CanjeDeCupon> Canjes { get; } = new();
     public List<Credencial> Credenciales { get; } = new();
     public List<EntidadCertificadora> Entidades { get; } = new();
     public List<Disponibilidad> Disponibilidades { get; } = new();
