@@ -152,11 +152,24 @@ Esto reemplaza la regla 12 de `CONTRIBUIR.md` para ti, por decisión de Pablo de
 
 ---
 
-## 7. Tu cola, en orden
+## 7. Tu cola: cuatro tandas grandes
 
-Haz una rama por tarea y un PR por tarea. No las juntes.
+Una tanda es una rebanada completa —backend, pantalla y pruebas— que se puede soltar sola. Una
+rama y un PR por tanda; dentro de la tanda, commitea todas las veces que quieras.
 
-### JQ-1 · Los avisos de cita por correo (N3 autorizado, §4)
+**No esperes a que te mergeen.** Terminada una tanda, pushea, abre el PR y **arranca la siguiente
+desde la rama de la anterior**. Si Pablo pide cambios en la primera, los haces ahí y la segunda los
+hereda al rebasar. Esperar el merge para empezar es el modo más lento de trabajar y no hace falta.
+
+El orden es por valor, no por tamaño: A es lo que más le falta al producto, D lo que menos.
+
+### Tanda A · Que ZASS! avise por correo cuando algo pasa con una cita
+
+**Es el hueco más grande de tu carril:** `ServicioAgenda` no avisa a nadie, nunca. Hoy pides una
+hora y el prestador se entera si se le ocurre entrar al panel. Para una plataforma de citas, eso no
+es una falta: es el producto a medias.
+
+Esta tanda es N3 por el correo, y es la que Pablo te autorizó por escrito en §4.
 
 **Es el hueco más grande de tu carril:** `ServicioAgenda` no avisa a nadie, nunca. Hoy pides una
 hora y el prestador se entera si se le ocurre entrar al panel.
@@ -174,31 +187,66 @@ Eso ya pasó con las reseñas: la cola se llena de avisos «en camino» que no v
 que **la plantilla primero, el encolado después**, y una prueba que falle si se encola un tipo sin
 plantilla.
 
-Terminado cuando: los cinco tipos tienen plantilla; la agenda encola en los cinco momentos; el
-aviso llega una sola vez aunque el caso corra dos veces (clave determinista, CC-04); y existe una
-prueba que cae si alguien agrega un tipo `Cita*` sin plantilla.
+**Listo cuando:** los cinco tipos tienen plantilla y texto; la agenda encola en los cinco momentos
+(pedir, confirmar, rechazar, cancelar y reprogramar), avisando **a quien le pasó la cosa**, no a
+quien la hizo; el aviso llega una sola vez aunque el caso corra dos veces (clave determinista,
+CC-04); existe una prueba que cae si alguien agrega un tipo `Cita*` sin plantilla; y lo viste salir
+de verdad en local, no solo pasar en una prueba.
 
-### JQ-2 · La vía «cita realizada» de la elegibilidad para reseñar, viva de punta a punta
+Y una decisión que es tuya, no mía: **qué lleva el correo**. Mi recomendación es día, hora, oficio y
+un enlace al panel, y **nunca** el teléfono ni el correo de la otra persona: eso se ve entrando, que
+es donde queda registrado quién vio qué.
 
-Hoy está muerta en producción: API-46 rechaza `Origen = Cita` (`EndpointsResenas.cs:109`) y nadie
-crea nunca un contacto ligado a una cita, así que la única vía viva es «contacto directo más 7
-días», aunque S5 diga otra cosa. Decisión de Pablo ya tomada: hay que **exponer el origen de la
-reseña** para poder rotular «contacto directo, sin cita», exponiendo **el origen y nada más** — ni
-el id del contacto, ni el de la cita.
+### Tanda B · Que la reseña diga la verdad de dónde viene
 
-Terminado cuando: quien marca la asistencia de una cita deja al cliente elegible para reseñar; la
-ficha rotula el origen; y ninguna respuesta de la API filtra un identificador interno.
+Hoy la vía «cita realizada» está **muerta en producción**: API-46 rechaza `Origen = Cita`
+(`EndpointsResenas.cs:109`) y nadie crea nunca un contacto ligado a una cita, así que la única vía
+viva es «contacto directo más 7 días», aunque S5 diga otra cosa. O sea: alguien puede atenderte en
+una cita agendada por ZASS! y no poder reseñarte, y alguien que solo apretó «llamar» sí.
 
-### JQ-3 · Pantalla para eliminar la cuenta (API-17)
+Decisión de Pablo ya tomada: hay que **exponer el origen de la reseña** para poder rotular
+«contacto directo, sin cita», exponiendo **el origen y nada más** — ni el id del contacto, ni el de
+la cita.
 
-El endpoint existe y no hay pantalla. Es N2, autocontenido y no toca nada mío. Pide confirmación
-escrita, explica qué se borra y qué no, y no deja a la persona en una pantalla muerta después.
+Entra entera en tu carril: `Dominio/Reputacion/`, `Aplicacion/Reputacion/`, `EndpointsResenas.cs`,
+`Ficha.tsx`, `ResenasDelPrestador.tsx` y `MisResenas.tsx`.
 
-### JQ-4 · Las dos colas internas sin pantalla (API-29/30/31 y API-52/53)
+**Listo cuando:** marcar la asistencia de una cita deja al cliente elegible para reseñar; la ficha y
+la lista rotulan el origen; ninguna respuesta de la API filtra un identificador interno (pruébalo
+mirando el JSON, no el DTO); y la regla de los 72 h de edición sigue valiendo igual por las dos vías.
 
-Existen endpoints de revisión interna y nadie puede verlos. Antes de construir la pantalla,
-escribe en el PR quién debería poder entrar: **eso es una decisión de Pablo**, y es lo único de
-esta cola que te va a frenar. Mientras responde, sigue con lo demás.
+### Tanda C · El panel interno, que existe en la API y no existe para nadie
+
+Hay cinco endpoints de revisión interna sin una sola pantalla: la cola de credenciales
+(API-29 `GET /api/interno/credenciales/cola`, API-30 tomar, API-31 resolver) y la de reportes de
+reseñas (API-52 y API-53, en `EndpointsResenas.cs:232` y `:244`). Eso significa que hoy **nadie
+puede verificar una credencial ni resolver un reporte**, que son dos de las promesas del producto.
+
+**Esto ya no necesita ninguna decisión:** el rol es `verificador` y su política existe
+(`Seguridad.cs:32` y `:153`); el grupo entero exige ese rol y responde 403 sin ejecutar nada,
+tampoco para listar. Comprueba qué política exigen API-52 y API-53, que son del otro lado.
+
+Tres cosas que la pantalla tiene que respetar porque la API ya las impone: la reserva de una
+credencial dura **30 minutos** (CC-03), nadie revisa la propia (RN-S2-09), y **403 y 404 responden
+igual a propósito** — así que la pantalla no puede dar a entender cuál de los dos fue.
+
+**Listo cuando:** un usuario con rol `verificador` entra, ve su cola, toma un caso, lo resuelve y
+ve el resultado; alguien sin el rol no ve ni el enlace; y existe una prueba de que tomar un caso ya
+tomado por otro no lo roba.
+
+### Tanda D · Los huecos de la cuenta
+
+Dos cosas chicas que cierran la cuenta de una persona:
+
+- **Eliminar la cuenta (API-17** en `EndpointsIdentidad.cs:174`): el endpoint existe y anonimiza
+  (RN-S1-07), y no hay pantalla. Pide confirmación escrita, explica qué se borra y qué no, y no
+  dejes a la persona en una pantalla muerta después.
+- **Credenciales, el camino completo:** `MisCredenciales.tsx` existe y API-27 (`enviar a revisión`)
+  también. Recórrelo en un navegador de punta a punta y cierra lo que falte; si el documento mismo
+  no se puede subir todavía, escribe en el PR exactamente qué falta y hasta dónde llegaste.
+
+**Listo cuando:** una persona puede borrar su cuenta sola, y un prestador puede llevar una
+credencial desde que la crea hasta que queda en la cola de revisión, visto en un navegador.
 
 ---
 
