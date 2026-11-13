@@ -12,8 +12,10 @@ public sealed record CorreoRenderizado(string Asunto, string Texto, string Html)
 /// (tinta #1A1A1A sobre blanco; el amarillo #F6C81E solo como acento de marca y como fondo
 /// del botón con texto oscuro, nunca como color de texto).
 ///
-/// Solo reciben el nombre y el enlace del PROPIO destinatario: no hay forma de que
-/// filtren datos de otra persona.
+/// Solo reciben el nombre del PROPIO destinatario y un enlace: ninguna plantilla pone en el
+/// correo datos de otra persona. El aviso de resena respondida es el unico que enlaza a la
+/// ficha publica de un tercero, y lo hace con el slug, que ya es publico y que el
+/// destinatario conoce porque es a quien reseno.
 /// </summary>
 public static class Plantillas
 {
@@ -29,9 +31,19 @@ public static class Plantillas
     /// <summary>El panel del prestador, donde se ve y se renueva la suscripcion.</summary>
     public static string EnlaceDelPanel(string urlPublica) => $"{urlPublica.TrimEnd('/')}/mi-ficha";
 
-    /// <summary>La ficha publica, tal como la ve cualquiera. Es la que el prestador va a compartir.</summary>
-    public static string EnlaceDeLaFicha(string urlPublica, string slug) =>
-        $"{urlPublica.TrimEnd('/')}/prestadores/{Uri.EscapeDataString(slug)}";
+    /// <summary>
+    /// La ficha publica de un prestador: la que el prestador comparte y donde se leen sus resenas.
+    /// Sin slug devuelve el inicio del sitio: el aviso sale igual, solo sin atajo.
+    ///
+    /// (Dos ramas escribieron este ayudante a la vez, una exigiendo el slug y otra admitiendolo
+    /// nulo. Se queda la tolerante: quien necesite otra cosa cuando falta el slug lo decide en su
+    /// propio caso, como hace PerfilPublicado, que prefiere mandar al panel.)
+    /// </summary>
+    public static string EnlaceDeLaFicha(string urlPublica, string? slug)
+    {
+        var raiz = urlPublica.TrimEnd('/');
+        return string.IsNullOrWhiteSpace(slug) ? raiz : $"{raiz}/prestadores/{Uri.EscapeDataString(slug)}";
+    }
 
     /// <summary>
     /// Los tipos que este modulo sabe entregar. Los demas se quedan encolados sin gastar
@@ -40,6 +52,8 @@ public static class Plantillas
     public static bool TienePlantilla(TipoNotificacion tipo) =>
         tipo is TipoNotificacion.CorreoVerificacion
              or TipoNotificacion.RecuperarContrasena
+             or TipoNotificacion.ResenaNueva
+             or TipoNotificacion.ResenaRespondida
              or TipoNotificacion.SuscripcionPorVencer
              or TipoNotificacion.SuscripcionVencida
              or TipoNotificacion.PerfilPublicado;
@@ -75,6 +89,13 @@ public static class Plantillas
             CargaDeAviso.LeerCampo(carga, "slug") is { Length: > 0 } slug
                 ? EnlaceDeLaFicha(urlPublica, slug)
                 : EnlaceDelPanel(urlPublica)),
+        // Las dos de resenas no piden NADA de la carga: devuelven correo siempre. Es
+        // deliberado. S5 encolaba estos avisos desde el primer dia con un cuerpo en prosa, y
+        // si la plantilla exigiera un campo, cada aviso ya encolado pasaria de «no sale» a
+        // «Fallida» el dia que esto se despliegue, en vez de salir por fin.
+        TipoNotificacion.ResenaNueva => ResenaNueva(nombre, EnlaceDelPanel(urlPublica)),
+        TipoNotificacion.ResenaRespondida =>
+            Respondida(nombre, EnlaceDeLaFicha(urlPublica, CargaDeAviso.LeerCampo(carga, "slug"))),
         _ => null,
     };
 
@@ -187,6 +208,61 @@ public static class Plantillas
             "Ver mi ficha", enlace,
             "¿No puedes atender por unos días? Puedes pausar tu ficha desde «Mi ficha» y vuelves cuando quieras.");
         return new("Tu ficha ya está publicada en ZASS!", texto, html);
+    }
+
+    /// <summary>
+    /// El derecho a Saber de S5 («notificacion inmediata de cada resena nueva») y el paso 14
+    /// de CU-16. No adelanta ni la calificacion ni el texto ni quien la escribio, por tres
+    /// razones: el asunto se lee en la pantalla bloqueada, una resena puede acabar oculta en
+    /// moderacion (CS-17) y un correo ya enviado no se retira, y el comentario es de otra
+    /// persona: este modulo solo manda lo del propio destinatario.
+    ///
+    /// TEXTO PENDIENTE DE APROBACION de Pablo.
+    /// </summary>
+    public static CorreoRenderizado ResenaNueva(string nombre, string enlace)
+    {
+        const string parrafo =
+            "Alguien con quien trabajaste dejó una reseña en tu ficha de ZASS!. Entra a tu panel "
+            + "para leerla. Si quieres, puedes responderla una vez y tu respuesta queda publicada "
+            + "debajo, a la vista de quien lea tu ficha.";
+        var texto =
+            $"Hola {nombre}:\n\n" +
+            $"{parrafo}\n\n" +
+            $"Puedes verla aquí:\n\n{enlace}\n\n" +
+            "— El equipo de ZASS!";
+        var html = Marco(
+            "Tienes una reseña nueva",
+            $"Hola {H(nombre)}:",
+            parrafo,
+            "Ver la reseña", enlace,
+            "Si crees que esa reseña incumple las reglas, puedes reportarla desde tu panel.");
+        return new("Tienes una reseña nueva en ZASS!", texto, html);
+    }
+
+    /// <summary>
+    /// El otro lado de RN-S5-06: el prestador tiene una respuesta por resena, y quien
+    /// escribio la resena merece enterarse de que la respondieron. Va a la ficha publica,
+    /// que es donde se lee la respuesta; al prestador no se le nombra en el correo.
+    ///
+    /// TEXTO PENDIENTE DE APROBACION de Pablo.
+    /// </summary>
+    public static CorreoRenderizado Respondida(string nombre, string enlace)
+    {
+        const string parrafo =
+            "El prestador al que reseñaste publicó una respuesta. Queda debajo de tu reseña, en "
+            + "su ficha de ZASS!, a la vista de quien la lea. Tu reseña no cambió.";
+        var texto =
+            $"Hola {nombre}:\n\n" +
+            $"{parrafo}\n\n" +
+            $"Puedes leerla aquí:\n\n{enlace}\n\n" +
+            "— El equipo de ZASS!";
+        var html = Marco(
+            "Respondieron tu reseña",
+            $"Hola {H(nombre)}:",
+            parrafo,
+            "Ver la respuesta", enlace,
+            "Si la respuesta incumple las reglas, puedes reportarla desde la ficha.");
+        return new("Respondieron tu reseña en ZASS!", texto, html);
     }
 
     private static string H(string s) => WebUtility.HtmlEncode(s);

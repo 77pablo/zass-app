@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Pruebas.Dobles;
+using Zass.Aplicacion.Puertos;
 using Zass.Aplicacion.Resenas;
 using Zass.Dominio.Agenda;
 using Zass.Dominio.Comun;
@@ -930,6 +931,40 @@ public class ResenasPruebas
         var aviso = Assert.Single(_avisos.Encoladas);
         Assert.Equal(_ana.Id, aviso.DestinatarioId);
         Assert.Equal(TipoNotificacion.ResenaRespondida, aviso.Tipo);
+    }
+
+    /// <summary>
+    /// El cuerpo del aviso es su CARGA, no el texto del correo (eso lo arma Plantillas), y de
+    /// esta depende el enlace: sin el slug el correo sale apuntando al inicio del sitio en vez
+    /// de a la ficha donde esta la respuesta.
+    /// </summary>
+    [Fact]
+    public async Task El_aviso_de_respuesta_lleva_el_slug_del_perfil_en_la_carga()
+    {
+        var resena = await UnaPublicada();
+        _avisos.Encoladas.Clear();
+
+        await _servicio.ResponderAsync(resena.Id, _luis.Id, "Gracias por confiar en nosotros.");
+
+        var aviso = Assert.Single(_avisos.Encoladas);
+        Assert.Equal(_perfil.Slug, CargaDeAviso.LeerCampo(aviso.Cuerpo, "slug"));
+    }
+
+    /// <summary>
+    /// Lo que el aviso de reseña nueva NO lleva: ni la calificación ni el comentario. La
+    /// reseña puede acabar oculta en moderación (CS-17) y un correo enviado no se retira.
+    /// </summary>
+    [Fact]
+    public async Task El_aviso_de_resena_nueva_no_guarda_la_calificacion_ni_el_comentario()
+    {
+        var c = UnContacto();
+
+        await _servicio.PublicarAsync(Pub(c));
+
+        var aviso = Assert.Single(_avisos.Encoladas);
+        Assert.DoesNotContain(Comentario, aviso.Cuerpo);
+        Assert.Null(CargaDeAviso.LeerCampo(aviso.Cuerpo, "calificacion"));
+        Assert.Null(CargaDeAviso.LeerCampo(aviso.Cuerpo, "comentario"));
     }
 
     [Fact]

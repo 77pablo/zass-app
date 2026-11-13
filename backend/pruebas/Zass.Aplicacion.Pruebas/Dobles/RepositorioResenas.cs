@@ -59,7 +59,7 @@ public sealed class RepositorioResenasEnMemoria : IRepositorioResenas
 
     public Task<DatosDePerfil?> PerfilAsync(Guid perfilPrestadorId, CancellationToken ct = default) =>
         Task.FromResult(_base.PerfilesPrestador.Where(p => p.Id == perfilPrestadorId)
-            .Select(p => new DatosDePerfil(p.Id, p.UsuarioId, p.Estado, p.NombrePublico))
+            .Select(p => new DatosDePerfil(p.Id, p.UsuarioId, p.Estado, p.NombrePublico, p.Slug))
             .FirstOrDefault());
 
     public Task<Contacto?> ContactoAsync(Guid contactoId, CancellationToken ct = default)

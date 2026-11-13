@@ -243,7 +243,11 @@ public sealed class ServicioResenas : IServicioResenas
                 // Determinista (CC-04): si el aviso se reintentara, la restricción única lo frena.
                 ClaveIdempotencia = $"resena-nueva:{resena.Id}",
                 Asunto = "Tienes una reseña nueva",
-                Cuerpo = "Alguien dejó una reseña en tu perfil. Entra a ZASS! para verla y responder.",
+                // Sin campos a proposito: el correo va al panel del propio prestador y la
+                // plantilla no necesita nada de aquí. Y lo que NO va es la calificación ni el
+                // comentario: la reseña puede acabar oculta en moderación (CS-17) y un correo
+                // enviado ya no se retira.
+                Cuerpo = CargaDeAviso.ConCampos(),
                 ProgramadaPara = ahora,
             });
 
@@ -384,7 +388,10 @@ public sealed class ServicioResenas : IServicioResenas
                     Tipo = TipoNotificacion.ResenaRespondida,
                     ClaveIdempotencia = $"resena-respondida:{resena.Id}",
                     Asunto = "El prestador respondió tu reseña",
-                    Cuerpo = "El prestador respondió la reseña que dejaste. Entra a ZASS! para leerla.",
+                    // El cuerpo es la CARGA del aviso, no el texto del correo: eso lo arma
+                    // Plantillas. Lleva el slug para que el enlace vaya a la ficha donde esta
+                    // la respuesta; sin el, el correo sale igual pero apunta al inicio.
+                    Cuerpo = CargaDeAviso.ConCampos(("slug", perfil.Slug)),
                     ProgramadaPara = ahora,
                 });
                 _auditor.Registrar(Auditar.Entrada(

@@ -113,7 +113,7 @@ public interface IRepositorioResenas
 
 /// <summary>Lo mínimo de TBL-05 que reseñas necesita: de quién es y si se ve.</summary>
 public sealed record DatosDePerfil(
-    Guid Id, Guid UsuarioId, EstadoPerfil Estado, string NombrePublico);
+    Guid Id, Guid UsuarioId, EstadoPerfil Estado, string NombrePublico, string Slug);
 
 /// <summary>
 /// Una reseña de la lista pública y el único dato de su origen que sale hacia fuera: si hubo
