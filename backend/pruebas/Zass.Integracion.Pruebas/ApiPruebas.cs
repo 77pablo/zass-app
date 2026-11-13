@@ -1918,25 +1918,11 @@ public partial class ApiPruebas : IAsyncLifetime
         return Zass.Aplicacion.Puertos.CargaDeAviso.LeerToken(aviso.Cuerpo)!;
     }
 
-    // ------------------------------------------------- el mapa de rutas
-
-    /// <summary>
-    /// Dos endpoints con el mismo <c>WithName</c> no fallan al arrancar: fallan en la PRIMERA
-    /// peticion, y entonces la API entera devuelve 500, sea cual sea la ruta. Paso de verdad el
-    /// 12-nov-2026 al nacer «mis resenas» con el nombre API-64, que ya era del mapa del sitio.
-    /// Esta prueba pone el fallo donde se lee: en el nombre repetido, no en 600 pruebas rojas.
-    /// </summary>
-    [Fact]
-    public void Ningun_endpoint_repite_el_nombre_de_otro()
-    {
-        var repetidos = NombresDeEndpoint()
-            .GroupBy(n => n)
-            .Where(g => g.Count() > 1)
-            .Select(g => g.Key)
-            .ToList();
-
-        Assert.True(repetidos.Count == 0, "Nombres de endpoint repetidos: " + string.Join(" | ", repetidos));
-    }
+    // ------------------------------------------------- el inventario de rutas
+    //
+    // La prueba de nombres repetidos vive mas arriba, en la seccion «el mapa de rutas»: la
+    // escribieron dos ramas a la vez (esta y la de resenas) y se quedo la suya, que ademas dice
+    // en QUE rutas esta el nombre repetido.
 
     /// <summary>
     /// El inventario de endpoints, escrito a mano a proposito: crear uno nuevo deja esta prueba
@@ -1998,6 +1984,7 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-40",
             "API-41",
             "API-42",
+            "API-42b",
             "API-46",
             "API-47",
             "API-48",
@@ -2006,9 +1993,11 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-51",
             "API-52",
             "API-53",
+            "API-54",
             "API-62",
             "API-63",
             "API-64",
+            "API-65",
             "API-resenas-publicas",
             "CS-02b",
             "CS-04",
