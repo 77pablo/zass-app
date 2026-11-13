@@ -820,18 +820,22 @@ public class ZassDbContext : DbContext
                 "ck_cupon_porcentaje",
                 "porcentaje_descuento > 0 AND porcentaje_descuento <= 100"));
 
-            // El cupon del lanzamiento, sembrado con el esquema como los planes: 20 % sobre
-            // el primer mes PAGADO (decision de Pablo, 12-nov-2026). Sobre el precio
-            // fundador congelado de 5990 son 4792.
+            // El cupon del lanzamiento, sembrado con el esquema como los planes: 30 % sobre
+            // el primer mes PAGADO (decision de Pablo, 13-nov-2026; el 12-nov habia dicho
+            // 20 % y lo subio). Sobre el mensual de 7990 son 2397 y el total queda en 5593;
+            // sobre el fundador congelado de 5990 son 1797 y el total 4193.
             //
-            // La FECHA es la unica cosa de esta fila que Pablo tiene que confirmar. Se puso
+            // El codigo dice el porcentaje a proposito: un LANZAMIENTO20 que descontara 30
+            // seria una trampa para quien lea esta fila en seis meses.
+            //
+            // La FECHA es la unica cosa de esta fila que Pablo todavia no confirmo. Se puso
             // al 31 de marzo de 2027 para que el cupon exista y el flujo se pueda usar;
             // cambiarla es un UPDATE de una celda, no una migracion.
             e.HasData(new Cupon
             {
-                Codigo = "LANZAMIENTO20",
-                Descripcion = "20 % de descuento sobre el primer mes pagado.",
-                PorcentajeDescuento = 20,
+                Codigo = "LANZAMIENTO30",
+                Descripcion = "30 % de descuento sobre el primer mes pagado.",
+                PorcentajeDescuento = 30,
                 VenceEn = new DateTime(2027, 3, 31, 23, 59, 59, DateTimeKind.Utc),
                 Activo = true,
             });
