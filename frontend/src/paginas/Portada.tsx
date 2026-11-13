@@ -1,7 +1,7 @@
 import { useCallback, useRef, type PointerEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { personasEnZona } from '../api/comunidad'
-import { useCatalogo, useComunidad } from '../api/useCargado'
+import { useCatalogo, useComunidad, type Cargado } from '../api/useCargado'
 import { Aparece } from '../marco/Aparece'
 import { BarraDeBusqueda } from '../marco/BarraDeBusqueda'
 import { Icono } from '../marco/Icono'
@@ -27,7 +27,44 @@ function Cifra({ valor, etiqueta }: { valor: number; etiqueta: string }) {
   )
 }
 
-const OFICIOS_EN_CINTA = ['abogado', 'contador', 'gasfiter', 'arquitecto', 'electricista', 'corredor', 'pintor', 'tasador', 'ingeniero', 'técnico']
+/**
+ * Lo que la portada tiene que decir mientras no hay datos.
+ *
+ * Casi todas sus secciones viven tras un `&&` (el mapa, la cinta, las cifras, los recien
+ * llegados): sin datos no se ven, y sin esto desaparecian SIN UNA PALABRA. La API duerme
+ * (Render, plan gratis, ~15 min), asi que la primera visita del dia veia media portada muda.
+ * Mismo patron que /oficios y /comunas: que esta cargando, que fallo, y como reintentar.
+ */
+function EstadoDeLaPortada({ cargas }: { cargas: Cargado<unknown>[] }) {
+  const fallidas = cargas.filter((c) => c.error !== null)
+
+  if (fallidas.length > 0) {
+    return (
+      <p className="aviso-linea" role="alert">
+        {[...new Set(fallidas.map((c) => c.error))].join(' ')}{' '}
+        <button
+          type="button" className="enlace"
+          onClick={() => { for (const c of fallidas) c.reintentar() }}
+        >
+          Reintentar
+        </button>
+      </p>
+    )
+  }
+
+  if (cargas.some((c) => c.cargando)) {
+    return (
+      <p className="cargando-linea" role="status">
+        <span className="pulso" aria-hidden="true" />
+        Cargando el mapa y la comunidad… la primera vez puede tardar unos segundos.
+      </p>
+    )
+  }
+
+  return null
+}
+
+const OFICIOS_EN_CINTA =['abogado', 'contador', 'gasfiter', 'arquitecto', 'electricista', 'corredor', 'pintor', 'tasador', 'ingeniero', 'técnico']
 
 /**
  * La portada es corta a proposito: dice que es ZASS!, deja buscar en una barra, muestra la ciudad y la gente real
@@ -85,6 +122,8 @@ export function Portada() {
                 </li>
               ))}
             </ul>
+
+            <EstadoDeLaPortada cargas={[catalogo, comunidad]} />
 
             {recientes.length > 0 && (
               <div className="flotantes entra" style={{ '--d': '560ms' } as React.CSSProperties} aria-label="Gente que se sumó hace poco">
