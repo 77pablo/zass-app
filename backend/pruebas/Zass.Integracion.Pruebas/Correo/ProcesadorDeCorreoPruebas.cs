@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Npgsql;
@@ -79,7 +79,8 @@ public class ProcesadorDeCorreoPruebas : IAsyncLifetime
     }
 
     private async Task<Guid> EncolarAsync(Guid usuarioId, string token,
-        TipoNotificacion tipo = TipoNotificacion.CorreoVerificacion, string? cuerpo = null)
+        TipoNotificacion tipo = TipoNotificacion.CorreoVerificacion, string? cuerpo = null,
+        TimeSpan? antiguedad = null)
     {
         using var ctx = ContextoDePrueba.Crear();
         var n = new Notificacion
@@ -90,7 +91,7 @@ public class ProcesadorDeCorreoPruebas : IAsyncLifetime
             ClaveIdempotencia = $"prueba:{Guid.NewGuid():N}",
             Asunto = "x",
             Cuerpo = cuerpo ?? CargaDeAviso.ConToken(token),
-            ProgramadaPara = _reloj.Ahora.AddSeconds(-1),
+            ProgramadaPara = _reloj.Ahora - (antiguedad ?? TimeSpan.FromSeconds(1)),
         };
         ctx.Notificaciones.Add(n);
         await ctx.SaveChangesAsync();
@@ -377,11 +378,49 @@ public class ProcesadorDeCorreoPruebas : IAsyncLifetime
         Assert.Equal(EstadoEnvio.Anulada, (await LeerAsync(id)).Estado);
     }
 
+    /// <summary>
+    /// Encolar y enviar estan separados a proposito, asi que un tipo sin plantilla se acumula en la
+    /// cola hasta que alguien la escriba. El dia que esa plantilla llega, TODO lo acumulado se
+    /// vuelve enviable de golpe y la gente recibe avisos de algo que hizo hace semanas. Paso de
+    /// verdad con PerfilPublicado, que llevaba encolandose sin plantilla desde el primer dia.
+    /// </summary>
+    [Fact]
+    public async Task Un_aviso_que_lleva_semanas_esperando_se_anula_en_vez_de_enviarse()
+    {
+        var u = await CrearUsuarioAsync();
+        var viejo = await EncolarAsync(u.Id, "x", TipoNotificacion.PerfilPublicado,
+            cuerpo: CargaDeAviso.ConCampos(("slug", "ana-rojas")), antiguedad: TimeSpan.FromDays(30));
+        var m = ManejadorFalso.Responde(HttpStatusCode.Created);
+
+        await CicloAsync(m);
+
+        Assert.Equal(0, m.Cuenta);
+        var n = await LeerAsync(viejo);
+        Assert.Equal(EstadoEnvio.Anulada, n.Estado);
+    }
+
+    /// <summary>Y el del mismo tipo recien encolado si sale: el corte es por tiempo, no por tipo.</summary>
+    [Fact]
+    public async Task Un_aviso_de_ficha_publicada_recien_encolado_si_se_envia()
+    {
+        var u = await CrearUsuarioAsync();
+        var fresco = await EncolarAsync(u.Id, "x", TipoNotificacion.PerfilPublicado,
+            cuerpo: CargaDeAviso.ConCampos(("slug", "ana-rojas")));
+        var m = ManejadorFalso.Responde(HttpStatusCode.Created);
+
+        await CicloAsync(m);
+
+        Assert.Equal(1, m.Cuenta);
+        Assert.Equal(EstadoEnvio.Enviada, (await LeerAsync(fresco)).Estado);
+    }
+
     [Fact]
     public async Task Un_aviso_sin_plantilla_ni_de_otro_canal_no_se_toca()
     {
+        // CitaConfirmada, no PerfilPublicado: este ultimo YA tiene plantilla desde el 13-nov-2026.
+        // La prueba necesita un tipo que de verdad no la tenga, o no estaria probando nada.
         var u = await CrearUsuarioAsync();
-        var otroTipo = await EncolarAsync(u.Id, "x", TipoNotificacion.PerfilPublicado, cuerpo: "Tu perfil ya es visible");
+        var otroTipo = await EncolarAsync(u.Id, "x", TipoNotificacion.CitaConfirmada, cuerpo: "Tu cita quedo confirmada");
         var m = ManejadorFalso.Responde(HttpStatusCode.Created);
 
         Assert.Equal(0, await CicloAsync(m));
@@ -390,7 +429,7 @@ public class ProcesadorDeCorreoPruebas : IAsyncLifetime
         var n = await LeerAsync(otroTipo);
         Assert.Equal(EstadoEnvio.Programada, n.Estado);
         Assert.Equal(0, n.Intentos);
-        Assert.Equal("Tu perfil ya es visible", n.Cuerpo);
+        Assert.Equal("Tu cita quedo confirmada", n.Cuerpo);
     }
 
     [Fact]

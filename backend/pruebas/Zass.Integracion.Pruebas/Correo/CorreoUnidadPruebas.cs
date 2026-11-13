@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -177,8 +177,65 @@ public class CorreoUnidadPruebas
     [Fact]
     public void Un_tipo_sin_plantilla_no_se_renderiza()
     {
-        Assert.Null(Plantillas.Renderizar(TipoNotificacion.PerfilPublicado, "Ana", "https://zass.cl", CargaDeAviso.ConToken("t")));
+        // PerfilPublicado estuvo aqui: se encolaba y se quedaba en la cola sin plantilla. Ya la
+        // tiene. CitaConfirmada sigue abierta a conciencia (MOD-06 no manda correos todavia).
+        Assert.Null(Plantillas.Renderizar(TipoNotificacion.CitaConfirmada, "Ana", "https://zass.cl", CargaDeAviso.Purgada));
         Assert.False(Plantillas.TienePlantilla(TipoNotificacion.CitaConfirmada));
+    }
+
+    // ------------------------------------------------------------ CU-03: la ficha publicada
+
+    [Fact]
+    public void El_aviso_de_ficha_publicada_enlaza_la_ficha_publica_para_compartirla()
+    {
+        var correo = Plantillas.Renderizar(
+            TipoNotificacion.PerfilPublicado, "Ana", "https://zass.cl",
+            CargaDeAviso.ConCampos(("slug", "ana-rojas")));
+
+        Assert.NotNull(correo);
+        Assert.Equal("Tu ficha ya está publicada en ZASS!", correo!.Asunto);
+        Assert.Contains("https://zass.cl/prestadores/ana-rojas", correo.Texto);
+        Assert.Contains("https://zass.cl/prestadores/ana-rojas", correo.Html);
+        // Lo que de verdad importa que diga: que ya aparece, y que puede pausarla.
+        Assert.Contains("ya está publicada", correo.Texto);
+        Assert.Contains("pausar", correo.Texto);
+    }
+
+    /// <summary>
+    /// Los avisos encolados ANTES de que existiera la plantilla llevan una frase suelta en el
+    /// cuerpo, no una carga JSON. Tienen que salir igual: el aviso vale aunque el enlace sea el
+    /// panel en vez de la ficha. Si esto devolviera null, esos avisos se quedarian en la cola
+    /// para siempre.
+    /// </summary>
+    [Fact]
+    public void Un_aviso_de_ficha_publicada_sin_slug_sale_igual_apuntando_al_panel()
+    {
+        foreach (var carga in new[] { CargaDeAviso.Purgada, "Tu perfil ya aparece en las búsquedas." })
+        {
+            var correo = Plantillas.Renderizar(TipoNotificacion.PerfilPublicado, "Ana", "https://zass.cl", carga);
+
+            Assert.NotNull(correo);
+            Assert.Contains("https://zass.cl/mi-ficha", correo!.Texto);
+        }
+    }
+
+    [Fact]
+    public void El_aviso_de_ficha_publicada_no_lleva_ningun_secreto()
+    {
+        Assert.True(Plantillas.TienePlantilla(TipoNotificacion.PerfilPublicado));
+        Assert.False(Plantillas.LlevaToken(TipoNotificacion.PerfilPublicado));
+    }
+
+    /// <summary>Un slug con caracteres raros no puede romper el enlace ni el HTML.</summary>
+    [Fact]
+    public void El_slug_viaja_escapado_en_el_enlace()
+    {
+        var correo = Plantillas.Renderizar(
+            TipoNotificacion.PerfilPublicado, "Ana", "https://zass.cl",
+            CargaDeAviso.ConCampos(("slug", "ana\" onclick=x")));
+
+        Assert.NotNull(correo);
+        Assert.DoesNotContain("onclick=x\"", correo!.Html);
     }
 
     // ------------------------------------------------------------ carga con token

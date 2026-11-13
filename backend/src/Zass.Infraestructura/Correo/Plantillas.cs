@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
 
@@ -29,6 +29,10 @@ public static class Plantillas
     /// <summary>El panel del prestador, donde se ve y se renueva la suscripcion.</summary>
     public static string EnlaceDelPanel(string urlPublica) => $"{urlPublica.TrimEnd('/')}/mi-ficha";
 
+    /// <summary>La ficha publica, tal como la ve cualquiera. Es la que el prestador va a compartir.</summary>
+    public static string EnlaceDeLaFicha(string urlPublica, string slug) =>
+        $"{urlPublica.TrimEnd('/')}/prestadores/{Uri.EscapeDataString(slug)}";
+
     /// <summary>
     /// Los tipos que este modulo sabe entregar. Los demas se quedan encolados sin gastar
     /// intentos: encolar no es enviar, y el dia que tengan plantilla saldran solos.
@@ -37,7 +41,8 @@ public static class Plantillas
         tipo is TipoNotificacion.CorreoVerificacion
              or TipoNotificacion.RecuperarContrasena
              or TipoNotificacion.SuscripcionPorVencer
-             or TipoNotificacion.SuscripcionVencida;
+             or TipoNotificacion.SuscripcionVencida
+             or TipoNotificacion.PerfilPublicado;
 
     /// <summary>
     /// Los que llevan un secreto en la carga. Importa porque de esos el cuerpo se purga en
@@ -62,6 +67,14 @@ public static class Plantillas
             int.TryParse(CargaDeAviso.LeerCampo(carga, "dias"), out var d)
                 ? PorVencer(nombre, d, EnlaceDelPanel(urlPublica)) : null,
         TipoNotificacion.SuscripcionVencida => Vencida(nombre, EnlaceDelPanel(urlPublica)),
+        // Con el slug se enlaza su ficha publica, que es lo que querra abrir y compartir. Sin el
+        // —los avisos encolados ANTES de que existiera esta plantilla llevan una frase suelta en vez
+        // de una carga JSON— se enlaza su panel: sigue siendo util y no se pierde el aviso.
+        TipoNotificacion.PerfilPublicado => Publicado(
+            nombre,
+            CargaDeAviso.LeerCampo(carga, "slug") is { Length: > 0 } slug
+                ? EnlaceDeLaFicha(urlPublica, slug)
+                : EnlaceDelPanel(urlPublica)),
         _ => null,
     };
 
@@ -148,6 +161,32 @@ public static class Plantillas
             "Renovar mi suscripción", enlace,
             "Si renovaste hace un momento, puede que este aviso se haya cruzado con el pago.");
         return new("Tu suscripción a ZASS! venció", texto, html);
+    }
+
+    /// <summary>
+    /// CU-03 flujo 5: la ficha se publico y ya aparece en las busquedas. Es el unico correo que trae
+    /// una buena noticia, asi que no repite instrucciones: dice que ya esta, da el enlace que puede
+    /// compartir y recuerda que puede pausarla cuando quiera, que es la pregunta que viene detras.
+    /// </summary>
+    public static CorreoRenderizado Publicado(string nombre, string enlace)
+    {
+        const string parrafo =
+            "Tu ficha ya está publicada: desde ahora apareces en las búsquedas de las comunas donde "
+            + "atiendes, y quien te encuentre puede ver tus servicios y escribirte.";
+        var texto =
+            $"Hola {nombre}:\n\n" +
+            $"{parrafo}\n\n" +
+            $"Esta es tu ficha, para compartirla con quien quieras:\n\n{enlace}\n\n" +
+            "Si en algún momento no puedes atender, puedes pausarla desde «Mi ficha» y dejas de " +
+            "aparecer al instante. No se borra nada.\n\n" +
+            "— El equipo de ZASS!";
+        var html = Marco(
+            "Tu ficha ya está publicada",
+            $"Hola {H(nombre)}:",
+            parrafo,
+            "Ver mi ficha", enlace,
+            "¿No puedes atender por unos días? Puedes pausar tu ficha desde «Mi ficha» y vuelves cuando quieras.");
+        return new("Tu ficha ya está publicada en ZASS!", texto, html);
     }
 
     private static string H(string s) => WebUtility.HtmlEncode(s);

@@ -1,4 +1,4 @@
-using Zass.Aplicacion.Comun;
+﻿using Zass.Aplicacion.Comun;
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
 using Zass.Dominio.Identidad;
@@ -198,7 +198,12 @@ public sealed class ServicioPerfiles
                 // aviso tambien, y con la clave vieja habria chocado igual.
                 ClaveIdempotencia = $"perfil-publicado:{perfil.Id}:{_reloj.Ahora:yyyyMMddHHmmss}",
                 Asunto = "Tu perfil ya esta publicado en ZASS!",
-                Cuerpo = "Tu perfil ya aparece en las búsquedas de quienes buscan cerca de ti.",
+                // La carga, no una frase: el cuerpo de un aviso es JSON y SOLO datos (hay un unico
+                // formato, y asi `Purgada` sigue queriendo decir lo mismo). El texto que lee la
+                // persona lo pone la plantilla. Aqui iba una frase suelta, asi que cuando se
+                // escribio la plantilla hubo que dejarla tolerar su ausencia: los avisos encolados
+                // antes siguen en la cola y tienen que poder salir.
+                Cuerpo = CargaDeAviso.ConCampos(("slug", perfil.Slug)),
                 ProgramadaPara = _reloj.Ahora,
             });
         }

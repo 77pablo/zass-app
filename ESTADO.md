@@ -82,6 +82,37 @@ recorrido completo del prestador (**14/14**).
 - Quitar la ubicación quita el radio.
 - Contra la base de desarrollo: sin radio 21 personas, a 5 km 16, a 1 km 5, a 500 km se corrige a 50.
 
+### Y los otros dos agujeros del cruce de ramas, cerrados también
+
+**La numeración de endpoints.** `api-rest.md` decía «63 endpoints» y el código tenía **ocho que no
+estaban en ninguna tabla**: API-20b, API-21b, API-22b, API-34-listar, API-34-quitar, API-42b, API-64
+y API-65. Los dos de bloqueos (`API-34-listar` y `API-34-quitar`) aparecieron justo al hacer el
+inventario; nadie los echaba de menos. El documento queda con una **sección 11** que los recoge, el
+total pasa de 63 a **71** y se dice cuántos están construidos de verdad (55, contados contra el
+código, no de memoria).
+
+Y para que no vuelva a pasar, dos pruebas sobre el mapa de rutas real: una caza **nombres
+repetidos** (dos `WithName` iguales devuelven **500 en todas las rutas** desde la primera petición,
+y pasó el 12-nov) y otra es un **inventario escrito a mano**: crear un endpoint deja la prueba roja
+hasta que se añade a la lista, y el mensaje pide añadirlo también al documento. Comprobado que
+muerde, quitando un nombre a propósito.
+
+**El correo de «tu ficha ya está publicada».** Se encolaba desde el primer día y **no tenía
+plantilla**, así que se quedaba en la cola para siempre. Ya la tiene, y enlaza su ficha pública (la
+que va a querer compartir), no el panel.
+
+Al escribirla apareció lo de verdad importante: **al darle plantilla a un tipo, todo lo acumulado se
+vuelve enviable de golpe**. Sin más, al desplegar habrían salido de una vez los avisos de fichas
+publicadas hace semanas. Ahora el procesador **anula** lo que lleva más de 7 días esperando
+(`OpcionesCorreo.CaducaDias`), y eso obligó a entender una trampa del propio esquema:
+`programada_para` **deja de decir cuándo se encoló en cuanto el aviso se reserva** — pasa a valer la
+hora de la reserva. Por eso la regla mira `intentos = 0`, que es el caso en que sigue siendo la
+original. Añadir una columna de «creado en» habría sido más limpio, pero pide migración y la regla
+del proyecto es **una migración de EF a la vez** (la de NoAsistio va primero).
+
+**Un hueco que esto destapa y NO está arreglado:** no hay forma de **pedir otra vez el correo de
+verificación**. Se encola solo al registrarse. Si a alguien no le llega, hoy no tiene salida.
+
 ### Las ramas, al cerrar la sesión
 
 **Todas subidas** (`gh auth login` resuelto: el gestor de credenciales de Windows se cuelga esperando
