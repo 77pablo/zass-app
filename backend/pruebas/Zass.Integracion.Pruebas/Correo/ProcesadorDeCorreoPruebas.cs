@@ -414,6 +414,31 @@ public class ProcesadorDeCorreoPruebas : IAsyncLifetime
         Assert.Equal(EstadoEnvio.Enviada, (await LeerAsync(fresco)).Estado);
     }
 
+    /// <summary>
+    /// JQ-1, el defecto de las reseñas visto desde el despacho: un aviso de cita recién encolado
+    /// tiene que salir, no quedarse «Programada» con 0 intentos. Los cinco, con la carga que
+    /// encola la agenda escrita a mano.
+    /// </summary>
+    [Theory]
+    [InlineData(TipoNotificacion.CitaSolicitada, "{\"rol\":\"prestador\"}")]
+    [InlineData(TipoNotificacion.CitaConfirmada, "{\"rol\":\"buscador\"}")]
+    [InlineData(TipoNotificacion.CitaRechazada, "{\"rol\":\"buscador\"}")]
+    [InlineData(TipoNotificacion.CitaCancelada, "{\"rol\":\"prestador\"}")]
+    [InlineData(TipoNotificacion.CitaReprogramada, "{\"rol\":\"buscador\"}")]
+    public async Task Un_aviso_de_cita_recien_encolado_se_envia(TipoNotificacion tipo, string carga)
+    {
+        var u = await CrearUsuarioAsync();
+        var aviso = await EncolarAsync(u.Id, "x", tipo, cuerpo: carga);
+        var m = ManejadorFalso.Responde(HttpStatusCode.Created);
+
+        await CicloAsync(m);
+
+        Assert.Equal(1, m.Cuenta);
+        var n = await LeerAsync(aviso);
+        Assert.Equal(EstadoEnvio.Enviada, n.Estado);
+        Assert.Equal(1, n.Intentos);
+    }
+
     [Fact]
     public async Task Un_aviso_sin_plantilla_ni_de_otro_canal_no_se_toca()
     {

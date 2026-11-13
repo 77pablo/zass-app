@@ -347,6 +347,10 @@ public class CorreoUnidadPruebas
             TipoNotificacion.PerfilPublicado, TipoNotificacion.ResenaNueva,
             TipoNotificacion.ResenaRespondida, TipoNotificacion.SuscripcionPorVencer,
             TipoNotificacion.SuscripcionVencida,
+            // ServicioAgenda, desde JQ-1.
+            TipoNotificacion.CitaSolicitada, TipoNotificacion.CitaConfirmada,
+            TipoNotificacion.CitaRechazada, TipoNotificacion.CitaCancelada,
+            TipoNotificacion.CitaReprogramada,
         };
         // Ya no queda ninguno pendiente a conciencia: PerfilPublicado era el ultimo y tiene
         // plantilla desde el 13-nov-2026. Si manana se encola un tipo nuevo sin plantilla, esta
