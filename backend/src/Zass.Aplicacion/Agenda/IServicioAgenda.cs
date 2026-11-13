@@ -1,4 +1,4 @@
-using Zass.Aplicacion.Comun;
+﻿using Zass.Aplicacion.Comun;
 using Zass.Dominio.Comun;
 
 namespace Zass.Aplicacion.Agenda;
@@ -266,6 +266,10 @@ public sealed record CitaDto(
     Guid PrestadorServicioId,
     Guid PerfilPrestadorId,
     string Prestador,
+    // El calendario (API-35) solo se puede pedir por slug, y "Mis citas" tiene que poder
+    // abrirlo para reprogramar (CU-14 paso 3). Sin esto, el frontend tenia que buscar al
+    // prestador por nombre y quedarse con el que coincidiera en id: un rodeo evitable.
+    string PrestadorSlug,
     string? NotaBuscador,
     DateTime? ExpiraEn,
     bool Nueva);
