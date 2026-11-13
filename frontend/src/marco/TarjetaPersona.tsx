@@ -49,7 +49,10 @@ export function TarjetaPersona({ p }: { p: DatosDeTarjeta }) {
         {p.verificada && <span className="sello"><Icono nombre="sello" />Verificado</span>}
         {p.esTuPerfil && <span className="dato">Este eres tú</span>}
         {p.distancia && <span className="dato dato--mono"><Icono nombre="pin" />{p.distancia}</span>}
-        {p.zona && !p.distancia && <span className="dato"><Icono nombre="pin" />{p.zona}</span>}
+        {/* La comuna se muestra SIEMPRE, tambien con distancia. «a 3 km» dice cuanto, no donde: en Chile
+            la comuna es el dato con el que se decide, y quien compartio su ubicacion lo perdia justo por
+            eso. El pin lo lleva solo la primera de las dos etiquetas, para no repetir el icono. */}
+        {p.zona && <span className="dato">{!p.distancia && <Icono nombre="pin" />}{p.zona}</span>}
         {p.detalle && <span className="dato">{p.detalle}</span>}
       </div>
 
