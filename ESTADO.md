@@ -1,8 +1,10 @@
 # ZASS! — estado del desarrollo
 
-**Última sesión:** 12 de noviembre de 2026 — ver **«Sesión del 12-nov»** justo debajo.
+**Última sesión:** 13 de noviembre de 2026 — ver **«Sesión del 13-nov»** justo debajo.
 
-**Sesión anterior:** 9 de noviembre de 2026 (se rescataron las dos ramas de agentes que habían quedado sin
+**Sesión anterior:** 12 de noviembre de 2026 (ver «Sesión del 12-nov» más abajo).
+
+**Sesión anterior a esa:** 9 de noviembre de 2026 (se rescataron las dos ramas de agentes que habían quedado sin
 verificar —`verificacion` y `fondo`—, se construyó el planificador A-09 y **MOD-06 Agenda** entero en el
 backend, sin la pantalla). **Lo que sigue pendiente está en «Sesión del 9-nov» más abajo.**
 
@@ -15,6 +17,96 @@ comprobado**, **qué no**, y **el siguiente paso exacto**.
 
 ---
 
+## Sesión del 13-nov-2026 — dónde retomar
+
+### Lo primero: `main` ya tiene arreglo, y la causa no era lo que parecía
+
+**El rojo de `main` era UNA prueba y no era un defecto del producto.** Con `gh` autenticado se pudo
+leer por fin el registro de Actions: fallaba
+`CuposFundadorIntegracionPruebas.Sesenta_pidiendo_a_la_vez_se_reparten_exactamente_cincuenta_cupos_sin_repetir`,
+y su propio mensaje decía la causa — «Hacen falta 61 conexiones simultaneas y al servidor le quedan
+30». Es el **techo de conexiones de Postgres en CI**, no el reparto de cupos. La rama de 20 cupos
+estaba verde porque pedía menos conexiones.
+
+Arreglado en **PR #9** (`ci-techo-conexiones`): Postgres se levanta con `docker run … -c
+max_connections=300` porque `services:` no admite argumentos para el servidor, y un paso aparte
+**mira** `SHOW max_connections` en vez de confiar en que el `docker run` no dio error. **CI de esa
+rama en verde, con los números: 674 + 16 + 614, ninguna omitida.**
+
+### Los 8 defectos del repaso en navegador: cerrados (PR #10)
+
+`agente/navegador`, cuatro commits. D1 ya estaba arreglado de antes.
+
+| # | Qué era | Qué se hizo |
+|---|---|---|
+| D2 | `/mi-ficha` mandaba a «crear una cuenta de profesional con otro correo», contra la cuenta única | Ahora invita a activar la ficha con la cuenta que ya tiene |
+| D3 | Entrar bien y que falle `GET /api/mi/cuenta` dejaba la pantalla **muda** | Lo dice y ofrece reintentar (3 unitarias nuevas) |
+| D4 | **El control de radio no existía** (ver más abajo: el documento lo daba por arreglado) | Reconstruido de punta a punta, incluido el parámetro en API-63 |
+| D5 | El pie ofrecía «Entrar» a quien ya había entrado | El pie sigue la sesión |
+| D6 | Tres objetivos táctiles bajo 44 px | Uno era una acción y se arregló; **los otros dos son enlaces dentro de una frase, que WCAG 2.5.8 exceptúa**, y el medidor aprendió la excepción |
+| D7 | El 429 respondía `titulo`/`detalle` y el cliente lee `title`/`detail`: el aviso del limitador **no llegaba nunca** | Arreglado, y apareció la otra mitad: `WriteAsJsonAsync` pisaba el `Content-Type` |
+| D8 | Dos guiones «muertos» | `flujo-real.mjs` no lo estaba: era **un selector**. `mirar-busqueda.mjs` sí: borrado, llevándose antes sus dos comprobaciones únicas |
+| D9 | Los datos de demostración no permitían entrar | Contraseña real (`demo-zass-2026`) y sus dos roles, en los dos sembrados |
+
+**Medido en esta máquina, no por informe ajeno:** interfaz **385/385**, aplicación **679/679**,
+arquitectura **16/16**, integración **616/616**, y **los 7 guiones de navegador en verde** más el
+recorrido completo del prestador (**14/14**).
+
+### Tres cosas que este archivo daba por ciertas y eran falsas
+
+1. **El defecto 15** (más abajo, «Arreglado… Visto en el navegador real»: «¿Hasta qué distancia?»,
+   5/10/20/50 km) **no existía en el código**. Se perdió al pasar al sitio de varias páginas y nadie
+   lo notó porque el soporte seguía vivo en la capa de servicio y sus pruebas seguían verdes:
+   prueban la función, no la pantalla. Y faltaba más de lo que parecía — **API-63, la barra que usa
+   el sitio hoy, ni aceptaba el parámetro `radio`**; el radio solo existía en API-01.
+2. **`flujo-real.mjs` figuraba como prueba** de que el registro funciona de punta a punta, y estaba
+   parado desde que la cuenta única quitó la casilla de rol. Hoy sí corre (14/14).
+3. **`mirar-busqueda.mjs` figuraba como «cómo repetirlo»** y medía una pantalla que ya no existe.
+
+### Lo que el arnés se hacía a sí mismo
+
+- **`mirar-agendar.mjs` deshacía el arreglo de D9**: le prestaba a la prestadora de demostración un
+  hash y el rol, y al limpiar le devolvía el `'x'`. Correr ese guion revertía el arreglo en
+  silencio. Ya no toca la base: entra con la contraseña sembrada.
+- **Dos rojos permanentes** en `mirar-publicas.mjs` eran el 404 correcto de una ficha inexistente.
+- Los barridos en cadena agotaban el limitador (100 peticiones públicas cada 15 min) y los guiones
+  informaban «defectos de pantalla» que eran 429. En **Development** los topes P y G subieron; los
+  de producción no se tocan.
+
+### El radio, como quedó (RN-S3-04)
+
+- Sin radio, la barra busca en **todo Chile**. API-01 sigue aplicando 10 km por omisión: son dos
+  búsquedas distintas, y recortar la barra a 10 km sin pedirlo escondería gente sin decirlo.
+- Fuera de rango se **corrige y se avisa** (E-400 de CU-08). Sin ubicación se ignora con aviso.
+- El radio **sí** va en la dirección (se comparte); la ubicación **no**, como ya era.
+- Quitar la ubicación quita el radio.
+- Contra la base de desarrollo: sin radio 21 personas, a 5 km 16, a 1 km 5, a 500 km se corrige a 50.
+
+### Las ramas, al cerrar la sesión
+
+**Todas subidas** (`gh auth login` resuelto: el gestor de credenciales de Windows se cuelga esperando
+una ventana invisible; hay que autenticar desde una terminal de verdad, y después `gh auth
+setup-git`).
+
+| Rama | Qué | Estado |
+|---|---|---|
+| `ci-techo-conexiones` | El arreglo del rojo de `main` | **PR #9**, CI verde |
+| `agente/navegador` | Los 8 defectos | **PR #10** |
+| `integracion/12-nov` | Las 5 ramas del 12-nov fusionadas | Subida, CI heredaba el rojo de `main` |
+| `textos-j3`, `textos-j4` | Los seis textos visibles | Subidas, CI verde |
+| `agente/no-asistio-n3`, `agente/resenas-pantalla`, `agente/correo-resenas`, `agente/mis-citas`, `agente/rn-s6-10` | Trabajo de agentes del 12-nov | Subidas, sin fusionar |
+| `diag-ci-rojo` | Rama desechable para leer el CI | **Ya no hace falta**: el registro se leyó directo |
+
+### El siguiente paso exacto
+
+1. **Fusionar PR #9** (`main` vuelve a verde) y después **PR #10**.
+2. Decidir el orden de fusión del resto de ramas, y qué hacer con `ReprogramarAsync`, que **no
+   comprueba la suscripción** (decisión de producto: añadir la guarda deja a quien ya tiene hora sin
+   poder moverla, solo cancelar).
+3. **Migrar Neon**: producción sigue con 20 cupos.
+4. Aprobar los textos de los dos correos de reseñas y los de «mis reseñas».
+
+---
 ## Sesión del 12-nov-2026 — dónde retomar
 
 ### Lo que quedó HECHO y COMPROBADO
@@ -859,7 +951,7 @@ que es RN-S3-01 y RN-S3-09 funcionando de punta a punta. Lo demás:
 | 11 | **El orden no desempata como dice CU-08** ("por credencial verificada, reputación y completitud"). Hoy todos los prestadores de una zona están a la **misma** distancia (la de su centroide), así que el desempate es lo único que ordena, y hoy sale por `id`, que es un UUID: orden arbitrario | **Arreglado** (ahora desempata verificado, reputación pública, reseñas e id) |
 | 12 | `salir()` dejaba escapar la promesa rechazada (un *Uncaught in promise*) cuando la API fallaba al cerrar sesión | Arreglado, con prueba |
 | 13 | Mi comprobación de la fuente decía OK sin saber nada: `document.fonts.check()` devuelve `true` para una fuente que **ni existe** | Corregida: ahora mira las fuentes que el navegador descargó (400, 600 y 800) |
-| 15 | **La pantalla no tiene control de radio.** Con la ubicación, el radio es 10 km y no se puede cambiar. Quien cubre tu zona pero se basa a más de 10 km (el centroide de su zona principal está a 14,5 km del Centro, en el caso de la prueba) **no aparece nunca**, y no hay cómo ampliar ni se le dice a la persona que hay alguien más lejos. El flujo 4B de CU-08 ("ampliar el radio") existe en el documento y no en el código | **Arreglado.** Con la ubicación aparece "¿Hasta qué distancia?" (5, 10, 20 y 50 km, el mayor es el máximo de RN-S3-04), y sin resultados se propone "Ampliar a 50 km", que repite **la búsqueda que se hizo** y no lo que el formulario diga ahora. Visto en el navegador real: con 20 km aparece el prestador de Labranza, último y "a 15 km". 12 pruebas y 6 mutaciones, 6 rojos |
+| 15 | ⚠️ **ESTO VOLVIÓ A ESTAR ROTO Y SE DIO POR ARREGLADO CASI UN MES.** Ver «Sesión del 13-nov»: el control desapareció al pasar al sitio de varias páginas, y lo de abajo («Visto en el navegador real») dejó de ser cierto sin que nada se pusiera rojo. Reconstruido el 13-nov, ahora con una prueba que mira la pantalla. **La pantalla no tiene control de radio.** Con la ubicación, el radio es 10 km y no se puede cambiar. Quien cubre tu zona pero se basa a más de 10 km (el centroide de su zona principal está a 14,5 km del Centro, en el caso de la prueba) **no aparece nunca**, y no hay cómo ampliar ni se le dice a la persona que hay alguien más lejos. El flujo 4B de CU-08 ("ampliar el radio") existe en el documento y no en el código | **Arreglado.** Con la ubicación aparece "¿Hasta qué distancia?" (5, 10, 20 y 50 km, el mayor es el máximo de RN-S3-04), y sin resultados se propone "Ampliar a 50 km", que repite **la búsqueda que se hizo** y no lo que el formulario diga ahora. Visto en el navegador real: con 20 km aparece el prestador de Labranza, último y "a 15 km". 12 pruebas y 6 mutaciones, 6 rojos |
 | 16 | **"Quitar" medía 18 px de alto**, un objetivo táctil que en un celular se falla. Lo cazó la medición apenas apareció el control de radio, porque "Quitar" solo existe con la ubicación puesta y el guion no la ejercitaba | Arreglado: ahora mide 44 px, y el guion mide también con la ubicación activa |
 | 14 | Los guiones `flujo-real.mjs` y `humo.mjs` asumían que la app abría en "Entrar", y `humo.mjs` habría medido **el botón de la búsqueda escondida** en vez del de la pantalla, sin avisar | Corregidos; pasan |
 
@@ -904,7 +996,8 @@ red**. Cada visitante le manda su dirección IP a Google antes de ver la página
 autoalojar la fuente, y más con una ley de protección de datos que empieza a regir en
 diciembre de 2026 (revisar si aplica, no lo asumo).
 
-**Repetirlo:** `frontend/pruebas-navegador/mirar-busqueda.mjs`, con los datos de
+**Repetirlo:** (⚠️ `mirar-busqueda.mjs` se borró el 13-nov: medía esta pantalla, que ya no existe.
+Lo que sigue vivo son `mirar-sitio.mjs` y `mirar-publicas.mjs`.) `frontend/pruebas-navegador/mirar-busqueda.mjs`, con los datos de
 `datos/sembrar-visual.sql`. **Ya no hace falta limpiar al terminar**: las pruebas de integración
 tienen su propia base (ver los avisos), así que los prestadores sembrados en la base de
 desarrollo no las afectan. `limpiar-visual.sql` queda para dejar la base de desarrollo vacía.
