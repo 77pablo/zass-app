@@ -13,13 +13,23 @@ export class ErrorApi extends Error {
   readonly mensaje: string
   /** Errores por campo de una validacion, con el nombre del campo en minuscula. */
   readonly campos: Record<string, string>
+  /**
+   * El cuerpo tal como lo mando la API. Casi ninguna pantalla lo necesita, pero algunas
+   * respuestas traen datos que hay que MOSTRAR y no caben en una frase: el 422 de CU-16 4E
+   * señala los fragmentos del comentario que parecen datos personales. Vacio si no hubo cuerpo.
+   */
+  readonly datos: Record<string, unknown>
 
-  constructor(estado: number, mensaje: string, campos: Record<string, string> = {}) {
+  constructor(
+    estado: number, mensaje: string, campos: Record<string, string> = {},
+    datos: Record<string, unknown> = {},
+  ) {
     super(mensaje)
     this.name = 'ErrorApi'
     this.estado = estado
     this.mensaje = mensaje
     this.campos = campos
+    this.datos = datos
   }
 }
 
@@ -77,7 +87,7 @@ async function fallo(r: Response): Promise<ErrorApi> {
     (cuerpo.title as string | undefined) ??
     generico(r.status)
 
-  return new ErrorApi(r.status, mensaje, campos)
+  return new ErrorApi(r.status, mensaje, campos, cuerpo)
 }
 
 function generico(estado: number): string {
