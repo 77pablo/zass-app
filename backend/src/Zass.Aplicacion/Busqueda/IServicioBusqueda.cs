@@ -203,6 +203,18 @@ public sealed record FichaPublicaDto(
     ContactoPublicoDto Contacto,
     DateTime? PublicadoEn,
     /// <summary>
+    /// RN-S6-10. Falso cuando el prestador dejo de pagar: la ficha SIGUE viendose (por la
+    /// tarjeta NFC, por un enlace guardado o por el buscador interno del navegador), pero
+    /// sin boton de contactar ni de agendar.
+    ///
+    /// Va aqui y no se deja a la pantalla: esconder los botones en el navegador no basta,
+    /// porque el telefono y el correo seguirian viajando en la respuesta. Por eso, cuando
+    /// esto es falso, <see cref="Contacto"/> llega VACIO desde el servidor.
+    ///
+    /// Sin valor por omision a proposito: quien componga esta ficha tiene que decidirlo.
+    /// </summary>
+    bool SuscripcionVigente,
+    /// <summary>
     /// Verdadero cuando quien pregunta NO tiene sesion y por eso <see cref="Contacto"/> viene vacio. Buscar y ver
     /// fichas es publico; contactar exige cuenta gratis. Lo pone el endpoint, que es quien conoce la sesion: el
     /// servicio de busqueda no sabe quien pregunta.

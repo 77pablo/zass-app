@@ -30,6 +30,8 @@ const FICHA = {
   totalResenas: 0,
   contacto: { telefono: '+56 9 1234 5678', whatsapp: '912345678', correo: 'contacto@soto.cl', sitioWeb: 'https://soto.cl' },
   publicadoEn: '2026-11-01T12:00:00Z',
+  // RN-S6-10: la API siempre lo manda. Sin esto, la ficha del caso feliz no seria la de alguien al dia.
+  suscripcionVigente: true,
 }
 
 let llamadasApi
@@ -241,6 +243,74 @@ describe('datos privados', () => {
       // El contacto publico tampoco se publica en las etiquetas: las etiquetas no son para eso.
       'contacto@soto.cl', '912345678', '1234 5678', 'soto.cl',
     ]) expect(html, prohibido).not.toContain(prohibido)
+  })
+})
+
+// ---------------------------------------------------------------- RN-S6-10
+
+/**
+ * RN-S6-10 y el indice. La ficha de quien dejo de pagar se SIGUE sirviendo (200): se abre por la
+ * tarjeta NFC y por cualquier enlace guardado. Lo que no hace es entrar al indice de Google.
+ *
+ * RN-S3-09 ya la saca de la busqueda y del sitemap. Esta era la otra puerta.
+ */
+describe('ficha sin suscripcion vigente: se sirve, pero fuera del indice', () => {
+  const IMPAGA = { ...FICHA, suscripcionVigente: false, contacto: { telefono: null, whatsapp: null, correo: null, sitioWeb: null } }
+
+  it('sale con noindex y sin datos estructurados, pero sigue siendo 200 y con sus etiquetas', async () => {
+    respuestaApi = () => json(IMPAGA)
+
+    const r = await pedir('marcela-soto')
+
+    // La ficha NO desaparece: apagarla dejaria a quien tiene la tarjeta sin entender que paso.
+    expect(r.status).toBe(200)
+    const d = dom(await r.text())
+    expect(d.querySelector('#root')).not.toBeNull()
+    expect(d.title).toBe('Marcela Soto · Corretaje de propiedades en Centro · ZASS!')
+    // Quien la comparta por WhatsApp sigue viendo de quien es.
+    expect(d.querySelector('meta[property="og:title"]').content).toBe(d.title)
+    expect(d.querySelector('meta[property="og:image"]').content).toBe('https://zass.cl/og-zass.png')
+
+    // Lo que cambia:
+    expect(d.querySelector('meta[name="robots"]').content).toBe('noindex, nofollow')
+    expect(d.querySelector('script[type="application/ld+json"]')).toBeNull()
+  })
+
+  /**
+   * La forma que tendria el fallo: poner noindex de mas. Un verde que solo mire la ficha impaga
+   * no lo veria, porque `noindex` en todas las fichas tambien la deja a ella fuera del indice.
+   */
+  it('la ficha de quien SI esta al dia no se toca: sin robots y con sus datos estructurados', async () => {
+    respuestaApi = () => json(FICHA)
+
+    const d = dom(await (await pedir('marcela-soto')).text())
+
+    expect(d.querySelector('meta[name="robots"]')).toBeNull()
+    const ld = JSON.parse(d.querySelector('script[type="application/ld+json"]').textContent)
+    expect(ld['@type']).toBe('ProfessionalService')
+  })
+
+  /**
+   * Si la API no mandara el campo (una version vieja durante un despliegue) se indexa como
+   * siempre. Es a proposito: un campo ausente que sacara del indice a TODAS las fichas es un
+   * daño mucho mayor, y mucho mas lento de deshacer, que indexar unas horas de mas a un impago.
+   */
+  it('sin el campo en la respuesta, la ficha se indexa como siempre', async () => {
+    const { suscripcionVigente: _quitado, ...sinElCampo } = FICHA
+    respuestaApi = () => json(sinElCampo)
+
+    const d = dom(await (await pedir('marcela-soto')).text())
+
+    expect(d.querySelector('meta[name="robots"]')).toBeNull()
+    expect(d.querySelector('script[type="application/ld+json"]')).not.toBeNull()
+  })
+
+  it('un valor que no es booleano no apaga el indice: solo el false exacto lo hace', async () => {
+    for (const valor of [null, 'false', 0, undefined]) {
+      respuestaApi = () => json({ ...FICHA, suscripcionVigente: valor })
+      const d = dom(await (await pedir('marcela-soto')).text())
+      expect(d.querySelector('meta[name="robots"]'), String(valor)).toBeNull()
+    }
   })
 })
 

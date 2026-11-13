@@ -5,6 +5,7 @@ using Zass.Aplicacion.Geografia;
 using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Pruebas.Dobles;
 using Zass.Aplicacion.Puertos;
+using Zass.Aplicacion.Suscripciones;
 using Zass.Dominio.Catalogo;
 using Zass.Dominio.Comun;
 
@@ -65,6 +66,9 @@ public class BusquedaPruebas
         _servicio = new ServicioBusqueda(
             _repo, catalogo, geografia, identidad,
             new ServicioCredenciales(new RepositorioCredencialesEnMemoria(_base), _base, _reloj, new AuditoriaEnMemoria()),
+            new ServicioSuscripciones(
+                new RepositorioSuscripcionesEnMemoria(_base), _base, _reloj,
+                new AuditoriaEnMemoria(), new ColaEnMemoria()),
             _reloj);
     }
 

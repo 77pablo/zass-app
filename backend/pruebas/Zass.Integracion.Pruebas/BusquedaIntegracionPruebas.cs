@@ -59,6 +59,7 @@ public class BusquedaIntegracionPruebas : IDisposable
                 trabajo, _reloj, auditor),
             new ServicioIdentidad(new RepositorioUsuariosEfCore(ctx), new RepositorioPerfilesEfCore(ctx)),
             new ServicioCredenciales(new RepositorioCredencialesEfCore(ctx), trabajo, _reloj, auditor),
+            _suscripciones,
             _reloj);
     }
 
