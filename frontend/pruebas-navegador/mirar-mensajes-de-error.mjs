@@ -30,8 +30,24 @@ const QUINIENTOS = {
   title: 'An error occurred while processing your request.',
   status: 500,
 }
-/** Lo que responde el limitador (Zass.Api/Configuracion/Seguridad.cs, OnRejected). */
+/**
+ * Lo que responde el limitador (Zass.Api/Configuracion/Seguridad.cs, OnRejected).
+ *
+ * Los nombres son los de RFC 7807. Este arnes tenia `titulo`/`detalle`, copiados del servidor, y
+ * eso ERA el defecto D7: con esos nombres el cliente no encuentra nada que mostrar y la persona
+ * recibe «No se pudo completar la operación» en vez de «espera unos minutos». Se arreglaron las dos
+ * puntas: el servidor manda `title`/`detail` (con una prueba de integracion que lo exige) y aqui se
+ * comprueba que el cliente lo entiende.
+ */
 const CUATROCIENTOS_VEINTINUEVE = {
+  type: 'https://tools.ietf.org/html/rfc9110#section-15.5.30',
+  title: 'Demasiadas peticiones',
+  detail: 'Espera unos minutos antes de volver a intentar.',
+  status: 429,
+  reintentarEn: 900,
+}
+/** La forma VIEJA, que no cumple el RFC. Se guarda para comprobar que no se vuelve a colar. */
+const CUATROCIENTOS_VEINTINUEVE_VIEJO = {
   titulo: 'Demasiadas peticiones',
   detalle: 'Espera unos minutos antes de volver a intentar.',
   reintentarEn: 900,
@@ -64,6 +80,13 @@ try {
   comprobar('ante un 429 se le dice a la persona que espere unos minutos',
     /espera unos minutos|minutos/i.test(con429),
     con429.split('\n').find((l) => /no se pudo|espera|minutos/i.test(l)) ?? '(no se encontro ningun aviso)')
+
+  // Y la prueba de que el defecto era real: con los nombres viejos el aviso NO le llega a nadie. Si
+  // algun dia el servidor vuelve a escribir `titulo`/`detalle`, la prueba de integracion lo caza;
+  // esta de aqui explica por que importa.
+  const con429Viejo = await loQueSeVe(CUATROCIENTOS_VEINTINUEVE_VIEJO, 429)
+  comprobar('un 429 con los nombres viejos (titulo/detalle) NO le llega a la persona: era el defecto',
+    !/espera unos minutos/i.test(con429Viejo), '')
 
   // --- Entrar bien pero no poder leer la cuenta -------------------------------------------
   // Visto de verdad el 12-nov con el limitador agotado: POST /api/auth/sesion devolvio 200 (la

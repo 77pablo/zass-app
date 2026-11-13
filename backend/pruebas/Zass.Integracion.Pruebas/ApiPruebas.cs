@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Hosting;
+﻿using Microsoft.AspNetCore.Hosting;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -1919,6 +1919,21 @@ public class LimiteDeTasaPruebas
                 Assert.Contains("Demasiadas peticiones", cuerpo);
                 // Nunca se dice cuantos intentos quedan.
                 Assert.DoesNotContain("restantes", cuerpo);
+
+                // Los NOMBRES de los campos, no solo el texto: esta prueba pasaba en verde mientras
+                // la respuesta decia `titulo`/`detalle`, que el cliente no lee, asi que el aviso no
+                // aparecia en ninguna pantalla. Lo que falla es invisible si solo se busca el texto.
+                Assert.Equal(
+                    "application/problem+json",
+                    respuesta.Content.Headers.ContentType?.MediaType);
+                var json = JsonDocument.Parse(cuerpo).RootElement;
+                Assert.Equal("Demasiadas peticiones", json.GetProperty("title").GetString());
+                Assert.Equal(
+                    "Espera unos minutos antes de volver a intentar.",
+                    json.GetProperty("detail").GetString());
+                Assert.Equal(429, json.GetProperty("status").GetInt32());
+                Assert.False(json.TryGetProperty("titulo", out _));
+                Assert.False(json.TryGetProperty("detalle", out _));
             }
         }
 
