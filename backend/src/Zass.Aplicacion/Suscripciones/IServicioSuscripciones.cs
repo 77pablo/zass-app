@@ -35,10 +35,22 @@ public interface IServicioSuscripciones
     /// </summary>
     Task<Resultado> IniciarPruebaAsync(Guid perfilPrestadorId, CancellationToken ct = default);
 
-    /// <summary>La llamara la pasarela cuando exista. Extiende el periodo y deja el cobro registrado.</summary>
-    Task<Resultado> RegistrarPeriodoPagadoAsync(
+    /// <summary>
+    /// Extiende el periodo y deja el cobro registrado. Lo llama <see cref="IServicioCobros"/>
+    /// cuando la pasarela confirma, y es el unico sitio del sistema donde una suscripcion
+    /// pasa a estar pagada.
+    ///
+    /// Devuelve el identificador del <c>Pago</c> creado, que es lo que necesita quien
+    /// registra el canje del cupon para poder decir a QUE pago se le aplico.
+    /// </summary>
+    /// <param name="intentoDePagoId">
+    /// El intento (TBL-36) que origino el cobro, si lo hubo. Va a la columna con indice
+    /// unico parcial: si llegara una segunda confirmacion del mismo intento, la base la
+    /// rechaza aunque fallara toda comprobacion anterior.
+    /// </param>
+    Task<Resultado<Guid>> RegistrarPeriodoPagadoAsync(
         Guid suscripcionId, int meses = 1, int montoPagado = 0, string? referencia = null,
-        CancellationToken ct = default);
+        Guid? intentoDePagoId = null, CancellationToken ct = default);
 
     /// <summary>El prestador deja de pagar por voluntad propia. Sale de la busqueda de inmediato.</summary>
     Task<Resultado> CancelarAsync(Guid suscripcionId, CancellationToken ct = default);
@@ -79,6 +91,17 @@ public interface IServicioSuscripciones
 
     /// <summary>Cuantos de los 50 cupos del plan fundador quedan disponibles hoy.</summary>
     Task<int> CuposFundadorDisponiblesAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Si el plan fundador sigue abierto, y con que mensaje contarlo.
+    ///
+    /// Existe porque hasta hoy el cierre del cupo 50 solo se podia conocer intentando
+    /// reservar y recibiendo un conflicto: un error tecnico en lugar de una respuesta.
+    /// Decision de Pablo del 12-nov-2026: al llegar a 50 se cierra y punto, sin lista de
+    /// espera y sin pasar a nadie al plan normal por su cuenta. Quien quiera el mensual
+    /// lo elige; el sistema no lo elige por el.
+    /// </summary>
+    Task<Resultado<PlanFundadorDto>> EstadoDelPlanFundadorAsync(CancellationToken ct = default);
 
     /// <summary>
     /// Reserva temporalmente un cupo fundador para este prestador mientras inscribe su tarjeta.
@@ -122,6 +145,18 @@ public sealed record SuscripcionPorVencer(
     Guid PerfilPrestadorId,
     DateTime VigenteHasta,
     int DiasRestantes);
+
+/// <summary>
+/// El estado del plan de lanzamiento, listo para pintarse. <paramref name="Mensaje"/> es
+/// el texto que ve la persona: la pantalla no tiene que componer el cierre a partir de
+/// numeros, ni enterarse por un 409.
+/// </summary>
+public sealed record PlanFundadorDto(
+    bool Abierto,
+    int CuposTotales,
+    int CuposDisponibles,
+    int PrecioMensual,
+    string Mensaje);
 
 public sealed record PlanDto(
     short Id,

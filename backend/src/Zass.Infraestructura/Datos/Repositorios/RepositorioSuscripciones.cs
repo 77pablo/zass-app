@@ -86,6 +86,14 @@ public sealed class RepositorioSuscripcionesEfCore : IRepositorioSuscripciones
     public Task<Plan?> PlanPorCodigoAsync(string codigo, CancellationToken ct = default) =>
         _ctx.Planes.FirstOrDefaultAsync(p => p.Codigo == codigo && p.Activo, ct);
 
+    /// <summary>
+    /// Sin filtrar por activo, al contrario que la busqueda por codigo: un intento de pago
+    /// de la semana pasada tiene que poder decir que plan compro aunque ese plan se haya
+    /// retirado del catalogo desde entonces.
+    /// </summary>
+    public Task<Plan?> PlanPorIdAsync(short id, CancellationToken ct = default) =>
+        _ctx.Planes.FirstOrDefaultAsync(p => p.Id == id, ct);
+
     public async Task<IReadOnlyList<Plan>> PlanesActivosAsync(CancellationToken ct = default) =>
         await _ctx.Planes
             .Where(p => p.Activo)
@@ -118,6 +126,52 @@ public sealed class RepositorioSuscripcionesEfCore : IRepositorioSuscripciones
 
     public void Agregar(Suscripcion suscripcion) => _ctx.Suscripciones.Add(suscripcion);
     public void AgregarPago(Pago pago) => _ctx.Pagos.Add(pago);
+
+    // ------------------------------------------------------------ TBL-36 el cobro
+
+    public Task<IntentoDePago?> IntentoPorIdAsync(Guid id, CancellationToken ct = default) =>
+        _ctx.IntentosDePago.FirstOrDefaultAsync(i => i.Id == id, ct);
+
+    public Task<IntentoDePago?> IntentoPorClaveAsync(
+        string clave, CancellationToken ct = default) =>
+        _ctx.IntentosDePago.FirstOrDefaultAsync(i => i.ClaveIdempotencia == clave, ct);
+
+    /// <summary>
+    /// <c>SELECT ... FOR UPDATE</c> sobre la fila, igual que TomarBloqueAsync en MOD-06.
+    /// Dos confirmaciones del mismo cobro llegando a la vez se ponen en fila aqui, y la
+    /// segunda lee el estado que dejo la primera en vez de creerse tambien la primera.
+    /// </summary>
+    public Task<IntentoDePago?> TomarIntentoAsync(Guid id, CancellationToken ct = default) =>
+        _ctx.IntentosDePago
+            .FromSqlInterpolated($"SELECT * FROM intentos_pago WHERE id = {id} FOR UPDATE")
+            .AsTracking()
+            .FirstOrDefaultAsync(ct);
+
+    public void AgregarIntento(IntentoDePago intento) => _ctx.IntentosDePago.Add(intento);
+
+    /// <summary>
+    /// Se mira la tabla de PAGOS y no el estado de la suscripcion: una suscripcion Activa
+    /// puede haber llegado ahi sin pagar (un ajuste a mano), y lo que decide si el cupon
+    /// ya se gasto es si hubo un cobro de verdad.
+    /// </summary>
+    public Task<bool> TuvoMesPagadoAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default) =>
+        _ctx.Pagos.AnyAsync(
+            p => p.Estado == EstadoPago.Pagado
+                 && _ctx.Suscripciones.Any(
+                     s => s.Id == p.SuscripcionId && s.PerfilPrestadorId == perfilPrestadorId),
+            ct);
+
+    // ------------------------------------------------------------ TBL-34/35 el cupon
+
+    public Task<Cupon?> CuponPorCodigoAsync(string codigo, CancellationToken ct = default) =>
+        _ctx.Cupones.FirstOrDefaultAsync(c => c.Codigo == codigo, ct);
+
+    public Task<bool> YaCanjeoCuponAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default) =>
+        _ctx.CanjesDeCupon.AnyAsync(c => c.PerfilPrestadorId == perfilPrestadorId, ct);
+
+    public void AgregarCanje(CanjeDeCupon canje) => _ctx.CanjesDeCupon.Add(canje);
     // ------------------------------------------------------------ Cupos fundador
     //
     // TBL-33. Cada operacion es UNA sentencia SQL atomica que se ejecuta de inmediato,
@@ -133,6 +187,27 @@ public sealed class RepositorioSuscripcionesEfCore : IRepositorioSuscripciones
             c => c.PerfilPrestadorId == null
                  || (c.ReservadoHasta != null && c.ReservadoHasta <= ahora),
             ct);
+
+    /// <summary>
+    /// Se cuentan las filas sembradas. Si alguien tocara la tabla sin migracion, el total
+    /// que se informa cambia con ella en vez de seguir diciendo 50 porque lo dice una
+    /// constante del codigo.
+    /// </summary>
+    public Task<int> CuposFundadorTotalesAsync(CancellationToken ct = default) =>
+        _ctx.CuposFundador.CountAsync(ct);
+
+    /// <summary>
+    /// Devuelve tambien el cupo cuya reserva ya vencio pero que el trabajo diario no ha
+    /// liberado todavia. Es a proposito: IntentarReservarCupoFundadorAsync le renovaria
+    /// ese mismo cupo al mismo perfil, asi que contestar «no tiene» aqui seria contradecir
+    /// al paso siguiente.
+    /// </summary>
+    public Task<short?> CupoFundadorDeAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default) =>
+        _ctx.CuposFundador
+            .Where(c => c.PerfilPrestadorId == perfilPrestadorId)
+            .Select(c => (short?)c.Numero)
+            .FirstOrDefaultAsync(ct);
 
     public async Task<short?> IntentarReservarCupoFundadorAsync(
         Guid perfilPrestadorId, DateTime ahora, DateTime hasta, CancellationToken ct = default)

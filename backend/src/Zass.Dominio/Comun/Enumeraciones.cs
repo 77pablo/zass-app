@@ -84,6 +84,13 @@ public enum EstadoSuscripcion { Prueba, Activa, Vencida, Cancelada }
 
 public enum EstadoPago { Pendiente, Pagado, Fallido, Reembolsado }
 
+/// <summary>
+/// En que quedo un cobro empezado (TBL-36). No es lo mismo que EstadoPago: un intento
+/// Fallido NO deja fila en pagos, porque nadie pago nada. Anulado es el que se abandona
+/// sin que la pasarela conteste: la persona cerro la pestaña.
+/// </summary>
+public enum EstadoIntentoPago { Pendiente, Pagado, Fallido, Anulado }
+
 public static class Roles
 {
     public const string Buscador = "buscador";

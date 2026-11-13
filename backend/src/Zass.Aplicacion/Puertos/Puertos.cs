@@ -1,4 +1,4 @@
-﻿using Zass.Dominio.Agenda;
+using Zass.Dominio.Agenda;
 using Zass.Dominio.Catalogo;
 using Zass.Dominio.Comun;
 using Zass.Dominio.Credenciales;
@@ -161,6 +161,10 @@ public interface IRepositorioSuscripciones
         DateTime ahora, DateTime hasta, CancellationToken ct = default);
 
     Task<Plan?> PlanPorCodigoAsync(string codigo, CancellationToken ct = default);
+
+    /// <summary>El plan de un intento de pago, activo o no: lo que se compro, se compro.</summary>
+    Task<Plan?> PlanPorIdAsync(short id, CancellationToken ct = default);
+
     Task<IReadOnlyList<Plan>> PlanesActivosAsync(CancellationToken ct = default);
 
     /// <summary>Comprueba el perfil sin traerlo entero ni depender del repositorio de MOD-01.</summary>
@@ -183,12 +187,27 @@ public interface IRepositorioSuscripciones
     Task<int> CuposFundadorDisponiblesAsync(DateTime ahora, CancellationToken ct = default);
 
     /// <summary>
+    /// Cuantos cupos hay sembrados en total. Se CUENTAN, no se declaran: una prueba que
+    /// comparase el total contra la misma constante que lo define no vigilaria nada.
+    /// </summary>
+    Task<int> CuposFundadorTotalesAsync(CancellationToken ct = default);
+
+    /// <summary>
     /// Reserva atomicamente uno de los 50 cupos fundador hasta <paramref name="hasta"/>.
     /// Idempotente si <paramref name="perfilPrestadorId"/> ya tiene uno asignado.
     /// Devuelve el numero (1..50), o null si los 50 estan ocupados.
     /// </summary>
     Task<short?> IntentarReservarCupoFundadorAsync(
         Guid perfilPrestadorId, DateTime ahora, DateTime hasta, CancellationToken ct = default);
+
+    /// <summary>
+    /// El cupo que tiene ese perfil, reservado o confirmado, o nulo. Sin esto, quien ya es
+    /// fundador dejaria de poder pagar su mensualidad al precio congelado el dia que se
+    /// tomara el cupo 50: la descripcion del plan promete «mientras mantengas tu
+    /// suscripcion activa», y eso solo se puede cumplir si se distingue «no hay cupos»
+    /// de «este ya tiene el suyo».
+    /// </summary>
+    Task<short?> CupoFundadorDeAsync(Guid perfilPrestadorId, CancellationToken ct = default);
 
     /// <summary>Deja el cupo de ese perfil sin fecha de vencimiento. False si no tenia cupo.</summary>
     Task<bool> ConfirmarCupoFundadorAsync(Guid perfilPrestadorId, CancellationToken ct = default);
@@ -198,6 +217,49 @@ public interface IRepositorioSuscripciones
 
     /// <summary>Suelta reservas temporales expiradas (reservado_hasta &lt;= ahora).</summary>
     Task<int> LiberarReservasFundadorVencidasAsync(DateTime ahora, CancellationToken ct = default);
+
+    // ------------------------------------------------------------ TBL-36 el cobro
+
+    Task<IntentoDePago?> IntentoPorIdAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>
+    /// CC-04. El intento que ya creo esa clave, si existe. El doble envio del mismo
+    /// formulario tiene que devolver el MISMO intento y no crear un segundo cobro.
+    /// </summary>
+    Task<IntentoDePago?> IntentoPorClaveAsync(string clave, CancellationToken ct = default);
+
+    /// <summary>
+    /// <c>SELECT ... FOR UPDATE</c> sobre la fila del intento, igual que
+    /// <see cref="IRepositorioAgenda.TomarBloqueAsync"/>. La segunda confirmacion de la
+    /// MISMA pasarela espera aqui y, cuando entra, lee el estado ya cambiado.
+    ///
+    /// Solo sirve dentro de <see cref="IUnidadDeTrabajo.EnTransaccionAsync{T}"/>: fuera de
+    /// una transaccion el bloqueo se suelta al terminar la consulta y no protege nada.
+    /// </summary>
+    Task<IntentoDePago?> TomarIntentoAsync(Guid id, CancellationToken ct = default);
+
+    void AgregarIntento(IntentoDePago intento);
+
+    /// <summary>
+    /// Si este perfil ya tuvo algun mes pagado. Es lo que distingue «el primer mes que se
+    /// paga» del segundo, y de eso depende el cupon: el primer mes de vida de la cuenta es
+    /// la prueba gratuita, asi que el descuento cae sobre el primer PAGO, no sobre el
+    /// primer mes.
+    /// </summary>
+    Task<bool> TuvoMesPagadoAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+
+    // ------------------------------------------------------------ TBL-34/35 el cupon
+
+    /// <summary>El cupon tal como esta guardado, sirva o no: quien decide es el servicio.</summary>
+    Task<Cupon?> CuponPorCodigoAsync(string codigo, CancellationToken ct = default);
+
+    /// <summary>
+    /// Si esta cuenta ya canjeo un cupon. Uno por cuenta y para siempre; el indice unico
+    /// ux_canje_cupon_perfil es la garantia de la base, esto solo evita llegar hasta el.
+    /// </summary>
+    Task<bool> YaCanjeoCuponAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+
+    void AgregarCanje(CanjeDeCupon canje);
 }
 
 /// <summary>

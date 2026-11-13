@@ -17,6 +17,12 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
     /// <summary>Plan con el que arranca quien publica su perfil por primera vez.</summary>
     public const string PlanInicial = "prueba";
 
+    /// <summary>Plan de lanzamiento, el de los 50 cupos. Precio congelado en la fila del plan.</summary>
+    public const string PlanFundador = "fundador";
+
+    /// <summary>El plan de siempre, al que puede pasarse quien no alcanzo cupo fundador.</summary>
+    public const string PlanMensual = "mensual";
+
     /// <summary>
     /// Con cuanta antelacion se avisa. Dos momentos, como los recordatorios de cita
     /// (RN-S4-07): uno con tiempo para decidir y otro el dia antes, para quien lo dejo pasar.
@@ -151,14 +157,18 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
         return Resultado.Ok();
     }
 
-    public async Task<Resultado> RegistrarPeriodoPagadoAsync(
+    public async Task<Resultado<Guid>> RegistrarPeriodoPagadoAsync(
         Guid suscripcionId, int meses = 1, int montoPagado = 0, string? referencia = null,
-        CancellationToken ct = default)
+        Guid? intentoDePagoId = null, CancellationToken ct = default)
     {
         var ahora = _reloj.Ahora;
         var s = await _repo.PorIdAsync(suscripcionId, ct);
         if (s is null)
-            return Resultado.Falla(Fallas.NoEncontrado, "Esa suscripción no existe.");
+            return Resultado.Falla<Guid>(Fallas.NoEncontrado, "Esa suscripción no existe.");
+
+        if (meses < 1)
+            return Resultado.Falla<Guid>(
+                Fallas.Validacion, "Un periodo pagado es de un mes o más.");
 
         var desde = s.VigenteHasta > ahora ? s.VigenteHasta : ahora;
 
@@ -166,7 +176,7 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
         // no puede perder los 5 que le quedaban, y esa regla pertenece al dominio.
         s.RegistrarPeriodoPagado(ahora, meses);
 
-        _repo.AgregarPago(new Pago
+        var pago = new Pago
         {
             SuscripcionId = s.Id,
             Monto = montoPagado,
@@ -175,16 +185,18 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
             PeriodoDesde = desde,
             PeriodoHasta = s.VigenteHasta,
             ReferenciaPasarela = referencia,
+            IntentoDePagoId = intentoDePagoId,
             CreadoEn = ahora,
             PagadoEn = ahora,
-        });
+        };
+        _repo.AgregarPago(pago);
 
         _auditor.Registrar(Auditar.Entrada(
             "suscripcion_pagada", "suscripciones", s.Id, ahora,
             contexto: new { meses, vigenteHasta = s.VigenteHasta }));
 
         await _trabajo.GuardarAsync(ct);
-        return Resultado.Ok();
+        return Resultado.Ok(pago.Id);
     }
 
     public async Task<Resultado> CancelarAsync(Guid suscripcionId, CancellationToken ct = default)
@@ -301,6 +313,32 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
     public Task<int> CuposFundadorDisponiblesAsync(CancellationToken ct = default) =>
         _repo.CuposFundadorDisponiblesAsync(_reloj.Ahora, ct);
 
+    public async Task<Resultado<PlanFundadorDto>> EstadoDelPlanFundadorAsync(
+        CancellationToken ct = default)
+    {
+        var plan = await _repo.PlanPorCodigoAsync(PlanFundador, ct);
+        if (plan is null)
+            return Resultado.Falla<PlanFundadorDto>(
+                Fallas.ReglaDeNegocio,
+                $"No existe el plan '{PlanFundador}'. Falta sembrarlo en la base.");
+
+        var disponibles = await _repo.CuposFundadorDisponiblesAsync(_reloj.Ahora, ct);
+
+        // El total no se lee de una constante que ademas vigile la prueba: se cuenta lo
+        // sembrado. Si alguien cambiara los cupos de la base sin migracion, esto lo dice.
+        var totales = await _repo.CuposFundadorTotalesAsync(ct);
+
+        return Resultado.Ok(new PlanFundadorDto(
+            Abierto: disponibles > 0,
+            CuposTotales: totales,
+            CuposDisponibles: disponibles,
+            PrecioMensual: plan.PrecioMensual,
+            Mensaje: disponibles > 0
+                ? $"Quedan {disponibles} de {totales} cupos del precio de lanzamiento."
+                : $"El plan fundador está cerrado: se tomaron los {totales} cupos. "
+                  + "El precio de lanzamiento no vuelve a abrirse."));
+    }
+
     public async Task<Resultado<short>> ReservarCupoFundadorAsync(
         Guid perfilPrestadorId, TimeSpan? duracion = null, CancellationToken ct = default)
     {
@@ -316,9 +354,15 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
         var numero = await _repo.IntentarReservarCupoFundadorAsync(
             perfilPrestadorId, ahora, ahora.Add(plazo), ct);
 
+        // El cierre, dicho entero y en una sola frase. Antes esto era «Ya no quedan cupos
+        // del plan fundador», que deja a quien lo lee esperando una lista de espera o un
+        // paso automatico al plan normal. No hay ni lo uno ni lo otro (decision de Pablo,
+        // 12-nov-2026): quien quiera el plan mensual lo elige a mano.
         if (numero is null)
             return Resultado.Falla<short>(
-                Fallas.Conflicto, "Ya no quedan cupos del plan fundador.");
+                Fallas.Conflicto,
+                "El plan fundador está cerrado: se tomaron todos los cupos y el precio de "
+                + "lanzamiento no vuelve a abrirse. Puedes suscribirte al plan mensual.");
 
         _auditor.Registrar(Auditar.Entrada(
             "cupo_fundador_reservado", "perfiles_prestador", perfilPrestadorId, ahora,
