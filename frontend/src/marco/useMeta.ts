@@ -1,6 +1,12 @@
 import { useEffect } from 'react'
 
 export interface Meta {
+  /**
+   * Titulo para el recuadro que se ve al compartir el enlace (Open Graph y Twitter). Sin esto se
+   * quedaba el de `index.html`, asi que en WhatsApp el titulo y el texto no hablaban de lo mismo.
+   * Va completo, con la marca: no se le agrega nada, al contrario que en `useTitulo`.
+   */
+  titulo?: string
   /** Descripcion para buscadores y para el texto que se ve al compartir el enlace. */
   descripcion?: string
   /** Fuera del indice de buscadores: paginas privadas, formularios, errores. */
