@@ -5,6 +5,7 @@ using Zass.Aplicacion.Credenciales;
 using Zass.Aplicacion.Geografia;
 using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Puertos;
+using Zass.Aplicacion.Suscripciones;
 using Zass.Dominio.Comun;
 
 namespace Zass.Aplicacion.Busqueda;
@@ -15,6 +16,10 @@ namespace Zass.Aplicacion.Busqueda;
 /// Consume MOD-03 —para rechazar un rubro inexistente— y MOD-04 —para resolver el punto a
 /// zona y para nombrarla—, que es lo que la tabla de modulos permite. No tiene tablas
 /// propias y no debe tenerlas.
+///
+/// Tambien MOD-13, por su interfaz y nunca por su tabla: desde RN-S3-09 la busqueda depende
+/// de la suscripcion (dependencias-entre-modulos.md, seccion 1), y la ficha de CU-09 necesita
+/// saber si el prestador esta al dia para apagarle los botones (RN-S6-10).
 /// </summary>
 public sealed class ServicioBusqueda : IServicioBusqueda
 {
@@ -23,14 +28,17 @@ public sealed class ServicioBusqueda : IServicioBusqueda
     private readonly IServicioGeografia _geografia;
     private readonly IServicioIdentidad _identidad;
     private readonly IServicioCredenciales _credenciales;
+    private readonly IServicioSuscripciones _suscripciones;
     private readonly IRelojSistema _reloj;
 
     public ServicioBusqueda(
         IRepositorioBusqueda repo, IServicioCatalogo catalogo,
         IServicioGeografia geografia, IServicioIdentidad identidad,
-        IServicioCredenciales credenciales, IRelojSistema reloj)
+        IServicioCredenciales credenciales, IServicioSuscripciones suscripciones,
+        IRelojSistema reloj)
     {
         _credenciales = credenciales;
+        _suscripciones = suscripciones;
         _repo = repo;
         _catalogo = catalogo;
         _geografia = geografia;
@@ -289,6 +297,15 @@ public sealed class ServicioBusqueda : IServicioBusqueda
         var zonas = await _geografia.ZonasDeCoberturaAsync(perfil.Id, ct);
         var credenciales = await _credenciales.CredencialesPublicasAsync(perfil.Id, ct);
 
+        // RN-S6-10. La ficha se sigue viendo entera: lo que se apaga es contactar y agendar.
+        // El contacto se vacia AQUI, en el servidor, por lo mismo que se vacia sin sesion: si
+        // viajara en la respuesta, esconder los botones solo lo escondería de quien no mira.
+        var vigente = await _suscripciones.EstaVigenteAsync(perfil.Id, ct);
+        var contacto = vigente
+            ? new ContactoPublicoDto(
+                perfil.TelefonoPublico, perfil.Whatsapp, perfil.CorreoPublico, perfil.SitioWeb)
+            : new ContactoPublicoDto(null, null, null, null);
+
         return new FichaPublicaDto(
             perfil.Id,
             perfil.Slug,
@@ -302,9 +319,9 @@ public sealed class ServicioBusqueda : IServicioBusqueda
             credenciales,
             perfil.PromedioCalificacion,      // MOD-01 ya aplico RN-S5-11
             perfil.TotalResenas,
-            new ContactoPublicoDto(
-                perfil.TelefonoPublico, perfil.Whatsapp, perfil.CorreoPublico, perfil.SitioWeb),
-            perfil.PublicadoEn);
+            contacto,
+            perfil.PublicadoEn,
+            vigente);
     }
 
     // ------------------------------------------------------------- armado

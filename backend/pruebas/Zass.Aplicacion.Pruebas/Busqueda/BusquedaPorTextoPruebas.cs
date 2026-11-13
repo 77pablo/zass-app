@@ -5,6 +5,7 @@ using Zass.Aplicacion.Geografia;
 using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Pruebas.Dobles;
 using Zass.Aplicacion.Puertos;
+using Zass.Aplicacion.Suscripciones;
 using Zass.Dominio.Catalogo;
 using Zass.Dominio.Comun;
 
@@ -126,7 +127,10 @@ public class BusquedaPorTextoPruebas
             new RepositorioUsuariosEnMemoria(_base), new RepositorioPerfilesEnMemoria(_base));
         _servicio = new ServicioBusqueda(
             _repo, catalogo, geografia, identidad,
-            new ServicioCredenciales(new RepositorioCredencialesEnMemoria(_base), _base, _reloj, auditor), _reloj);
+            new ServicioCredenciales(new RepositorioCredencialesEnMemoria(_base), _base, _reloj, auditor),
+            new ServicioSuscripciones(
+                new RepositorioSuscripcionesEnMemoria(_base), _base, _reloj, auditor, new ColaEnMemoria()),
+            _reloj);
     }
 
     private static CriteriosDeTextoDeBusqueda C(

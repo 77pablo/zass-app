@@ -849,7 +849,12 @@ option { background: var(--panel-2); color: var(--texto); }
 .agenda--lista { border-color: var(--neon); }
 
 /* ---------------------------------------------------------------- mis citas */
-.citas-lista { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 14px; }
+.citas-dias { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 22px; }
+.citas-dia {
+  margin: 0; font-size: 0.9375rem; font-weight: 600; text-transform: capitalize;
+  color: var(--suave); letter-spacing: 0.01em;
+}
+.citas-lista { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 14px; }
 .cita { padding: 16px; border: 1px solid var(--linea); border-radius: 14px; background: var(--vidrio); }
 .cita-cabecera { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
 .cita-con { display: block; color: var(--suave); font-size: 0.9375rem; }
@@ -858,6 +863,7 @@ option { background: var(--panel-2); color: var(--texto); }
 .cita-nota { margin: 8px 0 0; color: var(--suave); font-style: italic; }
 .cita-acciones { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
 .cita-formulario { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--linea); }
+.cita-subtitulo { margin: 0 0 6px; font-size: 1rem; }
 .dato--apagado { opacity: 0.65; }
 
 
@@ -868,6 +874,71 @@ option { background: var(--panel-2); color: var(--texto); }
 .franja-campos { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
 .franja-campos .campo-etiqueta { display: grid; gap: 6px; font-weight: 600; }
 .franja .aviso, .agenda-servicio .aviso, .agenda-prestador .aviso { margin: 10px 0 0; }
+
+/* ---------------------------------------------------------------- reseñas (S5)
+   Una reseña es alguien hablando, no una fila de tabla: texto grande, firma discreta y la
+   respuesta del prestador metida DENTRO de la tarjeta, para que se lean como una conversacion. */
+.resenas-pagina .nota { margin-top: 20px; }
+.resenas-lista { list-style: none; margin: 24px 0 0; padding: 0; display: grid; gap: 18px; }
+.resena {
+  padding: 22px 24px; border: 1px solid var(--linea); border-radius: 20px; background: var(--vidrio);
+}
+.resena-cabecera { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 18px; }
+.resena-fecha { color: var(--suave); font-size: 0.875rem; font-weight: 600; }
+.resena-editada { font-style: italic; }
+.resena-rotulo {
+  display: inline-block; margin: 12px 0 0; padding: 4px 12px; border-radius: 999px;
+  background: var(--amarillo-suave); border: 1px solid var(--amarillo); font-size: 0.8125rem; font-weight: 700;
+}
+.resena .texto-largo { margin-top: 14px; max-width: 70ch; font-size: 1.0625rem; line-height: 1.6; }
+.resena-etiquetas { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; padding: 0; }
+.resena-etiqueta {
+  padding: 4px 12px; border: 1px solid var(--linea-fuerte); border-radius: 999px;
+  font-size: 0.8125rem; font-weight: 700; color: var(--suave);
+}
+.resena-respuesta {
+  margin-top: 18px; padding: 16px 18px; border-left: 3px solid var(--amarillo); border-radius: 0 14px 14px 0;
+  background: rgba(255, 255, 255, 0.03);
+}
+.resena-respuesta h4 { font-size: 0.875rem; font-weight: 800; letter-spacing: 0.02em; color: var(--amarillo); }
+.resena-acciones { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin-top: 14px; }
+.resena-panel { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--linea); }
+.resena-motivos, .resena-aspectos { display: grid; gap: 8px; border: 0; padding: 0; margin: 18px 0 0; }
+.resena-motivos legend, .resena-aspectos legend { font-weight: 800; font-size: 0.9375rem; padding: 0; }
+.resena-motivo, .resena-aspecto {
+  display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 14px;
+  border: 1px solid var(--linea-fuerte); border-radius: 14px; background: var(--vidrio); cursor: pointer; font-weight: 700;
+}
+.resena-motivo input, .resena-aspecto input { width: 20px; height: 20px; accent-color: var(--amarillo); }
+.resena-aspecto--activo { border-color: var(--amarillo); background: var(--amarillo-suave); }
+.resena-motivo:focus-within, .resena-aspecto:focus-within { outline: 3px solid var(--amarillo); outline-offset: 1px; }
+
+/* El formulario: las estrellas son el gesto principal, asi que mandan en tamaño */
+.resena-formulario { margin-top: 18px; }
+.campo-titulo { font-weight: 800; font-size: 1.0625rem; }
+.estrellas { display: inline-flex; gap: 2px; }
+.estrella { width: 22px; height: 22px; color: var(--linea-fuerte); }
+.estrella--llena { color: var(--amarillo); fill: var(--amarillo); }
+.estrellas-elegir { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.estrella-opcion { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 52px; min-height: 52px; border-radius: 14px; cursor: pointer; border: 1px solid transparent; }
+.estrella-opcion .estrella { width: 34px; height: 34px; }
+/* El radio y su nombre siguen AHI para el teclado y el lector de pantalla; solo se sacan de la
+   vista, porque lo que se ve es la estrella. Ocultarlos con display:none los borraria del todo. */
+.estrella-opcion input, .estrella-nombre {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+.estrella-opcion:focus-within { border-color: var(--amarillo); outline: 3px solid var(--amarillo); outline-offset: 1px; }
+.estrella-opcion--activa { background: var(--amarillo-suave); }
+.resena-significado { margin-top: 6px; font-weight: 800; color: var(--amarillo); }
+.resena-cuenta { font-size: 0.8125rem; color: var(--suave); font-weight: 600; justify-self: end; }
+.resena-cuenta--pasada { color: var(--malo); font-weight: 800; }
+.resena-datos-personales {
+  margin-top: 18px; padding: 16px 18px; border: 1px solid var(--amarillo); border-radius: 16px; background: var(--amarillo-suave);
+}
+.resena-fragmentos { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; padding: 0; }
+.resena-fragmentos code { padding: 2px 8px; border-radius: 8px; background: rgba(10, 10, 13, 0.35); font-family: var(--mono); font-size: 0.875rem; }
+.resena-contacto-directo { display: grid; justify-items: start; gap: 4px; margin-top: 18px; }
+.resena-listo .resena { margin-top: 18px; }
 
 /* Contacto que pide cuenta */
 .contacto-cuenta { display: grid; gap: 12px; }

@@ -1,4 +1,4 @@
-using Zass.Aplicacion.Catalogo;
+﻿using Zass.Aplicacion.Catalogo;
 using Zass.Aplicacion.Comun;
 using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Puertos;
@@ -277,6 +277,16 @@ public sealed class ServicioAgenda : IServicioAgenda
         // no puede dar horas por una URL que alguien guardó.
         if (!await _identidad.PerfilPublicadoAsync(o.PerfilPrestadorId, ct))
             return Resultado.Falla<CalendarioDto>(Fallas.NoEncontrado, "Ese servicio no existe.");
+
+        // RN-S6-10 y RN-S3-09: sin suscripción vigente no hay horas que mostrar. Antes el
+        // calendario se pintaba igual, con horas que parecían libres, y el «no» llegaba recién
+        // al confirmar (AgendarAsync, más abajo): quien elegía una hora se enteraba al final.
+        //
+        // La misma falla que al agendar, y no un 404: la ficha SÍ sigue visible (RN-S6-10), así
+        // que decir «ese servicio no existe» sería mentir sobre algo que se está viendo.
+        if (!await _suscripciones.EstaVigenteAsync(o.PerfilPrestadorId, ct))
+            return Resultado.Falla<CalendarioDto>(Fallas.Conflicto,
+                "Ese prestador no está recibiendo horas por ahora.");
 
         var ahora = _reloj.Ahora;
         if (hasta <= desde) hasta = desde.AddDays(SemanasDeVentana * 7);
@@ -875,6 +885,7 @@ public sealed class ServicioAgenda : IServicioAgenda
         c.PrestadorServicioId,
         c.PerfilPrestadorId,
         c.PerfilPrestador?.NombrePublico ?? "",
+        c.PerfilPrestador?.Slug ?? "",
         c.NotaBuscador,
         c.ExpiraEn,
         nueva);

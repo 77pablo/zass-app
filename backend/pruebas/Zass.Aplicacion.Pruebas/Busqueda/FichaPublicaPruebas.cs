@@ -4,9 +4,11 @@ using Zass.Aplicacion.Credenciales;
 using Zass.Aplicacion.Geografia;
 using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Pruebas.Dobles;
+using Zass.Aplicacion.Suscripciones;
 using Zass.Dominio.Catalogo;
 using Zass.Dominio.Comun;
 using Zass.Dominio.Identidad;
+using Zass.Dominio.Suscripciones;
 
 namespace Zass.Aplicacion.Pruebas.Busqueda;
 
@@ -43,12 +45,22 @@ public class FichaPublicaPruebas
         _servicio = new ServicioBusqueda(
             new RepositorioBusquedaFalso(), catalogo, geografia, identidad,
             new ServicioCredenciales(new RepositorioCredencialesEnMemoria(_base), _base, _reloj, auditor),
+            // MOD-13 de verdad sobre la misma lista en memoria, no un doble que diga «sí»:
+            // la regla que se prueba aquí (RN-S6-10) es justamente la que ese doble borraría.
+            new ServicioSuscripciones(
+                new RepositorioSuscripcionesEnMemoria(_base), _base, _reloj, auditor, new ColaEnMemoria()),
             _reloj);
     }
 
+    /// <summary>
+    /// Un perfil publicado trae suscripción vigente, que es lo único que de verdad se ve en
+    /// la búsqueda (RN-S3-09). Con <paramref name="suscripcion"/> en falso se simula al
+    /// prestador que dejó de pagar: el caso de RN-S6-10.
+    /// </summary>
     private PerfilPrestador UnPerfil(
         string slug = "marcela-soto", EstadoPerfil estado = EstadoPerfil.Publicado,
-        short? rubroId = Corretaje, decimal? promedio = null, int resenas = 0)
+        short? rubroId = Corretaje, decimal? promedio = null, int resenas = 0,
+        bool suscripcion = true)
     {
         var perfil = new PerfilPrestador
         {
@@ -67,6 +79,14 @@ public class FichaPublicaPruebas
             TotalResenas = resenas,
         };
         _base.PerfilesPrestador.Add(perfil);
+        if (suscripcion)
+        {
+            _base.Suscripciones.Add(new Suscripcion
+            {
+                PerfilPrestadorId = perfil.Id, PlanId = 1, Estado = EstadoSuscripcion.Activa,
+                IniciaEn = _reloj.Ahora.AddDays(-5), VigenteHasta = _reloj.Ahora.AddDays(25),
+            });
+        }
         return perfil;
     }
 

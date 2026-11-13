@@ -111,6 +111,12 @@ export interface FichaPublica {
     sitioWeb: string | null
   }
   publicadoEn: string | null
+  /**
+   * RN-S6-10. Falso cuando el prestador dejo de pagar: la ficha se sigue viendo entera, pero
+   * sin contactar ni agendar. El servidor ya manda el `contacto` vacio en ese caso; esto esta
+   * para poder DECIRLO, en vez de mostrar una ficha muda sin explicacion.
+   */
+  suscripcionVigente: boolean
   /** Verdadero si no hay sesion: buscar es publico, pero el contacto se ve solo con cuenta. */
   contactoRequiereCuenta?: boolean
 }

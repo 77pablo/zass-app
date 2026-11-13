@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -552,6 +552,9 @@ public class ApiAgendaPruebas : IAsyncLifetime
         var cita = Assert.Single(citas.EnumerateArray());
         Assert.Equal("Confirmada", cita.GetProperty("estado").GetString());
         Assert.Equal("Estudio de prueba", cita.GetProperty("prestador").GetString());
+        // El slug viaja con la cita: sin el, "Mis citas" no puede abrir el calendario del
+        // prestador (API-35 solo se pide por slug) y reprogramar quedaria sin camino (CU-14).
+        Assert.Equal(_slug, cita.GetProperty("prestadorSlug").GetString());
     }
 
     // ------------------------------------------------------------- el ciclo de la cita, por HTTP

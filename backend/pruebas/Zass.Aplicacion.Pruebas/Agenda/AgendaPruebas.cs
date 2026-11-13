@@ -310,6 +310,44 @@ public class AgendaPruebas
         Assert.Equal(Fallas.NoEncontrado, r.Codigo);
     }
 
+    /// <summary>
+    /// RN-S6-10 y RN-S3-09. Antes el calendario se pintaba igual, con horas que parecían
+    /// libres, y el «no» llegaba recién al confirmar: quien elegía una hora se enteraba al
+    /// final. La falla es la MISMA que al agendar, y no un 404: la ficha sigue visible.
+    /// </summary>
+    [Fact]
+    public async Task Sin_suscripcion_vigente_el_calendario_no_muestra_horas()
+    {
+        _base.Suscripciones.Single(s => s.PerfilPrestadorId == _prestador.Id)
+            .Estado = EstadoSuscripcion.Vencida;
+        UnBloque();
+
+        var r = await _servicio.BloquesLibresAsync(_automatico.Id, Ahora, Ahora.AddDays(7));
+
+        Assert.False(r.Exito);
+        Assert.Equal(Fallas.Conflicto, r.Codigo);
+        Assert.Null(r.Valor);
+        Assert.Equal("Ese prestador no está recibiendo horas por ahora.", r.Mensaje);
+    }
+
+    /// <summary>
+    /// El mismo «no» en los dos sitios: si alguien se saltara el calendario y mandara el
+    /// bloque a mano, tampoco agenda. El calendario es comodidad; la guarda de AgendarAsync
+    /// es la que protege de verdad.
+    /// </summary>
+    [Fact]
+    public async Task Sin_suscripcion_vigente_tampoco_se_puede_agendar_el_bloque_a_mano()
+    {
+        var b = UnBloque();
+        _base.Suscripciones.Single(s => s.PerfilPrestadorId == _prestador.Id)
+            .Estado = EstadoSuscripcion.Vencida;
+
+        var r = await AgendarAsync(b);
+
+        Assert.Equal(Fallas.Conflicto, r.Codigo);
+        Assert.Equal("Ese prestador no está recibiendo horas por ahora.", r.Mensaje);
+    }
+
     // ========================================================= CU-12 agendar automático
 
     [Fact]
