@@ -103,10 +103,17 @@ for (const [vista, tamano] of VISTAS) {
       errores: [...new Set(errores)],
       fallidas: [...new Set(fallidas)],
     })
-    const mal = errores.length + fallidas.length
+    // Hay dos rutas cuyo 404 es LO CORRECTO: la ficha de alguien que no existe y la ruta inventada.
+    // La pantalla responde bien («Esta ficha no existe, o ya no está publicada»), asi que contarlo
+    // como defecto dejaba este barrido con 2 rojos permanentes, y un rojo que siempre esta ahi
+    // ensena a no mirar el resultado. Se exceptua SOLO el 404 y SOLO en esas rutas.
+    const esperado404 = nombre.includes('inexistente') || nombre.includes('no-existe')
+    const fallidasReales = esperado404 ? fallidas.filter((f) => !f.startsWith('404 ')) : fallidas
+    const erroresReales = esperado404 ? errores.filter((e) => !/status of 404/.test(e)) : errores
+    const mal = erroresReales.length + fallidasReales.length
     console.log(`${mal ? 'MAL ' : 'ok  '} ${vista.padEnd(10)} ${ruta.padEnd(42)} h1=${JSON.stringify(medida.h1)} texto=${medida.largoTexto}${medida.anchoDocumento > medida.anchoVentana + 1 ? ' DESBORDE' : ''}`)
-    for (const e of new Set(errores)) console.log(`       consola: ${e.slice(0, 220)}`)
-    for (const f of new Set(fallidas)) console.log(`       red:     ${f.slice(0, 260)}`)
+    for (const e of new Set(erroresReales)) console.log(`       consola: ${e.slice(0, 220)}`)
+    for (const f of new Set(fallidasReales)) console.log(`       red:     ${f.slice(0, 260)}`)
   }
   await contexto.close()
 }

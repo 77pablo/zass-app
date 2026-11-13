@@ -9,11 +9,23 @@
 -- Todos llevan el correo `demo-*@zass.local`. limpiar-demo.sql los borra en cascada.
 -- Las pruebas de integracion usan su propia base (`zass_pruebas`), asi que esto no las afecta.
 --
+--
+-- CONTRASENA Y ROLES (D9 del repaso en navegador). Antes estos usuarios se sembraban con
+-- `hash_contrasena = 'x'` y SIN ninguna fila en `usuario_roles`. Consecuencia: la gente de
+-- demostracion se veia en la busqueda pero NADIE podia entrar como ella, asi que las pantallas
+-- con sesion (Mi ficha, Mi agenda) no se podian mirar con datos de verdad. Dos cosas lo
+-- impedian a la vez, y arreglar solo una no se nota.
+--
+-- La contrasena de todas es `demo-zass-2026` y el hash de abajo es su Argon2id real
+-- (RN-S1-03, los parametros de DT-07). Es publica a proposito: son cuentas inventadas de una
+-- base local, con correo `*@zass.local`, que nunca se despliega.
 -- Uso (desde la raiz del proyecto):
 --   herramientas\pgsql\bin\psql.exe -h 127.0.0.1 -p 5433 -U zass -d zass -f frontend\pruebas-navegador\datos\sembrar-demo.sql
 
 DO $$
 DECLARE
+  -- Argon2id de `demo-zass-2026` (ver la cabecera del archivo).
+  LA_CLAVE constant text := '$argon2id$v=19$m=19456,t=2,p=1$G74jP/dhSzmF2WXXOC5OzQ==$Zv3DBlK3ZOrEHT0HAKsSn21y1jfWN2HCt8lMYmCQy2g=';
   r record;
   u uuid;
   p uuid;
@@ -119,7 +131,13 @@ BEGIN
 
     INSERT INTO usuarios (id, correo, hash_contrasena, nombre, correo_verificado,
                           estado, creado_en, actualizado_en)
-    VALUES (u, 'demo-' || r.slug || '@zass.local', 'x', r.nombre, true, 'Activa', now(), now());
+    VALUES (u, 'demo-' || r.slug || '@zass.local', LA_CLAVE, r.nombre, true, 'Activa', now(), now());
+
+    -- Un prestador es ademas buscador: la cuenta es UNA sola (rol 1 buscador, rol 2 prestador).
+    -- Sin estas filas la sesion abre, pero la API le niega todo lo suyo y la cabecera no le
+    -- ofrece ni Mi ficha ni Mi agenda.
+    INSERT INTO usuario_roles (usuario_id, rol_id, asignado_en)
+    VALUES (u, 1, now()), (u, 2, now());
 
     INSERT INTO perfiles_prestador (id, usuario_id, rubro_id, slug, nombre_publico, descripcion,
                                     estado, origen_ubicacion, telefono_publico, correo_publico,

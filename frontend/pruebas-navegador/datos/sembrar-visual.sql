@@ -4,9 +4,15 @@
 -- perfil, suscripcion, cobertura, servicios y credencial, y es lo que hace
 -- limpiar_visual.sql. Si alguno quedara publicado, romperia las pruebas de
 -- integracion de la busqueda, que esperan una base sin prestadores visibles.
+--
+-- Mismo arreglo que en sembrar-demo.sql (D9): contrasena real y roles. La clave de todas es
+-- `demo-zass-2026`; el hash es su Argon2id (RN-S1-03 / DT-07). Cuentas inventadas de una base
+-- local con correo `*@zass.local`: no se despliegan a ninguna parte.
 
 DO $$
 DECLARE
+  -- Argon2id de `demo-zass-2026` (ver la cabecera del archivo).
+  LA_CLAVE constant text := '$argon2id$v=19$m=19456,t=2,p=1$G74jP/dhSzmF2WXXOC5OzQ==$Zv3DBlK3ZOrEHT0HAKsSn21y1jfWN2HCt8lMYmCQy2g=';
   r record;
   u uuid;
   p uuid;
@@ -47,8 +53,12 @@ BEGIN
 
     INSERT INTO usuarios (id, correo, hash_contrasena, nombre, correo_verificado,
                           estado, creado_en, actualizado_en)
-    VALUES (u, 'visual-' || r.slug || '@zass.local', 'x', r.nombre, true,
+    VALUES (u, 'visual-' || r.slug || '@zass.local', LA_CLAVE, r.nombre, true,
             'Activa', now(), now());
+
+    -- La cuenta es UNA: rol 1 buscador y rol 2 prestador (D9).
+    INSERT INTO usuario_roles (usuario_id, rol_id, asignado_en)
+    VALUES (u, 1, now()), (u, 2, now());
 
     INSERT INTO perfiles_prestador (id, usuario_id, rubro_id, slug, nombre_publico,
                                     descripcion, estado, origen_ubicacion,

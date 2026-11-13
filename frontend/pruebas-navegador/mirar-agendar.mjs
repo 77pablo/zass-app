@@ -27,8 +27,13 @@ mkdirSync(carpeta, { recursive: true })
 
 const SLUG = 'marcela-soto'
 const CORREO_PRESTADOR = `demo-${SLUG}@zass.local`
-/** Lo que sembrar-demo.sql deja: un hash que no es de ninguna contrasena, para que nadie entre. */
-const HASH_DEMO = 'x'
+/**
+ * La contrasena con la que sembrar-demo.sql deja a su gente (D9: antes dejaba un hash invalido y
+ * sin roles, asi que nadie podia entrar como ellos). Este guion se apanaba prestandole a la
+ * prestadora de demostracion el hash y el rol de la cuenta recien creada y devolviendole el hash
+ * 'x' al final — lo que DESHACIA el arreglo para la siguiente vez. Ya no hace falta nada de eso.
+ */
+const CLAVE_DEMO = 'demo-zass-2026'
 const correoBuscador = `buscadora.${Date.now()}@zass.local`
 const clave = 'una-clave-bien-larga'
 
@@ -110,18 +115,11 @@ try {
   comprobar('crear cuenta de buscadora responde «Revisa tu correo»', true)
   sql(`UPDATE usuarios SET correo_verificado = true WHERE correo::text = '${correoBuscador}'`)
 
-  // --- 3. Montar el escenario: la prestadora de demostracion puede entrar ------------------
-  // sembrar-demo.sql no le pone rol ni contrasena usable: se le prestan los de la cuenta recien
-  // creada y al final se le devuelve el hash 'x' y se le quita el rol.
-  sql(`UPDATE usuarios SET hash_contrasena = (SELECT hash_contrasena FROM usuarios WHERE correo::text = '${correoBuscador}')
-       WHERE correo::text = '${CORREO_PRESTADOR}'`)
-  sql(`INSERT INTO usuario_roles (usuario_id, rol_id, asignado_en)
-       SELECT u.id, 2, now() FROM usuarios u WHERE u.correo::text = '${CORREO_PRESTADOR}'
-       ON CONFLICT DO NOTHING`)
-
+  // --- 3. La prestadora de demostracion entra con su propia contrasena --------------------
+  // Ya no se le presta nada ni se le toca la base: sembrar-demo.sql le deja contrasena y roles.
   await prestadora.goto(`${BASE}/entrar`, { waitUntil: 'networkidle' })
   await prestadora.getByLabel('Correo').fill(CORREO_PRESTADOR)
-  await prestadora.getByLabel('Contraseña').fill(clave)
+  await prestadora.getByLabel('Contraseña').fill(CLAVE_DEMO)
   await prestadora.getByRole('button', { name: /^entrar$/i }).click()
   await prestadora.waitForURL(/mi-ficha/, { timeout: 20000 })
   comprobar('la prestadora entra y cae en Mi ficha', true)
@@ -246,16 +244,17 @@ try {
   for (const f of new Set(fallidas)) console.log('  ', f.slice(0, 300))
   console.log(`--- comprobaciones en rojo: ${fallos} ---`)
 
-  // Dejarlo todo como estaba: la cita, los bloques, el horario, el rol y el hash de demostracion.
+  // Dejarlo todo como estaba: la cita, los bloques y el horario de la prestadora de demostracion.
   sql(`DELETE FROM cambios_cita WHERE cita_id IN (SELECT c.id FROM citas c JOIN bloques b ON b.id = c.bloque_horario_id WHERE b.prestador_servicio_id = '${servicioId}')`)
   sql(`DELETE FROM notificaciones WHERE cita_id IN (SELECT c.id FROM citas c JOIN bloques b ON b.id = c.bloque_horario_id WHERE b.prestador_servicio_id = '${servicioId}')`)
   sql(`DELETE FROM contactos WHERE cita_id IN (SELECT c.id FROM citas c JOIN bloques b ON b.id = c.bloque_horario_id WHERE b.prestador_servicio_id = '${servicioId}')`)
   sql(`DELETE FROM citas WHERE bloque_horario_id IN (SELECT id FROM bloques WHERE prestador_servicio_id = '${servicioId}')`)
   sql(`DELETE FROM bloques WHERE prestador_servicio_id = '${servicioId}'`)
   sql(`DELETE FROM disponibilidades WHERE prestador_servicio_id = '${servicioId}'`)
-  sql(`DELETE FROM usuario_roles WHERE rol_id = 2 AND usuario_id = (SELECT id FROM usuarios WHERE correo::text = '${CORREO_PRESTADOR}')`)
-  sql(`UPDATE usuarios SET hash_contrasena = '${HASH_DEMO}' WHERE correo::text = '${CORREO_PRESTADOR}'`)
+  // Ya NO se le quita el rol ni se le pisa el hash a la prestadora de demostracion: son suyos y los
+  // siembra el SQL. Pisarlos aqui dejaba la base como estaba ANTES de arreglar D9 y el defecto
+  // volvia solo, en silencio, en cuanto alguien corria este guion.
   sql(`DELETE FROM usuarios WHERE correo::text = '${correoBuscador}'`)
-  console.log('limpieza: cita, bloques, horario, rol prestado y cuenta de prueba borrados; hash de demostracion restaurado')
+  console.log('limpieza: cita, bloques, horario y cuenta de prueba borrados')
   await navegador.close()
 }
