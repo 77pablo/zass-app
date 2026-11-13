@@ -406,6 +406,51 @@ public class ProcesadorDeCorreoPruebas : IAsyncLifetime
         Assert.Equal(EstadoEnvio.Fallida, (await LeerAsync(id)).Estado);
     }
 
+    // ------------------------------------------------------------ avisos de reseñas
+
+    /// <summary>
+    /// El defecto que esta prueba fija: S5 encolaba el aviso de reseña nueva y el despacho
+    /// no lo tomaba, porque el tipo no estaba en <c>TienePlantilla</c>. No fallaba nada; el
+    /// correo simplemente no existía. Se encola con la MISMA carga en prosa que escribe
+    /// ServicioResenas, para que la prueba cubra también los avisos ya encolados.
+    /// </summary>
+    [Fact]
+    public async Task Un_aviso_de_resena_nueva_se_envia_con_el_enlace_al_panel()
+    {
+        var u = await CrearUsuarioAsync("Luis Pérez", verificado: true);
+        var id = await EncolarAsync(u.Id, "", TipoNotificacion.ResenaNueva,
+            cuerpo: "Alguien dejó una reseña en tu perfil. Entra a ZASS! para verla y responder.");
+        var m = ManejadorFalso.Responde(HttpStatusCode.Created);
+
+        Assert.Equal(1, await CicloAsync(m));
+
+        var p = Assert.Single(m.Peticiones);
+        Assert.Contains("https://zass.test/mi-ficha", p.Cuerpo);
+        Assert.Contains(u.Correo, p.Cuerpo);
+        var n = await LeerAsync(id);
+        Assert.Equal(EstadoEnvio.Enviada, n.Estado);
+        Assert.NotNull(n.EnviadaEn);
+        Assert.Equal(1, n.Intentos);
+        Assert.Null(n.UltimoError);
+        // No lleva token: la carga se conserva, como en los avisos de suscripción.
+        Assert.NotEqual(CargaDeAviso.Purgada, n.Cuerpo);
+    }
+
+    [Fact]
+    public async Task Un_aviso_de_resena_respondida_se_envia_con_el_enlace_a_la_ficha_publica()
+    {
+        var u = await CrearUsuarioAsync("Ana Pérez", verificado: true);
+        var id = await EncolarAsync(u.Id, "", TipoNotificacion.ResenaRespondida,
+            cuerpo: CargaDeAviso.ConCampos(("slug", "luis-perez-gasfiter")));
+        var m = ManejadorFalso.Responde(HttpStatusCode.Created);
+
+        Assert.Equal(1, await CicloAsync(m));
+
+        var p = Assert.Single(m.Peticiones);
+        Assert.Contains("https://zass.test/prestadores/luis-perez-gasfiter", p.Cuerpo);
+        Assert.Equal(EstadoEnvio.Enviada, (await LeerAsync(id)).Estado);
+    }
+
     // ------------------------------------------------------------ reserva (lease)
 
     [Fact]

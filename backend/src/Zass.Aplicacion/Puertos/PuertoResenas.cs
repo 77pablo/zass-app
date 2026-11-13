@@ -100,7 +100,7 @@ public interface IRepositorioResenas
 
 /// <summary>Lo mínimo de TBL-05 que reseñas necesita: de quién es y si se ve.</summary>
 public sealed record DatosDePerfil(
-    Guid Id, Guid UsuarioId, EstadoPerfil Estado, string NombrePublico);
+    Guid Id, Guid UsuarioId, EstadoPerfil Estado, string NombrePublico, string Slug);
 
 /// <summary>Una fila de la cola del moderador. Sin identidad de nadie: solo la reseña y el reclamo.</summary>
 public sealed record FilaDeCola(

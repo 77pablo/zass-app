@@ -181,6 +181,124 @@ public class CorreoUnidadPruebas
         Assert.False(Plantillas.TienePlantilla(TipoNotificacion.CitaConfirmada));
     }
 
+    // ------------------------------------------------------------ avisos de resenas
+
+    /// <summary>
+    /// S5 promete «notificacion inmediata de cada resena nueva» (derecho a Saber del
+    /// resenado) y CU-16.14 manda el enlace para responder. El aviso se encolaba desde el
+    /// primer dia, pero sin plantilla el despacho ni lo miraba: no salia, y nadie se
+    /// quejaba porque la fila quedaba «Programada» para siempre.
+    /// </summary>
+    [Theory]
+    [InlineData(TipoNotificacion.ResenaNueva)]
+    [InlineData(TipoNotificacion.ResenaRespondida)]
+    public void Los_avisos_de_resena_tienen_plantilla_y_no_guardan_ningun_secreto(TipoNotificacion tipo)
+    {
+        Assert.True(Plantillas.TienePlantilla(tipo));
+        Assert.False(Plantillas.LlevaToken(tipo));
+    }
+
+    /// <summary>
+    /// La carga que encola S5 hoy es prosa, no JSON, porque la escribio antes de que
+    /// existiera <see cref="CargaDeAviso"/>. Si la plantilla exigiera un campo, cada aviso
+    /// ya encolado se volveria «Fallida» el dia del arreglo en vez de salir: estas dos
+    /// plantillas no piden nada de la carga, a proposito.
+    /// </summary>
+    [Theory]
+    [InlineData(TipoNotificacion.ResenaNueva)]
+    [InlineData(TipoNotificacion.ResenaRespondida)]
+    public void Los_avisos_de_resena_se_renderizan_con_cualquier_carga(TipoNotificacion tipo)
+    {
+        foreach (var carga in new[]
+                 { "Alguien dejó una reseña en tu perfil.", CargaDeAviso.Purgada, "", "{}" })
+            Assert.NotNull(Plantillas.Renderizar(tipo, "Ana", "https://zass.cl", carga));
+    }
+
+    /// <summary>
+    /// Lo que NO lleva importa tanto como el enlace: el aviso no adelanta la calificacion
+    /// ni el comentario ni quien lo escribio. Primero porque el asunto se ve en la pantalla
+    /// bloqueada, y segundo porque una resena puede acabar oculta en moderacion (CS-17) y
+    /// el correo ya no se puede retirar.
+    /// </summary>
+    [Fact]
+    public void El_aviso_de_resena_nueva_lleva_al_panel_y_no_adelanta_la_resena()
+    {
+        var r = Plantillas.Renderizar(TipoNotificacion.ResenaNueva, "Luis Pérez",
+            "https://zass.cl/", "Alguien dejó una reseña en tu perfil.")!;
+
+        Assert.Contains("https://zass.cl/mi-ficha", r.Texto);
+        Assert.Contains("href=\"https://zass.cl/mi-ficha\"", r.Html);
+        Assert.DoesNotContain("zass.cl//", r.Texto);
+        Assert.Contains("ZASS!", r.Asunto);
+        Assert.DoesNotContain("Luis", r.Asunto);
+        Assert.Contains("Luis Pérez", r.Texto);
+    }
+
+    [Fact]
+    public void El_aviso_de_resena_respondida_lleva_a_la_ficha_publica_cuando_la_carga_trae_el_slug()
+    {
+        var r = Plantillas.Renderizar(TipoNotificacion.ResenaRespondida, "Ana", "https://zass.cl",
+            CargaDeAviso.ConCampos(("slug", "luis-perez-gasfiter")))!;
+
+        Assert.Contains("https://zass.cl/prestadores/luis-perez-gasfiter", r.Texto);
+        Assert.Contains("href=\"https://zass.cl/prestadores/luis-perez-gasfiter\"", r.Html);
+        Assert.Contains("ZASS!", r.Asunto);
+    }
+
+    /// <summary>
+    /// Sin slug el correo sale igual, al inicio del sitio: un aviso que llega sin atajo es
+    /// mejor que un aviso que no llega. Es el caso de los avisos ya encolados.
+    /// </summary>
+    [Fact]
+    public void Sin_slug_el_aviso_de_resena_respondida_sale_igual_y_apunta_al_sitio()
+    {
+        var r = Plantillas.Renderizar(TipoNotificacion.ResenaRespondida, "Ana",
+            "https://zass.cl/", "El prestador respondió la reseña que dejaste.")!;
+
+        Assert.Contains("https://zass.cl", r.Texto);
+        Assert.DoesNotContain("zass.cl//", r.Texto);
+        Assert.DoesNotContain("prestadores/", r.Texto);
+    }
+
+    /// <summary>
+    /// El slug viaja en la URL y en el HTML: si trajera algo raro (lo arma el servidor, pero
+    /// aqui nadie confia en eso) no puede romper ni el enlace ni la pagina.
+    /// </summary>
+    [Fact]
+    public void El_slug_se_escapa_en_la_url_y_en_el_html()
+    {
+        var r = Plantillas.Renderizar(TipoNotificacion.ResenaRespondida, "Ana", "https://zass.cl",
+            CargaDeAviso.ConCampos(("slug", "<script>alert(1)</script>")))!;
+
+        Assert.DoesNotContain("<script>", r.Html);
+        Assert.DoesNotContain("<script>", r.Texto);
+    }
+
+    /// <summary>
+    /// El agujero que dejo este defecto se cierra por el lado del catalogo, no por el de
+    /// las dos plantillas: cada tipo que algun caso de uso encola como correo tiene que
+    /// tener plantilla, o quedarse documentado aqui como pendiente a conciencia. Lo que no
+    /// puede volver a pasar es que la lista se desincronice en silencio.
+    /// </summary>
+    [Fact]
+    public void Todo_tipo_que_el_codigo_encola_por_correo_tiene_plantilla_o_esta_en_la_lista_de_pendientes()
+    {
+        // Encolados hoy por algun servicio de aplicacion (buscar: «Tipo = TipoNotificacion.»).
+        var encolados = new[]
+        {
+            TipoNotificacion.CorreoVerificacion, TipoNotificacion.RecuperarContrasena,
+            TipoNotificacion.PerfilPublicado, TipoNotificacion.ResenaNueva,
+            TipoNotificacion.ResenaRespondida, TipoNotificacion.SuscripcionPorVencer,
+            TipoNotificacion.SuscripcionVencida,
+        };
+        // Pendientes a conciencia: su texto no esta aprobado todavia.
+        var pendientes = new[] { TipoNotificacion.PerfilPublicado };
+
+        var huecos = encolados.Except(pendientes).Where(t => !Plantillas.TienePlantilla(t)).ToArray();
+
+        Assert.Empty(huecos);
+    }
+
     // ------------------------------------------------------------ carga con token
 
     [Fact]

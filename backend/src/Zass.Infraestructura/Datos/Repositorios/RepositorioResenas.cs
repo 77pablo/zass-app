@@ -73,7 +73,7 @@ public sealed class RepositorioResenasEfCore : IRepositorioResenas
     public async Task<DatosDePerfil?> PerfilAsync(Guid perfilPrestadorId, CancellationToken ct = default) =>
         await _ctx.PerfilesPrestador.AsNoTracking()
             .Where(p => p.Id == perfilPrestadorId)
-            .Select(p => new DatosDePerfil(p.Id, p.UsuarioId, p.Estado, p.NombrePublico))
+            .Select(p => new DatosDePerfil(p.Id, p.UsuarioId, p.Estado, p.NombrePublico, p.Slug))
             .FirstOrDefaultAsync(ct);
 
     public async Task<Contacto?> ContactoAsync(Guid contactoId, CancellationToken ct = default)
