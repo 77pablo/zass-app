@@ -5,6 +5,8 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Zass.Dominio.Comun;
 
@@ -1309,6 +1311,31 @@ public partial class ApiPruebas : IAsyncLifetime
 
         foreach (var prohibido in new[] { "latitud", "longitud", "direccion", "usuarioId", "@zass.local", "telefono", "whatsapp", "hash" })
             Assert.DoesNotContain(prohibido, texto, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ------------------------------------------------- el mapa de rutas
+
+    /// <summary>
+    /// Dos endpoints con el mismo <c>WithName</c> no fallan al arrancar: fallan en la PRIMERA
+    /// peticion, y entonces la API entera devuelve 500, sea cual sea la ruta. Paso de verdad el
+    /// 12-nov-2026 al nacer «mis reseñas» con el nombre API-64, que ya era del mapa del sitio, y
+    /// no lo vio nadie porque la suite de integracion no se podia correr ese dia. Esta prueba
+    /// pone el fallo donde se lee: en el nombre repetido, no en 600 pruebas rojas a la vez.
+    /// </summary>
+    [Fact]
+    public void Ningun_endpoint_repite_el_nombre_de_otro()
+    {
+        var rutas = _app.Services.GetRequiredService<EndpointDataSource>().Endpoints;
+
+        var repetidos = rutas
+            .Select(e => new { Nombre = e.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName, Ruta = e.DisplayName })
+            .Where(e => e.Nombre is not null)
+            .GroupBy(e => e.Nombre!)
+            .Where(g => g.Count() > 1)
+            .Select(g => $"{g.Key}: " + string.Join(" / ", g.Select(e => e.Ruta)))
+            .ToList();
+
+        Assert.True(repetidos.Count == 0, "Nombres de endpoint repetidos: " + string.Join(" | ", repetidos));
     }
 
     // ------------------------------------------------- API-64, el mapa del sitio por HTTP

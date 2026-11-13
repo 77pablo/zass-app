@@ -4,6 +4,8 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Zass.Dominio.Agenda;
+using Zass.Dominio.Catalogo;
 using Zass.Dominio.Comun;
 using Zass.Dominio.Identidad;
 
@@ -160,6 +162,45 @@ public class ResenasApiPruebas : IAsyncLifetime
         return await IdAsync(r);
     }
 
+    /// <summary>
+    /// Liga una cita REALIZADA al contacto que ya existe. Se arma en la base y no por HTTP a
+    /// propósito: API-46 rechaza el origen «cita» desde fuera (la cita es de MOD-06), y lo que hay
+    /// que ejercitar aquí es la rama `contacto.cita_id IS NOT NULL` de la consulta de verdad, que
+    /// el doble en memoria solo puede imitar a mano.
+    /// </summary>
+    private static async Task<Guid> ConCitaRealizadaAsync(Guid contactoId)
+    {
+        using var ctx = ContextoDePrueba.Crear();
+        var contacto = await ctx.Contactos.SingleAsync(c => c.Id == contactoId);
+        var oferta = new PrestadorServicio
+        {
+            PerfilPrestadorId = contacto.PerfilPrestadorId, ServicioId = 101,
+        };
+        var disp = new Disponibilidad
+        {
+            PerfilPrestadorId = contacto.PerfilPrestadorId, PrestadorServicioId = oferta.Id,
+            DiaSemana = 1, HoraInicio = new TimeOnly(9, 0), HoraFin = new TimeOnly(12, 0),
+            VigenteDesde = DateOnly.FromDateTime(DateTime.UtcNow),
+        };
+        var inicio = DateTime.UtcNow.AddDays(-2);
+        var bloque = new BloqueHorario
+        {
+            DisponibilidadId = disp.Id, PerfilPrestadorId = contacto.PerfilPrestadorId,
+            PrestadorServicioId = oferta.Id, InicioEn = inicio, FinEn = inicio.AddMinutes(30),
+            Estado = EstadoBloque.Reservado,
+        };
+        var cita = new Cita
+        {
+            BloqueHorarioId = bloque.Id, BuscadorId = contacto.BuscadorId,
+            PrestadorServicioId = oferta.Id, PerfilPrestadorId = contacto.PerfilPrestadorId,
+            Estado = EstadoCita.Realizada, Codigo = Cita.GenerarCodigo(),
+        };
+        contacto.CitaId = cita.Id;
+        ctx.AddRange(oferta, disp, bloque, cita);
+        await ctx.SaveChangesAsync();
+        return cita.Id;
+    }
+
     // ------------------------------------------------------------- sesión, CSRF, clave
 
     [Theory]
@@ -307,7 +348,7 @@ public class ResenasApiPruebas : IAsyncLifetime
     }
 
     /// <summary>
-    /// API-64. Lo que de verdad separa mis reseñas de las de cualquier otro es el FILTRO POR
+    /// API-65. Lo que de verdad separa mis reseñas de las de cualquier otro es el FILTRO POR
     /// AUTOR de la consulta, y eso solo se puede comprobar contra la base: la sesión decide
     /// quién soy y no hay ningún parámetro con el que pedir las de otra persona.
     /// </summary>
@@ -338,6 +379,51 @@ public class ResenasApiPruebas : IAsyncLifetime
         // Sin cita de por medio: es el «contacto directo, sin cita» que se rotula en la pantalla.
         Assert.Equal("Directo", mia.GetProperty("origen").GetString());
         Assert.True(mia.GetProperty("editableHasta").GetDateTime() > DateTime.UtcNow.AddHours(71));
+    }
+
+    /// <summary>
+    /// La otra rama del origen, la que el doble en memoria NO puede demostrar: que el
+    /// `LEFT JOIN` al contacto de la consulta real distingue de verdad una cita de un contacto
+    /// directo. Si la traducción a SQL se rompiera, todo saldría «Directo» y la etiqueta mentiría.
+    /// </summary>
+    [Fact]
+    public async Task Mis_reseñas_dicen_Cita_cuando_el_contacto_nacio_de_una_cita()
+    {
+        var (autor, _, contactoId) = await ConContactoMaduroAsync();
+        var citaId = await ConCitaRealizadaAsync(contactoId);
+        await PublicadaAsync(autor, contactoId);
+
+        var mias = (await autor.Http.GetFromJsonAsync<JsonDocument>("/api/mi/resenas"))!.RootElement;
+
+        var mia = mias.EnumerateArray().Single();
+        Assert.Equal("Cita", mia.GetProperty("origen").GetString());
+        // Ni aquí, que es la lista PROPIA, viaja con qué cita ni con qué contacto: el origen y nada
+        // más (minimización de datos, decisión del 11-nov-2026).
+        var crudo = mias.GetRawText();
+        Assert.DoesNotContain(citaId.ToString(), crudo, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(contactoId.ToString(), crudo, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("citaId", crudo, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("contacto", crudo, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// El origen también viaja en lo PÚBLICO, que es donde se lee la etiqueta «contacto directo,
+    /// sin cita», y ahí se mira en los BYTES: el rótulo sí, el identificador de la cita no.
+    /// </summary>
+    [Fact]
+    public async Task La_lectura_publica_dice_el_origen_y_no_la_cita_que_lo_habilito()
+    {
+        var (autor, prestador, contactoId) = await ConContactoMaduroAsync();
+        var citaId = await ConCitaRealizadaAsync(contactoId);
+        await PublicadaAsync(autor, contactoId);
+
+        var publica = await Visitante().Http.GetAsync($"/api/prestadores/{prestador.Slug}/resenas");
+        Assert.Equal(HttpStatusCode.OK, publica.StatusCode);
+        var crudo = await publica.Content.ReadAsStringAsync();
+
+        Assert.Contains("\"origen\":\"Cita\"", crudo);
+        Assert.DoesNotContain(citaId.ToString(), crudo, StringComparison.OrdinalIgnoreCase);
+        SinIdentidad(crudo, autor, contactoId);
     }
 
     [Fact]

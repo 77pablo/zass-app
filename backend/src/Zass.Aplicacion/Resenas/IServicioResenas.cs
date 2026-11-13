@@ -51,7 +51,7 @@ public interface IServicioResenas
         CancellationToken ct = default);
 
     /// <summary>
-    /// API-64. Las reseñas que escribí, de la más nueva a la más vieja. Sin esto, la ventana de
+    /// API-65. Las reseñas que escribí, de la más nueva a la más vieja. Sin esto, la ventana de
     /// edición de 72 h (CS-16) solo existiría en la pantalla donde se acaba de publicar: quien
     /// volviera al día siguiente no tendría forma de llegar a su propia reseña.
     /// </summary>
@@ -176,7 +176,7 @@ public sealed record ResenaPublicaDto(
     RespuestaPublicaDto? Respuesta);
 
 /// <summary>
-/// Una reseña MIA (API-64): lo que necesita su autor para reconocerla, saber a quién se la dejó
+/// Una reseña MIA (API-65): lo que necesita su autor para reconocerla, saber a quién se la dejó
 /// y si todavía puede cambiarla. Lleva el estado porque una reseña retirada en moderación sigue
 /// siendo suya y merece explicación, no desaparecer sin más.
 /// </summary>

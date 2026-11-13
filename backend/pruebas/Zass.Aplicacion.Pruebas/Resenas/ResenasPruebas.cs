@@ -1296,7 +1296,7 @@ public class ResenasPruebas
         Assert.Equal(Fallas.NoEncontrado, r.Codigo);
     }
 
-    // ------------------------------------------------------------- API-64 · mis reseñas
+    // ------------------------------------------------------------- API-65 · mis reseñas
 
     [Fact]
     public async Task Mis_resenas_traen_solo_las_mias()
@@ -1359,30 +1359,81 @@ public class ResenasPruebas
     }
 
     /// <summary>
+    /// El orden de "mis reseñas" es CONTRATO, no casualidad: la pantalla pinta la lista tal como
+    /// llega y lo que la persona viene a buscar es la última que escribió, la que todavía puede
+    /// cambiar. Las tres nacen en instantes distintos a propósito: con `PublicadaEn` empatado el
+    /// desempate queda en el id, que es un Guid al azar, y la prueba saldría cara o cruz.
+    /// </summary>
+    [Fact]
+    public async Task Mis_resenas_llegan_de_la_mas_nueva_a_la_mas_vieja()
+    {
+        var primera = await UnaPublicada(perfil: UnPerfil(UnUsuario("prestador")));
+        _reloj.Avanzar(TimeSpan.FromDays(1));
+        var segunda = await UnaPublicada(perfil: UnPerfil(UnUsuario("prestador")));
+        _reloj.Avanzar(TimeSpan.FromDays(1));
+        var tercera = await UnaPublicada(perfil: UnPerfil(UnUsuario("prestador")));
+
+        var mias = (await _servicio.MisResenasAsync(_ana.Id)).Valor!;
+
+        Assert.Equal(new[] { tercera.Id, segunda.Id, primera.Id }, mias.Select(r => r.Id));
+    }
+
+    /// <summary>
+    /// Lo mismo que usa la API de verdad (Program.cs): nombres en camelCase y los enum como
+    /// TEXTO. Sin el convertidor, `Origen` se serializa como número y la prueba de abajo leería
+    /// unos bytes que nadie recibe nunca.
+    /// </summary>
+    private static readonly JsonSerializerOptions ComoLaApi =
+        new(JsonSerializerDefaults.Web)
+        {
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+        };
+
+    /// <summary>
     /// Decisión de Pablo del 11-nov-2026: quien reseña tras marcar "ya me atendió" queda
     /// rotulado «contacto directo, sin cita», y eso tiene que viajar en lo PÚBLICO, que es
     /// donde se lee. Lo que no viaja es con qué contacto ni con qué cita (CU-16 §7).
+    ///
+    /// El orden (la más nueva primero) también es contrato: el cursor keyset de la lista pública
+    /// va sobre esa misma tupla. Por eso las dos reseñas se publican en instantes distintos.
     /// </summary>
     [Fact]
     public async Task Lo_publico_dice_si_hubo_cita_o_fue_contacto_directo_y_nada_mas()
     {
         var cita = UnaCita(EstadoCita.Realizada);
-        await _servicio.PublicarAsync(Pub(UnContacto(cita: cita), clave: "con-cita"));
+        var conCita = UnContacto(cita: cita);
+        await _servicio.PublicarAsync(Pub(conCita, clave: "con-cita"));
+        _reloj.Avanzar(TimeSpan.FromMinutes(1));
         var otroAutor = UnUsuario("buscador");
-        await _servicio.PublicarAsync(
-            Pub(UnContacto(otroAutor), autor: otroAutor, clave: "sin-cita"));
+        var sinCita = UnContacto(otroAutor);
+        await _servicio.PublicarAsync(Pub(sinCita, autor: otroAutor, clave: "sin-cita"));
 
         var pagina = (await _servicio.ResenasPublicasAsync(_perfil.Id, null)).Valor!;
-        var json = JsonSerializer.Serialize(pagina, new JsonSerializerOptions
-        {
-            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        });
+        var json = JsonSerializer.Serialize(pagina, ComoLaApi);
 
         Assert.Equal(
             new[] { OrigenDeResena.Directo, OrigenDeResena.Cita },
             pagina.Resenas.Select(r => r.Origen));
+
+        // Lo que NO sale: ningún identificador con el que cruzar a nadie con nada.
         Assert.DoesNotContain(cita.Id.ToString(), json);
-        Assert.DoesNotContain("cita\"", json, StringComparison.OrdinalIgnoreCase);   // ningún campo de cita
-        Assert.DoesNotContain("contacto", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(conCita.Id.ToString(), json);
+        Assert.DoesNotContain(sinCita.Id.ToString(), json);
+        Assert.DoesNotContain(_ana.Id.ToString(), json);
+        Assert.DoesNotContain(otroAutor.Id.ToString(), json);
+
+        // Y los campos son EXACTAMENTE estos. `origen` dice "Cita" o "Directo" y ahí se acaba lo
+        // que se sabe del contacto: un campo nuevo que hable de él rompe aquí aunque venga vacío.
+        var campos = JsonDocument.Parse(json).RootElement.GetProperty("resenas").EnumerateArray()
+            .SelectMany(r => r.EnumerateObject().Select(c => c.Name))
+            .Distinct().OrderBy(n => n, StringComparer.Ordinal).ToArray();
+        Assert.Equal(
+            new[]
+            {
+                "aspectos", "calificacion", "comentario", "editada", "id", "origen",
+                "publicadaEn", "respuesta", "tipo",
+            },
+            campos);
     }
 }

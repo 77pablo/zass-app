@@ -564,7 +564,7 @@ public sealed class ServicioResenas : IServicioResenas
         return r;
     }
 
-    // ------------------------------------------------------------- API-64
+    // ------------------------------------------------------------- API-65
 
     /// <summary>Las mías y solo las mías: el autor lo pone la sesión, nunca el cuerpo ni la query.</summary>
     public async Task<Resultado<IReadOnlyList<MiResenaDto>>> MisResenasAsync(

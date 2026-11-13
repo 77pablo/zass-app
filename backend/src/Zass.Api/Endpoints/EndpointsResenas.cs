@@ -81,7 +81,8 @@ public sealed class ValidadorResolverReporte : AbstractValidator<ResolverReporte
 }
 
 /// <summary>
-/// MOD-11 · S5 (API-46 a API-53). Los ocho son del grupo G salvo los dos internos, que son del S.
+/// MOD-11 · S5 (API-46 a API-53, más API-65). Son del grupo G salvo los dos internos, que son del S,
+/// y la lectura pública del final, que es del P.
 ///
 /// Aquí no se compone con otros módulos: MOD-11 consume a MOD-01 por su cuenta (rol, correo
 /// verificado, misma persona), así que cada endpoint solo pasa la persona de la sesión.
@@ -132,7 +133,7 @@ public static class EndpointsResenas
             .RequireRateLimiting(Tasa.General)
             .WithName("API-47");
 
-        // API-64 · mis reseñas. Sin esto, la ventana de edición de 72 h (CS-16) solo existe en la
+        // API-65 · mis reseñas. Sin esto, la ventana de edición de 72 h (CS-16) solo existe en la
         // pantalla donde se acaba de publicar. El autor lo pone la SESIÓN: no hay parámetro con
         // el que pedir las de otra persona.
         grupo.MapGet("/mi/resenas", async (IServicioResenas resenas, ClaimsPrincipal quien) =>
@@ -144,7 +145,7 @@ public static class EndpointsResenas
                 return r.Exito ? Results.Ok(r.Valor) : Problema(r);
             })
             .RequireRateLimiting(Tasa.General)
-            .WithName("API-64");
+            .WithName("API-65");
 
         // API-48 · publica. Idempotency-Key obligatoria: sin ella, 400 (api-rest.md).
         grupo.MapPost("/resenas", async (
