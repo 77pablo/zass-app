@@ -1,4 +1,7 @@
 ﻿using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Routing;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -1886,6 +1889,124 @@ public partial class ApiPruebas : IAsyncLifetime
 
         return Zass.Aplicacion.Puertos.CargaDeAviso.LeerToken(aviso.Cuerpo)!;
     }
+
+    // ------------------------------------------------- el mapa de rutas
+
+    /// <summary>
+    /// Dos endpoints con el mismo <c>WithName</c> no fallan al arrancar: fallan en la PRIMERA
+    /// peticion, y entonces la API entera devuelve 500, sea cual sea la ruta. Paso de verdad el
+    /// 12-nov-2026 al nacer «mis resenas» con el nombre API-64, que ya era del mapa del sitio.
+    /// Esta prueba pone el fallo donde se lee: en el nombre repetido, no en 600 pruebas rojas.
+    /// </summary>
+    [Fact]
+    public void Ningun_endpoint_repite_el_nombre_de_otro()
+    {
+        var repetidos = NombresDeEndpoint()
+            .GroupBy(n => n)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+
+        Assert.True(repetidos.Count == 0, "Nombres de endpoint repetidos: " + string.Join(" | ", repetidos));
+    }
+
+    /// <summary>
+    /// El inventario de endpoints, escrito a mano a proposito: crear uno nuevo deja esta prueba
+    /// ROJA hasta que se anade aqui, y el mensaje pide anadirlo tambien a api-rest.md.
+    ///
+    /// Existe porque el documento llevaba meses diciendo «63 endpoints» mientras el codigo tenia
+    /// ocho que no estaban en ninguna tabla, y dos de ellos (API-34-listar y API-34-quitar) no los
+    /// echaba de menos nadie. Un documento que nadie puede contradecir deja de ser el contrato.
+    ///
+    /// No lee api-rest.md porque el documento vive fuera del repositorio (OneDrive). Lo que si
+    /// puede hacer es obligar a que anadir un endpoint sea un acto DELIBERADO.
+    /// </summary>
+    [Fact]
+    public void El_inventario_de_endpoints_es_el_que_esta_documentado()
+    {
+        string[] esperados =
+        {
+            "API-01",
+            "API-02",
+            "API-03",
+            "API-04",
+            "API-05",
+            "API-08",
+            "API-09",
+            "API-10",
+            "API-11",
+            "API-12",
+            "API-13",
+            "API-14",
+            "API-15",
+            "API-16",
+            "API-17",
+            "API-18",
+            "API-19",
+            "API-20",
+            "API-20b",
+            "API-21",
+            "API-21b",
+            "API-22",
+            "API-22b",
+            "API-23",
+            "API-24",
+            "API-25",
+            "API-27",
+            "API-28",
+            "API-29",
+            "API-30",
+            "API-31",
+            "API-32",
+            "API-33",
+            "API-34",
+            "API-34-listar",
+            "API-34-quitar",
+            "API-35",
+            "API-36",
+            "API-37",
+            "API-38",
+            "API-39",
+            "API-40",
+            "API-41",
+            "API-42",
+            "API-46",
+            "API-47",
+            "API-48",
+            "API-49",
+            "API-50",
+            "API-51",
+            "API-52",
+            "API-53",
+            "API-62",
+            "API-63",
+            "API-64",
+            "API-resenas-publicas",
+            "CS-02b",
+            "CS-04",
+            "CSRF",
+            "MI-SUSCRIPCION",
+        };
+
+        var enElCodigo = NombresDeEndpoint();
+        var sobran = enElCodigo.Except(esperados).ToList();
+        var faltan = esperados.Except(enElCodigo).ToList();
+
+        Assert.True(
+            sobran.Count == 0 && faltan.Count == 0,
+            "El mapa de rutas ya no es el documentado. "
+            + (sobran.Count > 0 ? "Endpoints nuevos: " + string.Join(", ", sobran) + ". " : "")
+            + (faltan.Count > 0 ? "Endpoints que desaparecieron: " + string.Join(", ", faltan) + ". " : "")
+            + "Anadelos (o quitalos) de esta lista Y de docs/06-desarrollo/api-rest.md, seccion 11. "
+            + "El nombre es lo que el codigo cita y lo que no puede repetirse.");
+    }
+
+    private List<string> NombresDeEndpoint() =>
+        _app.Services.GetRequiredService<EndpointDataSource>().Endpoints
+            .Select(e => e.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName)
+            .Where(n => n is not null)
+            .Select(n => n!)
+            .ToList();
 }
 
 /// <summary>
