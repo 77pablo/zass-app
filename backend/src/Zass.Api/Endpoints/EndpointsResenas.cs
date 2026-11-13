@@ -81,7 +81,8 @@ public sealed class ValidadorResolverReporte : AbstractValidator<ResolverReporte
 }
 
 /// <summary>
-/// MOD-11 · S5 (API-46 a API-53). Los ocho son del grupo G salvo los dos internos, que son del S.
+/// MOD-11 · S5 (API-46 a API-53, más API-65). Son del grupo G salvo los dos internos, que son del S,
+/// y la lectura pública del final, que es del P.
 ///
 /// Aquí no se compone con otros módulos: MOD-11 consume a MOD-01 por su cuenta (rol, correo
 /// verificado, misma persona), así que cada endpoint solo pasa la persona de la sesión.
@@ -131,6 +132,20 @@ public static class EndpointsResenas
             })
             .RequireRateLimiting(Tasa.General)
             .WithName("API-47");
+
+        // API-65 · mis reseñas. Sin esto, la ventana de edición de 72 h (CS-16) solo existe en la
+        // pantalla donde se acaba de publicar. El autor lo pone la SESIÓN: no hay parámetro con
+        // el que pedir las de otra persona.
+        grupo.MapGet("/mi/resenas", async (IServicioResenas resenas, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+
+                var r = await resenas.MisResenasAsync(usuarioId.Value);
+                return r.Exito ? Results.Ok(r.Valor) : Problema(r);
+            })
+            .RequireRateLimiting(Tasa.General)
+            .WithName("API-65");
 
         // API-48 · publica. Idempotency-Key obligatoria: sin ella, 400 (api-rest.md).
         grupo.MapPost("/resenas", async (
@@ -271,12 +286,21 @@ public static class EndpointsResenas
         ? Results.Problem(title: "No elegible", detail: r.Mensaje, statusCode: StatusCodes.Status403Forbidden)
         : Respuestas.Problema(r);
 
-    /// <summary>CU-16 4E: el texto parece traer datos personales. 422 con los fragmentos y la forma de seguir.</summary>
-    private static IResult Advertencia(ResultadoPublicacion r) => Results.Json(new
-    {
-        titulo = "Revisa tu comentario",
-        detalle = "Tu comentario parece incluir datos personales. Puedes corregirlo o enviarlo igual (se revisará).",
-        requiereConfirmacion = true,
-        fragmentos = r.DatosPersonalesDetectados,
-    }, statusCode: StatusCodes.Status422UnprocessableEntity);
+    /// <summary>
+    /// CU-16 4E: el texto parece traer datos personales. 422 con los fragmentos y la forma de seguir.
+    ///
+    /// Va como `application/problem+json`, que es lo que api-rest.md exige para TODOS los errores.
+    /// Lo propio de este caso (`requiereConfirmacion` y los `fragmentos` señalados) viaja como
+    /// extensiones del problema: RFC 7807 las permite y salen al mismo nivel que `title` y
+    /// `detail`, asi que el cliente las lee igual que antes.
+    /// </summary>
+    private static IResult Advertencia(ResultadoPublicacion r) => Results.Problem(
+        title: "Revisa tu comentario",
+        detail: "Tu comentario parece incluir datos personales. Puedes corregirlo o enviarlo igual (se revisará).",
+        statusCode: StatusCodes.Status422UnprocessableEntity,
+        extensions: new Dictionary<string, object?>
+        {
+            ["requiereConfirmacion"] = true,
+            ["fragmentos"] = r.DatosPersonalesDetectados,
+        });
 }

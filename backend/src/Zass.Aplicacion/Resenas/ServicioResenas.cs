@@ -21,6 +21,13 @@ public sealed class ServicioResenas : IServicioResenas
 {
     public const int TamanoDePagina = 20;
 
+    /// <summary>
+    /// Tope de "mis reseñas". No lleva cursor a propósito: con el tope de RN-S5-02 (una por
+    /// prestador cada 90 días) llegar a 100 reseñas propias toma años, y una lista de una sola
+    /// página es una pantalla menos que mantener. El día que alguien las pase, se le añade.
+    /// </summary>
+    public const int MaximoDeMias = 100;
+
     private readonly IRepositorioResenas _repo;
     private readonly IServicioIdentidad _identidad;
     private readonly IUnidadDeTrabajo _trabajo;
@@ -560,6 +567,16 @@ public sealed class ServicioResenas : IServicioResenas
         return r;
     }
 
+    // ------------------------------------------------------------- API-65
+
+    /// <summary>Las mías y solo las mías: el autor lo pone la sesión, nunca el cuerpo ni la query.</summary>
+    public async Task<Resultado<IReadOnlyList<MiResenaDto>>> MisResenasAsync(
+        Guid autorId, CancellationToken ct = default)
+    {
+        var filas = await _repo.MiasAsync(autorId, MaximoDeMias, ct);
+        return Resultado.Ok<IReadOnlyList<MiResenaDto>>(filas.Select(AMia).ToList());
+    }
+
     // ------------------------------------------------------------- lectura pública
 
     public async Task<Resultado<PaginaDeResenas>> ResenasPublicasAsync(
@@ -587,7 +604,7 @@ public sealed class ServicioResenas : IServicioResenas
 
         return Resultado.Ok(new PaginaDeResenas(
             pagina.Select(APublica).ToList(),
-            hayMas ? EscribirCursor(pagina[^1]) : null));
+            hayMas ? EscribirCursor(pagina[^1].Resena) : null));
     }
 
     // ------------------------------------------------------------- apoyo
@@ -639,11 +656,27 @@ public sealed class ServicioResenas : IServicioResenas
         r.Id, r.PerfilPrestadorId, r.Calificacion, r.Comentario, r.Aspectos.ToList(),
         r.Tipo, r.Estado, r.Editada, r.PublicadaEn, r.EditableHasta);
 
-    private static ResenaPublicaDto APublica(Resena r) => new(
-        r.Id, r.Calificacion, r.Comentario, r.Aspectos.ToList(), r.Tipo, r.Editada, r.PublicadaEn,
-        r.Respuesta is null
-            ? null
-            : new RespuestaPublicaDto(r.Respuesta.Texto, r.Respuesta.PublicadaEn, r.Respuesta.EditadaEn));
+    private static ResenaPublicaDto APublica(FilaPublica f)
+    {
+        var r = f.Resena;
+        return new ResenaPublicaDto(
+            r.Id, r.Calificacion, r.Comentario, r.Aspectos.ToList(), r.Tipo, Origen(f.DeCita),
+            r.Editada, r.PublicadaEn,
+            r.Respuesta is null
+                ? null
+                : new RespuestaPublicaDto(r.Respuesta.Texto, r.Respuesta.PublicadaEn, r.Respuesta.EditadaEn));
+    }
+
+    private static OrigenDeResena Origen(bool deCita) =>
+        deCita ? OrigenDeResena.Cita : OrigenDeResena.Directo;
+
+    private static MiResenaDto AMia(FilaDeMisResenas f)
+    {
+        var r = f.Resena;
+        return new MiResenaDto(
+            r.Id, f.PerfilNombre, f.PerfilSlug, r.Calificacion, r.Comentario, r.Aspectos.ToList(),
+            r.Tipo, Origen(f.DeCita), r.Estado, r.Editada, r.PublicadaEn, r.EditableHasta);
+    }
 
     // El cursor es keyset sobre la misma tupla por la que se ordena (publicada_en desc, id).
     private static string EscribirCursor(Resena ultima) =>

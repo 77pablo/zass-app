@@ -885,6 +885,8 @@ option { background: var(--panel-2); color: var(--texto); }
 }
 .resena-cabecera { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 18px; }
 .resena-fecha { color: var(--suave); font-size: 0.875rem; font-weight: 600; }
+/* El nombre de quien reseñe, en «Mis reseñas»: es un titulo, y ademas el enlace a su ficha. */
+.resena-prestador { margin: 0; font-size: 1.0625rem; font-weight: 800; }
 .resena-editada { font-style: italic; }
 .resena-rotulo {
   display: inline-block; margin: 12px 0 0; padding: 4px 12px; border-radius: 999px;

@@ -117,17 +117,38 @@ public sealed class RepositorioResenasEnMemoria : IRepositorioResenas
     public Task<Cita?> CitaAsync(Guid citaId, CancellationToken ct = default) =>
         Task.FromResult(Citas.FirstOrDefault(c => c.Id == citaId));
 
-    public Task<IReadOnlyList<Resena>> PublicasAsync(
+    public Task<IReadOnlyList<FilaPublica>> PublicasAsync(
         Guid perfilPrestadorId, DateTime? antesDe, Guid? antesDeId, int limite,
         CancellationToken ct = default)
     {
         var q = Resenas.Where(r => r.PerfilPrestadorId == perfilPrestadorId && r.Estado == EstadoResena.Publicada);
         if (antesDe is { } f && antesDeId is { } id)
             q = q.Where(r => r.PublicadaEn < f || (r.PublicadaEn == f && r.Id.CompareTo(id) < 0));
-        IReadOnlyList<Resena> r2 = q.OrderByDescending(r => r.PublicadaEn).ThenByDescending(r => r.Id)
-            .Take(limite).Select(r => ConRespuesta(r.Id)!).ToList();
+        IReadOnlyList<FilaPublica> r2 = q.OrderByDescending(r => r.PublicadaEn).ThenByDescending(r => r.Id)
+            .Take(limite).Select(r => new FilaPublica(ConRespuesta(r.Id)!, DeCita(r))).ToList();
         return Task.FromResult(r2);
     }
+
+    public Task<IReadOnlyList<FilaDeMisResenas>> MiasAsync(
+        Guid autorId, int limite, CancellationToken ct = default)
+    {
+        IReadOnlyList<FilaDeMisResenas> mias = Resenas
+            .Where(r => r.AutorId == autorId)
+            .OrderByDescending(r => r.PublicadaEn).ThenByDescending(r => r.Id)
+            .Take(limite)
+            .Select(r =>
+            {
+                var perfil = _base.PerfilesPrestador.FirstOrDefault(p => p.Id == r.PerfilPrestadorId);
+                return new FilaDeMisResenas(
+                    ConRespuesta(r.Id)!, DeCita(r), perfil?.NombrePublico ?? "", perfil?.Slug ?? "");
+            })
+            .ToList();
+        return Task.FromResult(mias);
+    }
+
+    /// <summary>Lo mismo que hace la consulta real: mira la cita POR el contacto de la reseña.</summary>
+    private bool DeCita(Resena r) =>
+        Contactos.FirstOrDefault(c => c.Id == r.ContactoId)?.CitaId is not null;
 
     public Task<bool> TieneReporteAbiertoAsync(Guid resenaId, Guid usuarioId, CancellationToken ct = default) =>
         Task.FromResult(Reportes.Any(r => r.ResenaId == resenaId && r.ReportadoPor == usuarioId

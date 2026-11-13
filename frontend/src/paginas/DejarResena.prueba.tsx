@@ -199,9 +199,10 @@ describe('dejar una reseña (CU-16)', () => {
   it('el 422 de datos personales señala los fragmentos y deja enviar igual (4E)', async () => {
     alPublicar = (cuerpo) => cuerpo.enviarIgual === true
       ? json(resena(), 201)
+      // problem+json, como lo manda el servidor: `title`/`detail` y las extensiones al lado.
       : json({
-        titulo: 'Revisa tu comentario',
-        detalle: 'Tu comentario parece incluir datos personales.',
+        title: 'Revisa tu comentario',
+        detail: 'Tu comentario parece incluir datos personales.',
         requiereConfirmacion: true, fragmentos: ['+56 9 1234 5678'],
       }, 422)
     pintar()
@@ -223,7 +224,7 @@ describe('dejar una reseña (CU-16)', () => {
     alPublicar = (cuerpo) => cuerpo.enviarIgual === true
       ? json(resena(), 201)
       : json({
-        detalle: 'Tu comentario parece incluir datos personales.',
+        detail: 'Tu comentario parece incluir datos personales.',
         requiereConfirmacion: true, fragmentos: ['+56 9 1234 5678'],
       }, 422)
     pintar()

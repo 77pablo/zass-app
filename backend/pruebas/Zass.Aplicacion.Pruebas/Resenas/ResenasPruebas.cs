@@ -1338,4 +1338,145 @@ public class ResenasPruebas
 
         Assert.Equal(Fallas.NoEncontrado, r.Codigo);
     }
+
+    // ------------------------------------------------------------- API-65 · mis reseñas
+
+    [Fact]
+    public async Task Mis_resenas_traen_solo_las_mias()
+    {
+        var mia = await UnaPublicada();
+        var otroAutor = UnUsuario("buscador");
+        var ajena = await UnaPublicada(autor: otroAutor);
+
+        var mias = (await _servicio.MisResenasAsync(_ana.Id)).Valor!;
+
+        Assert.Equal(new[] { mia.Id }, mias.Select(r => r.Id));
+        Assert.DoesNotContain(mias, r => r.Id == ajena.Id);
+    }
+
+    [Fact]
+    public async Task Mis_resenas_dicen_a_quien_se_la_deje_y_hasta_cuando_puedo_cambiarla()
+    {
+        var resena = await UnaPublicada();
+
+        var mia = Assert.Single((await _servicio.MisResenasAsync(_ana.Id)).Valor!);
+
+        Assert.Equal(_perfil.NombrePublico, mia.PerfilNombre);
+        Assert.Equal(_perfil.Slug, mia.PerfilSlug);
+        Assert.Equal(resena.PublicadaEn + ReglasDeResenas.PlazoDeEdicion, mia.EditableHasta);
+        Assert.Equal(EstadoResena.Publicada, mia.Estado);
+    }
+
+    /// <summary>
+    /// Una reseña retirada en moderación sigue siendo de quien la escribió. Esconderla de su
+    /// autor haría que desapareciera sin explicación, y la pantalla no podría decir qué pasó.
+    /// </summary>
+    [Fact]
+    public async Task Una_resena_retirada_sigue_apareciendo_entre_las_mias_con_su_estado()
+    {
+        var resena = await UnaPublicada();
+        resena.Retirar();
+
+        var mia = Assert.Single((await _servicio.MisResenasAsync(_ana.Id)).Valor!);
+
+        Assert.Equal(EstadoResena.Retirada, mia.Estado);
+    }
+
+    // ------------------------------------------------------------- el origen (11-nov-2026)
+
+    [Fact]
+    public async Task Mis_resenas_distinguen_la_cita_del_contacto_directo()
+    {
+        var cita = UnaCita(EstadoCita.Realizada);
+        var porCita = await _servicio.PublicarAsync(
+            Pub(UnContacto(cita: cita), clave: "con-cita"));
+        var otroPerfil = UnPerfil(UnUsuario("prestador"));
+        var directa = await _servicio.PublicarAsync(
+            Pub(UnContacto(perfil: otroPerfil), clave: "sin-cita"));
+        Assert.True(porCita.Exito && directa.Exito);
+
+        var mias = (await _servicio.MisResenasAsync(_ana.Id)).Valor!;
+
+        Assert.Equal(OrigenDeResena.Cita, mias.Single(r => r.Id == porCita.Valor!.Resena!.Id).Origen);
+        Assert.Equal(OrigenDeResena.Directo, mias.Single(r => r.Id == directa.Valor!.Resena!.Id).Origen);
+    }
+
+    /// <summary>
+    /// El orden de "mis reseñas" es CONTRATO, no casualidad: la pantalla pinta la lista tal como
+    /// llega y lo que la persona viene a buscar es la última que escribió, la que todavía puede
+    /// cambiar. Las tres nacen en instantes distintos a propósito: con `PublicadaEn` empatado el
+    /// desempate queda en el id, que es un Guid al azar, y la prueba saldría cara o cruz.
+    /// </summary>
+    [Fact]
+    public async Task Mis_resenas_llegan_de_la_mas_nueva_a_la_mas_vieja()
+    {
+        var primera = await UnaPublicada(perfil: UnPerfil(UnUsuario("prestador")));
+        _reloj.Avanzar(TimeSpan.FromDays(1));
+        var segunda = await UnaPublicada(perfil: UnPerfil(UnUsuario("prestador")));
+        _reloj.Avanzar(TimeSpan.FromDays(1));
+        var tercera = await UnaPublicada(perfil: UnPerfil(UnUsuario("prestador")));
+
+        var mias = (await _servicio.MisResenasAsync(_ana.Id)).Valor!;
+
+        Assert.Equal(new[] { tercera.Id, segunda.Id, primera.Id }, mias.Select(r => r.Id));
+    }
+
+    /// <summary>
+    /// Lo mismo que usa la API de verdad (Program.cs): nombres en camelCase y los enum como
+    /// TEXTO. Sin el convertidor, `Origen` se serializa como número y la prueba de abajo leería
+    /// unos bytes que nadie recibe nunca.
+    /// </summary>
+    private static readonly JsonSerializerOptions ComoLaApi =
+        new(JsonSerializerDefaults.Web)
+        {
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+        };
+
+    /// <summary>
+    /// Decisión de Pablo del 11-nov-2026: quien reseña tras marcar "ya me atendió" queda
+    /// rotulado «contacto directo, sin cita», y eso tiene que viajar en lo PÚBLICO, que es
+    /// donde se lee. Lo que no viaja es con qué contacto ni con qué cita (CU-16 §7).
+    ///
+    /// El orden (la más nueva primero) también es contrato: el cursor keyset de la lista pública
+    /// va sobre esa misma tupla. Por eso las dos reseñas se publican en instantes distintos.
+    /// </summary>
+    [Fact]
+    public async Task Lo_publico_dice_si_hubo_cita_o_fue_contacto_directo_y_nada_mas()
+    {
+        var cita = UnaCita(EstadoCita.Realizada);
+        var conCita = UnContacto(cita: cita);
+        await _servicio.PublicarAsync(Pub(conCita, clave: "con-cita"));
+        _reloj.Avanzar(TimeSpan.FromMinutes(1));
+        var otroAutor = UnUsuario("buscador");
+        var sinCita = UnContacto(otroAutor);
+        await _servicio.PublicarAsync(Pub(sinCita, autor: otroAutor, clave: "sin-cita"));
+
+        var pagina = (await _servicio.ResenasPublicasAsync(_perfil.Id, null)).Valor!;
+        var json = JsonSerializer.Serialize(pagina, ComoLaApi);
+
+        Assert.Equal(
+            new[] { OrigenDeResena.Directo, OrigenDeResena.Cita },
+            pagina.Resenas.Select(r => r.Origen));
+
+        // Lo que NO sale: ningún identificador con el que cruzar a nadie con nada.
+        Assert.DoesNotContain(cita.Id.ToString(), json);
+        Assert.DoesNotContain(conCita.Id.ToString(), json);
+        Assert.DoesNotContain(sinCita.Id.ToString(), json);
+        Assert.DoesNotContain(_ana.Id.ToString(), json);
+        Assert.DoesNotContain(otroAutor.Id.ToString(), json);
+
+        // Y los campos son EXACTAMENTE estos. `origen` dice "Cita" o "Directo" y ahí se acaba lo
+        // que se sabe del contacto: un campo nuevo que hable de él rompe aquí aunque venga vacío.
+        var campos = JsonDocument.Parse(json).RootElement.GetProperty("resenas").EnumerateArray()
+            .SelectMany(r => r.EnumerateObject().Select(c => c.Name))
+            .Distinct().OrderBy(n => n, StringComparer.Ordinal).ToArray();
+        Assert.Equal(
+            new[]
+            {
+                "aspectos", "calificacion", "comentario", "editada", "id", "origen",
+                "publicadaEn", "respuesta", "tipo",
+            },
+            campos);
+    }
 }
