@@ -23,7 +23,14 @@ mkdirSync(carpeta, { recursive: true })
 
 const SLUG = 'marcela-soto'
 const CORREO_PRESTADOR = `demo-${SLUG}@zass.local`
-const HASH_DEMO = 'x'
+/**
+ * La contrasena con la que sembrar-demo.sql deja a su gente. Antes este guion le PRESTABA a la
+ * prestadora de demostracion el hash y el rol de una cuenta recien creada, y al limpiar le devolvia
+ * el hash invalido 'x' y le quitaba el rol: es decir, correrlo DESHACIA el arreglo de D9 (que la
+ * gente de demostracion pueda entrar) sin que nadie lo notara. El mismo fallo estaba en
+ * mirar-agendar.mjs. Ya no se toca la base: entra con su propia contrasena.
+ */
+const CLAVE_DEMO = 'demo-zass-2026'
 const correoBuscador = `apoyo.${Date.now()}@zass.local`
 const clave = 'una-clave-bien-larga'
 
@@ -66,10 +73,7 @@ try {
       data: { correo: correoBuscador, contrasena: clave, nombre: 'Apoyo de Prueba', rol: 'buscador' },
     })
   comprobar('la cuenta de apoyo se crea', registro.status() === 201, `HTTP ${registro.status()}`)
-  sql(`UPDATE usuarios SET hash_contrasena = (SELECT hash_contrasena FROM usuarios WHERE correo::text = '${correoBuscador}')
-       WHERE correo::text = '${CORREO_PRESTADOR}'`)
-  sql(`INSERT INTO usuario_roles (usuario_id, rol_id, asignado_en)
-       SELECT u.id, 2, now() FROM usuarios u WHERE u.correo::text = '${CORREO_PRESTADOR}' ON CONFLICT DO NOTHING`)
+  // La prestadora de demostracion ya tiene contrasena y rol propios: no hay nada que prestarle.
 
   // --- El mismo campo de fecha, en dos idiomas de navegador --------------------------------
   const formatos = {}
@@ -84,7 +88,7 @@ try {
     })
     await p.goto(`${BASE}/entrar`, { waitUntil: 'networkidle' })
     await p.getByLabel('Correo').fill(CORREO_PRESTADOR)
-    await p.getByLabel('Contraseña').fill(clave)
+    await p.getByLabel('Contraseña').fill(CLAVE_DEMO)
     await p.getByRole('button', { name: /^entrar$/i }).click()
     await p.waitForURL(/mi-ficha/, { timeout: 20000 })
     await p.goto(`${BASE}/mi-agenda`, { waitUntil: 'networkidle' })
@@ -121,7 +125,7 @@ try {
 
   await pagina.goto(`${BASE}/entrar`, { waitUntil: 'networkidle' })
   await pagina.getByLabel('Correo').fill(CORREO_PRESTADOR)
-  await pagina.getByLabel('Contraseña').fill(clave)
+  await pagina.getByLabel('Contraseña').fill(CLAVE_DEMO)
   await pagina.getByRole('button', { name: /^entrar$/i }).click()
   await pagina.waitForURL(/mi-ficha/, { timeout: 20000 })
 
@@ -179,10 +183,15 @@ try {
   }
 
   // --- Quitar el bloqueo --------------------------------------------------------------------
-  // Por el nombre EXACTO: las franjas de horario tienen botones «Quitar franja N» en la misma
-  // pantalla, y un /quitar/i agarraria el primero de esos, no tocaria el bloqueo y daria por
-  // buena una prueba que no probo nada. El del bloqueo se llama «Quitar bloqueo N».
-  const quitar = pagina.getByRole('button', { name: /^Quitar bloqueo \d+$/ })
+  // Por el nombre, y con cuidado: las franjas de horario tienen su propio boton de quitar en la
+  // misma pantalla, y un /quitar/i agarraria el primero de esos, no tocaria el bloqueo y daria por
+  // buena una prueba que no probo nada.
+  //
+  // El nombre cambio al aprobar los textos de J3: era «Quitar bloqueo N» y ahora es «Quitar este
+  // bloqueo N (las fechas)», que es mejor para un lector de pantalla. Se ancla al principio y no al
+  // final, para que anadir el detalle entre parentesis no vuelva a romperlo; «horario» y «bloqueo»
+  // siguen siendo palabras distintas, que es lo que de verdad hay que distinguir.
+  const quitar = pagina.getByRole('button', { name: /^Quitar este bloqueo \d+/ })
   const hayQuitar = (await quitar.count()) > 0
   comprobar('la pantalla ofrece quitar un bloqueo ya creado', hayQuitar,
     hayQuitar ? '' : 'no hay ningun boton «Quitar» junto al bloqueo')
@@ -214,9 +223,8 @@ try {
     sql(`DELETE FROM disponibilidades WHERE prestador_servicio_id = '${id}'`)
   }
   sql(`DELETE FROM bloqueos_agenda WHERE perfil_prestador_id = '${idPrestador}'`)
-  sql(`DELETE FROM usuario_roles WHERE rol_id = 2 AND usuario_id = (SELECT id FROM usuarios WHERE correo::text = '${CORREO_PRESTADOR}')`)
-  sql(`UPDATE usuarios SET hash_contrasena = '${HASH_DEMO}' WHERE correo::text = '${CORREO_PRESTADOR}'`)
+  // NO se le quita el rol ni se le pisa el hash a la prestadora de demostracion: son suyos.
   sql(`DELETE FROM usuarios WHERE correo::text = '${correoBuscador}'`)
-  console.log('limpieza: horario, bloques, bloqueos, rol prestado y cuenta de apoyo borrados; hash de demostracion restaurado')
+  console.log('limpieza: horario, bloques, bloqueos y cuenta de apoyo borrados')
   await navegador.close()
 }
