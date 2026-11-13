@@ -84,15 +84,34 @@ try {
   comprobar('la pantalla deja elegir hasta que distancia buscar (flujo 4B de CU-08)',
     hayControlDeRadio,
     hayControlDeRadio ? '' : 'no aparece «¿Hasta qué distancia?» ni ningun boton de km')
-  const mandaRadio = urlsBuscar.some((u) => u.includes('radio='))
-  comprobar('la busqueda manda el parametro «radio» que la API acepta', mandaRadio,
-    mandaRadio ? '' : `ninguna llamada lleva radio=: ${urlsBuscar.join(' | ')}`)
+  // Antes esto solo miraba si ALGUNA llamada llevaba `radio=`, y por omision ninguna lo lleva: la
+  // barra de busqueda es nacional y solo limita la distancia cuando se le pide. Asi que ahora se
+  // PULSA el control y se mira si el radio llega a la API, que es lo que de verdad importa.
+  urlsBuscar.length = 0
+  await pagina.getByRole('button', { name: /^20 km$/ }).click()
+  await pagina.waitForTimeout(3000)
+  await foto('02b-radio-20km')
+  const mandaRadio = urlsBuscar.some((u) => u.includes('radio=20'))
+  comprobar('al elegir 20 km, la busqueda lo manda a la API', mandaRadio,
+    mandaRadio ? '' : `ninguna llamada lleva radio=20: ${urlsBuscar.join(' | ')}`)
+
+  const marcado = await pagina.getByRole('button', { name: /^20 km$/ }).getAttribute('aria-pressed')
+  comprobar('el boton de 20 km queda marcado', marcado === 'true', `aria-pressed=${marcado}`)
+
+  const enLaUrl = new URL(pagina.url())
+  comprobar('el radio queda en la direccion, para poder compartir la busqueda',
+    enLaUrl.searchParams.get('radio') === '20', `url=${enLaUrl.search}`)
+  comprobar('la ubicacion NO queda en la direccion',
+    !/lat|lon|-38|-72/i.test(enLaUrl.search), `url=${enLaUrl.search}`)
 
   // --- Sin resultados y con ubicacion: ¿se ofrece ampliar? ----------------------------------
   // SIN recargar: la ubicacion vive solo en una variable del modulo (marco/ubicacion.ts), a
   // proposito, para que no viaje en una URL compartida. Un pagina.goto() la borraria y la
   // pantalla caeria a «Mas recomendados»: se estaria midiendo el arnes, no la aplicacion.
+  // Con un radio chico puesto: es el caso del flujo 4B, «no hay nadie TAN cerca, amplia».
   urlsBuscar.length = 0
+  await pagina.getByRole('button', { name: /^5 km$/ }).click()
+  await pagina.waitForTimeout(2000)
   const caja = pagina.getByRole('searchbox').or(pagina.getByRole('combobox')).first()
   await caja.fill('zzzznoexiste')
   await pagina.getByRole('button', { name: /^Buscar$/ }).click()

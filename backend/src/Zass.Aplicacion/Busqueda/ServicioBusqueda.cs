@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using Zass.Aplicacion.Catalogo;
 using Zass.Aplicacion.Credenciales;
@@ -184,11 +184,38 @@ public sealed class ServicioBusqueda : IServicioBusqueda
         // Ordenar por cercania sin saber donde esta la persona no tiene sentido. No es un error:
         // se ordena por recomendados y se dice, para que la pantalla pueda ofrecer compartir la ubicacion.
         var orden = criterios.Orden;
-        string? aviso = null;
+        var avisos = new List<string>();
         if (orden == OrdenDeTexto.Cercania && !conUbicacion)
         {
             orden = OrdenDeTexto.Recomendados;
-            aviso = "Para ordenar por cercania necesitamos tu ubicacion.";
+            avisos.Add("Para ordenar por cercania necesitamos tu ubicacion.");
+        }
+
+        // El radio (RN-S3-04). Mismo criterio que API-01, E-400 de CU-08: uno fuera de rango se
+        // CORRIGE al valor valido mas cercano y se dice; quien pide 500 km quiere buscar lejos, no
+        // leer un error. Sin ubicacion se ignora en vez de rechazar la busqueda: no hay desde donde
+        // medir, y negarle los resultados a quien aun no comparte su ubicacion es peor que darselos.
+        short? radioKm = null;
+        if (criterios.RadioKm is not null)
+        {
+            if (!conUbicacion)
+            {
+                avisos.Add("Para buscar por distancia necesitamos tu ubicacion.");
+            }
+            else
+            {
+                radioKm = criterios.RadioKm.Value;
+                if (radioKm < LimitesDeBusqueda.RadioMinimoKm)
+                {
+                    radioKm = LimitesDeBusqueda.RadioMinimoKm;
+                    avisos.Add($"El radio minimo es {LimitesDeBusqueda.RadioMinimoKm} km.");
+                }
+                else if (radioKm > LimitesDeBusqueda.RadioMaximoKm)
+                {
+                    radioKm = LimitesDeBusqueda.RadioMaximoKm;
+                    avisos.Add($"El radio maximo es {LimitesDeBusqueda.RadioMaximoKm} km.");
+                }
+            }
         }
 
         var pagina = Math.Clamp(criterios.Pagina, 1, PaginaMaximaDeTexto);
@@ -200,7 +227,7 @@ public sealed class ServicioBusqueda : IServicioBusqueda
         var filas = await _repo.PorTextoAsync(new CriteriosDeTexto(
             formas, grupos, origen?.Latitud, origen?.Longitud, zonaId, CodigoDeOrden(orden),
             _reloj.Ahora, PorPaginaDeTexto + 1, (pagina - 1) * PorPaginaDeTexto,
-            criterios.SoloVerificados, criterios.CalificacionMinima), ct);
+            criterios.SoloVerificados, criterios.CalificacionMinima, radioKm), ct);
 
         var hayMas = filas.Count > PorPaginaDeTexto;
         var visibles = hayMas ? filas.Take(PorPaginaDeTexto).ToList() : filas.ToList();
@@ -218,7 +245,10 @@ public sealed class ServicioBusqueda : IServicioBusqueda
             f.TotalResenas,
             f.PrecioDesde)).ToList();
 
-        return Resultado.Ok(new PaginaDeTexto(resultados, total, pagina, hayMas, orden, conUbicacion, aviso));
+        return Resultado.Ok(new PaginaDeTexto(
+            resultados, total, pagina, hayMas, orden, conUbicacion,
+            avisos.Count == 0 ? null : string.Join(' ', avisos),
+            radioKm));
     }
 
     // ------------------------------------------------------------- API-62, la comunidad

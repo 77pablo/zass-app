@@ -153,6 +153,8 @@ export interface PaginaDeTexto {
   ordenAplicado: OrdenDeTexto
   conUbicacion: boolean
   aviso: string | null
+  /** El radio que SE aplico en km, o nulo si no se limito la distancia (RN-S3-04). */
+  radioAplicadoKm: number | null
 }
 
 export interface CriteriosDeTexto {
@@ -166,6 +168,11 @@ export interface CriteriosDeTexto {
   verificados?: boolean
   /** Nota minima de 1 a 5; solo cuenta a quien ya tiene 3 resenas (RN-S5-11). */
   calificacion?: number
+  /**
+   * Hasta donde buscar, en km (RN-S3-04). Solo significa algo con `lat`/`lon`: sin punto no hay
+   * desde donde medir. Sin radio la barra busca en todo Chile, que es lo que hace por omision.
+   */
+  radio?: number
 }
 
 /** API-63. Texto libre: un oficio, un servicio o un nombre. Sin texto devuelve a todos. */
@@ -177,6 +184,8 @@ export function buscarTexto(c: CriteriosDeTexto): Promise<PaginaDeTexto> {
     q.set('lat', String(c.lat))
     q.set('lon', String(c.lon))
   }
+  // Solo con punto: un radio sin ubicacion la API lo ignora, y mandarlo ensuciaria la URL que se comparte.
+  if (c.radio !== undefined && c.lat !== undefined && c.lon !== undefined) q.set('radio', String(c.radio))
   if (c.zona !== undefined) q.set('zona', String(c.zona))
   if (c.pagina !== undefined && c.pagina > 1) q.set('pagina', String(c.pagina))
   // Solo viaja lo que de verdad se pidio: un `verificados=false` ensuciaria la URL de una busqueda compartida.

@@ -367,7 +367,9 @@ public sealed record CriteriosDeTexto(
     int Limite,
     int Desplazamiento,
     bool SoloVerificados = false,
-    decimal? CalificacionMinima = null);
+    decimal? CalificacionMinima = null,
+    /// <summary>Radio en kilometros, ya validado. Nulo = sin limite.</summary>
+    short? RadioKm = null);
 
 /// <summary>Una fila de la busqueda por texto. Como FilaDeBusqueda: lleva los metros, y el servicio los redondea.</summary>
 public class FilaDeTexto

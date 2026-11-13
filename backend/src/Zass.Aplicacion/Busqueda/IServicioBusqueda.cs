@@ -1,4 +1,4 @@
-using Zass.Aplicacion.Credenciales;
+﻿using Zass.Aplicacion.Credenciales;
 using Zass.Aplicacion.Catalogo;
 using Zass.Dominio.Comun;
 
@@ -66,7 +66,14 @@ public sealed record CriteriosDeTextoDeBusqueda(
     OrdenDeTexto Orden,
     int Pagina,
     bool SoloVerificados = false,
-    decimal? CalificacionMinima = null);
+    decimal? CalificacionMinima = null,
+    /// <summary>
+    /// Hasta donde buscar, en kilometros (RN-S3-04). Solo significa algo con punto: sin saber
+    /// desde donde se mide, no hay radio. Nulo = sin limite de distancia, que es lo que hacia la
+    /// barra de busqueda desde que existe; el buscador por rubro (API-01) en cambio aplica 10 km
+    /// por omision. Son dos busquedas distintas: la barra es nacional y de texto libre.
+    /// </summary>
+    short? RadioKm = null);
 
 /// <summary>
 /// Lo que ve cualquiera. Como en API-01: la distancia es TEXTO redondeado, nunca un numero, y no
@@ -95,7 +102,13 @@ public sealed record PaginaDeTexto(
     OrdenDeTexto OrdenAplicado,
     /// <summary>Si las distancias del resultado salen de la ubicacion de la persona.</summary>
     bool ConUbicacion,
-    string? Aviso);
+    string? Aviso,
+    /// <summary>
+    /// El radio que SE aplico, en km, o nulo si no se limito la distancia. Puede no ser el pedido:
+    /// uno fuera de rango se corrige y se dice en <see cref="Aviso"/>. La pantalla lo necesita para
+    /// marcar el boton correcto cuando la URL trae un valor raro.
+    /// </summary>
+    short? RadioAplicadoKm = null);
 
 /// <summary>
 /// Lo que entra a una busqueda. El punto y la zona son alternativas, no complementos:
