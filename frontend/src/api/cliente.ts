@@ -72,9 +72,14 @@ async function fallo(r: Response): Promise<ErrorApi> {
     }
   }
 
+  // El `title` de un 5xx no lo escribe nadie de este proyecto: lo pone ASP.NET y viene en
+  // ingles de fabrica ("An error occurred while processing your request."). Mostrarlo tal cual
+  // deja texto en ingles delante de una persona en una pantalla que es toda en castellano, y
+  // ademas le cuenta de la maquina en vez de decirle que hacer. Para 5xx manda el texto propio;
+  // `detail`, que si lo escribe la API cuando tiene algo util que decir, se sigue respetando.
   const mensaje =
     (cuerpo.detail as string | undefined) ??
-    (cuerpo.title as string | undefined) ??
+    (r.status >= 500 ? undefined : (cuerpo.title as string | undefined)) ??
     generico(r.status)
 
   return new ErrorApi(r.status, mensaje, campos)
