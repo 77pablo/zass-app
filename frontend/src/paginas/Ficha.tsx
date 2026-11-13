@@ -159,17 +159,11 @@ export function Ficha() {
             )}
           </section>
 
-          {alDia ? (
-            <AgendarHora
-              slug={ficha.slug}
-              nombre={ficha.nombrePublico}
-              servicios={ficha.servicios}
-              elegidoInicial={{ servicio: busqueda.get('servicio'), bloque: busqueda.get('bloque') }}
-            />
-          ) : (
-            <SinHorasPorAhora nombre={ficha.nombrePublico} />
-          )}
-
+          {/*
+            Las credenciales van ANTES de agendar, no despues: son la prueba de confianza, y se
+            miran para decidir si reservar. Debajo del calendario llegaban cuando ya habia que
+            elegir una hora, es decir, demasiado tarde para servir de algo.
+          */}
           {ficha.credenciales.length > 0 && (
             <section className="bloque">
               <h2>Credenciales</h2>
@@ -185,7 +179,27 @@ export function Ficha() {
                   </li>
                 ))}
               </ul>
+              {/*
+                Una etiqueta de confianza sin explicar es una garantia inventada: quien lee
+                «Verificada» tiene que poder saber quien verifico y que se miro. Texto propuesto,
+                pendiente de que Pablo lo apruebe (regla 12).
+              */}
+              <p className="credenciales-nota">
+                «Verificada» quiere decir que en ZASS! revisamos el documento. «Declarada por el
+                usuario» quiere decir que la escribió la persona y todavía no la hemos revisado.
+              </p>
             </section>
+          )}
+
+          {alDia ? (
+            <AgendarHora
+              slug={ficha.slug}
+              nombre={ficha.nombrePublico}
+              servicios={ficha.servicios}
+              elegidoInicial={{ servicio: busqueda.get('servicio'), bloque: busqueda.get('bloque') }}
+            />
+          ) : (
+            <SinHorasPorAhora nombre={ficha.nombrePublico} />
           )}
 
           <section className="bloque">
@@ -206,18 +220,29 @@ export function Ficha() {
           <section className="bloque">
             <h2>Lo que dicen de {ficha.nombrePublico.split(' ')[0]}</h2>
             {ficha.totalResenas > 0 ? (
-              <p className="nota">
-                {ficha.promedioCalificacion !== null && (
-                  <span className="nota-promedio">
-                    {ficha.promedioCalificacion.toFixed(1).replace('.', ',')}
+              <>
+                <p className="nota">
+                  {ficha.promedioCalificacion !== null && (
+                    <span className="nota-promedio">
+                      {ficha.promedioCalificacion.toFixed(1).replace('.', ',')}
+                    </span>
+                  )}
+                  <span className="nota-detalle">
+                    {ficha.promedioCalificacion !== null
+                      ? `de 5, según ${ficha.totalResenas} ${ficha.totalResenas === 1 ? 'reseña' : 'reseñas'}`
+                      : `${ficha.totalResenas} ${ficha.totalResenas === 1 ? 'reseña' : 'reseñas'}. El promedio se muestra desde la tercera.`}
                   </span>
-                )}
-                <span className="nota-detalle">
-                  {ficha.promedioCalificacion !== null
-                    ? `de 5, según ${ficha.totalResenas} ${ficha.totalResenas === 1 ? 'reseña' : 'reseñas'}`
-                    : `${ficha.totalResenas} ${ficha.totalResenas === 1 ? 'reseña' : 'reseñas'}. El promedio se muestra desde la tercera.`}
-                </span>
-              </p>
+                </p>
+                {/*
+                  Un promedio sin las reseñas detras es un numero que hay que creer. Quien compara
+                  dos personas necesita leer lo que dicen de ellas, no solo cuanto puntuaron.
+                */}
+                <p className="nota-enlace">
+                  <Link className="enlace" to={`/prestadores/${slug}/resenas`}>
+                    {ficha.totalResenas === 1 ? 'Leer la reseña' : `Leer las ${ficha.totalResenas} reseñas`}
+                  </Link>
+                </p>
+              </>
             ) : (
               <p className="bloque-texto bloque-vacio">Todavía no tiene reseñas.</p>
             )}
@@ -276,6 +301,13 @@ export function Ficha() {
             ) : (
               <p className="bloque-vacio">
                 Esta persona todavía no publicó cómo contactarla.
+                {/*
+                  Sin servicios publicados el calendario dice «todavia no publico sus servicios»:
+                  mandar ahi seria mandar a una puerta cerrada, asi que la frase solo sale cuando
+                  de verdad hay algo que reservar. Sin «mas arriba»: en movil la caja de contacto
+                  queda por ENCIMA del calendario (ver el `order` de .ficha-rejilla en index.css).
+                */}
+                {ficha.servicios.length > 0 && ' Puedes pedirle una hora desde su calendario.'}
               </p>
             )}
             {alDia && (

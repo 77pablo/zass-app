@@ -468,7 +468,17 @@ main:focus { outline: none; }
 .volver { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-weight: 800; font-size: 0.9375rem; color: var(--amarillo); text-underline-offset: 4px; }
 .volver .icono { transform: rotate(180deg); }
 .ficha-rejilla { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 64px; align-items: start; margin-top: 12px; }
-@media (max-width: 960px) { .ficha-rejilla { grid-template-columns: minmax(0, 1fr); gap: 8px; } }
+/*
+  En una columna el <aside> del contacto caia al final: en un telefono el boton de WhatsApp
+  aparecia despues de la presentacion, los servicios, el calendario entero, las credenciales, las
+  comunas y las reseñas. Se sube con `order`, NO reordenando el HTML: el orden del DOM (persona,
+  luego contacto) es el correcto para un lector de pantalla y para el foco del teclado, y `order`
+  no lo toca. A dos columnas no hace falta: el aside ya esta arriba a la derecha.
+*/
+@media (max-width: 960px) {
+  .ficha-rejilla { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .ficha-rejilla > .lateral { order: -1; margin-bottom: 28px; }
+}
 
 .persona { display: flex; gap: 24px; align-items: center; }
 .persona h1 { font-size: clamp(2rem, 5.4vw, 3.5rem); font-weight: 800; letter-spacing: -0.04em; line-height: 1; }
@@ -509,6 +519,8 @@ main:focus { outline: none; }
 .nota { display: flex; align-items: baseline; gap: 14px; margin-top: 16px; flex-wrap: wrap; }
 .nota-promedio { font-family: var(--mono); font-size: 3rem; font-weight: 700; letter-spacing: -0.05em; line-height: 1; color: var(--amarillo); }
 .nota-detalle { font-weight: 700; color: var(--suave); }
+/* El enlace a las reseñas: .enlace ya trae los 44 px de alto, aqui solo se separa del promedio. */
+.nota-enlace { margin-top: 4px; }
 
 .lateral { position: sticky; top: 96px; }
 @media (max-width: 960px) { .lateral { position: static; } }
@@ -580,6 +592,8 @@ main:focus { outline: none; }
 .credenciales strong { font-weight: 700; overflow-wrap: anywhere; }
 .credenciales small { color: var(--suave); font-weight: 600; font-size: 0.875rem; }
 .credenciales .sello, .credenciales .dato { margin-top: 6px; }
+/* Que significan «Verificada» y «Declarada por el usuario». Prosa, no etiqueta: se lee discreta. */
+.credenciales-nota { margin-top: 16px; max-width: 62ch; font-size: 0.875rem; font-weight: 600; color: var(--suave); }
 .credencial-confirmar { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-weight: 700; font-size: 0.9375rem; }
 
 /* ------------------------------------------------------------- Formularios */
