@@ -47,8 +47,22 @@ export function olvidarCsrf(): void {
 
 async function tokenCsrf(renovar = false): Promise<string> {
   if (ficha !== null && !renovar) return ficha
-  const r = await fetch(RUTA_CSRF, { credentials: 'include' })
-  const cuerpo = (await r.json()) as { token: string }
+  // `llamar` y no `fetch` a secas: si no hubo respuesta (servidor dormido que corta la conexion),
+  // el TypeError crudo de fetch llegaba a la pantalla y se mostraba como "algo salio mal".
+  const r = await llamar(RUTA_CSRF, { credentials: 'include' })
+
+  // La API vive en Render con plan gratis y se duerme: al despertar puede contestar un 502 con
+  // una pagina HTML. Asumir JSON aqui lanzaba un SyntaxError, que NO es ErrorApi, y la pantalla
+  // caia a su mensaje generico justo en la primera accion del dia. Un ErrorApi si se puede contar.
+  if (!r.ok) throw await fallo(r)
+  if (!(r.headers.get('content-type') ?? '').includes('json')) {
+    throw new ErrorApi(r.status, generico(500))
+  }
+
+  const cuerpo = (await r.json().catch(() => null)) as { token?: unknown } | null
+  if (typeof cuerpo?.token !== 'string' || cuerpo.token === '') {
+    throw new ErrorApi(r.status, generico(500))
+  }
   ficha = cuerpo.token
   return ficha
 }

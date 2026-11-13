@@ -304,3 +304,84 @@ describe('enviar con cabeceras propias', () => {
     expect(fetchFalso.mock.calls[1][1].headers['Idempotency-Key']).toBeUndefined()
   })
 })
+
+// La API vive en Render con plan gratis y se duerme a los ~15 minutos. La PRIMERA accion del dia
+// la despierta, y mientras despierta puede contestar un 502 con HTML o cortar la conexion. El
+// token CSRF es lo primero que se pide en cualquier cambio de estado: si ahi se asume JSON, lo
+// que llega a la pantalla es un SyntaxError, que no es ErrorApi, y la persona lee un generico.
+describe('el token CSRF cuando la API todavia no esta despierta', () => {
+  it('un 502 con HTML da un ErrorApi con su estado, no un error de sintaxis', async () => {
+    fetchFalso.mockResolvedValueOnce(
+      new Response('<html>502 Bad Gateway</html>', {
+        status: 502, headers: { 'content-type': 'text/html' },
+      }))
+
+    const e = await fallaDe(enviar('/api/citas', { bloqueId: 'b1' }))
+
+    expect(e).toBeInstanceOf(ErrorApi)
+    expect(e.estado).toBe(502)
+    expect(e.mensaje).toBe('El servidor tuvo un problema. Intenta de nuevo en un momento.')
+    // Y el POST no se manda sin token: habria vuelto 403 y tapado el motivo real.
+    expect(fetchFalso).toHaveBeenCalledTimes(1)
+  })
+
+  it('un fallo que SI viene en problem+json cuenta lo que dice la API', async () => {
+    // El limite de peticiones (Tasa.*) contesta JSON con `detail`: ese texto es mejor que
+    // cualquier generico, y solo se lee si se mira `r.ok` antes de buscar el token.
+    fetchFalso.mockResolvedValueOnce(
+      respuesta(429, { title: 'Demasiadas peticiones', detail: 'Espera un minuto y vuelve a intentar.' },
+        'application/problem+json'))
+
+    const e = await fallaDe(enviar('/api/citas', {}))
+
+    expect(e.estado).toBe(429)
+    expect(e.mensaje).toBe('Espera un minuto y vuelve a intentar.')
+    expect(fetchFalso).toHaveBeenCalledTimes(1)
+  })
+
+  it('un 200 que no es JSON tampoco se toma por JSON', async () => {
+    fetchFalso.mockResolvedValueOnce(
+      new Response('<html>Esperando a la API</html>', {
+        status: 200, headers: { 'content-type': 'text/html' },
+      }))
+
+    const e = await fallaDe(enviar('/api/citas', {}))
+
+    expect(e).toBeInstanceOf(ErrorApi)
+    expect(e.mensaje).toBe('El servidor tuvo un problema. Intenta de nuevo en un momento.')
+    expect(fetchFalso).toHaveBeenCalledTimes(1)
+  })
+
+  it('no se cree un token que no venga en una respuesta JSON', async () => {
+    // Lo que contesta mientras despierta no lo escribe la API: es la pagina de un intermediario.
+    // Un token sacado de ahi no vale, y mandarlo solo cambiaria el 502 por un 403 incomprensible.
+    fetchFalso.mockResolvedValueOnce(
+      new Response(JSON.stringify({ token: 'de-una-pagina-cualquiera' }), {
+        status: 200, headers: { 'content-type': 'text/html' },
+      }))
+
+    const e = await fallaDe(enviar('/api/citas', {}))
+
+    expect(e).toBeInstanceOf(ErrorApi)
+    expect(fetchFalso).toHaveBeenCalledTimes(1)
+  })
+
+  it('un JSON sin token es un fallo, no una cabecera que dice "undefined"', async () => {
+    fetchFalso.mockResolvedValueOnce(respuesta(200, { mensaje: 'despertando' }))
+
+    const e = await fallaDe(enviar('/api/citas', {}))
+
+    expect(e).toBeInstanceOf(ErrorApi)
+    expect(fetchFalso).toHaveBeenCalledTimes(1)
+  })
+
+  it('si la conexion se corta al pedir el token, el mensaje habla de la conexion', async () => {
+    fetchFalso.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+
+    const e = await fallaDe(enviar('/api/citas', {}))
+
+    expect(e).toBeInstanceOf(ErrorApi)
+    expect(e.estado).toBe(0)
+    expect(e.mensaje).toMatch(/conexi/i)
+  })
+})
