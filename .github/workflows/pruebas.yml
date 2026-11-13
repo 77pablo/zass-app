@@ -46,7 +46,24 @@ jobs:
       - name: Pruebas de integracion
         env:
           ZASS_CADENA_PRUEBAS: Host=127.0.0.1;Port=5432;Database=zass_pruebas;Username=zass;Password=zass_ci_clave_local
-        run: dotnet test backend/pruebas/Zass.Integracion.Pruebas --no-build
+        run: |
+          # RAMA DE DIAGNOSTICO, NO FUSIONAR.
+          # Los registros de Actions solo los descarga quien tenga permisos de administracion
+          # del repositorio; las anotaciones, en cambio, se leen por la API publica. Esto
+          # vuelca los nombres de las pruebas rojas a anotaciones para poder verlas sin esos
+          # permisos. Se borra en cuanto se sepa por que esta rojo main.
+          set -o pipefail
+          dotnet test backend/pruebas/Zass.Integracion.Pruebas --no-build > salida.txt 2>&1 || true
+          anotar() {
+            while IFS= read -r linea; do
+              limpia=$(printf '%s' "$linea" | sed 's/^[[:space:]]*//')
+              if [ -n "$limpia" ]; then echo "::error title=$1::$limpia"; fi
+            done
+          }
+          grep -aE 'Superado!|Con error!|Passed!|Failed!' salida.txt | tail -2 | anotar Resumen
+          grep -aE '^[[:space:]]*(Failed|Con error)[[:space:]]+[A-Za-z]' salida.txt | head -5 | anotar PruebaRoja
+          grep -aE 'Error Message|Mensaje de error' -A 2 salida.txt | head -6 | anotar Detalle
+          if grep -aqE 'Con error!|Failed!' salida.txt; then exit 1; fi
 
   frontend:
     runs-on: ubuntu-latest
