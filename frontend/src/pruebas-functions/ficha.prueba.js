@@ -401,3 +401,58 @@ describe('cabeceras de seguridad', () => {
     expect(CABECERAS_DE_SEGURIDAD['Content-Security-Policy']).not.toMatch(/script-src[^;]*unsafe-inline/)
   })
 })
+
+// ---------------------------------------------------------------- estrellas en Google (RN-S5-11)
+
+/**
+ * El JSON-LD declara `aggregateRating` solo con 3 o mas resenas. Es el mismo umbral de
+ * RN-S5-11 que aplica la ficha visible: publicar en los datos estructurados un promedio
+ * que la pagina no muestra es ofrecerle a Google un numero que no puede respaldar.
+ */
+describe('estrellas en Google: aggregateRating en el JSON-LD (RN-S5-11)', () => {
+  async function ldDeLaFicha() {
+    const d = dom(await (await pedir('marcela-soto')).text())
+    const script = d.querySelector('script[type="application/ld+json"]')
+    return script === null ? null : JSON.parse(script.textContent)
+  }
+
+  it('con 0 resenas no declara aggregateRating', async () => {
+    respuestaApi = () => json({ ...FICHA, promedioCalificacion: null, totalResenas: 0 })
+    expect((await ldDeLaFicha()).aggregateRating).toBeUndefined()
+  })
+
+  it('con 2 resenas no declara aggregateRating, aunque la API mandara un promedio numerico', async () => {
+    // La API por RN-S5-11 manda null con <3 resenas. Forzamos el peor caso —un numero con 2
+    // resenas— para verificar que el umbral lo aplica el codigo, no la fuente.
+    respuestaApi = () => json({ ...FICHA, promedioCalificacion: 4.5, totalResenas: 2 })
+    expect((await ldDeLaFicha()).aggregateRating).toBeUndefined()
+  })
+
+  it('con exactamente 3 resenas ya declara aggregateRating', async () => {
+    respuestaApi = () => json({ ...FICHA, promedioCalificacion: 5, totalResenas: 3 })
+    expect((await ldDeLaFicha()).aggregateRating).toMatchObject({ ratingValue: 5, reviewCount: 3 })
+  })
+
+  it('con 4 resenas y promedio de mas de un decimal, publica 1 decimal —lo mismo que la ficha visible', async () => {
+    respuestaApi = () => json({ ...FICHA, promedioCalificacion: 4.3333, totalResenas: 4 })
+    expect((await ldDeLaFicha()).aggregateRating).toEqual({
+      '@type': 'AggregateRating',
+      ratingValue: 4.3,
+      reviewCount: 4,
+      bestRating: 5,
+      worstRating: 1,
+    })
+  })
+
+  it('un impago con muchas resenas no lleva aggregateRating: ni siquiera emite el script ld+json', async () => {
+    respuestaApi = () => json({
+      ...FICHA,
+      suscripcionVigente: false,
+      promedioCalificacion: 4.8,
+      totalResenas: 50,
+    })
+    const d = dom(await (await pedir('marcela-soto')).text())
+    expect(d.querySelector('script[type="application/ld+json"]')).toBeNull()
+    expect(d.documentElement.outerHTML).not.toContain('aggregateRating')
+  })
+})
