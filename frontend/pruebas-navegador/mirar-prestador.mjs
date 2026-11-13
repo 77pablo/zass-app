@@ -139,8 +139,14 @@ try {
   await pagina.goto(`${BASE}/mi-ficha`, { waitUntil: 'networkidle' })
   await pagina.waitForTimeout(1200)
   const textoFicha = await pagina.locator('.no-encontrada, main').first().innerText().catch(() => '')
+  // Se mira la INSTRUCCION, no la palabra: la pantalla arreglada dice «no necesitas otro correo»,
+  // que es justo lo contrario, y buscar «otro correo» a secas la marcaba en rojo. Lo que no puede
+  // volver es pedirle que se registre otra vez con otra cuenta.
+  const mandaARegistrarse = /cuenta de profesional|con otro correo/i.test(textoFicha)
   comprobar('/mi-ficha NO manda a crear una segunda cuenta con otro correo',
-    !/otro correo/i.test(textoFicha), textoFicha.replace(/\n+/g, ' | ').slice(0, 220))
+    !mandaARegistrarse, textoFicha.replace(/\n+/g, ' | ').slice(0, 220))
+  comprobar('/mi-ficha le ofrece activar la ficha con la MISMA cuenta',
+    /ofrecer mis servicios/i.test(textoFicha), textoFicha.replace(/\n+/g, ' | ').slice(0, 160))
 
   await pagina.goto(`${BASE}/mis-citas`, { waitUntil: 'networkidle' })
   await pagina.getByRole('heading', { level: 1 }).waitFor({ timeout: 15000 })

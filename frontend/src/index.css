@@ -444,6 +444,12 @@ main:focus { outline: none; }
 /* -------------------------------------------------------------------- Busqueda */
 .buscar-cuerpo { padding-block: 28px 96px; }
 .orden-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
+/* «¿Hasta qué distancia?» (RN-S3-04). Solo aparece con la ubicación compartida. En su propia fila
+   y no mezclado con el orden: son dos preguntas distintas, y juntas la barra se hacía ilegible. */
+.radio-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
+.radio-titulo { font-size: 0.875rem; font-weight: 700; color: var(--suave); }
+.chip--radio { padding: 0 14px; }
 .orden-zona select {
   min-height: 44px; padding: 0 16px; border: 1px solid var(--linea-fuerte); border-radius: 999px; background: var(--vidrio); font-weight: 700; cursor: pointer;
 }
@@ -516,6 +522,20 @@ main:focus { outline: none; }
 .lateral-caja .boton--amarillo:hover { background: #000; }
 .lateral-caja .bloque-vacio { color: rgba(10, 10, 13, 0.7); }
 .letra-chica { margin-top: 14px; font-size: 0.875rem; color: var(--suave); font-weight: 600; }
+/*
+  D6 del repaso en navegador. El «Entrar» de «¿Ya tienes cuenta? Entrar» medía 18 px de alto: en un
+  telefono es un blanco que se falla, y justo debajo del boton grande de crear cuenta. No es prosa
+  sino una accion, asi que se le da cuerpo (inline-block + relleno) hasta los 44 px que recomienda
+  WCAG 2.5.8, sin convertirlo en boton: sigue leyendose como enlace dentro de la frase.
+  `vertical-align: middle` evita que el relleno empuje la linea de texto de al lado.
+*/
+.letra-chica a {
+  display: inline-block;
+  min-height: 44px;
+  padding: 12px 6px;
+  margin: -12px 0;
+  vertical-align: middle;
+}
 .lateral-caja .letra-chica { color: rgba(10, 10, 13, 0.75); }
 
 /* Mi ficha */

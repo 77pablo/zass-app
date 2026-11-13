@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { Pie } from '../marco/Pie'
+import { Contexto, type EstadoDeSesion, type Usuario } from '../sesion/contexto'
 import { Registrarse } from '../funciones/identidad/Registrarse'
 import { AvisoDeBorrador } from './AvisoDeBorrador'
 import { DatoLegal } from './DatoLegal'
@@ -12,6 +13,20 @@ import { BORRADOR_LEGAL, CORREO_PRIVACIDAD, estaPendiente, RESPONSABLE } from '.
 afterEach(() => { document.head.innerHTML = ''; document.title = '' })
 
 const enRuta = (ui: React.ReactElement) => render(<MemoryRouter>{ui}</MemoryRouter>)
+
+const DENTRO: Usuario = {
+  id: 'u1', correo: 'ana@zass.local', nombre: 'Ana', correoVerificado: true, roles: ['usuario'],
+}
+
+/** El pie lee la sesion, asi que necesita el contexto: sin el, `useSesion` lanza a proposito. */
+const elPie = (estado: EstadoDeSesion = 'fuera', usuario: Usuario | null = null) =>
+  render(
+    <MemoryRouter>
+      <Contexto.Provider value={{ estado, usuario, recargar: async () => {}, salir: async () => {} }}>
+        <Pie />
+      </Contexto.Provider>
+    </MemoryRouter>,
+  )
 
 describe.each([
   ['Términos de uso', Terminos],
@@ -137,10 +152,42 @@ describe('DatoLegal', () => {
 
 describe('enlaces a las paginas legales', () => {
   it('el pie lleva a terminos y a privacidad', () => {
-    enRuta(<Pie />)
+    elPie()
     const pie = within(screen.getByRole('contentinfo'))
     expect(pie.getByRole('link', { name: 'Términos de uso' })).toHaveAttribute('href', '/terminos')
     expect(pie.getByRole('link', { name: 'Privacidad' })).toHaveAttribute('href', '/privacidad')
+  })
+
+  // D5 del repaso en navegador: el pie le ofrecia «Entrar» y «Crear una cuenta» a quien ya estaba
+  // dentro, en la misma pantalla en que la cabecera le ofrece salir.
+  it('a quien esta fuera le ofrece entrar y crear una cuenta', () => {
+    elPie('fuera')
+    const pie = within(screen.getByRole('contentinfo'))
+    expect(pie.getByRole('link', { name: 'Entrar' })).toHaveAttribute('href', '/entrar')
+    expect(pie.getByRole('link', { name: 'Crear una cuenta' })).toHaveAttribute('href', '/crear-cuenta')
+  })
+
+  it('a quien ya entro no le ofrece entrar ni crear una cuenta: le ofrece sus propias paginas', () => {
+    elPie('dentro', DENTRO)
+    const pie = within(screen.getByRole('contentinfo'))
+    expect(pie.queryByRole('link', { name: 'Entrar' })).toBeNull()
+    expect(pie.queryByRole('link', { name: 'Crear una cuenta' })).toBeNull()
+    expect(pie.getByRole('link', { name: 'Mis citas' })).toHaveAttribute('href', '/mis-citas')
+    expect(pie.getByRole('link', { name: 'Ofrecer mis servicios' })).toHaveAttribute('href', '/ofrecer-servicios')
+  })
+
+  it('al prestador le ofrece su ficha, no «ofrecer mis servicios»', () => {
+    elPie('dentro', { ...DENTRO, roles: ['usuario', 'prestador'] })
+    const pie = within(screen.getByRole('contentinfo'))
+    expect(pie.getByRole('link', { name: 'Mi ficha' })).toHaveAttribute('href', '/mi-ficha')
+    expect(pie.queryByRole('link', { name: 'Ofrecer mis servicios' })).toBeNull()
+  })
+
+  it('mientras no se sabe si hay sesion no parpadea ninguna de las dos', () => {
+    elPie('cargando')
+    const pie = within(screen.getByRole('contentinfo'))
+    expect(pie.queryByRole('link', { name: 'Entrar' })).toBeNull()
+    expect(pie.queryByRole('link', { name: 'Mis citas' })).toBeNull()
   })
 
   it('el registro dice «Al crear tu cuenta aceptas» con enlaces a las dos, en pestaña nueva para no perder el formulario', () => {
