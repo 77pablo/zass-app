@@ -8,5 +8,7 @@ Disallow: /crear-cuenta
 Disallow: /recuperar-contrasena
 Disallow: /restablecer-contrasena
 Disallow: /verificar-correo
+Disallow: /t/
+Disallow: /tarjeta/
 
 Sitemap: https://zass.cl/sitemap.xml

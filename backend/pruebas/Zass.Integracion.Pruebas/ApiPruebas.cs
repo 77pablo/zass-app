@@ -25,7 +25,8 @@ public sealed class Aplicacion : WebApplicationFactory<Program>
     private readonly Dictionary<string, string?> _ajustes;
 
     public Aplicacion(
-        int? limiteAutenticacion = null, bool permitirSinDocumentos = true, int? limiteSensible = null)
+        int? limiteAutenticacion = null, bool permitirSinDocumentos = true, int? limiteSensible = null,
+        int? limitePublico = null)
     {
         _ajustes = new Dictionary<string, string?>
         {
@@ -37,7 +38,7 @@ public sealed class Aplicacion : WebApplicationFactory<Program>
             // mide el limite, las demas lo suben para no estorbarse entre si.
             ["Zass:Tasa:A"] = (limiteAutenticacion ?? 10_000).ToString(),
             ["Zass:Tasa:G"] = "10000",
-            ["Zass:Tasa:P"] = "10000",
+            ["Zass:Tasa:P"] = (limitePublico ?? 10_000).ToString(),
             ["Zass:Tasa:S"] = (limiteSensible ?? 10_000).ToString(),
 
             // Se fija SIEMPRE, y no se deja a appsettings.Development.json: cada prueba sabe en

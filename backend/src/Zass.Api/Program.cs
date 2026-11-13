@@ -101,6 +101,8 @@ app.MapearResenas();
 
 app.MapearVerificacion();
 
+app.MapearTarjetas();                                  // API-54 /t/{segmento} (CS-18)
+
 // Sonda de vida. Sin sesion y con el limite publico: tambien es un endpoint.
 app.MapGet("/api/salud", () => Results.Ok(new { estado = "vivo" }))
    .RequireRateLimiting(Tasa.Publico);

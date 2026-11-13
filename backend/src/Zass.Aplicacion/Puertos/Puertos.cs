@@ -5,6 +5,7 @@ using Zass.Dominio.Credenciales;
 using Zass.Dominio.Identidad;
 using Zass.Dominio.Reputacion;
 using Zass.Dominio.Suscripciones;
+using Zass.Dominio.Tarjetas;
 
 namespace Zass.Aplicacion.Puertos;
 
@@ -705,4 +706,14 @@ public interface IRepositorioAgenda
 
     void AgregarCita(Cita cita);
     void AgregarCambio(CambioCita cambio);
+}
+
+/// <summary>MOD-12 · TBL-25/26. Solo lo que CS-18 necesita; API-55 a API-59 agregaran lo suyo.</summary>
+public interface IRepositorioTarjetas
+{
+    /// <summary>La tarjeta con su perfil, o nulo. Comparacion exacta: el servicio ya normalizo.</summary>
+    Task<Tarjeta?> PorUrlEstableAsync(string urlEstable, CancellationToken ct = default);
+
+    /// <summary>Sin identidad del visitante (R-20): la entidad no tiene donde guardarla.</summary>
+    void AgregarEscaneo(EscaneoTarjeta escaneo);
 }

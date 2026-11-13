@@ -14,6 +14,7 @@ using Zass.Aplicacion.Busqueda;
 using Zass.Aplicacion.Geografia;
 using Zass.Aplicacion.Suscripciones;
 using Zass.Aplicacion.Resenas;
+using Zass.Aplicacion.Tarjetas;
 using Zass.Aplicacion.Puertos;
 using Zass.Infraestructura.Correo;
 using Zass.Infraestructura.Fondo;
@@ -178,6 +179,11 @@ public static class RegistroDeServicios
 
         // --- MOD-13 Suscripciones ---
         servicios.AddScoped<IServicioSuscripciones, ServicioSuscripciones>();
+
+        // --- MOD-12 Tarjetas NFC ---
+        // Scoped como los demas: comparten el DbContext de la peticion.
+        servicios.AddScoped<IRepositorioTarjetas, RepositorioTarjetasEfCore>();
+        servicios.AddScoped<IServicioTarjetas, ServicioTarjetas>();
 
         // --- Trabajos de fondo ---
         // ANCLAJE: el agente de los trabajos de fondo registra SOLO aqui (vencer suscripciones,

@@ -56,6 +56,13 @@ export default defineConfig({
         // Esto afecta SOLO al salto Vite -> API dentro de la misma maquina.
         secure: false,
       },
+      // API-54. La clave es '/t/' CON barra: Vite compara por prefijo, y '/t' a secas
+      // tambien se llevaria /terminos a la API.
+      '/t/': {
+        target: 'https://localhost:7277',
+        changeOrigin: false,
+        secure: false,
+      },
     },
   },
 

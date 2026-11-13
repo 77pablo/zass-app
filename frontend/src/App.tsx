@@ -19,6 +19,7 @@ import { Profesionales } from './paginas/Profesionales'
 import { ResenasDelPrestador } from './paginas/ResenasDelPrestador'
 import { Terminos } from './paginas/Terminos'
 import { RecuperarContrasena, RestablecerContrasena, VerificarCorreo } from './paginas/Recuperacion'
+import { AvisoDeTarjeta, TarjetaEnMayusculas } from './paginas/AvisoDeTarjeta'
 
 /**
  * Un sitio de varias paginas, no una pagina larga: cada seccion vive en su propia ruta y se
@@ -52,6 +53,10 @@ export function App() {
         <Route path="verificar-correo" element={<VerificarCorreo />} />
         <Route path="recuperar-contrasena" element={<RecuperarContrasena />} />
         <Route path="restablecer-contrasena" element={<RestablecerContrasena />} />
+        <Route path="tarjeta/no-valida" element={<AvisoDeTarjeta aviso="no-valida" />} />
+        <Route path="tarjeta/no-disponible" element={<AvisoDeTarjeta aviso="no-disponible" />} />
+        <Route path="tarjeta/sin-activar" element={<AvisoDeTarjeta aviso="sin-activar" />} />
+        <Route path="t/:segmento" element={<TarjetaEnMayusculas />} />
         <Route path="*" element={<NoEncontrada />} />
       </Route>
     </Routes>
