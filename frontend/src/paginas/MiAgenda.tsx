@@ -224,9 +224,9 @@ function TarjetaDeServicio({ servicio }: { servicio: DisponibilidadDeServicio })
                   </select>
                 </label>
                 <button type="button" className="boton boton--chico"
-                  aria-label={`Quitar horario ${n} (${DIAS.find((d) => d.valor === f.diaSemana)?.nombre.toLowerCase() ?? ''} de ${f.horaInicio} a ${f.horaFin})`}
+                  aria-label={`Quitar este horario ${n} (${DIAS.find((d) => d.valor === f.diaSemana)?.nombre.toLowerCase() ?? ''} de ${f.horaInicio} a ${f.horaFin})`}
                   onClick={() => { setFranjas((fs) => fs.filter((_, k) => k !== i)); setErrores({}); setListo(null) }}>
-                  Quitar horario
+                  Quitar este horario
                 </button>
               </div>
               {errores[i] && <p className="aviso aviso--malo">{errores[i]}</p>}
@@ -293,10 +293,9 @@ function BloquearFechas() {
       const siguiente = new Date(`${hasta}T12:00:00Z`)
       siguiente.setUTCDate(siguiente.getUTCDate() + 1)
       await crearBloqueo(inicioDeDiaEnChile(desde), inicioDeDiaEnChile(siguiente.toISOString().slice(0, 10)), motivo)
-      // J3 #3 y #4 (texto propuesto): mismo formato que la lista, y un solo día se dice como un día.
-      const unDia = desde === hasta
-      const cuando = unDia ? `el ${fechaCorta(desde)}` : `del ${fechaCorta(desde)} al ${fechaCorta(hasta)}`
-      setAviso({ tono: 'bueno', texto: `Bloqueaste ${cuando}: nadie podrá agendar ${unDia ? 'ese día' : 'esos días'}.` })
+      // J3 #3 y #4: mismo formato de fecha que la lista, y un solo día se dice como un día.
+      const cuando = desde === hasta ? `el ${fechaCorta(desde)}` : `del ${fechaCorta(desde)} al ${fechaCorta(hasta)}`
+      setAviso({ tono: 'bueno', texto: `Listo: ${cuando} nadie podrá agendar contigo.` })
       setDesde(''); setHasta(''); setMotivo('')
       setRecarga((n) => n + 1)
     } catch (er) {
@@ -366,9 +365,9 @@ function BloquearFechas() {
               <span>{rangoDeBloqueo(b)}</span>
               {b.motivo && <span className="franja-motivo">· {b.motivo}</span>}
               <button type="button" className="boton boton--chico" disabled={quitando !== null}
-                aria-label={`Quitar bloqueo ${i + 1} (${rangoDeBloqueo(b)})`}
+                aria-label={`Quitar este bloqueo ${i + 1} (${rangoDeBloqueo(b)})`}
                 onClick={() => { void quitar(b.id) }}>
-                {quitando === b.id ? 'Quitando…' : 'Quitar bloqueo'}
+                {quitando === b.id ? 'Quitando…' : 'Quitar este bloqueo'}
               </button>
             </li>
           ))}
