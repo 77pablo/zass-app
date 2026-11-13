@@ -33,6 +33,7 @@ export function Cabecera() {
   const accion = estado === 'dentro' ? (
     <>
       <NavLink to="/mis-citas" className="nav-enlace">Mis citas</NavLink>
+      <NavLink to="/mis-resenas" className="nav-enlace">Mis reseñas</NavLink>
       {esPrestador ? (
         <>
           <NavLink to="/mi-ficha" className="nav-enlace">Mi ficha</NavLink>
@@ -80,6 +81,11 @@ export function Cabecera() {
           {estado === 'dentro' && (
             <NavLink to="/mis-citas" className="menu-enlace">
               Mis citas<Icono nombre="flecha" />
+            </NavLink>
+          )}
+          {estado === 'dentro' && (
+            <NavLink to="/mis-resenas" className="menu-enlace">
+              Mis reseñas<Icono nombre="flecha" />
             </NavLink>
           )}
           {estado === 'dentro' && esPrestador && (

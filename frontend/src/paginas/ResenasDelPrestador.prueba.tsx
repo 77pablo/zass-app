@@ -25,7 +25,7 @@ function ficha(extra: Record<string, unknown> = {}) {
 function publica(extra: Record<string, unknown> = {}) {
   return {
     id: 'r1', calificacion: 5, comentario: 'Llegó puntual y dejó todo funcionando.',
-    aspectos: ['puntualidad'], tipo: 'Servicio', editada: false,
+    aspectos: ['puntualidad'], tipo: 'Servicio', origen: 'Cita', editada: false,
     publicadaEn: '2026-11-10T14:00:00Z', respuesta: null, ...extra,
   }
 }
@@ -217,5 +217,23 @@ describe('lo que dicen de alguien (S5)', () => {
 
     const tarjeta = (await screen.findByText('Llegó puntual y dejó todo funcionando.')).closest('article')
     expect(within(tarjeta as HTMLElement).getByText(/no habla del servicio/i)).toBeInTheDocument()
+  })
+
+  /**
+   * Decision de Pablo del 11-nov: quien lee tiene que poder distinguir la reseña que ZASS! vio
+   * pasar por su agenda de la que no. Solo se rotula la que NO tuvo cita.
+   */
+  it('rotula la reseña de contacto directo, y no pone etiqueta a la que vino de una cita', async () => {
+    paginas[''] = {
+      resenas: [publica({ id: 'r1', origen: 'Directo' }), publica({ id: 'r2', origen: 'Cita', comentario: 'Vino con hora agendada y todo bien.' })],
+      siguienteCursor: null,
+    }
+    pintar()
+
+    const directa = (await screen.findByText('Llegó puntual y dejó todo funcionando.')).closest('article')
+    expect(within(directa as HTMLElement).getByText('Contacto directo, sin cita')).toBeInTheDocument()
+
+    const conCita = screen.getByText('Vino con hora agendada y todo bien.').closest('article')
+    expect(within(conCita as HTMLElement).queryByText(/sin cita|con cita/i)).not.toBeInTheDocument()
   })
 })

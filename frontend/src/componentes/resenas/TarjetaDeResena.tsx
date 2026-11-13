@@ -6,6 +6,7 @@ import {
   ASPECTOS, DETALLE_MAXIMO, MOTIVOS_DE_REPORTE, RESPUESTA_MAXIMA, largo, reportar, responder,
   type MotivoDeReporte, type ResenaPublica,
 } from '../../funciones/resenas/servicio'
+import { ORIGEN_DIRECTO, POR_INASISTENCIA } from '../../funciones/resenas/textos'
 
 const ETIQUETA_DE_ASPECTO = new Map(ASPECTOS.map((a) => [a.valor as string, a.etiqueta as string]))
 
@@ -65,9 +66,11 @@ export function TarjetaDeResena({ resena, puedeReportar, puedeResponder, alCambi
         </span>
       </header>
 
-      {resena.tipo === 'Inasistencia' && (
-        <p className="resena-rotulo">Reseña por inasistencia: no habla del servicio.</p>
-      )}
+      {resena.tipo === 'Inasistencia' && <p className="resena-rotulo">{POR_INASISTENCIA}</p>}
+
+      {/* Decision de Pablo del 11-nov: quien lee tiene que saber que ZASS! no vio pasar este
+          servicio por su agenda. La reseña nacida de una cita no lleva rotulo (ver `textos.ts`). */}
+      {resena.origen === 'Directo' && <p className="resena-rotulo">{ORIGEN_DIRECTO}</p>}
 
       <p className="texto-largo">{resena.comentario}</p>
 

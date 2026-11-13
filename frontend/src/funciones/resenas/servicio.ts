@@ -80,6 +80,13 @@ export interface Elegibilidad {
 export type TipoResena = 'Servicio' | 'Inasistencia'
 export type EstadoResena = 'Publicada' | 'OcultaEnModeracion' | 'Retirada'
 
+/**
+ * De donde salio el derecho a reseñar, y lo UNICO del contacto que sale hacia fuera (CU-16 §7).
+ * `Directo` es la decision de Pablo del 11-nov-2026: quien marco "ya me atendio" deja una reseña
+ * que ZASS! no vio pasar por su agenda, y eso se rotula.
+ */
+export type OrigenDeResena = 'Cita' | 'Directo'
+
 /** Lo que ve su AUTOR: con el plazo de edicion y el estado. */
 export interface Resena {
   id: string
@@ -107,9 +114,30 @@ export interface ResenaPublica {
   comentario: string
   aspectos: string[]
   tipo: TipoResena
+  origen: OrigenDeResena
   editada: boolean
   publicadaEn: string
   respuesta: RespuestaPublica | null
+}
+
+/**
+ * API-65. Una reseña MIA: lo que necesito para reconocerla, llegar a la ficha de quien reseñe y
+ * saber si todavia puedo cambiarla. Trae el estado porque una reseña retirada sigue siendo mia y
+ * merece explicacion, no desaparecer de la lista sin que nadie diga nada.
+ */
+export interface MiResena {
+  id: string
+  perfilNombre: string
+  perfilSlug: string
+  calificacion: number
+  comentario: string
+  aspectos: string[]
+  tipo: TipoResena
+  origen: OrigenDeResena
+  estado: EstadoResena
+  editada: boolean
+  publicadaEn: string
+  editableHasta: string
 }
 
 export interface PaginaDeResenas {
@@ -195,6 +223,15 @@ export function reportar(
   return enviar<void>(`/api/resenas/${encodeURIComponent(resenaId)}/reporte`, {
     motivo, detalle: detalle && detalle.trim() !== '' ? detalle.trim() : null,
   })
+}
+
+/**
+ * API-65. Las que escribi, de la mas nueva a la mas vieja. EL ORDEN ES CONTRATO: lo garantiza el
+ * servidor y la pantalla no vuelve a ordenar, para que no haya dos criterios que puedan discrepar.
+ * El autor lo pone la sesion: no hay parametro con el que pedir las de otra persona.
+ */
+export function misResenas(): Promise<MiResena[]> {
+  return obtener<MiResena[]>('/api/mi/resenas')
 }
 
 /** Lectura publica de las reseñas de una ficha. Sin sesion, igual que la ficha. */
