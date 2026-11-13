@@ -310,7 +310,10 @@ public class ResenasPruebas
     [Fact]
     public async Task Una_cita_con_inasistencia_se_informa_como_tal_y_no_habilita()
     {
-        // Decisión pendiente (ESTADO.md): NoAsistio no dice quién faltó, así que se cierra la puerta.
+        // Ya NO es una decisión pendiente (se tomó el 11-nov-2026). Esta cita queda en
+        // `no_asistio` sin que nadie haya acusado a nadie, que es el caso de las filas
+        // anteriores a la regla: se cae del lado que no habilita. Quién faltó y qué pasa en
+        // cada caso está en ElegibilidadPorInasistenciaPruebas.
         UnContacto(cita: UnaCita(EstadoCita.NoAsistio));
 
         var e = await Elegibilidad();
@@ -467,6 +470,46 @@ public class ResenasPruebas
         Assert.False(resena.Editada);
         Assert.Equal(Ahora, resena.PublicadaEn);
         Assert.Equal(Ahora.AddHours(72), resena.EditableHasta);
+    }
+
+    /// <summary>
+    /// CU-16 4C.3: «El comentario se marca visiblemente como "reseña por inasistencia"». Ese
+    /// rótulo sale de <c>Tipo</c> en la FILA, así que lo que hay que mirar es la reseña
+    /// publicada, no lo que contestó la elegibilidad.
+    ///
+    /// <para>
+    /// Esta prueba nació de una mutación, el 12-nov-2026: devolver `Tipo = elegibilidad.Tipo` al
+    /// `TipoResena.Servicio` fijo que había antes dejaba las 709 unitarias EN VERDE. Era el único
+    /// sitio del sistema donde se escribe `Inasistencia` y no lo vigilaba nada: la elegibilidad
+    /// tenía prueba, el valor que de verdad se guarda no.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Con_el_prestador_ausente_la_resena_publicada_nace_marcada_por_inasistencia()
+    {
+        var cita = UnaCita(EstadoCita.NoAsistio);
+        cita.QuienFalto = FaltaEnCita.Prestador;
+        var c = UnContacto(hace: TimeSpan.FromMinutes(5), cita: cita);
+
+        var r = await _servicio.PublicarAsync(Pub(c));
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(TipoResena.Inasistencia, Assert.Single(_repo.Resenas).Tipo);
+    }
+
+    /// <summary>
+    /// El contraste, en la misma forma: una cita realizada publica una reseña de SERVICIO. Sin
+    /// el par, poner `Inasistencia` fijo en vez de `Servicio` fijo volvería a pasar inadvertido.
+    /// </summary>
+    [Fact]
+    public async Task Con_la_cita_realizada_la_resena_publicada_nace_de_servicio()
+    {
+        var c = UnContacto(hace: TimeSpan.FromMinutes(5), cita: UnaCita(EstadoCita.Realizada));
+
+        var r = await _servicio.PublicarAsync(Pub(c));
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(TipoResena.Servicio, Assert.Single(_repo.Resenas).Tipo);
     }
 
     [Fact]

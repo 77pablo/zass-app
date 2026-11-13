@@ -165,12 +165,25 @@ public sealed class RepositorioAgendaEnMemoria : IRepositorioAgenda
                  && c.PerfilPrestadorId == perfilPrestadorId
                  && c.EstaActiva()));
 
+    // OJO: esta condicion es una COPIA de la de RepositorioAgendaEfCore. Las dos tienen que
+    // decir lo mismo, y nada en las pruebas unitarias lo comprueba: si alguien cambiara el SQL
+    // de alla, esto seguiria verde. Lo unico que ve esa diferencia es la prueba de integracion.
     public Task<bool> HuboCitaRealizadaAsync(
         Guid buscadorId, Guid perfilPrestadorId, CancellationToken ct = default) =>
         Task.FromResult(_base.Citas.Any(
             c => c.BuscadorId == buscadorId
                  && c.PerfilPrestadorId == perfilPrestadorId
-                 && c.Estado is EstadoCita.Realizada or EstadoCita.NoAsistio));
+                 && (c.Estado == EstadoCita.Realizada
+                     || (c.Estado == EstadoCita.NoAsistio
+                         && c.QuienFalto == FaltaEnCita.Prestador))));
+
+    public Task<IReadOnlyList<Cita>> CitasEnDisputaAsync(int maximo, CancellationToken ct = default)
+    {
+        IReadOnlyList<Cita> r = _base.Citas
+            .Where(c => c.Estado == EstadoCita.NoAsistio && c.QuienFalto == FaltaEnCita.Discrepancia)
+            .OrderBy(c => c.CreadaEn).Take(maximo).ToList();
+        return Task.FromResult(r);
+    }
 
     public Task<IReadOnlyList<Cita>> CitasDeBuscadorAsync(
         Guid buscadorId, CancellationToken ct = default)

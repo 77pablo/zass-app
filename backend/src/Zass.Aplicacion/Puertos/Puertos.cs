@@ -653,6 +653,13 @@ public interface IRepositorioAgenda
     Task<bool> HuboCitaRealizadaAsync(
         Guid buscadorId, Guid perfilPrestadorId, CancellationToken ct = default);
 
+    /// <summary>
+    /// La cola interna de revision (decision de Pablo, 11-nov-2026): las citas en las que cada
+    /// parte acusa a la otra de no haber ido. Sin tabla aparte y sin aviso a nadie, porque
+    /// MOD-06 no emite notificaciones: la cola ES esta consulta.
+    /// </summary>
+    Task<IReadOnlyList<Cita>> CitasEnDisputaAsync(int maximo, CancellationToken ct = default);
+
     /// <summary>Las citas de alguien, de los dos lados. Con el bloque y el servicio incluidos.</summary>
     Task<IReadOnlyList<Cita>> CitasDeBuscadorAsync(
         Guid buscadorId, CancellationToken ct = default);

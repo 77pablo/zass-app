@@ -693,13 +693,16 @@ public sealed class ServicioAgenda : IServicioAgenda
             var cita = await _repo.CitaParaCambioAsync(citaId, t);
 
             // Solo el prestador, y el buscador recibe el MISMO 404 que un desconocido. Es la
-            // defensa que cierra CU-16: si el buscador pudiera marcarla, bastaría agendar y
-            // automarcar para fabricar elegibilidad de reseña.
+            // defensa que cierra CU-16: si el buscador pudiera marcar «asistió», bastaría
+            // agendar y automarcar para fabricar elegibilidad de reseña.
             if (QuienEs(cita, autor) is not Papel.Prestador)
                 return Resultado.Falla<CitaDto>(Fallas.NoEncontrado, "Esa cita no existe.");
 
             var anterior = cita!.Estado;
-            var r = cita.RegistrarAsistencia(asistio);
+            // `asistio: false` ya no es «no pasó nada»: es el prestador acusando al CLIENTE.
+            var r = asistio
+                ? cita.RegistrarAsistencia()
+                : cita.AcusarInasistencia(FaltaEnCita.Cliente);
             if (!r.Exito) return Resultado.Falla<CitaDto>(r.Codigo!, r.Mensaje!);
 
             // T9/T10: el bloque pasa a vencido, no vuelve a estar libre: la hora ya ocurrió.
@@ -708,6 +711,46 @@ public sealed class ServicioAgenda : IServicioAgenda
                 cita, anterior, TipoCambio.Asistencia, autor, null, false, _reloj.Ahora, t);
             return Resultado.Ok(ADto(cita, nueva: false));
         }, ct);
+
+    /// <summary>
+    /// La otra mitad de T10 (decisión de Pablo, 11-nov-2026): el CLIENTE dice que el prestador
+    /// no llegó.
+    ///
+    /// No hay un parámetro para decir a quién se acusa, y eso ES la regla: quien llama no elige,
+    /// se deduce de su papel en la cita. Acusarse a uno mismo, o acusar en nombre del otro, no
+    /// es algo que haya que rechazar: es algo que no se puede ni escribir.
+    ///
+    /// Esto NO abre el agujero que cierra la guarda de arriba. Marcar que el prestador faltó
+    /// habilita una reseña LIMITADA sobre el plantón (CU-16 4C); no fabrica la reseña de
+    /// servicio, que sigue necesitando que el prestador marque «asistió» o que pasen las 72 h.
+    /// </summary>
+    public Task<Resultado<CitaDto>> AcusarAusenciaDelPrestadorAsync(
+        Guid citaId, AutorDeCambio autor, CancellationToken ct = default) =>
+        _trabajo.EnTransaccionAsync(async t =>
+        {
+            var cita = await _repo.CitaParaCambioAsync(citaId, t);
+
+            if (QuienEs(cita, autor) is not Papel.Buscador)
+                return Resultado.Falla<CitaDto>(Fallas.NoEncontrado, "Esa cita no existe.");
+
+            var anterior = cita!.Estado;
+            var r = cita.AcusarInasistencia(FaltaEnCita.Prestador);
+            if (!r.Exito) return Resultado.Falla<CitaDto>(r.Codigo!, r.Mensaje!);
+
+            cita.BloqueHorario?.Vencer();
+            await CerrarCambioAsync(
+                cita, anterior, TipoCambio.Asistencia, autor, null, false, _reloj.Ahora, t);
+            return Resultado.Ok(ADto(cita, nueva: false));
+        }, ct);
+
+    /// <summary>
+    /// La cola interna de revisión. Hoy no la consume ninguna pantalla —el panel interno no
+    /// existe todavía— pero la consulta vive aquí y no en un comentario, para que quien
+    /// construya ese panel no tenga que volver a decidir qué es «una cita en disputa».
+    /// </summary>
+    public Task<IReadOnlyList<Cita>> CitasEnDisputaAsync(
+        int maximo = MaximoPorPasada, CancellationToken ct = default) =>
+        _repo.CitasEnDisputaAsync(maximo, ct);
 
     // ------------------------------------------------------------- lo compartido
 

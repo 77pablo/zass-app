@@ -26,17 +26,10 @@ public class Contacto
 
     public int DiasTranscurridos(DateTime ahora) => (int)(ahora - OcurridoEn).TotalDays;
 
-    /// <summary>
-    /// La regla completa de elegibilidad. Una cita realizada habilita de inmediato;
-    /// un contacto suelto, a los 7 dias (ventana anti-abuso).
-    /// </summary>
-    public bool HabilitaResena(DateTime ahora)
-    {
-        if (Resena is not null) return false;
-        if (Cita is not null)
-            return Cita.Estado is EstadoCita.Realizada or EstadoCita.NoAsistio;
-        return DiasTranscurridos(ahora) >= 7;
-    }
+    // Aqui vivia `HabilitaResena(ahora)`, que decia llamarse «la regla completa de elegibilidad»
+    // y no lo era: no tenia un solo llamador, y respondia que si ante CUALQUIER `no_asistio`,
+    // justo lo contrario de lo que respondia la regla viva. Se borro. La regla completa es
+    // `ReglasDeResenas.EvaluarContacto`, y es la unica.
 }
 
 /// <summary>CL-20 · TBL-22. Opinion con calificacion.</summary>

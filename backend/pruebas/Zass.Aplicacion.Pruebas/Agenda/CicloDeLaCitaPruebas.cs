@@ -518,7 +518,7 @@ public class CicloDeLaCitaPruebas
     }
 
     [Fact]
-    public async Task Marcar_asistencia_habilita_la_resena_y_marcar_inasistencia_tambien()
+    public async Task Marcar_asistencia_habilita_la_resena()
     {
         var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddHours(3));
         cita.Estado = EstadoCita.PendienteAsistencia;
@@ -526,6 +526,125 @@ public class CicloDeLaCitaPruebas
         await _servicio.RegistrarAsistenciaAsync(cita.Id, ComoPrestador, asistio: true);
 
         Assert.True(await _servicio.CitaRealizadaAsync(_buscador.Id, _prestador.Id));
+    }
+
+    // ========================================================= CS-12, la mitad del cliente
+
+    /// <summary>
+    /// Decisión de Pablo (11-nov-2026). `asistio: false` del prestador ya no es «no pasó
+    /// nada»: es una acusación al CLIENTE, y eso deja a la cita sin reseña.
+    /// </summary>
+    [Fact]
+    public async Task El_prestador_marca_que_falto_el_cliente_y_el_cliente_no_puede_resenar()
+    {
+        var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddHours(3));
+        cita.Estado = EstadoCita.PendienteAsistencia;
+
+        var r = await _servicio.RegistrarAsistenciaAsync(cita.Id, ComoPrestador, asistio: false);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(FaltaEnCita.Cliente, cita.QuienFalto);
+        Assert.False(await _servicio.CitaRealizadaAsync(_buscador.Id, _prestador.Id));
+    }
+
+    /// <summary>La otra mitad: el cliente dice que lo dejaron plantado, y sí puede reseñar.</summary>
+    [Fact]
+    public async Task El_cliente_marca_que_falto_el_prestador_y_si_puede_resenar()
+    {
+        var (cita, bloque) = await UnaCitaAsync(inicio: Ahora.AddHours(3));
+        cita.Estado = EstadoCita.PendienteAsistencia;
+
+        var r = await _servicio.AcusarAusenciaDelPrestadorAsync(cita.Id, ComoBuscador);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(EstadoCita.NoAsistio, cita.Estado);
+        Assert.Equal(FaltaEnCita.Prestador, cita.QuienFalto);
+        Assert.Equal(EstadoBloque.Vencido, bloque.Estado);
+        Assert.True(await _servicio.CitaRealizadaAsync(_buscador.Id, _prestador.Id));
+    }
+
+    /// <summary>
+    /// «Cada parte solo puede acusar a la otra». El prestador no tiene por dónde decir que
+    /// faltó él mismo, y el buscador no tiene por dónde decir que faltó él: lo impide la
+    /// forma de los métodos, pero esto comprueba que además el papel se verifica. El
+    /// prestador que llame al endpoint del cliente recibe el MISMO 404 que un desconocido.
+    /// </summary>
+    [Fact]
+    public async Task El_prestador_no_puede_acusarse_a_si_mismo_por_el_camino_del_cliente()
+    {
+        var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddHours(3));
+        cita.Estado = EstadoCita.PendienteAsistencia;
+
+        var r = await _servicio.AcusarAusenciaDelPrestadorAsync(cita.Id, ComoPrestador);
+
+        Assert.Equal(Fallas.NoEncontrado, r.Codigo);
+        Assert.Equal(FaltaEnCita.Nadie, cita.QuienFalto);
+        Assert.Equal(EstadoCita.PendienteAsistencia, cita.Estado);
+    }
+
+    [Fact]
+    public async Task Un_desconocido_no_puede_acusar_a_nadie()
+    {
+        var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddHours(3));
+        cita.Estado = EstadoCita.PendienteAsistencia;
+
+        var r = await _servicio.AcusarAusenciaDelPrestadorAsync(cita.Id, ComoDesconocido);
+
+        Assert.Equal(Fallas.NoEncontrado, r.Codigo);
+        Assert.Equal(FaltaEnCita.Nadie, cita.QuienFalto);
+    }
+
+    /// <summary>
+    /// El desenlace que importa de verdad: si se contradicen, la reseña se bloquea y la cita
+    /// cae en la cola interna de revisión. No gana el que habló primero.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]    // habla primero el prestador
+    [InlineData(false)]   // habla primero el cliente
+    public async Task Si_los_dos_se_acusan_la_resena_se_bloquea_y_la_cita_queda_en_la_cola(
+        bool primeroElPrestador)
+    {
+        var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddHours(3));
+        cita.Estado = EstadoCita.PendienteAsistencia;
+
+        if (primeroElPrestador)
+        {
+            Assert.True((await _servicio.RegistrarAsistenciaAsync(cita.Id, ComoPrestador, false)).Exito);
+            Assert.True((await _servicio.AcusarAusenciaDelPrestadorAsync(cita.Id, ComoBuscador)).Exito);
+        }
+        else
+        {
+            Assert.True((await _servicio.AcusarAusenciaDelPrestadorAsync(cita.Id, ComoBuscador)).Exito);
+            Assert.True((await _servicio.RegistrarAsistenciaAsync(cita.Id, ComoPrestador, false)).Exito);
+        }
+
+        Assert.Equal(FaltaEnCita.Discrepancia, cita.QuienFalto);
+        Assert.False(await _servicio.CitaRealizadaAsync(_buscador.Id, _prestador.Id));
+        Assert.Contains(await _servicio.CitasEnDisputaAsync(), c => c.Id == cita.Id);
+    }
+
+    /// <summary>Una cita con una sola versión NO entra en la cola: no hay nada que revisar.</summary>
+    [Fact]
+    public async Task Una_inasistencia_sin_contradiccion_no_entra_en_la_cola_de_revision()
+    {
+        var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddHours(3));
+        cita.Estado = EstadoCita.PendienteAsistencia;
+
+        await _servicio.RegistrarAsistenciaAsync(cita.Id, ComoPrestador, asistio: false);
+
+        Assert.Empty(await _servicio.CitasEnDisputaAsync());
+    }
+
+    [Fact]
+    public async Task El_cliente_no_puede_acusar_antes_de_que_pase_la_hora()
+    {
+        var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddDays(3));
+
+        var r = await _servicio.AcusarAusenciaDelPrestadorAsync(cita.Id, ComoBuscador);
+
+        Assert.Equal(Fallas.Conflicto, r.Codigo);
+        Assert.Equal(EstadoCita.Confirmada, cita.Estado);
+        Assert.Equal(FaltaEnCita.Nadie, cita.QuienFalto);
     }
 
     // ========================================================= el historial y la versión
