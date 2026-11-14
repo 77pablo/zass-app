@@ -50,7 +50,8 @@ public class AgendaIntegracionPruebas : IAsyncLifetime
                 new RepositorioUsuariosEfCore(ctx), new RepositorioPerfilesEfCore(ctx)),
             new ServicioSuscripciones(
                 new RepositorioSuscripcionesEfCore(ctx), trabajo, _reloj, auditor,
-                new ColaNotificacionesEfCore(ctx)));
+                new ColaNotificacionesEfCore(ctx)),
+            new ColaNotificacionesEfCore(ctx));
         return (agenda, ctx);
     }
 
@@ -616,6 +617,81 @@ public class AgendaIntegracionPruebas : IAsyncLifetime
             c => c.BloqueHorarioId == nuevo && c.Estado == EstadoCita.Confirmada));
     }
 
+    // ========================================================= JQ-1 avisos contra la base
+
+    /// <summary>
+    /// Lo que la lista en memoria no contesta: que los avisos queden de verdad en TBL-27, en la
+    /// misma transacción que la cita, con la relectura del perfil hecha por el SQL real, y que el
+    /// tipo se guarde como el texto que el despacho busca.
+    /// </summary>
+    [Fact]
+    public async Task Agendar_y_cancelar_dejan_los_avisos_en_la_tabla_de_notificaciones()
+    {
+        var bloque = await UnBloqueLibreAsync(_reloj.Ahora.AddDays(3));
+        var replica = UnaReplica();
+
+        var cita = await replica.Agenda.AgendarAsync(new AgendarCmd(
+            _usuarioBuscador, bloque, $"av-{Guid.NewGuid():N}", null));
+        Assert.True(cita.Exito, cita.Mensaje);
+        var id = cita.Valor!.Id;
+
+        var cancelada = await replica.Agenda.CancelarAsync(new CancelarCitaCmd(
+            id, new AutorDeCambio(_usuarioBuscador, null), $"avc-{Guid.NewGuid():N}", null));
+        Assert.True(cancelada.Exito, cancelada.Mensaje);
+
+        using var ctx = ContextoDePrueba.Crear();
+        var filas = await ctx.Database.SqlQueryRaw<string>(
+                """
+                SELECT tipo || '|' || clave_idempotencia || '|' || destinatario_id || '|' || estado
+                       || '|' || canal || '|' || cuerpo AS "Value"
+                FROM notificaciones WHERE cita_id = {0} ORDER BY clave_idempotencia
+                """, id)
+            .ToListAsync();
+
+        Assert.Equal(new[]
+        {
+            $"CitaCancelada|cita-cancelada:{id}|{_usuarioPrestador}|Programada|Correo|{{\"rol\":\"prestador\"}}",
+            $"CitaConfirmada|cita-confirmada:{id}:buscador|{_usuarioBuscador}|Programada|Correo|{{\"rol\":\"buscador\"}}",
+            $"CitaConfirmada|cita-confirmada:{id}:prestador|{_usuarioPrestador}|Programada|Correo|{{\"rol\":\"prestador\"}}",
+        }, filas);
+    }
+
+    /// <summary>
+    /// PLAN-JOAQUIN §7 pedía comprobarlo en <c>pg_constraint</c> y no confiar en el modelo: si
+    /// hubiera un CHECK sobre los valores de <c>tipo</c>, los cinco Cita* fallarían al insertar.
+    /// Y las claves ajenas, escritas a mano: la limpieza de estas pruebas borra las citas antes
+    /// que los avisos, y eso solo funciona mientras <c>cita_id</c> no tenga una.
+    /// </summary>
+    [Fact]
+    public async Task La_tabla_de_notificaciones_no_restringe_el_tipo_y_solo_tiene_la_clave_ajena_al_destinatario()
+    {
+        using var ctx = ContextoDePrueba.Crear();
+
+        var checks = await ctx.Database.SqlQueryRaw<string>(
+                """
+                SELECT pg_get_constraintdef(oid) AS "Value" FROM pg_constraint
+                WHERE conrelid = 'notificaciones'::regclass AND contype = 'c'
+                """)
+            .ToListAsync();
+        var ajenas = await ctx.Database.SqlQueryRaw<string>(
+                """
+                SELECT pg_get_constraintdef(oid) AS "Value" FROM pg_constraint
+                WHERE conrelid = 'notificaciones'::regclass AND contype = 'f'
+                """)
+            .ToListAsync();
+        var largoDelTipo = await ctx.Database.SqlQueryRaw<int>(
+                """
+                SELECT character_maximum_length AS "Value" FROM information_schema.columns
+                WHERE table_name = 'notificaciones' AND column_name = 'tipo'
+                """)
+            .SingleAsync();
+
+        Assert.DoesNotContain(checks, c => c.Contains("tipo"));
+        Assert.Equal(new[] { "FOREIGN KEY (destinatario_id) REFERENCES usuarios(id) ON DELETE CASCADE" }, ajenas);
+        // El nombre más largo de los cinco, «CitaReprogramada», tiene 16: cabe con holgura en 40.
+        Assert.Equal(40, largoDelTipo);
+    }
+
     // ========================================================= A-09 contra la base
 
     /// <summary>
@@ -764,7 +840,8 @@ public class AgendaIntegracionPruebas : IAsyncLifetime
             new ServicioIdentidad(new RepositorioUsuariosEfCore(ctx), new RepositorioPerfilesEfCore(ctx)),
             new ServicioSuscripciones(
                 new RepositorioSuscripcionesEfCore(ctx), trabajo, reloj, auditor,
-                new ColaNotificacionesEfCore(ctx)));
+                new ColaNotificacionesEfCore(ctx)),
+            new ColaNotificacionesEfCore(ctx));
     }
 
     /// <summary>El reloj real corrido hacia adelante. Así «pasaron 4 horas» sin esperarlas.</summary>

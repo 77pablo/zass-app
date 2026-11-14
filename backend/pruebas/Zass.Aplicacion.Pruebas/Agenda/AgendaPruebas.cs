@@ -104,8 +104,12 @@ public class AgendaPruebas
             new ServicioIdentidad(
                 new RepositorioUsuariosEnMemoria(_base), new RepositorioPerfilesEnMemoria(_base)),
             new ServicioSuscripciones(
-                new RepositorioSuscripcionesEnMemoria(_base), _base, _reloj, _auditor, _cola));
+                new RepositorioSuscripcionesEnMemoria(_base), _base, _reloj, _auditor, _cola),
+            _avisos);
     }
+
+    /// <summary>Los avisos de cita (JQ-1). Una cola propia, separada de la de suscripciones.</summary>
+    private readonly ColaEnMemoria _avisos = new();
 
     /// <summary>Un bloque libre, por omisión mañana a las 10:00 UTC (muy por sobre las 2 h).</summary>
     private BloqueHorario UnBloque(

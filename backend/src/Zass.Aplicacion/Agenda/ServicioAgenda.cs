@@ -57,12 +57,15 @@ public sealed class ServicioAgenda : IServicioAgenda
     private readonly IServicioCatalogo _catalogo;
     private readonly IServicioIdentidad _identidad;
     private readonly IServicioSuscripciones _suscripciones;
+    private readonly INotificaciones _avisos;
 
     public ServicioAgenda(
         IRepositorioAgenda repo, IUnidadDeTrabajo trabajo, IRelojSistema reloj,
         IAuditor auditor, IContactos contactos, IServicioCatalogo catalogo,
-        IServicioIdentidad identidad, IServicioSuscripciones suscripciones)
+        IServicioIdentidad identidad, IServicioSuscripciones suscripciones,
+        INotificaciones avisos)
     {
+        _avisos = avisos;
         _repo = repo;
         _trabajo = trabajo;
         _reloj = reloj;
@@ -443,6 +446,25 @@ public sealed class ServicioAgenda : IServicioAgenda
             // garantía: si alguien agregara mañana un camino sin FOR UPDATE, la base lo para.
             await _trabajo.GuardarAsync(t);
 
+            // JQ-1: los avisos, en la MISMA transacción, después de que R-1 aceptó la cita. Se
+            // relee la cita porque el usuario del prestador cuelga de su perfil, y MOD-01 no
+            // lo expone: la relectura es la de siempre (CitaParaCambioAsync, con el perfil).
+            var conPerfil = await _repo.CitaParaCambioAsync(cita.Id, t) ?? cita;
+            if (manual)
+            {
+                AvisarAlPrestador(conPerfil, TipoNotificacion.CitaSolicitada,
+                    "Tienes una solicitud de hora", $"cita-solicitada:{cita.Id}", ahora);
+            }
+            else
+            {
+                // Modo automático: nadie tiene que responder, así que se enteran los dos.
+                AvisarAlPrestador(conPerfil, TipoNotificacion.CitaConfirmada,
+                    "Tienes una hora nueva", ClaveConfirmada(cita, AvisosDeCita.RolPrestador), ahora);
+                AvisarAlBuscador(cita, TipoNotificacion.CitaConfirmada,
+                    "Tu hora quedó confirmada", ClaveConfirmada(cita, AvisosDeCita.RolBuscador), ahora);
+            }
+            await _trabajo.GuardarAsync(t);
+
             cita.BloqueHorario = bloque;
             return Resultado.Ok(ADto(cita, nueva: true, servicio: o.Nombre));
         }, ct);
@@ -481,6 +503,8 @@ public sealed class ServicioAgenda : IServicioAgenda
             var r = cita.Confirmar();
             if (!r.Exito) return Resultado.Falla<CitaDto>(r.Codigo!, r.Mensaje!);
 
+            AvisarAlBuscador(cita, TipoNotificacion.CitaConfirmada,
+                "Tu hora quedó confirmada", ClaveConfirmada(cita, AvisosDeCita.RolBuscador), ahora);
             await CerrarCambioAsync(cita, anterior, TipoCambio.Confirmacion, autor, null, false, ahora, t);
             return Resultado.Ok(ADto(cita, nueva: false));
         }, ct);
@@ -503,8 +527,10 @@ public sealed class ServicioAgenda : IServicioAgenda
 
             // T4: la hora vuelve a estar disponible para quien sea.
             cita.BloqueHorario?.Liberar();
+            var ahora = _reloj.Ahora;
+            AvisarRechazada(cita, ahora);
             await CerrarCambioAsync(
-                cita, anterior, TipoCambio.Rechazo, autor, limpio, false, _reloj.Ahora, t);
+                cita, anterior, TipoCambio.Rechazo, autor, limpio, false, ahora, t);
             return Resultado.Ok(ADto(cita, nueva: false));
         }, ct);
 
@@ -549,6 +575,14 @@ public sealed class ServicioAgenda : IServicioAgenda
             if (!r.Exito) return Resultado.Falla<CitaDto>(r.Codigo!, r.Mensaje!);
 
             cita.BloqueHorario?.Liberar();
+
+            // El aviso va a la OTRA parte: quien canceló ya lo sabe.
+            if (quien is Papel.Buscador)
+                AvisarAlPrestador(cita, TipoNotificacion.CitaCancelada,
+                    "Se canceló una hora", $"cita-cancelada:{cita.Id}", ahora);
+            else
+                AvisarAlBuscador(cita, TipoNotificacion.CitaCancelada,
+                    "Se canceló tu hora", $"cita-cancelada:{cita.Id}", ahora);
             await CerrarCambioAsync(
                 cita, anterior, TipoCambio.Cancelacion, cmd.Autor, motivo, tardia, ahora, t);
             return Resultado.Ok(ADto(cita, nueva: false));
@@ -675,6 +709,17 @@ public sealed class ServicioAgenda : IServicioAgenda
             _auditor.Registrar(Auditar.Entrada(
                 "reprogramar_cita", "cita", cita.Id, ahora, actorId: cmd.Autor.UsuarioId,
                 contexto: new { hacia = nuevoBloque.Id, codigoNuevo = nacida.Codigo, tardio = eraTardia }));
+
+            // A la otra parte, y ligado a la cita NACIDA: la clave es de la nueva, así que una
+            // segunda reprogramación de la cadena es otro aviso y no choca con este. El perfil
+            // se toma de la vieja, que llegó con él; la nueva aún no lo tiene enlazado.
+            nacida.PerfilPrestador = cita.PerfilPrestador;
+            if (quien is Papel.Buscador)
+                AvisarAlPrestador(nacida, TipoNotificacion.CitaReprogramada,
+                    "Una cita cambió de hora", $"cita-reprogramada:{nacida.Id}", ahora);
+            else
+                AvisarAlBuscador(nacida, TipoNotificacion.CitaReprogramada,
+                    "Tu hora cambió", $"cita-reprogramada:{nacida.Id}", ahora);
             await _trabajo.GuardarAsync(t);
 
             nacida.BloqueHorario = nuevoBloque;
@@ -828,6 +873,9 @@ public sealed class ServicioAgenda : IServicioAgenda
                 var anterior = c.Estado;
                 c.Rechazar();
                 c.BloqueHorario?.Liberar();
+                // Misma clave que el rechazo a mano: una cita se rechaza una sola vez, por el
+                // prestador o por el reloj, y nunca salen dos avisos.
+                AvisarRechazada(c, a);
                 return (anterior, TipoCambio.Rechazo, "Sin respuesta del prestador en 24 horas");
             });
 
@@ -908,6 +956,52 @@ public sealed class ServicioAgenda : IServicioAgenda
     /// </summary>
     private static bool EsConcurrencia(Exception ex) =>
         ex.GetType().Name == "DbUpdateConcurrencyException";
+
+    // ------------------------------------------------------------- JQ-1: avisos de cita
+
+    /// <summary>
+    /// Claves deterministas (CC-04): una por cita, por tipo y —cuando el mismo tipo va a las dos
+    /// partes— por rol. El índice único de TBL-27 es la última barrera; la primera es que cada
+    /// transición solo ocurre una vez (Confirmar desde «solicitada», Cancelar devuelve lo mismo
+    /// si ya está cancelada, Reprogramar responde por su propia clave).
+    /// </summary>
+    private static string ClaveConfirmada(Cita cita, string rol) => $"cita-confirmada:{cita.Id}:{rol}";
+
+    private void AvisarRechazada(Cita cita, DateTime ahora) =>
+        AvisarAlBuscador(cita, TipoNotificacion.CitaRechazada,
+            "Tu solicitud de hora no se confirmó", $"cita-rechazada:{cita.Id}", ahora);
+
+    private void AvisarAlBuscador(Cita cita, TipoNotificacion tipo, string asunto, string clave, DateTime ahora) =>
+        Avisar(cita.Id, cita.BuscadorId, AvisosDeCita.RolBuscador, tipo, asunto, clave, ahora);
+
+    private void AvisarAlPrestador(Cita cita, TipoNotificacion tipo, string asunto, string clave, DateTime ahora) =>
+        Avisar(cita.Id, UsuarioDelPrestador(cita), AvisosDeCita.RolPrestador, tipo, asunto, clave, ahora);
+
+    /// <summary>
+    /// Sin perfil enlazado no hay a quién avisar. Se falla fuerte en vez de saltarse el aviso:
+    /// un aviso que no se encola en silencio es justo el defecto que JQ-1 viene a cerrar.
+    /// </summary>
+    private static Guid UsuarioDelPrestador(Cita cita) =>
+        cita.PerfilPrestador?.UsuarioId
+        ?? throw new InvalidOperationException(
+            "La cita llegó sin su perfil de prestador: el aviso no tendría destinatario.");
+
+    /// <summary>
+    /// La carga solo dice a quién va (el rol): ni fecha, ni hora, ni servicio, ni la otra
+    /// persona. El texto lo arma la plantilla.
+    /// </summary>
+    private void Avisar(Guid citaId, Guid destinatarioId, string rol,
+        TipoNotificacion tipo, string asunto, string clave, DateTime ahora) =>
+        _avisos.Encolar(new Notificacion
+        {
+            DestinatarioId = destinatarioId,
+            CitaId = citaId,
+            Tipo = tipo,
+            ClaveIdempotencia = clave,
+            Asunto = asunto,
+            Cuerpo = CargaDeAviso.ConCampos((AvisosDeCita.CampoRol, rol)),
+            ProgramadaPara = ahora,
+        });
 
     // ------------------------------------------------------------- lo que consume MOD-11
 
