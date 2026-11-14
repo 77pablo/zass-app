@@ -48,6 +48,30 @@ public class MigracionIndicesClavesForaneasPruebas
         .Replace(")", "")
         .Replace(" ", "");
 
+    /// <summary>
+    /// Que el indice sea unico, PARCIAL, y que su filtro nombre la columna y los valores que
+    /// le importan.
+    ///
+    /// <para>
+    /// No se compara el texto completo del filtro a proposito, y esto costo una carrera roja:
+    /// **PostgreSQL 16 y 17 escriben el mismo predicado de forma distinta**. El entorno local
+    /// es 16.4, el CI es 17 y produccion (Neon) es 18, asi que una comparacion literal del
+    /// `indexdef` solo dice en que version se escribio la prueba. Lo que importa —que el
+    /// filtro siga ahi y siga mirando esos estados— se comprueba por contenido.
+    /// </para>
+    /// </summary>
+    private static void EsUnicoYParcialSobre(string? definicion, string columna, params string[] valores)
+    {
+        Assert.NotNull(definicion);
+        Assert.Contains("UNIQUE", definicion!);
+        Assert.Contains($"btree{columna}", Logica(definicion));
+
+        // Sin WHERE no es parcial: seria otro indice, con otro significado.
+        Assert.Contains("WHERE", definicion!);
+        Assert.Contains("estado", Logica(definicion));
+        foreach (var valor in valores) Assert.Contains($"'{valor}'", definicion!);
+    }
+
     [Fact]
     public async Task El_indice_de_la_clave_foranea_de_citas_existe_y_NO_es_parcial()
     {
@@ -70,11 +94,7 @@ public class MigracionIndicesClavesForaneasPruebas
     {
         var definicion = await DefinicionAsync("citas", R1);
 
-        Assert.NotNull(definicion);
-        Assert.Contains("UNIQUE", definicion!);
-        var logica = Logica(definicion);
-        Assert.Contains("btreebloque_horario_id", logica);
-        Assert.Contains("estado=ANYARRAY'Solicitada','Confirmada'", logica);
+        EsUnicoYParcialSobre(definicion, "bloque_horario_id", "Solicitada", "Confirmada");
     }
 
     [Fact]
@@ -95,9 +115,7 @@ public class MigracionIndicesClavesForaneasPruebas
     {
         var definicion = await DefinicionAsync("suscripciones", UnaSuscripcionVigente);
 
-        Assert.NotNull(definicion);
-        Assert.Contains("UNIQUE", definicion!);
-        Assert.Contains("estado=ANYARRAY'Prueba','Activa'", Logica(definicion));
+        EsUnicoYParcialSobre(definicion, "perfil_prestador_id", "Prueba", "Activa");
     }
 
     /// <summary>
