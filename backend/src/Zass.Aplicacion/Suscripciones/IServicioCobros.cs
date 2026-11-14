@@ -65,6 +65,49 @@ public interface IServicioCobros
     /// </summary>
     Task<Resultado<ConfirmacionDto>> ConfirmarAsync(
         AvisoDePasarela aviso, CancellationToken ct = default);
+
+    /// <summary>
+    /// C3. El cobro que no lo pide nadie: corre en el trabajo diario y cobra, con el medio
+    /// de pago que la persona ya inscribio, la mensualidad de cada suscripcion a la que se
+    /// le esta acabando el periodo.
+    ///
+    /// <para>
+    /// Es lo que faltaba para que el mes gratis del lanzamiento termine en un cobro y no
+    /// en una desaparicion de la busqueda: hasta que esto existio, el camino de cobro
+    /// estaba entero y no habia quien lo disparara.
+    /// </para>
+    ///
+    /// <para>
+    /// Idempotente por periodo (CC-04): correr el trabajo dos veces el mismo dia cobra UNA
+    /// vez, porque la clave del intento sale de la suscripcion y del periodo y no de la
+    /// hora en que corrio. Un rechazo deja el intento <c>Fallido</c> y la suscripcion
+    /// intacta (RN-S7-10), y no se reintenta solo.
+    /// </para>
+    /// </summary>
+    Task<ResumenDeCobros> CobrarVencimientosAsync(CancellationToken ct = default);
+}
+
+/// <summary>
+/// Lo que hizo el cobro automatico en una corrida. Son numeros y nada mas: este resumen
+/// se guarda en <c>trabajos_de_fondo.ultimo_resumen</c> y lo lee cualquiera (S7 §6).
+/// </summary>
+/// <param name="Cobradas">Cobros aprobados, con el mes ya extendido.</param>
+/// <param name="Rechazadas">Tarjetas rechazadas. Desenlace normal, no error (RN-S7-10).</param>
+/// <param name="SinMedioDePago">
+/// Suscripciones a las que les toca cobrar y no tienen medio inscrito que usar. Mientras
+/// este numero sea el total, no se esta cobrando a nadie.
+/// </param>
+/// <param name="YaIntentadas">Ya tenian intento para ese periodo: no se cobra dos veces.</param>
+/// <param name="ParaRevisar">
+/// Ni cobradas ni rechazadas: la pasarela no contesto, o el monto que confirmo no coincide.
+/// Las tiene que mirar una persona.
+/// </param>
+public sealed record ResumenDeCobros(
+    int Cobradas, int Rechazadas, int SinMedioDePago, int YaIntentadas, int ParaRevisar)
+{
+    public override string ToString() =>
+        $"{Cobradas} cobradas, {Rechazadas} rechazadas, {SinMedioDePago} sin medio, "
+        + $"{YaIntentadas} ya intentadas, {ParaRevisar} para revisar";
 }
 
 /// <param name="ClaveIdempotencia">

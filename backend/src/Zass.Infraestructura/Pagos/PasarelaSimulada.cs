@@ -104,6 +104,46 @@ public sealed class PasarelaSimulada : IPasarelaDePagos
         return Task.FromResult(Resultado.Ok(new CobroIniciado(referencia, url)));
     }
 
+    /// <summary>
+    /// El cobro recurrente, sin red y sin nadie delante. Decide con la MISMA regla que
+    /// <see cref="LeerConfirmacionAsync"/> —los montos que terminan en
+    /// <see cref="MontoQueRechaza"/> se rechazan— para que el camino del rechazo del
+    /// cobro automatico se pueda recorrer igual que el del pago a mano.
+    ///
+    /// Exige el medio inscrito: sin el, una pasarela de verdad no tendria contra que
+    /// cobrar, y dejar pasar la llamada aqui esconderia ese agujero hasta produccion.
+    /// </summary>
+    public Task<Resultado<CobroResuelto>> CobrarAsync(
+        SolicitudDeCobro solicitud, CancellationToken ct = default)
+    {
+        if (solicitud.Monto <= 0)
+            return Task.FromResult(Resultado.Falla<CobroResuelto>(
+                Fallas.Validacion, "No se puede cobrar un monto de cero."));
+
+        if (string.IsNullOrWhiteSpace(solicitud.MedioInscrito))
+            return Task.FromResult(Resultado.Falla<CobroResuelto>(
+                Fallas.ReglaDeNegocio,
+                "No hay un medio de pago inscrito contra el que cobrar."));
+
+        var aprobado = solicitud.Monto % 100 != MontoQueRechaza;
+        var referencia = $"sim-{Guid.NewGuid():N}"[..20];
+
+        _registro.LogWarning(
+            "Cobro recurrente SIMULADO de {Monto} {Moneda} para el intento {Intento}: {Veredicto}. "
+            + "No se cobro nada de verdad.",
+            solicitud.Monto, solicitud.Moneda, solicitud.IntentoDePagoId,
+            aprobado ? EstadoAprobado : EstadoRechazado);
+
+        return Task.FromResult(Resultado.Ok(new CobroResuelto(
+            IntentoDePagoId: solicitud.IntentoDePagoId,
+            ReferenciaPasarela: referencia,
+            Aprobado: aprobado,
+            MontoConfirmado: solicitud.Monto,
+            MotivoFallo: aprobado
+                ? null
+                : "La pasarela simulada rechazó el cobro. No se cobró nada.")));
+    }
+
     public Task<Resultado<CobroResuelto>> LeerConfirmacionAsync(
         AvisoDePasarela aviso, CancellationToken ct = default)
     {

@@ -52,6 +52,37 @@ public interface IPasarelaDePagos
         SolicitudDeCobro solicitud, CancellationToken ct = default);
 
     /// <summary>
+    /// Cobra AHORA contra un medio de pago que la persona ya inscribio, sin navegador y
+    /// sin que nadie apriete nada: es el cobro del dia del vencimiento (C3).
+    ///
+    /// <para>
+    /// Es un metodo aparte de <see cref="IniciarCobroAsync"/> y no un parametro suyo
+    /// porque los dos caminos son distintos de verdad: iniciar devuelve una direccion a
+    /// la que mandar a la persona y la respuesta vuelve despues por
+    /// <see cref="LeerConfirmacionAsync"/>; esto resuelve en la misma llamada, porque del
+    /// otro lado no hay nadie esperando a quien redirigir. Es lo que hacen los cobros
+    /// recurrentes de las tres candidatas (Oneclick de Transbank, Flow, Mercado Pago):
+    /// se autoriza una vez y despues se cobra servidor a servidor.
+    /// </para>
+    ///
+    /// <para>
+    /// Devuelve el MISMO <see cref="CobroResuelto"/> que el aviso entrante, a proposito:
+    /// asi el cobro automatico y el aviso de la pasarela terminan en el mismo sitio y la
+    /// regla de vigencia, la idempotencia y la comparacion del monto no se escriben dos
+    /// veces. <c>Aprobado = false</c> no es un error del sistema: una tarjeta rechazada es
+    /// un desenlace normal (RN-S7-10) y deja el intento Fallido.
+    /// </para>
+    ///
+    /// <para>
+    /// Falla con <see cref="Fallas.ReglaDeNegocio"/> cuando la pasarela no contesta, que
+    /// es distinto de un rechazo: ahi no se sabe si cobro o no, y el intento se queda
+    /// Pendiente para que lo mire una persona.
+    /// </para>
+    /// </summary>
+    Task<Resultado<CobroResuelto>> CobrarAsync(
+        SolicitudDeCobro solicitud, CancellationToken ct = default);
+
+    /// <summary>
     /// Traduce lo que llego de la pasarela a un veredicto. Es el UNICO sitio donde se
     /// interpretan sus campos.
     ///
@@ -86,7 +117,26 @@ public sealed record SolicitudDeCobro(
     Guid IntentoDePagoId,
     int Monto,
     string Moneda,
-    string Descripcion);
+    string Descripcion)
+{
+    /// <summary>
+    /// La referencia del medio de pago que la persona ya inscribio, tal como la devolvio
+    /// la pasarela en su dia. Solo la usa <see cref="IPasarelaDePagos.CobrarAsync"/>: es
+    /// lo unico que le permite cobrar sin nadie delante.
+    ///
+    /// <para>
+    /// Nula en <see cref="IPasarelaDePagos.IniciarCobroAsync"/>, donde no hace falta
+    /// porque es la persona la que va a pagar. Va como propiedad y no como parametro
+    /// posicional para no cambiarle la forma al registro que ya usan C1 y sus pruebas.
+    /// </para>
+    ///
+    /// <para>
+    /// Nunca es un numero de tarjeta. Es el identificador opaco del medio inscrito, que
+    /// es lo unico de la pasarela que entra en esta base (S7 §6).
+    /// </para>
+    /// </summary>
+    public string? MedioInscrito { get; init; }
+}
 
 /// <summary>El cobro ya creado en la pasarela.</summary>
 public sealed record CobroIniciado(string ReferenciaPasarela, string? UrlParaPagar);
