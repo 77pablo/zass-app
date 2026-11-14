@@ -73,6 +73,44 @@ describe('verificar el correo (API-13)', () => {
   })
 })
 
+describe('pedir otro enlace de verificación', () => {
+  it('un enlace vencido ofrece pedir otro, y lo manda', async () => {
+    respuestas['/api/auth/correo/verificar'] = json({ title: 'x', detail: 'Este enlace ya venció.' }, 400)
+    en('/verificar-correo?token=viejo')
+    await screen.findByRole('heading', { name: 'No pudimos verificar' })
+
+    // Antes aquí decía «entra y pide uno nuevo» y no existía forma de pedirlo.
+    await userEvent.type(screen.getByLabelText('Correo'), 'pablo@correo.cl')
+    respuestas['/api/auth/correo/reenviar'] = new Response(null, { status: 204 })
+    await userEvent.click(screen.getByRole('button', { name: /Mandarme otro enlace/ }))
+
+    expect(llamadas).toContainEqual({
+      ruta: '/api/auth/correo/reenviar', cuerpo: { correo: 'pablo@correo.cl' },
+    })
+    expect(await screen.findByText(/le llega un enlace nuevo/)).toBeInTheDocument()
+  })
+
+  it('sin token también se puede pedir: ahí llega quien perdió el correo', async () => {
+    en('/verificar-correo')
+    await screen.findByText(/enlace está incompleto/)
+
+    expect(screen.getByRole('button', { name: /Mandarme otro enlace/ })).toBeInTheDocument()
+  })
+
+  it('un correo vacío o sin forma de correo no sale del navegador', async () => {
+    en('/verificar-correo')
+    await screen.findByText(/enlace está incompleto/)
+
+    await userEvent.click(screen.getByRole('button', { name: /Mandarme otro enlace/ }))
+    expect(screen.getByText('Escribe tu correo.')).toBeInTheDocument()
+
+    await userEvent.type(screen.getByLabelText('Correo'), 'no-es-un-correo')
+    await userEvent.click(screen.getByRole('button', { name: /Mandarme otro enlace/ }))
+    expect(screen.getByText('Ese correo no parece válido.')).toBeInTheDocument()
+    expect(llamadas.filter((l) => l.ruta === '/api/auth/correo/reenviar')).toHaveLength(0)
+  })
+})
+
 describe('recuperar la contraseña (API-14)', () => {
   it('manda el correo y responde igual exista o no la cuenta', async () => {
     const u = userEvent.setup()

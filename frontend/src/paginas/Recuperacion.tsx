@@ -4,7 +4,7 @@ import { ErrorApi } from '../api/cliente'
 import { Aviso } from '../componentes/Aviso'
 import { Campo } from '../componentes/Campo'
 import {
-  pedirRecuperacion, restablecerContrasena, verificarCorreo,
+  pedirRecuperacion, reenviarVerificacion, restablecerContrasena, verificarCorreo,
 } from '../funciones/identidad/servicio'
 import { Icono } from '../marco/Icono'
 import { useMeta } from '../marco/useMeta'
@@ -72,12 +72,74 @@ export function VerificarCorreo() {
           <>
             <h1 className="titulo">No pudimos verificar</h1>
             <Aviso>{resultado}</Aviso>
-            <p className="bajada">Si el enlace venció, entra y pide uno nuevo.</p>
-            <Link className="boton" to="/entrar">Ir a entrar</Link>
+            {/*
+              * Aqui habia un camino sin salida: la pantalla decia «entra y pide uno nuevo» y
+              * no existia forma de pedirlo. El enlace vence a las 24 horas, asi que es el
+              * final mas probable de esta pantalla, no el raro.
+              */}
+            <ReenviarEnlace />
+            <p className="letra-chica">
+              ¿Ya lo verificaste? <Link to="/entrar">Entrar</Link>
+            </p>
           </>
         )}
       </div>
     </Marco>
+  )
+}
+
+/**
+ * Pide un enlace de verificacion nuevo.
+ *
+ * Responde lo mismo exista o no la cuenta, y este o no verificada, y la pantalla dice lo mismo
+ * que la API: si distinguiera, cualquiera podria averiguar quien tiene cuenta en ZASS!
+ * probando correos.
+ */
+function ReenviarEnlace() {
+  const [correo, setCorreo] = useState('')
+  const [error, setError] = useState<string>()
+  const [aviso, setAviso] = useState<string>()
+  const [enviando, setEnviando] = useState(false)
+  const [enviado, setEnviado] = useState(false)
+
+  async function alEnviar(e: FormEvent) {
+    e.preventDefault()
+    setAviso(undefined)
+    const limpio = correo.trim()
+    if (limpio === '') { setError('Escribe tu correo.'); return }
+    if (!/^[^@\s]+@[^@\s]+$/.test(limpio)) { setError('Ese correo no parece válido.'); return }
+    setError(undefined)
+
+    setEnviando(true)
+    try {
+      await reenviarVerificacion(limpio)
+      setEnviado(true)
+    } catch (e2) {
+      setAviso(mensajeDe(e2))
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  if (enviado) {
+    return (
+      <p className="bajada" role="status">
+        Si ese correo tiene una cuenta sin verificar, le llega un enlace nuevo. Puede tardar
+        unos minutos; revisa también la carpeta de correo no deseado.
+      </p>
+    )
+  }
+
+  return (
+    <form onSubmit={(e) => void alEnviar(e)} noValidate>
+      <p className="bajada">Escribe tu correo y te mandamos un enlace nuevo.</p>
+      {aviso && <Aviso>{aviso}</Aviso>}
+      <Campo id="correo-reenvio" etiqueta="Correo" tipo="email" autoComplete="email"
+        valor={correo} alCambiar={setCorreo} error={error} />
+      <button className="boton" type="submit" disabled={enviando}>
+        {enviando ? 'Enviando…' : 'Mandarme otro enlace'}
+      </button>
+    </form>
   )
 }
 

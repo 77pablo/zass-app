@@ -23,6 +23,15 @@ public sealed class ValidadorPedirRecuperacion : AbstractValidator<PedirRecupera
             .EmailAddress();
 }
 
+public sealed class ValidadorReenviarVerificacion : AbstractValidator<ReenviarVerificacionCmd>
+{
+    public ValidadorReenviarVerificacion() =>
+        RuleFor(x => x.Correo)
+            .NotEmpty()
+            .MaximumLength(Limites.CorreoMaximo)
+            .EmailAddress();
+}
+
 public sealed class ValidadorCambiarContrasena : AbstractValidator<CambiarContrasenaCmd>
 {
     public ValidadorCambiarContrasena()

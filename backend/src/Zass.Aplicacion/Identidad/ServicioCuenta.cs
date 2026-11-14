@@ -30,6 +30,20 @@ public sealed class ServicioCuenta
     /// API-14 responde esto siempre, exista o no el correo. Si distinguiera, cualquiera
     /// podria averiguar quien tiene cuenta en ZASS! probando correos.
     /// </summary>
+    /// <summary>
+    /// Lo minimo entre dos reenvios del enlace de verificacion, por cuenta. El limite de
+    /// peticiones protege por IP y aqui eso no alcanza: el daño no lo recibe quien llama, lo
+    /// recibe el dueño del correo.
+    /// </summary>
+    public static readonly TimeSpan EsperaEntreReenvios = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// Lo que responde el reenvio, exista o no la cuenta y este o no verificada. Decir «ya
+    /// estaba verificado» seria decir «esa persona tiene cuenta aqui».
+    /// </summary>
+    private const string RespuestaDeReenvio =
+        "Si ese correo tiene una cuenta sin verificar, le llegará un enlace nuevo.";
+
     private const string RespuestaDeRecuperacion =
         "Si ese correo tiene cuenta, le llegará un enlace para crear una contraseña nueva.";
 
@@ -120,6 +134,72 @@ public sealed class ServicioCuenta
         }
 
         return Resultado.OkConMensaje(RespuestaDeRecuperacion);
+    }
+
+    /// <summary>
+    /// CS-01 bis. Reenvia el enlace de verificacion del correo.
+    ///
+    /// <para>
+    /// Existe porque sin esto hay un camino sin salida: el enlace del registro se pierde, se
+    /// va a la carpeta de no deseado o caduca a las 24 horas, y la cuenta se queda sin poder
+    /// verificarse. Desde que el contacto de la ficha exige correo verificado, eso deja a la
+    /// persona sin poder contactar a nadie y sin forma de arreglarlo.
+    /// </para>
+    ///
+    /// <para>
+    /// **Responde lo mismo exista o no la cuenta**, igual que <see cref="PedirRecuperacionAsync"/>:
+    /// una respuesta distinta convierte este endpoint en una forma de averiguar quien tiene
+    /// cuenta en ZASS!. Tampoco dice si el correo ya estaba verificado, por lo mismo.
+    /// </para>
+    ///
+    /// <para>
+    /// Lleva una **espera minima entre envios** por cuenta. El limite de peticiones protege por
+    /// IP, y eso no alcanza aqui: el daño de este endpoint no lo recibe quien lo llama, lo
+    /// recibe el dueño del correo. Sin la espera, alguien desde varias IP puede llenarle la
+    /// bandeja a una persona cuyo correo conoce.
+    /// </para>
+    /// </summary>
+    public async Task<Resultado> ReenviarVerificacionAsync(
+        string correo, string? ip = null, CancellationToken ct = default)
+    {
+        var usuario = await _usuarios.PorCorreoAsync(Texto.NormalizarCorreo(correo), ct);
+        var ahora = _reloj.Ahora;
+
+        // Cuando se emitio el que ya tiene: el token caduca a las 24 h de emitirse.
+        var emitidoEn = usuario?.TokenVerificacionExpiraEn?.Subtract(VidaDelTokenDeVerificacion);
+        var recienEnviado = emitidoEn is not null && ahora - emitidoEn < EsperaEntreReenvios;
+
+        if (usuario is not null
+            && !usuario.CorreoVerificado
+            && usuario.Estado is not EstadoCuenta.Eliminada
+            && !recienEnviado)
+        {
+            var token = _secretos.NuevoToken();
+
+            // El token viejo deja de servir: si el correo llego dos veces, el enlace bueno es
+            // el ultimo, y asi no quedan dos puertas abiertas a la vez.
+            usuario.TokenVerificacion = _secretos.HashToken(token);
+            usuario.TokenVerificacionExpiraEn = ahora.Add(VidaDelTokenDeVerificacion);
+            usuario.ActualizadoEn = ahora;
+
+            _avisos.Encolar(new Notificacion
+            {
+                DestinatarioId = usuario.Id,
+                Tipo = TipoNotificacion.CorreoVerificacion,
+                Canal = CanalNotificacion.Correo,
+                ClaveIdempotencia = $"verificacion:{usuario.Id}:{ahora:yyyyMMddHHmmss}",
+                Asunto = "Confirma tu correo en ZASS!",
+                Cuerpo = CargaDeAviso.ConToken(token),
+                ProgramadaPara = ahora,
+            });
+
+            _auditor.Registrar(Auditar.Entrada(
+                "reenviar_verificacion", "usuario", usuario.Id, ahora, actorId: usuario.Id, ip: ip));
+
+            await _unidad.GuardarAsync(ct);
+        }
+
+        return Resultado.OkConMensaje(RespuestaDeReenvio);
     }
 
     /// <summary>

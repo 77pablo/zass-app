@@ -47,6 +47,11 @@ export async function verificarCorreo(token: string): Promise<void> {
   await enviar('/api/auth/correo/verificar', { token })
 }
 
+/** Reenvia el enlace de verificacion. Responde igual exista o no la cuenta. */
+export async function reenviarVerificacion(correo: string): Promise<void> {
+  await enviar('/api/auth/correo/reenviar', { correo })
+}
+
 /** API-14. Responde igual exista o no la cuenta. */
 export async function pedirRecuperacion(correo: string): Promise<void> {
   await enviar('/api/auth/contrasena/recuperar', { correo })
