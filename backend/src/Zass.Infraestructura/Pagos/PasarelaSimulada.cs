@@ -32,9 +32,20 @@ namespace Zass.Infraestructura.Pagos;
 /// </para>
 ///
 /// <para>
-/// **NO se registra en Produccion.** AgregarZass se niega a arrancar con este adaptador
-/// fuera de desarrollo, porque un ZASS! en produccion que regala meses sin cobrar nada es
-/// peor que un ZASS! que todavia no cobra.
+/// **NO se resuelve en Produccion.** <c>AgregarZass</c> lanza al resolver
+/// <see cref="IPasarelaDePagos"/> si el entorno es Produccion y <c>Zass:Pasarela</c>
+/// resuelve a <see cref="NombreDeLaPasarela"/> —tanto si se pidio a proposito como si la
+/// variable no esta puesta y se cayo en el valor por omision—, porque un ZASS! en
+/// produccion que regala meses sin cobrar nada es peor que un ZASS! que todavia no cobra.
+/// En Development y en Staging si se resuelve, que es para lo que existe.
+/// </para>
+///
+/// <para>
+/// Lo que decia este comentario hasta el 13-nov-2026 era mentira: prometia que la
+/// aplicacion no arrancaba con este adaptador fuera de desarrollo, y el <c>switch</c> de
+/// <c>AgregarZass</c> solo fallaba con un nombre DESCONOCIDO. Sin la variable puesta, la
+/// simulada se resolvia en cualquier entorno. La guarda existe desde entonces, y la
+/// vigila <c>PasarelaEnProduccionPruebas</c>.
 /// </para>
 /// </summary>
 public sealed class PasarelaSimulada : IPasarelaDePagos

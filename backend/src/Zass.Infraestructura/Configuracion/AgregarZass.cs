@@ -196,12 +196,28 @@ public static class RegistroDeServicios
         // Un nombre desconocido NO cae en la simulada por omision: arrancar cobrando de
         // mentira por un error de escritura en una variable de entorno es la clase de fallo
         // que no se nota hasta que falta el dinero.
+        //
+        // Y en Produccion la simulada no se resuelve NUNCA, ni por omision ni pedida a
+        // proposito. El caso que importa es el primero: la variable sin poner. El switch
+        // solo se defendia del nombre desconocido, asi que un despliegue que olvidara
+        // Zass:Pasarela arrancaba cobrando de mentira. Esto es N3 a proposito.
         servicios.AddSingleton<IPasarelaDePagos>(sp =>
         {
             var nombre = sp.GetRequiredService<IConfiguration>()
                 .GetValue(ClavePasarela, PasarelaSimulada.NombreDeLaPasarela)!;
+            var elegida = nombre.Trim().ToLowerInvariant();
 
-            return nombre.Trim().ToLowerInvariant() switch
+            var entorno = sp.GetRequiredService<IHostEnvironment>();
+            if (entorno.IsProduction() && elegida == PasarelaSimulada.NombreDeLaPasarela)
+                throw new OptionsValidationException(
+                    OpcionesZass.Seccion, typeof(OpcionesZass),
+                    new[]
+                    {
+                        $"{ClavePasarela} resuelve a '{PasarelaSimulada.NombreDeLaPasarela}' y el "
+                        + "entorno es Produccion. La pasarela simulada no cobra: configura una real.",
+                    });
+
+            return elegida switch
             {
                 PasarelaSimulada.NombreDeLaPasarela => new PasarelaSimulada(
                     sp.GetRequiredService<IOptions<OpcionesZass>>(),
