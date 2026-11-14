@@ -104,9 +104,9 @@ cd backend;  dotnet test;  cd ..
 cd frontend; npm run prueba; npx tsc -b; npx oxlint; cd ..
 ```
 
-Referencia al 14-nov-2026: backend **827** (aplicación) + **727** (integración) + **17**
-(arquitectura); frontend **501** pruebas en 37 archivos. Si tu número es menor, falta algo:
-no abras el PR hasta entender qué.
+Referencia al 14-nov-2026, leída de la carrera de CI **43608890662** sobre `main` (verde):
+backend **845** (aplicación) + **775** (integración) + **17** (arquitectura); frontend **509**
+pruebas en **38** archivos. Si tu número es menor, falta algo: no abras el PR hasta entender qué.
 
 - Las pruebas de integración usan la base `zass_pruebas`. Nunca corras dos suites de integración a la vez.
 - Smart App Control de Windows puede bloquear en local las DLL de pruebas y `oxlint`. Si pasa, dilo: el backend se valida en GitHub Actions.
