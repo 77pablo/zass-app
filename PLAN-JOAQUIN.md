@@ -111,11 +111,11 @@ Comprobado en el repositorio el 13-nov, archivo por archivo y no de memoria:
 | J4 la tarjeta abre la ficha (API-54) | dentro del PR #11, con el BOM UTF-8 de `Program.cs` restaurado y sus tres textos |
 | J5 pantalla de reseñas | `frontend/src/paginas/MisResenas.tsx`, enrutada en `App.tsx:51`, con pruebas |
 | J6 unificar la elegibilidad de reseña | hecho: los dos `HabilitaResena()` muertos están borrados (quedan los comentarios en `Dominio/Agenda/Entidades.cs:252` y `Dominio/Reputacion/Entidades.cs:29`) |
-| J7 reprogramar desde el prestador | `ReprogramarCita.tsx` vive dentro de `MisCitas.tsx` y sus pruebas lo cubren |
+| J7 reprogramar desde el prestador | `ReprogramarCita.tsx` es un archivo propio que `MisCitas.tsx` usa, y sus pruebas lo cubren |
 | El 422 de reseñas en `problem+json` | arreglado |
 | El correo de reseñas que nunca salía | arreglado |
 | Quitar y listar bloqueos | existen `GET /api/mi/bloqueos`, `DELETE /api/mi/bloqueos/{id}` y el botón «Quitar este bloqueo» |
-| El control de radio de la búsqueda | reconstruido entero, incluido el parámetro en API-63 (`PaginaBuscar.tsx:258`) |
+| El control de radio de la búsqueda | reconstruido entero, incluido el parámetro en API-63 (`PaginaBuscar.tsx:98`) |
 | El aviso del limitador (429) | llega: el 429 ya responde `title`/`detail` y el `Content-Type` correcto |
 | El pie que sigue la sesión | `marco/Pie.tsx` |
 | «Saltar al contenido», `:focus-visible` de 3 px, `prefers-reduced-motion`, 44 px en lo pulsable | ya están; la base de accesibilidad es buena |
@@ -267,7 +267,7 @@ Cuatro cosas que ya mordieron y conviene tener a mano:
 
 ---
 
-## 8. LO DE JOAQUÍN — once tandas
+## 8. LO DE JOAQUÍN — doce tandas
 
 Una tanda es una rebanada completa —backend si hace falta, pantalla y pruebas— que se puede soltar
 sola. **Una rama y un PR por tanda**; dentro de la tanda, commitea todas las veces que quieras.
@@ -302,7 +302,9 @@ sola. **Una rama y un PR por tanda**; dentro de la tanda, commitea todas las vec
 ### Tanda 1 · Que el sello «Verificado» se pueda tener
 
 **Rama:** `web/ficha-movil` no; esta es **`web/panel-prestador`**, que ya existe y ya tiene trabajo
-dentro. Arráncala con `git switch web/panel-prestador` y sigue ahí.
+dentro. Arráncala con `git fetch origin` y después
+`git switch -c web/panel-prestador origin/web/panel-prestador`: la rama está en `origin`,
+pero en tu máquina todavía no existe.
 
 **Por qué va primera.** El sello «Verificado» es hoy **inalcanzable**, y encima la pantalla dice
 que es imposible. Mientras tanto la búsqueda ofrece un filtro «Solo verificados» que el día 23
@@ -404,7 +406,7 @@ calendario (`Ficha.tsx:162-189`). Las etiquetas se pintan sin explicación (`Fic
 - El commit de rescate `7da4bb6`, que toca **solo `Portada.tsx`**: añade el componente
   `EstadoDeLaPortada`, que mira `.error` y `.cargando` de las dos cargas y ofrece reintentar.
 
-**Lo comprobado:** `Portada.tsx:36-39` (en `integracion/13-nov`) lee `catalogo.datos?…` y
+**Lo comprobado:** `Portada.tsx:41-45` (en `integracion/13-nov`) lee `catalogo.datos?…` y
 `comunidad.datos?…` y **nunca** `.error` ni `.cargando`; cada sección está tras un `&&`, así que
 sin datos desaparecen el mapa, la cinta, las cifras y los recién llegados **sin una palabra**.
 `Oficios.tsx:28-34` ya hace lo correcto (error con «Reintentar» y línea de «Cargando…»), y es el
@@ -564,7 +566,7 @@ el id del contacto, ni el de la cita.
 | El nombre del prestador como enlace a su ficha | `MisCitas.tsx:227` — hoy es texto plano: `{comoPrestador ? 'Te pidieron esta hora' : \`con ${cita.prestador}\`}`. **El slug ya viene en el DTO**: `funciones/agenda/servicio.ts:48`, `prestadorSlug` |
 
 **Aviso sobre dos líneas del encargo que no calzaron:** las recomendaciones apuntaban a
-`MisCitas.tsx:138` para el nombre del prestador. En `integracion/13-nov` la línea 138 es
+`MisCitas.tsx:227` para el nombre del prestador. En `integracion/13-nov` la línea 137 es
 `<PorDia citas={grupos.proximas} …/>`; el nombre se pinta en **`:227`**, dentro de `FilaDeCita`. Es
 el único sitio donde aparece.
 
@@ -763,6 +765,32 @@ se ve en un navegador con y sin gente en la comuna. Con sus pruebas y su mutaci�
 
 ---
 
+### Tanda 12 · Los cuatro avisos que están declarados y no existen
+
+Esto salió de verificar el plan contra el código, y es trabajo de verdad que no estaba repartido
+a nadie. Son **cuatro tipos de notificación declarados en el enum y huérfanos en todo el backend**:
+
+| Tipo | Dónde está declarado | Qué falta |
+|---|---|---|
+| `Recordatorio24h` | `Dominio/Comun/Enumeraciones.cs:54` | No aparece en ninguna otra parte del backend. El gancho del planificador ya está puesto (`Planificador.cs:37-39`) |
+| `Recordatorio2h` | `Dominio/Comun/Enumeraciones.cs:54` | Igual: declarado y sin nadie que lo encole |
+| `CredencialResuelta` | `Dominio/Comun/Enumeraciones.cs:55` | **Hoy un verificador resuelve una credencial y el prestador no se entera.** Es la mitad del valor de la verificación |
+| `TarjetaActivada` | `Dominio/Comun/Enumeraciones.cs:55` | Declarado y huérfano |
+
+**Ojo, y es la misma trampa de la Tanda 7:** el despacho deriva de `Plantillas.TienePlantilla` qué
+filas consulta. Si encolas un tipo sin plantilla, el aviso queda **`Programada` para siempre, con 0
+intentos y sin error**, y quien mire la cola verá correos «en camino» que no van a salir nunca. La
+plantilla primero, el encolado después.
+
+**Listo cuando:** los cuatro tipos tienen plantilla y texto; los recordatorios se encolan desde el
+trabajo diario con clave determinista (CC-04), así que correrlo dos veces el mismo día no manda dos
+correos; resolver una credencial avisa al prestador; y existe una prueba que cae si alguien agrega
+un tipo al enum sin plantilla.
+
+No necesita migración: `Notificacion.Tipo` se guarda como texto de hasta 40 caracteres
+(`ZassDbContext.cs:835`) y no hay restricción `CHECK` sobre sus valores — compruébalo tú en
+`pg_constraint` antes de confiar en esta línea.
+
 ## 9. LO DE PABLO — doce puntos
 
 Cada uno dice **qué hay que hacer**, y trae el dato cuando ya está medido. Ninguno de estos lo
@@ -785,7 +813,7 @@ puede hacer Joaquín: o hacen falta llaves, o hace falta una decisión que es de
 
 ### 9.1 Mergear
 
-- **PR #11** — `integracion/13-nov` → `main`. **49 commits, CI en verde.** Es la llave de todo: la
+- **PR #11** — `integracion/13-nov` → `main`. **52 commits, CI en verde.** Es la llave de todo: la
   regla de **una migración de EF a la vez** convierte este merge pendiente en un bloqueo de
   desarrollo. `main` no tiene nada que esa rama no tenga.
 - **PR #12** — este plan.
@@ -818,6 +846,10 @@ existen (`pg_indexes`, `information_schema`), no solo que el comando dijo «Done
 **Producción sigue con 20 cupos, no 50.** Hay tres migraciones pendientes de producción, en este
 orden: `20261112175540_CuposFundadorA50`, `20261112211216_NoAsistioQuienFalto` y
 `20261113205944_CobroIntentosYCupones`.
+
+**Ojo con dónde vive:** esa migración la añade el commit `388f5d3` y **solo está en la rama
+`cupo-fundador`** (el carril de Claude), no en `main` ni en `integracion/13-nov`. Desde esas dos
+el comando no la encuentra: hay que mergear ese PR antes, o correrlo desde `cupo-fundador`.
 
 **Listo cuando:** producción muestra **50** cupos y lo compruebas consultando la base, no el panel.
 
@@ -896,7 +928,7 @@ Hoy Windows **bloquea el `Zass.Infraestructura.dll` recién compilado** al carga
 (`FileLoadException 0x800711C7`) y por eso **la suite de arquitectura no corre en local**.
 
 **Comprobado en las dos direcciones, que es lo que lo convierte en diagnóstico y no en sospecha:**
-con el DLL del 12-nov pasan **16/16**; con el de hoy caen **9 antes de ejecutar nada**.
+con el DLL del 12-nov pasan **17/17**; con el de hoy caen **9 antes de ejecutar nada**.
 
 Mientras no esté, esas 16 pruebas solo las valida GitHub Actions, y ni Joaquín ni Claude pueden
 comprobar una regla de arquitectura en su máquina.
