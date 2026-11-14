@@ -6,6 +6,8 @@ Disallow: /mi-agenda
 Disallow: /mis-citas
 Disallow: /mis-resenas
 Disallow: /interno
+Disallow: /pago/
+Disallow: /planes/listo
 Disallow: /entrar
 Disallow: /crear-cuenta
 Disallow: /recuperar-contrasena
