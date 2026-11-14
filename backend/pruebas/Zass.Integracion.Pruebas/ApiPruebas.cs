@@ -1998,6 +1998,15 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-63",
             "API-64",
             "API-65",
+
+            // S7 suscripciones y pagos. API-69 y API-70 son los dos del cupo fundador: la
+            // inscripcion del medio de pago y el aviso que la confirma.
+            "API-66",
+            "API-67",
+            "API-68",
+            "API-69",
+            "API-70",
+
             "API-resenas-publicas",
             "CS-02b",
             "CS-04",
