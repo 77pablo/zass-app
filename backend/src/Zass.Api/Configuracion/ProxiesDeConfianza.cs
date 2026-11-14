@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Options;
 using RedIp = Microsoft.AspNetCore.HttpOverrides.IPNetwork;
@@ -28,13 +28,36 @@ public static class ProxiesDeConfianza
     public const string ClaveSaltos = "Zass:SaltosDeProxy";
 
     /// <summary>
-    /// Saltos que se permiten recorrer. Con la cadena prevista (visitante, Pages Function de
-    /// Cloudflare, balanceador de Render, contenedor) la API ve DOS proxies delante de ella:
-    /// el balanceador de Render (conexión directa) y la salida de Cloudflare (que Render añade
-    /// a X-Forwarded-For). Dos cubre esa cadena y nada más: un salto de más sería una IP más
-    /// que el atacante podría hacer pasar por «de confianza» si alguna vez una red listada
-    /// fuese demasiado ancha. El límite es una segunda barrera, no la primera: la primera es
-    /// la lista de redes.
+    /// Saltos que se permiten recorrer hacia atrás en X-Forwarded-For.
+    ///
+    /// Este 2 es solo el valor por omisión, para una cadena de un proxy propio. **El despliegue
+    /// real usa 3**, y lo fija `render.yaml` (`Zass__SaltosDeProxy: "3"`). La razón no es la que
+    /// decía antes este comentario, que contaba dos saltos porque daba por hecho que Render
+    /// recibe la petición directamente. No es así: Render está él mismo detrás de Cloudflare.
+    ///
+    /// Medido el 11-nov-2026: `zass-api.onrender.com` es CNAME de
+    /// `gcp-us-west1-1.origin.onrender.com.cdn.cloudflare.net`, y responde con `Server: cloudflare`
+    /// y `CF-RAY` además de `rndr-id` y `x-render-origin-server: Kestrel`. O sea, hay DOS capas de
+    /// Cloudflare distintas en la cadena: la nuestra (Pages) y la de Render.
+    ///
+    /// La cadena completa, y lo que cada tramo deja escrito:
+    ///
+    ///   1. El visitante llega a `zass.cl` (Cloudflare Pages).
+    ///   2. La Function `frontend/functions/api/[[ruta]].js` SOBREESCRIBE X-Forwarded-For con
+    ///      `CF-Connecting-IP` y hace fetch a la API  →  XFF = «visitante».
+    ///   3. Ese fetch entra por el Cloudflare **de Render**, que añade la IP desde la que salió la
+    ///      Function  →  XFF = «visitante, salida de Pages».
+    ///   4. El balanceador interno de Render entrega al contenedor y añade la IP del borde de
+    ///      Cloudflare  →  XFF = «visitante, salida de Pages, borde de Cloudflare de Render».
+    ///
+    /// La conexión directa que ve la API es la del balanceador interno (10.x). Para llegar desde la
+    /// derecha hasta «visitante» hay que recorrer esas TRES entradas: con 2 el recorrido se detiene
+    /// una antes y `RemoteIpAddress` queda siendo una IP de Cloudflare — toda la ciudad en un solo
+    /// contador de tasa, que es justo lo que esto venía a evitar.
+    ///
+    /// Un salto de más tampoco es gratis: sería una IP más que un atacante podría hacer pasar por
+    /// «de confianza» si alguna vez una red listada fuese demasiado ancha. El límite es la segunda
+    /// barrera, no la primera: la primera es la lista de redes (<see cref="ClaveRedes"/>).
     /// </summary>
     public const int SaltosPorOmision = 2;
 
