@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Zass.Aplicacion.Puertos;
 
 namespace Zass.Infraestructura.Datos.Repositorios;
@@ -312,6 +312,12 @@ public sealed class RepositorioBusquedaEfCore : IRepositorioBusqueda
             -- no entra (RN-S5-11), igual que en la busqueda por rubro.
             WHERE ({c.SoloVerificados}::boolean = false OR tiene_verificada)
               AND ({c.CalificacionMinima}::numeric IS NULL OR reputacion_orden >= {c.CalificacionMinima}::numeric)
+              -- El radio (RN-S3-04), tambien aqui fuera para que COUNT(*) OVER () cuente solo a
+              -- quien entra. `metros` es nulo cuando no hay punto o el perfil no tiene ubicacion ni
+              -- centro de zona: ese caso se EXCLUYE del radio a proposito, porque decir "a menos de
+              -- 5 km" de alguien cuya distancia no se conoce seria mentir.
+              AND ({c.RadioKm}::int IS NULL
+                   OR (metros IS NOT NULL AND metros <= {c.RadioKm}::int * 1000))
             ORDER BY
                 CASE WHEN {c.Orden}::text = 'cercania'    THEN tramo        END ASC  NULLS LAST,
                 CASE WHEN {c.Orden}::text = 'precio_asc'  THEN precio_desde END ASC  NULLS LAST,

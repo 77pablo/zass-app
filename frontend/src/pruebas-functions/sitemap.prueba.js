@@ -193,10 +193,22 @@ describe('robots.txt', () => {
     expect(robots).toMatch(/^Sitemap: https:\/\/zass\.cl\/sitemap\.xml$/m)
   })
 
-  it.each(['/mi-ficha', '/interno', '/entrar', '/crear-cuenta', '/restablecer-contrasena', '/verificar-correo'])(
+  const RUTAS_DEL_PANEL = ['/mi-ficha', '/mi-agenda', '/mis-citas', '/mis-resenas']
+
+  it.each([...RUTAS_DEL_PANEL, '/interno', '/entrar', '/crear-cuenta', '/restablecer-contrasena', '/verificar-correo'])(
     'no deja indexar %s', (ruta) => {
       expect(robots).toMatch(new RegExp(`^Disallow: ${ruta}$`, 'm'))
     })
+
+  // El hermano del candado. Esta lista se escribia a mano, y `/mi-agenda`, `/mis-citas` y `/mis-resenas`
+  // se anadieron a App.tsx sin volver a mirar aqui: quedaron indexables. Ahora la lista se compara con
+  // las rutas que App.tsx declara de verdad, asi que la proxima pantalla del panel no se puede escapar.
+  it('cubre TODAS las rutas del panel que declara App.tsx', () => {
+    const app = readFileSync(resolve(RAIZ, 'src', 'App.tsx'), 'utf8')
+    const enApp = [...app.matchAll(/path="(mis?-[^"]*)"/g)].map((m) => `/${m[1]}`)
+    expect(enApp.length).toBeGreaterThan(0)
+    expect(enApp.filter((r) => !RUTAS_DEL_PANEL.includes(r))).toEqual([])
+  })
 
   it('deja indexar lo publico', () => {
     for (const ruta of ['/', '/buscar', '/comunas', '/oficios', '/profesionales', '/prestadores', '/terminos', '/privacidad'])

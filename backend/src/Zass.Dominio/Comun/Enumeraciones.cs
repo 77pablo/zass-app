@@ -31,6 +31,17 @@ public enum EstadoCita
     Reprogramada, PendienteAsistencia, Realizada, NoAsistio
 }
 
+/// <summary>
+/// T10 de estados-cita.md: «Marcar no asistio … **Indica quien falto**». Quien falto a una cita
+/// que no ocurrio, segun lo que haya dicho cada parte (decision de Pablo, 11-nov-2026).
+///
+/// Cada parte solo puede acusar a la OTRA, asi que estos valores no se eligen desde afuera: se
+/// deducen de quien hablo. <see cref="Discrepancia"/> NO significa «faltaron los dos»: significa
+/// que cada uno acusa al otro y el sistema no sabe cual es verdad. Es un desenlace distinto, y
+/// peor, porque no se puede resolver solo mirando la cita.
+/// </summary>
+public enum FaltaEnCita { Nadie, Cliente, Prestador, Discrepancia }
+
 public enum TipoCambio
 {
     Creacion, Confirmacion, Rechazo, Cancelacion, Reprogramacion, Asistencia
@@ -72,6 +83,23 @@ public enum MedioEscaneo { Nfc, Qr }
 public enum EstadoSuscripcion { Prueba, Activa, Vencida, Cancelada }
 
 public enum EstadoPago { Pendiente, Pagado, Fallido, Reembolsado }
+
+/// <summary>
+/// En que quedo un cobro empezado (TBL-36). No es lo mismo que EstadoPago: un intento
+/// Fallido NO deja fila en pagos, porque nadie pago nada. Anulado es el que se abandona
+/// sin que la pasarela conteste: la persona cerro la pestaña.
+/// </summary>
+public enum EstadoIntentoPago { Pendiente, Pagado, Fallido, Anulado }
+
+/// <summary>
+/// Que se esta haciendo con la pasarela.
+///
+/// <c>Cobro</c> es plata: se cobra un mes y se extiende la suscripcion.
+/// <c>Inscripcion</c> autoriza el medio de pago con monto CERO —lo que hace Oneclick de
+/// Transbank— y es lo que confirma el cupo fundador (RN-S7-01) y arranca el mes gratis
+/// (RN-S7-03). Una inscripcion no crea fila de pago: no se cobro nada.
+/// </summary>
+public enum TipoDeIntento { Cobro, Inscripcion }
 
 public static class Roles
 {

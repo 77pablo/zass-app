@@ -98,8 +98,11 @@ app.MapearSalud();                                    // /api/salud/lista (readi
 app.MapearAgenda();                                    // ANCLAJE MOD-06 Agenda
 
 app.MapearResenas();
+app.MapearSuscripciones();                               // API-66 a API-70 (S7 suscripciones y pagos)
 
 app.MapearVerificacion();
+
+app.MapearTarjetas();                                  // API-54 /t/{segmento} (CS-18)
 
 // Sonda de vida. Sin sesion y con el limite publico: tambien es un endpoint.
 app.MapGet("/api/salud", () => Results.Ok(new { estado = "vivo" }))

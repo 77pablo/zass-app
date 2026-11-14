@@ -315,6 +315,24 @@ public static class EndpointsAgenda
             .ConValidacion<AsistenciaHttpCmd>()
             .RequireRateLimiting(Tasa.General)
             .WithName("API-42");
+
+        // La otra mitad de T10 (decision de Pablo, 11-nov-2026): el BUSCADOR dice que el
+        // prestador no llego. Sin cuerpo a proposito: no hay nada que elegir. A quien se acusa
+        // lo decide el papel de quien llama, nunca lo que mande.
+        //
+        // SIN NUMERO DE api-rest.md: ese documento no tiene un API-xx para esto, porque la
+        // decision que lo crea es posterior. Hay que asignarle uno antes de fusionar.
+        grupo.MapPost("/no-asistio-el-prestador", async (
+                Guid id, IServicioAgenda agenda, IServicioIdentidad identidad, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+
+                return Respuestas.DeResultado(await agenda.AcusarAusenciaDelPrestadorAsync(
+                    id, await AutorAsync(quien, identidad, usuarioId.Value)));
+            })
+            .RequireRateLimiting(Tasa.General)
+            .WithName("API-42b");
     }
 
     private static IResult FaltaLaClave() => Results.Problem(

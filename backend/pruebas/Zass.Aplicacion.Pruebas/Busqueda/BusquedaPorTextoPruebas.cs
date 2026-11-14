@@ -1,10 +1,11 @@
-using Zass.Aplicacion.Busqueda;
+﻿using Zass.Aplicacion.Busqueda;
 using Zass.Aplicacion.Catalogo;
 using Zass.Aplicacion.Credenciales;
 using Zass.Aplicacion.Geografia;
 using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Pruebas.Dobles;
 using Zass.Aplicacion.Puertos;
+using Zass.Aplicacion.Suscripciones;
 using Zass.Dominio.Catalogo;
 using Zass.Dominio.Comun;
 
@@ -126,13 +127,16 @@ public class BusquedaPorTextoPruebas
             new RepositorioUsuariosEnMemoria(_base), new RepositorioPerfilesEnMemoria(_base));
         _servicio = new ServicioBusqueda(
             _repo, catalogo, geografia, identidad,
-            new ServicioCredenciales(new RepositorioCredencialesEnMemoria(_base), _base, _reloj, auditor), _reloj);
+            new ServicioCredenciales(new RepositorioCredencialesEnMemoria(_base), _base, _reloj, auditor),
+            new ServicioSuscripciones(
+                new RepositorioSuscripcionesEnMemoria(_base), _base, _reloj, auditor, new ColaEnMemoria()),
+            _reloj);
     }
 
     private static CriteriosDeTextoDeBusqueda C(
         string? texto = "abogado", double? lat = null, double? lon = null, int? zona = null,
-        OrdenDeTexto orden = OrdenDeTexto.Recomendados, int pagina = 1) =>
-        new(texto, lat, lon, zona, orden, pagina);
+        OrdenDeTexto orden = OrdenDeTexto.Recomendados, int pagina = 1, short? radio = null) =>
+        new(texto, lat, lon, zona, orden, pagina, RadioKm: radio);
 
     private static FilaDeTexto Fila(
         string nombre = "Marcela Soto", double? metros = 2_600, int resenas = 0, decimal? promedio = null,
@@ -201,6 +205,53 @@ public class BusquedaPorTextoPruebas
         // Arica segun su cercania a un lugar que no es el de nadie.
         Assert.Null(_repo.UltimosCriteriosDeTexto!.Latitud);
         Assert.Null(_repo.UltimosCriteriosDeTexto.Longitud);
+    }
+
+    // ------------------------------------------------------------- RN-S3-04: el radio
+
+    [Fact]
+    public async Task Con_ubicacion_el_radio_pedido_viaja_a_la_base_y_se_dice_cual_se_aplico()
+    {
+        var r = await _servicio.BuscarPorTextoAsync(C(lat: -38.70, lon: -72.60, radio: 20));
+
+        Assert.Equal((short)20, _repo.UltimosCriteriosDeTexto!.RadioKm);
+        Assert.Equal((short)20, r.Valor!.RadioAplicadoKm);
+        Assert.Null(r.Valor.Aviso);
+    }
+
+    [Fact]
+    public async Task Sin_radio_no_se_limita_la_distancia()
+    {
+        // La barra de busqueda es nacional: quien no pide radio ve a todo el mundo, no a 10 km.
+        var r = await _servicio.BuscarPorTextoAsync(C(lat: -38.70, lon: -72.60));
+
+        Assert.Null(_repo.UltimosCriteriosDeTexto!.RadioKm);
+        Assert.Null(r.Valor!.RadioAplicadoKm);
+    }
+
+    [Theory]
+    [InlineData((short)0, (short)1, "minimo")]
+    [InlineData((short)500, (short)50, "maximo")]
+    public async Task Un_radio_fuera_de_rango_se_corrige_y_se_avisa(short pedido, short aplicado, string dice)
+    {
+        // E-400 de CU-08: corregir, no rechazar. Quien pide 500 km quiere buscar lejos.
+        var r = await _servicio.BuscarPorTextoAsync(C(lat: -38.70, lon: -72.60, radio: pedido));
+
+        Assert.True(r.Exito);
+        Assert.Equal(aplicado, _repo.UltimosCriteriosDeTexto!.RadioKm);
+        Assert.Equal(aplicado, r.Valor!.RadioAplicadoKm);
+        Assert.Contains(dice, r.Valor.Aviso);
+    }
+
+    [Fact]
+    public async Task El_radio_sin_ubicacion_no_se_aplica_pero_tampoco_rompe_la_busqueda()
+    {
+        var r = await _servicio.BuscarPorTextoAsync(C(radio: 5));
+
+        Assert.True(r.Exito);
+        Assert.Null(_repo.UltimosCriteriosDeTexto!.RadioKm);
+        Assert.Null(r.Valor!.RadioAplicadoKm);
+        Assert.Contains("ubicacion", r.Valor.Aviso);
     }
 
     // ------------------------------------------------------------- RN-S3-03: la distancia

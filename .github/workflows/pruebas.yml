@@ -12,23 +12,51 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
-    services:
-      postgres:
-        image: postgis/postgis:17-3.5
-        env:
-          POSTGRES_USER: zass
-          POSTGRES_PASSWORD: zass_ci_clave_local
-          POSTGRES_DB: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready -U zass -d postgres"
-          --health-interval=5s
-          --health-timeout=5s
-          --health-retries=12
+    # Postgres NO va en `services:` sino levantado a mano, por una razon concreta: `services`
+    # no deja pasarle argumentos al servidor, y este necesita uno. Las pruebas de cupos de
+    # fundador abren 61 conexiones FISICAS a la vez (60 solicitantes mas la de la prueba) para
+    # que la carrera por los 50 cupos sea de verdad. Con el techo de fabrica (100, y menos las
+    # que ya tienen abiertas las otras pruebas) quedaban 30 libres: la prueba fallaba al ABRIR,
+    # sin llegar a medir nada, y el rojo parecia un defecto del reparto de cupos.
+    #
+    # Fue lo que tuvo `main` en rojo del 12 al 13 de noviembre de 2026.
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: PostgreSQL con PostGIS y techo de conexiones alto
+        run: |
+          docker run -d --name zass-postgres             -e POSTGRES_USER=zass             -e POSTGRES_PASSWORD=zass_ci_clave_local             -e POSTGRES_DB=postgres             -p 5432:5432             postgis/postgis:17-3.5             -c max_connections=300
+          for intento in $(seq 1 30); do
+            if docker exec zass-postgres pg_isready -U zass -d postgres >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          docker exec zass-postgres pg_isready -U zass -d postgres
+
+      - name: Comprobar el techo de conexiones
+        # Se MIRA el valor que quedo puesto, no se supone porque el `docker run` no dio error:
+        # un argumento mal escrito no impide arrancar y dejaria el techo de fabrica. Y si algun
+        # dia el paso de arriba se rompe en silencio, este falla aqui y no 20 minutos despues
+        # dentro de una prueba de concurrencia.
+        run: |
+          # Se reintenta porque la imagen de Postgres arranca DOS veces: initdb levanta un
+          # servidor temporal, lo apaga y vuelve a levantarlo. El `pg_isready` del paso
+          # anterior puede acertar contra ese temporal y este paso llegar justo cuando se
+          # esta apagando («the database system is shutting down»), que es lo que tuvo el
+          # CI en rojo dos veces el 13-nov-2026 sin que nada del codigo estuviera mal.
+          techo=""
+          for intento in $(seq 1 30); do
+            techo=$(docker exec zass-postgres psql -U zass -d postgres -tAc "SHOW max_connections" 2>/dev/null || true)
+            case "$techo" in
+              ''|*[!0-9]*) techo=""; sleep 2 ;;
+              *) break ;;
+            esac
+          done
+          test -n "$techo" || { echo "Postgres no contesto en 60 s"; exit 1; }
+          echo "max_connections = $techo (al intento $intento)"
+          test "$techo" -ge 200
 
       - uses: actions/setup-dotnet@v4
         with:

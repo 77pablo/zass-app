@@ -119,6 +119,12 @@ public class Cita
     /// <summary>La PRIMERA de la cadena de reprogramaciones, no la anterior (RN-S4-05).</summary>
     public Guid? CitaOrigenId { get; set; }
     public EstadoCita Estado { get; set; } = EstadoCita.Solicitada;
+    /// <summary>
+    /// T10: «Indica quien falto». Solo tiene sentido junto a <see cref="EstadoCita.NoAsistio"/>;
+    /// en cualquier otro estado vale <see cref="FaltaEnCita.Nadie"/>. No se asigna desde fuera
+    /// del dominio: lo mueve <see cref="AcusarInasistencia"/>, que es quien conoce la regla.
+    /// </summary>
+    public FaltaEnCita QuienFalto { get; set; } = FaltaEnCita.Nadie;
     public ModoAgenda Modo { get; set; }
     public string? NotaBuscador { get; set; }
     public DateTime? ExpiraEn { get; set; }
@@ -145,9 +151,6 @@ public class Cita
     /// <summary>RN-S4-04: menos de 12 h de anticipacion es cancelacion tardia.</summary>
     public bool EsTardia(DateTime ahora) =>
         BloqueHorario is not null && (BloqueHorario.InicioEn - ahora).TotalHours < 12;
-
-    /// <summary>RN-S4-10. Solo una cita realizada habilita a resenar.</summary>
-    public bool HabilitaResena() => Estado == EstadoCita.Realizada;
 
     public Resultado Confirmar()
     {
@@ -201,14 +204,55 @@ public class Cita
         return Resultado.Ok();
     }
 
-    public Resultado RegistrarAsistencia(bool asistio)
+    /// <summary>
+    /// T9. El prestador confirma que la cita ocurrió. Solo desde `pendiente_asistencia`: una vez
+    /// que alguien dijo «no vino», esto ya no la devuelve a realizada. Quien se sienta acusado
+    /// injustamente responde acusando (lo que produce <see cref="FaltaEnCita.Discrepancia"/>),
+    /// que es el camino que dejó la decisión del 11-nov-2026; no hay un «yo sí fui» unilateral.
+    /// </summary>
+    public Resultado RegistrarAsistencia()
     {
         if (Estado != EstadoCita.PendienteAsistencia)
             return Resultado.Falla(Fallas.Conflicto,
                 "Solo se registra asistencia después de la hora de la cita.");
-        Estado = asistio ? EstadoCita.Realizada : EstadoCita.NoAsistio;
+        Estado = EstadoCita.Realizada;
         return Resultado.Ok();
     }
+
+    /// <summary>
+    /// T10, en su forma completa (decisión de Pablo, 11-nov-2026). Una parte acusa a la OTRA de
+    /// no haber ido. <paramref name="aQuien"/> es el ausente, nunca quien habla: acusarse a uno
+    /// mismo no es un caso que haya que rechazar, es un caso que no se puede expresar, porque
+    /// quien llama no elige el valor —lo deduce de su papel en la cita.
+    ///
+    /// Es idempotente y acumulativo: repetir la misma acusación no cambia nada, y la contraria
+    /// lleva a <see cref="FaltaEnCita.Discrepancia"/>, de donde ya no se sale. Por eso acepta
+    /// también una cita que ya está en `no_asistio`: si exigiera `pendiente_asistencia`, el
+    /// primero en hablar dejaría al otro sin poder responder y la discrepancia sería imposible.
+    /// </summary>
+    public Resultado AcusarInasistencia(FaltaEnCita aQuien)
+    {
+        if (aQuien is not (FaltaEnCita.Cliente or FaltaEnCita.Prestador))
+            return Resultado.Falla(Fallas.Validacion, "Hay que decir quién faltó.");
+
+        if (Estado is not (EstadoCita.PendienteAsistencia or EstadoCita.NoAsistio))
+            return Resultado.Falla(Fallas.Conflicto,
+                "Solo se marca inasistencia después de la hora de la cita.");
+
+        Estado = EstadoCita.NoAsistio;
+        QuienFalto = QuienFalto switch
+        {
+            FaltaEnCita.Nadie => aQuien,
+            var ya when ya == aQuien => ya,          // repetirlo no agrega nada
+            _ => FaltaEnCita.Discrepancia,           // cada uno acusa al otro
+        };
+        return Resultado.Ok();
+    }
+
+    // Aquí vivía `HabilitaResena()`. Se borró: quién puede reseñar lo decide UNA sola pieza,
+    // `ReglasDeResenas.EvaluarContacto`, que es la que de verdad corre. Había tres copias de
+    // esta respuesta y ya se contradecían entre sí; con `QuienFalto` encima, la que ganara
+    // habría dependido de cuál conectara el siguiente que pasara por aquí.
 }
 
 /// <summary>CL-17 · TBL-19. Historial inmutable: solo se inserta, nunca se edita.</summary>

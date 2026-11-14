@@ -64,11 +64,39 @@ for (const [vista, tamano] of VISTAS) {
     })
     await pagina.waitForTimeout(1200)
 
+    // RN-S3-02 sobre lo que de verdad llega al navegador: ni coordenadas, ni correos internos.
+    // Heredado de mirar-busqueda.mjs, que medía la pantalla de búsqueda antigua y se borró: esto
+    // era lo único que no cubría ningún otro guion, y es lo más delicado de todo lo que medía.
+    const html = await pagina.content()
+    const filtrado = /@zass\.local|"latitud"|"longitud"|latitud=|longitud=/i.exec(html)
+
     const medidas = await pagina.evaluate(() => {
       const ancho = document.documentElement.clientWidth
       const desborde = document.documentElement.scrollWidth - ancho
       // Que se pueda tocar: enlaces, botones y campos visibles de menos de 44 px de alto.
-      const chicos = [...document.querySelectorAll('a, button, select, input:not([type=hidden])')]
+      //
+      // Con una excepcion, y es la del propio criterio WCAG 2.5.8 («Inline»): un enlace metido
+      // dentro de una frase, cuyo alto lo decide la altura de linea del texto que lo rodea, no
+      // cuenta. Si contara, la unica forma de cumplir seria sacar el enlace de la frase o
+      // separar las palabras, que es peor para leer. «Al crear tu cuenta aceptas los Terminos
+      // de uso» es ese caso. Lo que SI cuenta es un enlace que es una accion por si solo,
+      // aunque este en una linea de texto: a ese se le da cuerpo (ver .letra-chica a).
+      //
+      // Se listan igual, aparte, para que no desaparezcan de la vista: un dia puede colarse un
+      // boton de verdad dentro de un parrafo.
+      const esEnLinea = (e) => {
+        if (getComputedStyle(e).display !== 'inline') return false
+        const p = e.parentElement
+        if (!p) return false
+        // Hay texto que no es el enlace alrededor: entonces es una frase, no una accion suelta.
+        const textoAlrededor = [...p.childNodes]
+          .filter((n) => n.nodeType === Node.TEXT_NODE)
+          .map((n) => n.textContent.trim())
+          .join('')
+        return textoAlrededor.length > 0
+      }
+      const medir = (e) => `${e.tagName.toLowerCase()} "${(e.textContent || e.name || '').trim().slice(0, 30)}" ${Math.round(e.getBoundingClientRect().height)}px`
+      const candidatos = [...document.querySelectorAll('a, button, select, input:not([type=hidden])')]
         .filter((e) => {
           const r = e.getBoundingClientRect()
           const cs = getComputedStyle(e)
@@ -76,12 +104,19 @@ for (const [vista, tamano] of VISTAS) {
             && !e.classList.contains('solo-lector') && !e.classList.contains('saltar')
             && e.type !== 'checkbox' && e.type !== 'radio' && r.height < 43.5
         })
-        .map((e) => `${e.tagName.toLowerCase()} "${(e.textContent || e.name || '').trim().slice(0, 30)}" ${Math.round(e.getBoundingClientRect().height)}px`)
+      const chicos = candidatos.filter((e) => !esEnLinea(e)).map(medir)
+      const chicosEnFrase = candidatos.filter(esEnLinea).map(medir)
       return {
         titulo: document.title,
         h1: document.querySelector('h1')?.textContent?.trim().slice(0, 60) ?? null,
-        desborde, chicos,
+        desborde, chicos, chicosEnFrase,
         fuente: [...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family),
+        // El amarillo de la marca, MEDIDO: en jsdom no hay CSS que medir, y si alguien pisa la
+        // variable esto lo dice. Se mira el VALOR CALCULADO de --amarillo y no el fondo del sitio:
+        // el fondo cambia con la paleta (hoy es oscuro) y el amarillo es la marca, no una decision
+        // de tema. Primera version de esta comprobacion daba 22 rojos porque esperaba la crema de
+        // la paleta vieja: la medicion estaba bien, lo que estaba viejo era lo que yo esperaba.
+        amarillo: getComputedStyle(document.documentElement).getPropertyValue('--amarillo').trim(),
       }
     })
 
@@ -93,9 +128,15 @@ for (const [vista, tamano] of VISTAS) {
     const reales = errores.filter((e) => !(nombre.includes('no-existe') && e.includes('404')))
     if (reales.length) malos.push(`errores de consola: ${[...new Set(reales)].join(' | ')}`)
     if (!medidas.fuente.some((f) => f.includes('Montserrat'))) malos.push('Montserrat NO cargo')
+    if (filtrado) malos.push(`el HTML lleva algo que no debe salir: «${filtrado[0]}»`)
+    if (medidas.amarillo.toLowerCase() !== '#f6c81e') malos.push(`el amarillo de la marca cambio: ${medidas.amarillo}`)
     problemas += malos.length
     console.log(`${malos.length ? 'XX' : 'ok'}  ${vista.padEnd(10)} ${nombre.padEnd(16)} «${medidas.titulo}» h1: ${medidas.h1}`)
     for (const m of malos) console.log(`      - ${m}`)
+    // Informativo, no problema: enlaces dentro de una frase (excepcion «Inline» de WCAG 2.5.8).
+    if (medidas.chicosEnFrase.length) {
+      console.log(`      i enlaces en frase (exentos 2.5.8): ${medidas.chicosEnFrase.join('; ')}`)
+    }
   }
   await contexto.close()
 }

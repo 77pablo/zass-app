@@ -73,7 +73,7 @@ public sealed class RepositorioResenasEfCore : IRepositorioResenas
     public async Task<DatosDePerfil?> PerfilAsync(Guid perfilPrestadorId, CancellationToken ct = default) =>
         await _ctx.PerfilesPrestador.AsNoTracking()
             .Where(p => p.Id == perfilPrestadorId)
-            .Select(p => new DatosDePerfil(p.Id, p.UsuarioId, p.Estado, p.NombrePublico))
+            .Select(p => new DatosDePerfil(p.Id, p.UsuarioId, p.Estado, p.NombrePublico, p.Slug))
             .FirstOrDefaultAsync(ct);
 
     public async Task<Contacto?> ContactoAsync(Guid contactoId, CancellationToken ct = default)
@@ -157,7 +157,7 @@ public sealed class RepositorioResenasEfCore : IRepositorioResenas
     public Task<Cita?> CitaAsync(Guid citaId, CancellationToken ct = default) =>
         _ctx.Citas.AsNoTracking().FirstOrDefaultAsync(c => c.Id == citaId, ct);
 
-    public async Task<IReadOnlyList<Resena>> PublicasAsync(
+    public async Task<IReadOnlyList<FilaPublica>> PublicasAsync(
         Guid perfilPrestadorId, DateTime? antesDe, Guid? antesDeId, int limite,
         CancellationToken ct = default)
     {
@@ -168,11 +168,27 @@ public sealed class RepositorioResenasEfCore : IRepositorioResenas
             consulta = consulta.Where(r => r.PublicadaEn < fecha
                                            || (r.PublicadaEn == fecha && r.Id.CompareTo(id) < 0));
 
+        // Del contacto solo se trae SI hubo cita, no el contacto: así el dato que sale hacia
+        // fuera es el único que puede salir, y no una entidad entera de la que alguien podría
+        // mapear un id sin darse cuenta (CU-16 §7).
         return await consulta
             .OrderByDescending(r => r.PublicadaEn).ThenByDescending(r => r.Id)
             .Take(limite)
+            .Select(r => new FilaPublica(r, r.Contacto!.CitaId != null))
             .ToListAsync(ct);
     }
+
+    public async Task<IReadOnlyList<FilaDeMisResenas>> MiasAsync(
+        Guid autorId, int limite, CancellationToken ct = default) =>
+        // El filtro por autor es lo ÚNICO que separa mis reseñas de las de cualquier otro: no
+        // hay un segundo control más abajo, así que no puede faltar aquí.
+        await _ctx.Resenas.AsNoTracking()
+            .Where(r => r.AutorId == autorId)
+            .OrderByDescending(r => r.PublicadaEn).ThenByDescending(r => r.Id)
+            .Take(limite)
+            .Select(r => new FilaDeMisResenas(
+                r, r.Contacto!.CitaId != null, r.PerfilPrestador!.NombrePublico, r.PerfilPrestador!.Slug))
+            .ToListAsync(ct);
 
     public Task<bool> TieneReporteAbiertoAsync(Guid resenaId, Guid usuarioId, CancellationToken ct = default) =>
         _ctx.ReportesResena.AnyAsync(

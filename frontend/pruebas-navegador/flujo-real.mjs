@@ -49,8 +49,11 @@ try {
   await pagina.goto(`${BASE}/profesionales`, { waitUntil: 'networkidle' })
   await pagina.getByRole('link', { name: /crear mi ficha/i }).first().click()
   await pagina.waitForURL(/crear-cuenta/)
+  // Ya no hay dos casillas «busco / ofrezco» que elegir: la cuenta es UNA, y venir desde «Para
+  // profesionales» solo trae `?rol=prestador` en la direccion para activarle la ficha de entrada.
+  // Este guion se quedo parado meses esperando un control que se quito con esa decision.
   comprobar('"Crear mi ficha" abre la cuenta ya como profesional',
-    await pagina.getByRole('radio', { name: /ofrezco/i }).isChecked())
+    new URL(pagina.url()).searchParams.get('rol') === 'prestador')
   await pagina.getByLabel('Nombre').fill(nombre)
   await pagina.getByLabel('Correo').fill(correo)
   await pagina.getByLabel('Contraseña').fill(clave)

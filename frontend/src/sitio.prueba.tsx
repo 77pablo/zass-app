@@ -43,6 +43,8 @@ const FICHA = {
   promedioCalificacion: null, totalResenas: 2,
   contacto: { telefono: null, whatsapp: '+56 9 5550 0101', correo: null, sitioWeb: 'javascript:alert(1)' },
   publicadoEn: null,
+  // RN-S6-10: la API siempre lo manda. Sin esto, la ficha se pintaria como la de un impago.
+  suscripcionVigente: true,
 }
 const BUSQUEDA = {
   resultados: [{
@@ -239,6 +241,82 @@ describe('el sitio de varias paginas', () => {
     const url = screen.getByTestId('url').textContent ?? ''
     expect(url).toContain('orden=Cercania')
     expect(url).not.toMatch(/-38|-72|lat|lon/i)
+  })
+
+  // ---------------------------------------------------------------- RN-S3-04: el radio
+  //
+  // D4 del repaso en navegador: este control existia, se perdio al pasar a varias paginas, y nadie
+  // lo noto porque las pruebas que lo cubrian eran de la capa de servicio. Estas miran la PANTALLA.
+
+  const conUbicacion = () => vi.stubGlobal('navigator', {
+    ...navigator,
+    geolocation: { getCurrentPosition: (ok: PositionCallback) => ok({ coords: { latitude: -38.7, longitude: -72.6 } } as GeolocationPosition) },
+  })
+
+  it('sin ubicacion no se pregunta hasta que distancia: no habria desde donde medir', async () => {
+    en('/buscar?q=corredor')
+    await screen.findByRole('link', { name: /Marcela Soto/ })
+
+    expect(screen.queryByRole('group', { name: '¿Hasta qué distancia?' })).toBeNull()
+  })
+
+  it('con la ubicacion compartida aparece el control de distancia, con sus cuatro pasos', async () => {
+    const u = userEvent.setup()
+    conUbicacion()
+    en('/buscar?q=corredor')
+    await screen.findByRole('link', { name: /Marcela Soto/ })
+    await u.click(screen.getByRole('button', { name: 'Más cerca' }))
+
+    const grupo = within(await screen.findByRole('group', { name: '¿Hasta qué distancia?' }))
+    for (const km of ['5 km', '10 km', '20 km', '50 km']) {
+      expect(grupo.getByRole('button', { name: km })).toBeInTheDocument()
+    }
+    // Sin radio elegido, lo marcado es «Todo Chile»: la barra busca en todo el pais por omision.
+    expect(grupo.getByRole('button', { name: 'Todo Chile' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('elegir una distancia la manda a la API y la deja en la direccion, para compartirla', async () => {
+    const u = userEvent.setup()
+    conUbicacion()
+    en('/buscar?q=corredor')
+    await screen.findByRole('link', { name: /Marcela Soto/ })
+    await u.click(screen.getByRole('button', { name: 'Más cerca' }))
+    await screen.findByRole('group', { name: '¿Hasta qué distancia?' })
+
+    await u.click(screen.getByRole('button', { name: '20 km' }))
+
+    await vi.waitFor(() => expect(llamadas.some((l) => l.includes('radio=20') && l.includes('lat=-38.7'))).toBe(true))
+    expect(screen.getByRole('button', { name: '20 km' })).toHaveAttribute('aria-pressed', 'true')
+    // El radio SI va en la direccion (es una preferencia de busqueda); la ubicacion NO.
+    const url = screen.getByTestId('url').textContent ?? ''
+    expect(url).toContain('radio=20')
+    expect(url).not.toMatch(/lat|lon|-38/i)
+  })
+
+  it('volver a pulsar la misma distancia la suelta, y no queda radio en la busqueda', async () => {
+    const u = userEvent.setup()
+    conUbicacion()
+    en('/buscar?q=corredor')
+    await screen.findByRole('link', { name: /Marcela Soto/ })
+    await u.click(screen.getByRole('button', { name: 'Más cerca' }))
+    await screen.findByRole('group', { name: '¿Hasta qué distancia?' })
+    await u.click(screen.getByRole('button', { name: '5 km' }))
+    await vi.waitFor(() => expect(llamadas.some((l) => l.includes('radio=5'))).toBe(true))
+
+    llamadas.length = 0
+    await u.click(screen.getByRole('button', { name: '5 km' }))
+
+    await vi.waitFor(() => expect(llamadas.some((l) => l.startsWith('/api/buscar'))).toBe(true))
+    expect(llamadas.filter((l) => l.startsWith('/api/buscar')).every((l) => !l.includes('radio='))).toBe(true)
+  })
+
+  it('un radio inventado en la direccion no se manda a la API', async () => {
+    // La URL la escribe cualquiera. 7 km no es uno de los pasos: se ignora y se busca sin limite.
+    conUbicacion()
+    en('/buscar?q=corredor&cerca=1&radio=7')
+
+    await vi.waitFor(() => expect(llamadas.some((l) => l.startsWith('/api/buscar'))).toBe(true))
+    expect(llamadas.filter((l) => l.startsWith('/api/buscar')).every((l) => !l.includes('radio='))).toBe(true)
   })
 
   it('«Quitar mi ubicación» vuelve a buscar sin ubicacion y sin orden por cercania', async () => {

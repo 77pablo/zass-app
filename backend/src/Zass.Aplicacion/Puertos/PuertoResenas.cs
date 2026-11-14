@@ -72,10 +72,23 @@ public interface IRepositorioResenas
     /// <summary>La cita, solo para comprobar de quién es y con quién. La agenda (MOD-06) es su dueña.</summary>
     Task<Cita?> CitaAsync(Guid citaId, CancellationToken ct = default);
 
-    /// <summary>Las publicadas, de la más nueva a la más vieja, keyset por (publicada_en, id).</summary>
-    Task<IReadOnlyList<Resena>> PublicasAsync(
+    /// <summary>
+    /// Las publicadas, de la más nueva a la más vieja, keyset por (publicada_en, id). Cada fila
+    /// trae además SI nació de una cita: el dato va aparte y no como la entidad `Contacto`
+    /// entera, para que quien mapee la respuesta pública no pueda filtrar el contacto sin querer
+    /// (CU-16 §7).
+    /// </summary>
+    Task<IReadOnlyList<FilaPublica>> PublicasAsync(
         Guid perfilPrestadorId, DateTime? antesDe, Guid? antesDeId, int limite,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Las reseñas que escribió esta persona, de la más nueva a la más vieja, del estado que sea
+    /// (una retirada sigue siendo suya y tiene derecho a verla). El filtro por autor se aplica
+    /// AQUI: es lo único que impide que alguien lea las de otro.
+    /// </summary>
+    Task<IReadOnlyList<FilaDeMisResenas>> MiasAsync(
+        Guid autorId, int limite, CancellationToken ct = default);
 
     Task<bool> TieneReporteAbiertoAsync(Guid resenaId, Guid usuarioId, CancellationToken ct = default);
 
@@ -100,7 +113,21 @@ public interface IRepositorioResenas
 
 /// <summary>Lo mínimo de TBL-05 que reseñas necesita: de quién es y si se ve.</summary>
 public sealed record DatosDePerfil(
-    Guid Id, Guid UsuarioId, EstadoPerfil Estado, string NombrePublico);
+    Guid Id, Guid UsuarioId, EstadoPerfil Estado, string NombrePublico, string Slug);
+
+/// <summary>
+/// Una reseña de la lista pública y el único dato de su origen que sale hacia fuera: si hubo
+/// cita en ZASS! o fue un contacto directo. Ni el id del contacto, ni el de la cita, ni fechas
+/// con las que cruzarlo (CU-16 §7).
+/// </summary>
+public sealed record FilaPublica(Resena Resena, bool DeCita);
+
+/// <summary>
+/// Una reseña MIA: lo mismo, más a quién se la dejé, para poder volver a su ficha. Aquí sí hay
+/// nombre y slug del prestador, porque esto solo lo ve su autor.
+/// </summary>
+public sealed record FilaDeMisResenas(
+    Resena Resena, bool DeCita, string PerfilNombre, string PerfilSlug);
 
 /// <summary>Una fila de la cola del moderador. Sin identidad de nadie: solo la reseña y el reclamo.</summary>
 public sealed record FilaDeCola(

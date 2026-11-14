@@ -7,6 +7,9 @@
  *  - Nunca un 500 hacia Google. Si la API falla o tarda, se responde la app normal (sin etiquetas) con
  *    cache cortisima, y el siguiente rastreo lo reintenta.
  *  - Ficha inexistente o despublicada (404 de la API): la app, con `noindex` y estado 404.
+ *  - Ficha de un prestador sin suscripcion vigente (RN-S6-10): existe y responde 200, pero sale con
+ *    `noindex` y sin datos estructurados. El sitemap ya la excluye por RN-S3-09; esta es la otra
+ *    puerta, la de llegar por un enlace. Lo decide `datosDeFicha`, que es quien lee la respuesta.
  *  - Todo texto de la API se escapa (ver _comun/seo.js). Solo se usa una lista blanca de campos.
  */
 import {

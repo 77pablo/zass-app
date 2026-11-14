@@ -1,4 +1,7 @@
-using Microsoft.AspNetCore.Hosting;
+﻿using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Routing;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -20,7 +23,8 @@ public sealed class Aplicacion : WebApplicationFactory<Program>
     private readonly Dictionary<string, string?> _ajustes;
 
     public Aplicacion(
-        int? limiteAutenticacion = null, bool permitirSinDocumentos = true, int? limiteSensible = null)
+        int? limiteAutenticacion = null, bool permitirSinDocumentos = true, int? limiteSensible = null,
+        int? limitePublico = null)
     {
         _ajustes = new Dictionary<string, string?>
         {
@@ -32,7 +36,7 @@ public sealed class Aplicacion : WebApplicationFactory<Program>
             // mide el limite, las demas lo suben para no estorbarse entre si.
             ["Zass:Tasa:A"] = (limiteAutenticacion ?? 10_000).ToString(),
             ["Zass:Tasa:G"] = "10000",
-            ["Zass:Tasa:P"] = "10000",
+            ["Zass:Tasa:P"] = (limitePublico ?? 10_000).ToString(),
             ["Zass:Tasa:S"] = (limiteSensible ?? 10_000).ToString(),
 
             // Se fija SIEMPRE, y no se deja a appsettings.Development.json: cada prueba sabe en
@@ -137,6 +141,16 @@ public partial class ApiPruebas : IAsyncLifetime
         Assert.DoesNotContain("unsafe-inline", csp);
         Assert.DoesNotContain("unsafe-eval", csp);
         Assert.Contains("frame-ancestors 'none'", csp);
+    }
+
+    [Fact]
+    public async Task La_politica_de_contenido_restringe_connect_src_a_self_sin_dominios_inexistentes()
+    {
+        var respuesta = await _cliente.GetAsync("/api/salud");
+        var csp = string.Join(" ", respuesta.Headers.GetValues("Content-Security-Policy"));
+
+        Assert.Contains("connect-src 'self';", csp);
+        Assert.DoesNotContain("api.zass.cl", csp, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1311,6 +1325,31 @@ public partial class ApiPruebas : IAsyncLifetime
             Assert.DoesNotContain(prohibido, texto, StringComparison.OrdinalIgnoreCase);
     }
 
+    // ------------------------------------------------- el mapa de rutas
+
+    /// <summary>
+    /// Dos endpoints con el mismo <c>WithName</c> no fallan al arrancar: fallan en la PRIMERA
+    /// peticion, y entonces la API entera devuelve 500, sea cual sea la ruta. Paso de verdad el
+    /// 12-nov-2026 al nacer «mis reseñas» con el nombre API-64, que ya era del mapa del sitio, y
+    /// no lo vio nadie porque la suite de integracion no se podia correr ese dia. Esta prueba
+    /// pone el fallo donde se lee: en el nombre repetido, no en 600 pruebas rojas a la vez.
+    /// </summary>
+    [Fact]
+    public void Ningun_endpoint_repite_el_nombre_de_otro()
+    {
+        var rutas = _app.Services.GetRequiredService<EndpointDataSource>().Endpoints;
+
+        var repetidos = rutas
+            .Select(e => new { Nombre = e.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName, Ruta = e.DisplayName })
+            .Where(e => e.Nombre is not null)
+            .GroupBy(e => e.Nombre!)
+            .Where(g => g.Count() > 1)
+            .Select(g => $"{g.Key}: " + string.Join(" / ", g.Select(e => e.Ruta)))
+            .ToList();
+
+        Assert.True(repetidos.Count == 0, "Nombres de endpoint repetidos: " + string.Join(" | ", repetidos));
+    }
+
     // ------------------------------------------------- API-64, el mapa del sitio por HTTP
 
     [Fact]
@@ -1886,6 +1925,122 @@ public partial class ApiPruebas : IAsyncLifetime
 
         return Zass.Aplicacion.Puertos.CargaDeAviso.LeerToken(aviso.Cuerpo)!;
     }
+
+    // ------------------------------------------------- el inventario de rutas
+    //
+    // La prueba de nombres repetidos vive mas arriba, en la seccion «el mapa de rutas»: la
+    // escribieron dos ramas a la vez (esta y la de resenas) y se quedo la suya, que ademas dice
+    // en QUE rutas esta el nombre repetido.
+
+    /// <summary>
+    /// El inventario de endpoints, escrito a mano a proposito: crear uno nuevo deja esta prueba
+    /// ROJA hasta que se anade aqui, y el mensaje pide anadirlo tambien a api-rest.md.
+    ///
+    /// Existe porque el documento llevaba meses diciendo «63 endpoints» mientras el codigo tenia
+    /// ocho que no estaban en ninguna tabla, y dos de ellos (API-34-listar y API-34-quitar) no los
+    /// echaba de menos nadie. Un documento que nadie puede contradecir deja de ser el contrato.
+    ///
+    /// No lee api-rest.md porque el documento vive fuera del repositorio (OneDrive). Lo que si
+    /// puede hacer es obligar a que anadir un endpoint sea un acto DELIBERADO.
+    /// </summary>
+    [Fact]
+    public void El_inventario_de_endpoints_es_el_que_esta_documentado()
+    {
+        string[] esperados =
+        {
+            "API-01",
+            "API-02",
+            "API-03",
+            "API-04",
+            "API-05",
+            "API-08",
+            "API-09",
+            "API-10",
+            "API-11",
+            "API-12",
+            "API-13",
+            "API-14",
+            "API-15",
+            "API-16",
+            "API-17",
+            "API-18",
+            "API-19",
+            "API-20",
+            "API-20b",
+            "API-21",
+            "API-21b",
+            "API-22",
+            "API-22b",
+            "API-23",
+            "API-24",
+            "API-25",
+            "API-27",
+            "API-28",
+            "API-29",
+            "API-30",
+            "API-31",
+            "API-32",
+            "API-33",
+            "API-34",
+            "API-34-listar",
+            "API-34-quitar",
+            "API-35",
+            "API-36",
+            "API-37",
+            "API-38",
+            "API-39",
+            "API-40",
+            "API-41",
+            "API-42",
+            "API-42b",
+            "API-46",
+            "API-47",
+            "API-48",
+            "API-49",
+            "API-50",
+            "API-51",
+            "API-52",
+            "API-53",
+            "API-54",
+            "API-62",
+            "API-63",
+            "API-64",
+            "API-65",
+
+            // S7 suscripciones y pagos. API-69 y API-70 son los dos del cupo fundador: la
+            // inscripcion del medio de pago y el aviso que la confirma.
+            "API-66",
+            "API-67",
+            "API-68",
+            "API-69",
+            "API-70",
+
+            "API-resenas-publicas",
+            "CS-02b",
+            "CS-04",
+            "CSRF",
+            "MI-SUSCRIPCION",
+        };
+
+        var enElCodigo = NombresDeEndpoint();
+        var sobran = enElCodigo.Except(esperados).ToList();
+        var faltan = esperados.Except(enElCodigo).ToList();
+
+        Assert.True(
+            sobran.Count == 0 && faltan.Count == 0,
+            "El mapa de rutas ya no es el documentado. "
+            + (sobran.Count > 0 ? "Endpoints nuevos: " + string.Join(", ", sobran) + ". " : "")
+            + (faltan.Count > 0 ? "Endpoints que desaparecieron: " + string.Join(", ", faltan) + ". " : "")
+            + "Anadelos (o quitalos) de esta lista Y de docs/06-desarrollo/api-rest.md, seccion 11. "
+            + "El nombre es lo que el codigo cita y lo que no puede repetirse.");
+    }
+
+    private List<string> NombresDeEndpoint() =>
+        _app.Services.GetRequiredService<EndpointDataSource>().Endpoints
+            .Select(e => e.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName)
+            .Where(n => n is not null)
+            .Select(n => n!)
+            .ToList();
 }
 
 /// <summary>
@@ -1919,6 +2074,21 @@ public class LimiteDeTasaPruebas
                 Assert.Contains("Demasiadas peticiones", cuerpo);
                 // Nunca se dice cuantos intentos quedan.
                 Assert.DoesNotContain("restantes", cuerpo);
+
+                // Los NOMBRES de los campos, no solo el texto: esta prueba pasaba en verde mientras
+                // la respuesta decia `titulo`/`detalle`, que el cliente no lee, asi que el aviso no
+                // aparecia en ninguna pantalla. Lo que falla es invisible si solo se busca el texto.
+                Assert.Equal(
+                    "application/problem+json",
+                    respuesta.Content.Headers.ContentType?.MediaType);
+                var json = JsonDocument.Parse(cuerpo).RootElement;
+                Assert.Equal("Demasiadas peticiones", json.GetProperty("title").GetString());
+                Assert.Equal(
+                    "Espera unos minutos antes de volver a intentar.",
+                    json.GetProperty("detail").GetString());
+                Assert.Equal(429, json.GetProperty("status").GetInt32());
+                Assert.False(json.TryGetProperty("titulo", out _));
+                Assert.False(json.TryGetProperty("detalle", out _));
             }
         }
 

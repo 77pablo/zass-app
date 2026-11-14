@@ -30,6 +30,8 @@ const FICHA = {
   totalResenas: 0,
   contacto: { telefono: '+56 9 1234 5678', whatsapp: '912345678', correo: 'contacto@soto.cl', sitioWeb: 'https://soto.cl' },
   publicadoEn: '2026-11-01T12:00:00Z',
+  // RN-S6-10: la API siempre lo manda. Sin esto, la ficha del caso feliz no seria la de alguien al dia.
+  suscripcionVigente: true,
 }
 
 let llamadasApi
@@ -244,6 +246,74 @@ describe('datos privados', () => {
   })
 })
 
+// ---------------------------------------------------------------- RN-S6-10
+
+/**
+ * RN-S6-10 y el indice. La ficha de quien dejo de pagar se SIGUE sirviendo (200): se abre por la
+ * tarjeta NFC y por cualquier enlace guardado. Lo que no hace es entrar al indice de Google.
+ *
+ * RN-S3-09 ya la saca de la busqueda y del sitemap. Esta era la otra puerta.
+ */
+describe('ficha sin suscripcion vigente: se sirve, pero fuera del indice', () => {
+  const IMPAGA = { ...FICHA, suscripcionVigente: false, contacto: { telefono: null, whatsapp: null, correo: null, sitioWeb: null } }
+
+  it('sale con noindex y sin datos estructurados, pero sigue siendo 200 y con sus etiquetas', async () => {
+    respuestaApi = () => json(IMPAGA)
+
+    const r = await pedir('marcela-soto')
+
+    // La ficha NO desaparece: apagarla dejaria a quien tiene la tarjeta sin entender que paso.
+    expect(r.status).toBe(200)
+    const d = dom(await r.text())
+    expect(d.querySelector('#root')).not.toBeNull()
+    expect(d.title).toBe('Marcela Soto · Corretaje de propiedades en Centro · ZASS!')
+    // Quien la comparta por WhatsApp sigue viendo de quien es.
+    expect(d.querySelector('meta[property="og:title"]').content).toBe(d.title)
+    expect(d.querySelector('meta[property="og:image"]').content).toBe('https://zass.cl/og-zass.png')
+
+    // Lo que cambia:
+    expect(d.querySelector('meta[name="robots"]').content).toBe('noindex, nofollow')
+    expect(d.querySelector('script[type="application/ld+json"]')).toBeNull()
+  })
+
+  /**
+   * La forma que tendria el fallo: poner noindex de mas. Un verde que solo mire la ficha impaga
+   * no lo veria, porque `noindex` en todas las fichas tambien la deja a ella fuera del indice.
+   */
+  it('la ficha de quien SI esta al dia no se toca: sin robots y con sus datos estructurados', async () => {
+    respuestaApi = () => json(FICHA)
+
+    const d = dom(await (await pedir('marcela-soto')).text())
+
+    expect(d.querySelector('meta[name="robots"]')).toBeNull()
+    const ld = JSON.parse(d.querySelector('script[type="application/ld+json"]').textContent)
+    expect(ld['@type']).toBe('ProfessionalService')
+  })
+
+  /**
+   * Si la API no mandara el campo (una version vieja durante un despliegue) se indexa como
+   * siempre. Es a proposito: un campo ausente que sacara del indice a TODAS las fichas es un
+   * daño mucho mayor, y mucho mas lento de deshacer, que indexar unas horas de mas a un impago.
+   */
+  it('sin el campo en la respuesta, la ficha se indexa como siempre', async () => {
+    const { suscripcionVigente: _quitado, ...sinElCampo } = FICHA
+    respuestaApi = () => json(sinElCampo)
+
+    const d = dom(await (await pedir('marcela-soto')).text())
+
+    expect(d.querySelector('meta[name="robots"]')).toBeNull()
+    expect(d.querySelector('script[type="application/ld+json"]')).not.toBeNull()
+  })
+
+  it('un valor que no es booleano no apaga el indice: solo el false exacto lo hace', async () => {
+    for (const valor of [null, 'false', 0, undefined]) {
+      respuestaApi = () => json({ ...FICHA, suscripcionVigente: valor })
+      const d = dom(await (await pedir('marcela-soto')).text())
+      expect(d.querySelector('meta[name="robots"]'), String(valor)).toBeNull()
+    }
+  })
+})
+
 // ---------------------------------------------------------------- 404 y fallos
 
 describe('ficha inexistente o despublicada', () => {
@@ -329,5 +399,60 @@ describe('cabeceras de seguridad', () => {
   it('la CSP no permite scripts inline: el JSON-LD es un bloque de datos y no se ejecuta', () => {
     expect(CABECERAS_DE_SEGURIDAD['Content-Security-Policy']).toMatch(/script-src 'self'(;|$)/)
     expect(CABECERAS_DE_SEGURIDAD['Content-Security-Policy']).not.toMatch(/script-src[^;]*unsafe-inline/)
+  })
+})
+
+// ---------------------------------------------------------------- estrellas en Google (RN-S5-11)
+
+/**
+ * El JSON-LD declara `aggregateRating` solo con 3 o mas resenas. Es el mismo umbral de
+ * RN-S5-11 que aplica la ficha visible: publicar en los datos estructurados un promedio
+ * que la pagina no muestra es ofrecerle a Google un numero que no puede respaldar.
+ */
+describe('estrellas en Google: aggregateRating en el JSON-LD (RN-S5-11)', () => {
+  async function ldDeLaFicha() {
+    const d = dom(await (await pedir('marcela-soto')).text())
+    const script = d.querySelector('script[type="application/ld+json"]')
+    return script === null ? null : JSON.parse(script.textContent)
+  }
+
+  it('con 0 resenas no declara aggregateRating', async () => {
+    respuestaApi = () => json({ ...FICHA, promedioCalificacion: null, totalResenas: 0 })
+    expect((await ldDeLaFicha()).aggregateRating).toBeUndefined()
+  })
+
+  it('con 2 resenas no declara aggregateRating, aunque la API mandara un promedio numerico', async () => {
+    // La API por RN-S5-11 manda null con <3 resenas. Forzamos el peor caso —un numero con 2
+    // resenas— para verificar que el umbral lo aplica el codigo, no la fuente.
+    respuestaApi = () => json({ ...FICHA, promedioCalificacion: 4.5, totalResenas: 2 })
+    expect((await ldDeLaFicha()).aggregateRating).toBeUndefined()
+  })
+
+  it('con exactamente 3 resenas ya declara aggregateRating', async () => {
+    respuestaApi = () => json({ ...FICHA, promedioCalificacion: 5, totalResenas: 3 })
+    expect((await ldDeLaFicha()).aggregateRating).toMatchObject({ ratingValue: 5, reviewCount: 3 })
+  })
+
+  it('con 4 resenas y promedio de mas de un decimal, publica 1 decimal —lo mismo que la ficha visible', async () => {
+    respuestaApi = () => json({ ...FICHA, promedioCalificacion: 4.3333, totalResenas: 4 })
+    expect((await ldDeLaFicha()).aggregateRating).toEqual({
+      '@type': 'AggregateRating',
+      ratingValue: 4.3,
+      reviewCount: 4,
+      bestRating: 5,
+      worstRating: 1,
+    })
+  })
+
+  it('un impago con muchas resenas no lleva aggregateRating: ni siquiera emite el script ld+json', async () => {
+    respuestaApi = () => json({
+      ...FICHA,
+      suscripcionVigente: false,
+      promedioCalificacion: 4.8,
+      totalResenas: 50,
+    })
+    const d = dom(await (await pedir('marcela-soto')).text())
+    expect(d.querySelector('script[type="application/ld+json"]')).toBeNull()
+    expect(d.documentElement.outerHTML).not.toContain('aggregateRating')
   })
 })

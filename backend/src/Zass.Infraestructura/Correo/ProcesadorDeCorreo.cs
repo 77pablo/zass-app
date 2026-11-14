@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql;
@@ -76,6 +76,7 @@ public sealed class ProcesadorDeCorreo
         }
 
         await PurgarAsync(ct);
+        await AnularCaducadosAsync(ct);
 
         var ids = await TomarLoteAsync(ct);
         foreach (var id in ids)
@@ -142,6 +143,40 @@ public sealed class ProcesadorDeCorreo
     }
 
     /// <summary>
+    /// Anula los avisos que llevan demasiado tiempo esperando, en vez de mandarlos tarde.
+    ///
+    /// Encolar y enviar están separados a propósito, y un tipo sin plantilla se queda en la cola
+    /// sin gastar intentos hasta que alguien la escriba. El problema es el día que esa plantilla
+    /// llega: TODO lo acumulado se vuelve enviable de golpe y la gente recibe el aviso de algo que
+    /// hizo hace semanas. Pasó con PerfilPublicado, encolándose sin plantilla desde el primer día.
+    ///
+    /// La condición es <c>intentos = 0</c>, y no es un detalle: en cuanto un aviso se reserva,
+    /// <c>programada_para</c> pasa a valer la hora de la reserva y deja de decir cuándo se encoló.
+    /// Con cero intentos sigue siendo la original, que es justo el caso que hay que cazar. Los que
+    /// ya se intentaron están acotados por MaximoIntentos y no pueden quedarse años en la cola.
+    ///
+    /// Se anula sin purgar el cuerpo aquí: de eso se encarga PurgarAsync pasado su plazo, que es
+    /// quien sabe qué tipos llevan secreto.
+    /// </summary>
+    private async Task AnularCaducadosAsync(CancellationToken ct)
+    {
+        var limite = _reloj.Ahora.AddDays(-_o.CaducaDias);
+        var n = await _ctx.Database.ExecuteSqlRawAsync(
+            "UPDATE notificaciones SET estado = 'Anulada' " +
+            "WHERE canal = 'Correo' AND estado = 'Programada' AND intentos = 0 " +
+            "AND programada_para < @limite",
+            new object[] { new NpgsqlParameter("limite", NpgsqlDbType.TimestampTz) { Value = limite } },
+            ct);
+
+        if (n > 0)
+        {
+            _log.LogInformation(
+                "{Cuantos} aviso(s) anulados por llevar mas de {Dias} dias esperando en la cola.",
+                n, _o.CaducaDias);
+        }
+    }
+
+    /// <summary>
     /// Un aviso que fracasó para siempre (o se anuló) conserva su carga un plazo, por si hay
     /// que investigar, y luego pierde el token en claro. El token ya habrá vencido: dura 1 h
     /// (recuperación) o 24 h (verificación).
@@ -181,6 +216,9 @@ public sealed class ProcesadorDeCorreo
         }
 
         // Ya no tiene sentido: la cuenta se eliminó, o ya verificó su correo por otro medio.
+        // (Los avisos demasiado viejos NO se filtran aquí: ver AnularCaducadosAsync. Para cuando
+        // un aviso llega a este método, `programada_para` ya vale la hora de la RESERVA, no la de
+        // cuando se encoló, así que aquí no hay forma de saber su edad.)
         if (usuario is null || usuario.Estado == EstadoCuenta.Eliminada || usuario.AnonimizadoEn is not null
             || (aviso.Tipo == TipoNotificacion.CorreoVerificacion && usuario.CorreoVerificado))
         {

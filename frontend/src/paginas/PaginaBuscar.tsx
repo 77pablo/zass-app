@@ -24,6 +24,22 @@ function ordenDe(valor: string | null): OrdenDeTexto {
   return ORDENES.some((o) => o.valor === valor) ? (valor as OrdenDeTexto) : 'Recomendados'
 }
 
+/**
+ * Hasta donde buscar (RN-S3-04). El maximo del documento es 50 km; el minimo, 1. Estos cuatro son
+ * los que se ofrecen: pasos que una persona entiende sin pensar, no un deslizador de kilometros.
+ *
+ * Este control existio, se perdio al pasar el sitio a varias paginas y nadie lo noto durante
+ * semanas: sus pruebas eran de la capa de servicio, que seguia sabiendo filtrar por radio mientras
+ * ninguna pantalla lo pedia. Por eso ahora hay una prueba que mira la PANTALLA.
+ */
+const RADIOS = [5, 10, 20, 50] as const
+const RADIO_MAXIMO = 50
+
+function radioDe(valor: string | null): number | null {
+  const n = Number(valor)
+  return valor !== null && RADIOS.some((r) => r === n) ? n : null
+}
+
 interface Acumulado {
   clave: string
   resultados: ResultadoDeTexto[]
@@ -57,6 +73,7 @@ export function PaginaBuscar() {
   const ordenPedido = ordenDe(params.get('orden'))
   const soloVerificados = params.get('verificados') === '1'
   const cuatroEstrellas = params.get('cal') === '4'
+  const radio = radioDe(params.get('radio'))
 
   // La URL manda: «cerca=1» dice que se busca desde la persona, y el punto sale de la memoria. No hay un
   // estado aparte que pueda cambiar antes que la URL (React Router navega dentro de una transicion): eso
@@ -77,6 +94,8 @@ export function PaginaBuscar() {
   const criterios: CriteriosDeTexto = {
     q, orden,
     ...(cerca && punto ? { lat: punto.lat, lon: punto.lon } : {}),
+    // El radio solo viaja con el punto: sin ubicacion no hay desde donde medir.
+    ...(cerca && punto && radio !== null ? { radio } : {}),
     ...(zona !== '' ? { zona: Number(zona) } : {}),
     ...(soloVerificados ? { verificados: true } : {}),
     ...(cuatroEstrellas ? { calificacion: 4 } : {}),
@@ -148,7 +167,9 @@ export function PaginaBuscar() {
 
   function quitarUbicacion() {
     olvidarUbicacion()
-    cambiar({ cerca: null, orden: orden === 'Cercania' ? null : orden })
+    // El radio se va con la ubicacion: sin punto no se puede medir, y dejarlo en la URL haria que
+    // volviera a aplicarse en cuanto la persona comparta la ubicacion otra vez, sin haberlo pedido.
+    cambiar({ cerca: null, radio: null, orden: orden === 'Cercania' ? null : orden })
   }
 
   async function verMas() {
@@ -231,6 +252,29 @@ export function PaginaBuscar() {
           )}
         </div>
 
+        {/* Sin ubicacion no se muestra: preguntar «hasta que distancia» a quien no ha dicho desde
+            donde no se puede responder, y un control que no hace nada es peor que no tenerlo. */}
+        {punto && (
+          <div className="radio-barra" role="group" aria-label="¿Hasta qué distancia?">
+            <span className="radio-titulo">¿Hasta qué distancia?</span>
+            {RADIOS.map((km) => (
+              <button
+                key={km} type="button" className="chip chip--radio"
+                aria-pressed={radio === km}
+                onClick={() => cambiar({ radio: radio === km ? null : String(km) })}
+              >
+                {km} km
+              </button>
+            ))}
+            <button
+              type="button" className="chip chip--radio" aria-pressed={radio === null}
+              onClick={() => cambiar({ radio: null })}
+            >
+              Todo Chile
+            </button>
+          </div>
+        )}
+
         {avisoUbicacion && <p className="aviso-linea" role="status">{avisoUbicacion}</p>}
         {catalogo.error && (
           <p className="aviso-linea" role="alert">
@@ -248,9 +292,19 @@ export function PaginaBuscar() {
             <div className="vacio">
               <h2 className="vacio-titulo">Todavía no encontramos a nadie para {titulo}.</h2>
               <p>
-                {soloVerificados || cuatroEstrellas ? 'Prueba quitando los filtros: «4 estrellas» solo cuenta a quienes ya tienen 3 reseñas.' : zona !== '' ? 'Prueba en todo Chile, o con otra palabra.' : 'Prueba con otra palabra: un oficio («abogado»), un servicio («divorcio») o un nombre.'}
+                {radio !== null
+                  ? `Estamos mirando solo a ${radio} km de ti. Prueba más lejos, o con otra palabra.`
+                  : soloVerificados || cuatroEstrellas ? 'Prueba quitando los filtros: «4 estrellas» solo cuenta a quienes ya tienen 3 reseñas.' : zona !== '' ? 'Prueba en todo Chile, o con otra palabra.' : 'Prueba con otra palabra: un oficio («abogado»), un servicio («divorcio») o un nombre.'}
               </p>
               <p className="vacio-acciones">
+                {/* Si hay radio puesto, es lo primero que hay que soltar: el resto de los filtros
+                    pueden estar bien y la persona solo esta buscando demasiado cerca. */}
+                {radio !== null && radio < RADIO_MAXIMO && (
+                  <button type="button" className="boton" onClick={() => cambiar({ radio: String(RADIO_MAXIMO) })}>
+                    Ampliar a {RADIO_MAXIMO} km
+                  </button>
+                )}
+                {radio !== null && <button type="button" className="boton" onClick={() => cambiar({ radio: null })}>Buscar sin límite de distancia</button>}
                 {(soloVerificados || cuatroEstrellas) && <button type="button" className="boton" onClick={() => cambiar({ verificados: null, cal: null })}>Quitar los filtros</button>}
                 {zona !== '' && <button type="button" className="boton" onClick={() => cambiar({ zona: null })}>Buscar en todo Chile</button>}
                 <Link to="/profesionales" className="enlace">¿Eres de este oficio? Súmate</Link>

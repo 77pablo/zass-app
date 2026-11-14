@@ -1,4 +1,4 @@
-using Zass.Aplicacion.Comun;
+﻿using Zass.Aplicacion.Comun;
 using Zass.Dominio.Comun;
 
 namespace Zass.Aplicacion.Agenda;
@@ -111,6 +111,23 @@ public interface IServicioAgenda
     /// </summary>
     Task<Resultado<CitaDto>> RegistrarAsistenciaAsync(
         Guid citaId, AutorDeCambio autor, bool asistio, CancellationToken ct = default);
+
+    /// <summary>
+    /// La otra mitad de T10 (decision de Pablo, 11-nov-2026): solo el BUSCADOR, y solo despues
+    /// de la hora. Dice que el prestador no llego.
+    ///
+    /// Que no reciba «a quien acuso» no es un olvido: cada parte solo puede acusar a la otra, y
+    /// la unica forma de garantizarlo es que ese valor no se pueda elegir desde fuera.
+    /// </summary>
+    Task<Resultado<CitaDto>> AcusarAusenciaDelPrestadorAsync(
+        Guid citaId, AutorDeCambio autor, CancellationToken ct = default);
+
+    /// <summary>
+    /// La cola interna de revision: las citas en las que cada parte acusa a la otra. Mientras
+    /// una cita este aqui, su resena esta bloqueada.
+    /// </summary>
+    Task<IReadOnlyList<Zass.Dominio.Agenda.Cita>> CitasEnDisputaAsync(
+        int maximo = 200, CancellationToken ct = default);
 
     // ------------------------------------------------------------- A-09: lo que mueve el tiempo
 
@@ -266,6 +283,10 @@ public sealed record CitaDto(
     Guid PrestadorServicioId,
     Guid PerfilPrestadorId,
     string Prestador,
+    // El calendario (API-35) solo se puede pedir por slug, y "Mis citas" tiene que poder
+    // abrirlo para reprogramar (CU-14 paso 3). Sin esto, el frontend tenia que buscar al
+    // prestador por nombre y quedarse con el que coincidiera en id: un rodeo evitable.
+    string PrestadorSlug,
     string? NotaBuscador,
     DateTime? ExpiraEn,
     bool Nueva);

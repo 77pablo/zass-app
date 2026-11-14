@@ -1,8 +1,14 @@
 # ZASS! — estado del desarrollo
 
-**Última sesión:** 12 de noviembre de 2026 — ver **«Sesión del 12-nov»** justo debajo.
+**Última sesión:** 14 de noviembre de 2026 (mañana) — ver **«Sesión del 14-nov, mañana»** justo debajo.
 
-**Sesión anterior:** 9 de noviembre de 2026 (se rescataron las dos ramas de agentes que habían quedado sin
+**Sesión anterior:** 14 de noviembre de 2026 (madrugada), cuando se cerró C1.
+
+**Antes de eso:** 13 de noviembre de 2026 (ver «Sesión del 13-nov» más abajo).
+
+**Sesión anterior a esa:** 12 de noviembre de 2026.
+
+**Sesión anterior a esa:** 9 de noviembre de 2026 (se rescataron las dos ramas de agentes que habían quedado sin
 verificar —`verificacion` y `fondo`—, se construyó el planificador A-09 y **MOD-06 Agenda** entero en el
 backend, sin la pantalla). **Lo que sigue pendiente está en «Sesión del 9-nov» más abajo.**
 
@@ -15,6 +21,460 @@ comprobado**, **qué no**, y **el siguiente paso exacto**.
 
 ---
 
+## Sesión del 14-nov-2026 (mañana) — dónde retomar
+
+### C3 está CERRADO: el cobro del día 31 existe y lo dispara el planificador
+
+Fusionado de `c3/cobro-del-dia-31` a **`cupo-fundador`**. Era lo último que faltaba del camino
+del dinero: C1 dejaba inscribir el medio de pago y **nadie cobraba nunca**.
+
+Lo dispara **A-09 Planificador**, en la misma tarea diaria que vence suscripciones y avisa, y
+**antes** que ellas: a quien se le acaba de cobrar bien no hay que mandarle un «te queda poco»,
+y el aviso se calcula sobre la fecha que el cobro acaba de mover.
+
+| Decisión | Por qué así |
+|---|---|
+| Cobra **7 días antes** del vencimiento | No es un calendario inventado: es el mayor umbral de aviso que ya existía, leído del mismo sitio. Un rechazo tiene margen en vez de ser «desapareces hoy» (RN-S7-11) |
+| Clave determinista `cobro-automatico:<suscripción>:<vigente-hasta>` | Con la fecha de hoy, dos corridas dentro de la ventana de 7 días cobrarían **dos veces el mismo mes** (RN-S7-12) |
+| Un rechazo **no se reintenta** solo | La política de reintento es decisión de Pablo y no existe (RN-S7-13) |
+| Sin medio inscrito **no se cobra y no se supone nada** | Se cuenta y se audita: un agujero que se ve, no uno que se tapa (RN-S7-14) |
+
+13 pruebas y 15 mutaciones. Dos mutantes no cayeron y el agente **los reemplazó en vez de
+dejarlos pasar**, porque eran equivalentes.
+
+### El hueco de C1 que encontró C3, y que importaba de verdad
+
+La inscripción del medio de pago guardaba su referencia **en el intento y nunca en la
+suscripción**, que es la columna que el cobro recurrente lee. El 23 de diciembre el cobro habría
+recorrido las 50 suscripciones y **no habría cobrado a nadie**: la inscripción servía para tomar
+el cupo y para nada más. Ninguna prueba de C1 lo veía porque todas miraban el intento.
+
+Arreglado en `ServicioSuscripciones.PasarAFundadorConMesGratisAsync`, con el límite escrito al
+lado: **la pasarela simulada devuelve la referencia de la TRANSACCIÓN, y una real devuelve la del
+MEDIO inscrito** (el `tbk_user` de Oneclick). Eso lo tendrá que devolver el adaptador real, y
+está dicho en el documento de S7.
+
+Dos pruebas nuevas, la segunda vigilando el lado que se olvida: **una inscripción rechazada no
+deja medio guardado**, porque si lo dejara el cobro intentaría cobrarle a quien nunca inscribió
+nada.
+
+### La auditoría del cobro nombraba una tabla que no existe
+
+Cuatro entradas de `ServicioCobros` decían que la entidad afectada era `intentos_pago`, y la
+tabla es **`intentos_de_pago`**. Es el **mismo error que el bloqueo de fila** de la madrugada,
+en otro sitio: el SQL crudo reventaba con `42P01`, pero una etiqueta de auditoría no revienta
+nunca. Se habría notado el día que alguien tuviera que explicar un cobro: la consulta por tabla
+no devuelve ni una fila, y la conclusión natural es «no hay rastro de ese cobro».
+
+`AuditoriaDeCobrosPruebas`, 3 pruebas. Es el primer archivo del cobro que le pasa a
+`ServicioCobros` el **mismo** auditor que luego mira; los demás le pasan uno de usar y tirar, y
+por eso ninguno podía ver esto. La tercera prueba comprueba que **el identificador es de la
+tabla que dice ser**, y se ganó su sitio con una mutación: etiquetar `cobro_confirmado` como
+`suscripciones` —que SÍ es una tabla— con el id del intento engaña a las dos primeras y solo
+cae esa.
+
+### La documentación, con dos inconsistencias mías cerradas
+
+- **`clases-05-suscripciones-y-pagos.md`** existe: **CL-26 a CL-32**, las siete clases de S7, que
+  eran el único subsistema sin diagrama de clases. La matriz decía **4 clases y un total de 29**
+  cuando en el código son **siete**: corregido a 7 y 32, y su §3.1 pasa a llamarse «las 25 clases
+  de S1 a S6» porque las de S7 no tienen caso de uso que las pida —eso es el hallazgo de su §3.5,
+  no un hueco—.
+- **S7 pasa de tres operaciones a cuatro** (cotizar, iniciar, **cobrar lo que vence**, confirmar),
+  con una §2.1 nueva y **RN-S7-11 a RN-S7-14**. Su §9 decía que «el cobro del día 31 no existe»,
+  que desde hoy es falso: ahora lo que queda abierto ahí es la pasarela real, la política de
+  rechazo y `renovacion_automatica`.
+- **A-09 en `beneficiarios.md`**: es el único actor que mueve dinero sin que haya nadie delante, y
+  eso no estaba dicho.
+- Comprobado con el guion nuevo **`mirar-diagramas.mjs`** en un navegador de verdad: 10 páginas,
+  **42 diagramas, 0 con problemas**; `clases.html` pasa de 5 a 7 diagramas y el de S7 renderiza
+  con su nodo nuevo. Ese guion existe porque **un error de sintaxis de Mermaid también dibuja un
+  SVG**, así que buscar SVG no comprueba nada.
+
+### Dos decisiones que te esperan, y bloquean el cobro de verdad
+
+1. **La política de rechazo.** Cuando la tarjeta se rechaza el 16 de diciembre: ¿se reintenta
+   solo —cuántas veces, cada cuántos días— o queda en manos de la persona? Y los «3 días de
+   gracia»: ¿son visibilidad extra **después** del vencimiento, o margen **antes** de darlo por
+   perdido? ¿Correo propio de «no pudimos cobrarte»?
+2. **`RenovacionAutomatica` es `false` para todo el mundo** y el panel lo muestra. El cobro **no
+   la consulta**, porque si la consultara no cobraría a nadie. ¿Se pone en `true` al inscribir y
+   el cobro la respeta, o se saca de la pantalla? Tenerla visible y sin efecto es lo peor de las
+   tres opciones.
+
+### Los números, con el CI como autoridad
+
+Carrera **43585114349** en verde sobre `cupo-fundador`: **824** de aplicación, **17** de
+arquitectura y **723** de integración, cero fallos. Con las 3 de la auditoría, la suite de
+aplicación va en **827** en local, y la carrera **43595018358** quedó en curso al escribir esto.
+
+### Una trampa del entorno que costó tres rojos falsos
+
+El bloqueo de Windows impide copiar el DLL de producción recién compilado, así que la suite corría
+contra **el binario viejo**: tres pruebas «fallaban» por código que ya estaba arreglado. La pista
+fue que una prueba **pasaba al añadirle una línea de diagnóstico**. Desde ahora,
+`dotnet build --no-incremental` antes de creerle a un rojo local.
+
+### Cierre de la sesión del 14-nov (mañana) — todo guardado y empujado
+
+Nada quedó sin commitear: `cupo-fundador` en `f5e295b` y la documentación en `0bf2347`, las dos
+ramas al día con `origin` y los dos árboles de trabajo limpios.
+
+**PR #22** abierto y **MERGEABLE**: `cupo-fundador` → `integracion/13-nov`, con C1 y C3 completos.
+Lleva un comentario con la evidencia de mutación de las 7 pruebas del último empujón, como pide
+`CONTRIBUIR.md`.
+
+**La evidencia de mutación quedó completa, y de dos maneras distintas:**
+
+| Prueba | Cómo se vio en rojo |
+|---|---|
+| Las 3 de `AuditoriaDeCobrosPruebas` | En local. La segunda mutación —etiquetar `cobro_confirmado` como `suscripciones`, que **sí** es una tabla, con el id del intento— cae solo en la tercera prueba, y eso es lo que justifica que exista |
+| 3 de `CobroAutomaticoIntegracionPruebas` | Carrera **43596101562** del CI: 3 caídas, 724 verdes |
+| La cuarta, la del formato de la clave | En local: no toca la base, así que sí corre aquí |
+
+**Y una trampa de la mutación por CI que ya está escrita en `CONTRIBUIR.md`:** la primera carrera
+(**43595940161**) salió roja por donde no quería. Mutar `ClaveDeCobroAutomatico` tumba dos pruebas
+**de aplicación** de C3, y entonces el CI **salta** el paso de integración: las cuatro nuevas no se
+ejecutaron. Para probar una prueba de integración hay que mutar solo lo que esa prueba vigila.
+La rama `mut-*` ya está borrada, en local y en `origin`.
+
+**La auditoría de solo lectura que corrió un agente:** cruzó los dos documentos nuevos de S7 con el
+código, afirmación por afirmación. **77 comprobadas, 0 falsas** en los documentos. Lo que sí
+encontró fueron **dos comentarios del código con números viejos**, arreglados en `9eaf864`:
+
+- `Entidades.cs`, en `Cupon`: decía que el cupón sobre el precio fundador deja **4792**, que es el
+  resultado del **20 %** que Pablo descartó el 13-nov. Con el 30 % vigente deja **4193**.
+- `ZassDbContext.cs`, en la siembra de planes: «fundador son los primeros **20** cupos», cuando se
+  siembran **50** (RN-S7-06). Los datos estaban bien; el comentario no.
+
+Los dos son solo comentarios, pero son los dos sitios donde alguien mira para saber cuánto se
+cobra, y un comentario con el número viejo al lado del código con el nuevo es peor que no tenerlo.
+
+**Lo demás que se cerró en este tramo:**
+
+- **CC-04** pasa a explicar **las dos clases de clave de idempotencia** y por qué no son
+  intercambiables: la que pone el cliente al montar la pantalla (API-68) y la que deriva el
+  servidor del período (RN-S7-12). El cobro tiene las dos, y es el mejor ejemplo de la diferencia.
+- **Las cuentas de la documentación al día**: el diccionario abría diciendo «las 28 tablas» y su
+  propio resumen dice 36; `api-rest.md` decía 71 endpoints y la tabla llega a 76; el README
+  anunciaba el ER en 3 partes cuando hay 4. Y había **dos secciones 3.5** en la matriz desde que
+  se añadió S7: la de S7 pasa a 3.7.
+- **`CONTRIBUIR.md`**: los números de referencia eran del 12-nov (674 + 614 + 16 y 373), ahora
+  827 + 727 + 17 y 501. Una referencia vieja hace inverificable la regla de «todo verde».
+
+**Una tarea que quedó a medias, y no pasa nada:** un segundo agente estaba auditando las pantallas
+de S7 (`/planes`, el pago simulado, la clave de idempotencia generada al montar, los cuatro
+estados) contra el documento y el servidor. Era de solo lectura y se detuvo antes de entregar, así
+que **no escribió nada**: se puede volver a lanzar igual cuando se retome.
+
+**Dónde retomar:** las dos decisiones de Pablo siguen siendo lo que bloquea el cobro de verdad
+—la política de rechazo y `renovacion_automatica`—, y la pasarela real necesita que elija proveedor.
+Todo está en la sección de arriba y en el PR #22.
+
+### El siguiente paso exacto
+
+1. **Pablo:** lo de la madrugada sigue en pie (mergear **#11** y **#12**, aplicar la migración del
+   cobro, **migrar Neon**, encender `Zass:Verificacion:PermitirSinDocumentos` en Render, desplegar
+   `web/mantenimiento`), **más las dos decisiones de arriba**, que son las que separan a esto de
+   cobrar de verdad.
+2. **Claude:** la pasarela real es lo único que falta del camino del dinero, y necesita que Pablo
+   elija proveedor (Transbank, Flow o Mercado Pago) y abra la cuenta. Mientras no esté, el cobro
+   automático corre entero contra la simulada y **no entra un peso**.
+3. **Joaquín:** sus doce tandas en `PLAN-JOAQUIN.md`.
+
+## Sesión del 14-nov-2026 (madrugada) — dónde retomar
+
+### C1 está CERRADO: el cupo fundador funciona de punta a punta
+
+Las once tareas del plan `docs/superpowers/plans/2026-11-13-cupo-fundador.md`, en la rama
+**`cupo-fundador`**, con el **CI en verde**: **810** pruebas de aplicación, **17** de
+arquitectura y **722** de integración, cero fallos. Cada prueba nueva con su mutación.
+
+| Tarea | Qué quedó |
+|---|---|
+| 1 | El doble en memoria con los 11 miembros nuevos del repositorio |
+| 2 | La migración `20261114012145_CobroIntentosYCupones`: tres tablas, `ux_pago_intento`, y el cupón **LANZAMIENTO30 al 30 %**. **SIN APLICAR a ninguna base** |
+| 3-5 | 17 pruebas de cotizar, 12 de iniciar, 10 de confirmar |
+| 6 | La guarda: la pasarela simulada ya **no arranca en Producción** (su comentario lo prometía y el `switch` no lo cumplía) |
+| 7 | La inscripción con cobro **$0** confirma el cupo y arranca el mes gratis (RN-S7-01, 03 y 07) |
+| 8 | **API-66 a API-70** y 9 pruebas por HTTP. Son cinco y no cuatro: la inscripción va aparte del cobro |
+| 9 | La página **`/planes`** con el contador «quedan N de 50», el cupón y sus cuatro estados, más `PagoSimulado` y `PlanesListo`. 12 pruebas |
+| 10 | El documento rector de **S7**, que no existía |
+| 11 | Las pruebas contra PostgreSQL y el guion de navegador |
+
+### El defecto de producción que encontró la tarea 11
+
+`RepositorioSuscripciones.cs:146` hacía `SELECT * FROM intentos_pago … FOR UPDATE` y la tabla
+se llama **`intentos_de_pago`**: el **bloqueo de fila que impide que dos confirmaciones del
+mismo cobro regalen dos meses reventaba con `42P01`** en cuanto se usaba de verdad.
+
+Es SQL crudo —el compilador no lo ve— y ninguna prueba en memoria podía verlo, porque su doble
+devuelve el mismo objeto sin tocar la base. **Lo cazó la primera prueba que lo corrió contra
+PostgreSQL**, una hora después de escribirla. Es justo para lo que existía la tarea 11.
+
+Y dos fallos de las pruebas nuevas, del mismo tipo y encontrados igual:
+`new ContextoDePrueba()` **abre una transacción en su constructor**, así que `EnTransaccionAsync`
+no abría la suya y **no commiteaba nada** (las dos confirmaciones se creían primeras); y la
+columna de auditoría es `actor_id`, no `usuario_id`. Las pruebas de concurrencia ahora incluyen
+una que **mira `pg_indexes`** antes de confiar en que `ux_pago_intento` existe.
+
+### La documentación: documento nuevo, y por fin con historial
+
+- **`subsistema-7-suscripciones-y-pagos.md`** existe, con **RN-S7-01 a RN-S7-10** y las dos
+  excepciones de seguridad escritas (API-70 sin CSRF ni sesión; un aviso repetido responde 200).
+- **API-66 a API-70** en `api-rest.md`: el contrato pasa de 71 a **76**.
+- **TBL-33 a TBL-36** en el diccionario (ni los cupos fundador estaban documentados): de 32 a **36**.
+- El actor **A-11 Pasarela de pago** y una **columna S7** en la matriz de actores, que no existía.
+- **Ojo:** el documento **no llegaba al HTML** hasta registrarlo en `sitio/construir.py`. El
+  script decía «Listo» y la página no tenía el texto. Comprobado ahora buscando seis textos
+  **dentro** del HTML generado.
+- La carpeta de documentación **ya es un repositorio git** y está en GitHub, privado:
+  `https://github.com/77pablo/zass-documentacion`. Antes no tenía historial de ninguna clase.
+
+### Lo demás que se movió
+
+- **El sitio se puede cerrar**: rama `web/mantenimiento`, un `_middleware.js` de Cloudflare Pages
+  que responde **503** (no 200, para que Google no indexe «en mantenimiento») con un pase para
+  mirar el sitio por dentro. **Encendido por omisión**: para abrirlo hay que poner
+  `MANTENIMIENTO=0` en Cloudflare. 10 pruebas, tres mutaciones. **Sin desplegar.**
+- **`/planes` ya se puede encontrar**: antes nada la enlazaba. Ahora está en el pie y en
+  `/profesionales`, que además **dice el precio por primera vez** en una pantalla pública.
+- **`legal.ts`**: llenos el correo de privacidad (Ley 21.719) y la lista de proveedores con su
+  país. Siguen pendientes **la razón social con RUT y el plazo de los registros**, y
+  `BORRADOR_LEGAL` sigue en `true` hasta que un abogado revise las dos páginas.
+- **PR #13 fusionado** (de otra IA): `aggregateRating` en el JSON-LD de la ficha desde 3 reseñas
+  (RN-S5-11), con cinco mutaciones comprobadas.
+- **El CI tenía un fallo intermitente propio**, no del código: Postgres arranca dos veces
+  (initdb levanta un servidor temporal y lo apaga) y el paso del techo de conexiones llegaba en
+  el apagón. Arreglado con reintento, en `cupo-fundador` y en `integracion/13-nov`.
+- `docs-frontend` y `docs-raiz`, que llevaban dos días **solo en local**, ya están en `origin`.
+
+### Dos cosas del entorno que bloquean, y son de Pablo
+
+1. **Windows bloquea los DLL de prueba de .NET recién compilados** en este PC:
+   `FileLoadException 0x800711C7`, «una directiva de Control de aplicaciones bloqueó este
+   archivo». Comprobado en las dos direcciones: con el DLL del 12-nov pasan 17/17; con uno
+   nuevo, caen antes de ejecutar nada. **Mientras siga así, el CI es la única autoridad sobre el
+   backend.** Se arregla excluyendo la carpeta del repositorio en Seguridad de Windows.
+2. **Otra IA trabaja en la carpeta `zass-app-1` y cambia de rama.** Por eso Claude se mudó a su
+   propio worktree, `zass-wt-c1`.
+
+### El siguiente paso exacto
+
+1. **Pablo:** mergear **#11** (52 commits, CI verde) y **#12** (el plan de Joaquín);
+   **aplicar la migración** del cobro y **migrar Neon** (producción sigue con 20 cupos y le
+   faltan tres migraciones en orden); **encender `Zass:Verificacion:PermitirSinDocumentos` en
+   Render**; **desplegar `web/mantenimiento`** si quiere el sitio cerrado; y decidir si se honra
+   el booleano de `MarcarPagado` o se documenta como defensa redundante.
+2. **Claude:** C3, el cobro del día 31 —lo está construyendo un agente en
+   `c3/cobro-del-dia-31`—. **Fecha límite real: 23 de diciembre de 2026**, cuando se le termina
+   el mes gratis a quien tome su cupo el 23 de noviembre. Si no existe para entonces, los
+   fundadores desaparecen de la búsqueda sin que nadie les haya cobrado un peso.
+3. **Joaquín:** sus doce tandas en `PLAN-JOAQUIN.md`, empezando por las cuatro ramas de rescate
+   `web/*`, que ya están en `origin`.
+
+## Sesión del 13-nov-2026 — dónde retomar
+
+### Tarde del 13-nov — lo que pasó DESPUÉS de lo que cuenta el resto de esta sección
+
+Lo de abajo (PR #9, PR #10, los 8 defectos) sigue siendo cierto, pero **ya no es el siguiente
+paso**. Esto es lo nuevo:
+
+**1. Todo está en `integracion/13-nov`, y es un solo merge.** Esa rama va **47 commits por
+delante de `main`**, está subida y su CI está en verde. Contiene el contenido de los **cuatro**
+PR abiertos (#6, #7, #9, #10) y de las **seis** ramas de agentes, comprobado uno por uno con
+`git merge-base --is-ancestor`, no por los títulos de los commits. `main` no tiene nada que
+ella no tenga. **El siguiente paso es un PR `integracion/13-nov` -> `main`, no cuatro
+fusiones en orden.**
+
+**Ojo con un verde que miente hoy mismo:** `gh run list --branch main` muestra un `success`
+arriba, pero es el workflow *Copia de la base de datos*. El de *Pruebas* sobre `main` sigue en
+**failure** del 12-nov.
+
+**2. RN-S4-11, decisión de Pablo.** Una cita ya confirmada **se puede reprogramar aunque la
+suscripción del prestador haya vencido**. Lo ya comprometido se honra: el impago pierde la
+búsqueda (RN-S3-09), las horas nuevas y los botones de contacto, pero no lo que otra persona ya
+tenía agendado. Mismo criterio que RN-S6-10.
+
+Lo que este archivo tenía como pendiente —«decidir si `ReprogramarAsync` comprueba la
+suscripción»— **está cerrado, y no hubo código que escribir**: el comportamiento elegido es el
+que ya tenía. Lo que faltaba era que la especificación lo dijera. Escrito en
+`subsistema-4-agendamiento-y-notificaciones.md` (la regla) y en
+`cu-14-reprogramar-o-cancelar-cita.md` (flujo alternativo **5H**), y el sitio regenerado y
+comprobado en el HTML. **No era un defecto del código: era un hueco del documento.**
+
+**3. Tres defectos de interfaz arreglados (commit `021cf74`), los tres detrás de pruebas en
+verde.** Salieron de una revisión de código que por error corrió sobre la carpeta vieja
+`C:/Users/pdani/zass-app`; se comprobó a mano que existían también aquí antes de tocar nada.
+
+| Defecto | Cómo se confirmó |
+|---|---|
+| `errorDeFranja` no rechazaba hora vacía: vaciar **solo «Desde»** manda `horaInicio: ""`, el servidor falla al convertir a `TimeOnly` **antes** de validar, y la pantalla solo puede decir «No se pudo completar la operación» sin marcar campo | Ejecutando la función con los tres casos: los otros dos sí daban error, solo ese se escapaba |
+| `inicioDeDiaEnChile` se iba al **día anterior** el domingo del cambio de hora de septiembre (la medianoche chilena no existe: el reloj salta de 00:00 a 01:00). `2026-09-06` devolvía las 23:00 del sábado | Recorriendo los **730 días** de 2026 y 2027: antes fallaban los dos domingos de septiembre, ahora **0** |
+| `robots.txt` no cubría `/mi-agenda`, `/mis-citas` ni `/mis-resenas`, y **cuatro** pantallas del panel no pedían `noindex` | Leyendo el archivo y las rutas de `App.tsx`. La revisión había visto solo `/mi-agenda`: eran tres rutas y cuatro pantallas |
+
+**Las pruebas se comprobaron en rojo antes del arreglo**: revirtiendo los tres archivos y
+dejando las pruebas puestas, **8 caían**. La del cambio de hora recorre los 730 días porque el
+defecto existía justo porque las dos pruebas que había miraban un día de verano y uno de
+invierno. Y la de `robots.txt` **ya no se escribe a mano**: compara la lista con las rutas que
+`App.tsx` declara, así que la próxima pantalla del panel no se puede escapar.
+
+Interfaz: **488/488** (eran 478). `tsc -b` limpio.
+
+**4. Un cuarto hallazgo de esa revisión estaba caducado**, y conviene saberlo: decía que los
+bloqueos no se pueden deshacer. Sí se pueden: existen `GET /api/mi/bloqueos`,
+`DELETE /api/mi/bloqueos/{id}` y el botón «Quitar este bloqueo».
+
+### Lo que de verdad bloquea el lanzamiento del lunes 23
+
+Medido hoy, no recordado. Lo que el mensaje de un colaborador daba por pendiente —los PR, los
+seis textos de J3/J4, el BOM de `Program.cs`— **ya estaba hecho**. Lo que sigue abierto:
+
+| # | Qué falta | De quién depende |
+|---|---|---|
+| 1 | Fusionar `integracion/13-nov` -> `main`. Llave de todo: la regla de **una migración de EF a la vez** convierte este merge pendiente en un bloqueo de desarrollo | Nosotros |
+| 2 | **El cupo fundador no está enchufado a nada.** La lógica existe y su concurrencia está probada con 60 solicitantes a la vez, pero `grep "Fundador" backend/src/Zass.Api` está **vacío**, no hay `EndpointsSuscripciones.cs` y el frontend no menciona «fundador» ni «cupo». **Nadie puede tomar un cupo.** No es «falta cerrar al 50»: falta el camino entero | Joaquín |
+| 3 | **Mes gratis**: no existe, y los dos planes de pago tienen `dias_prueba = 0` **explícito**. El plan `prueba` de 30 días no es lo mismo | Joaquín |
+| 4 | **Cupón del 20 %**: cero menciones en todo el código. Necesita migración, así que espera al punto 1 | Joaquín |
+| 5 | **Cobro**: no hay puerto de pasarela, y `RegistrarPeriodoPagadoAsync` **solo lo llaman pruebas**. La forma de cobro sigue sin decidir, pero no tiene que frenar: la base ya tiene `Suscripcion.ReferenciaPasarela` y la tabla `pagos` | Joaquín, detrás de un puerto |
+| 6 | **Avisos de cita por correo: no construidos.** El enum declara `CitaSolicitada/Confirmada/Rechazada/Cancelada/Reprogramada`, pero la agenda **nunca encola nada** y `Plantillas.TienePlantilla` no incluye ningún tipo `Cita*` | Nosotros, tras el punto 1 |
+| 7 | **Migrar Neon** (producción sigue con **20** cupos, no 50) — y son **dos** migraciones: `CuposFundadorA50` y `NoAsistioQuienFalto` | Solo Pablo |
+| 8 | **Manual Deploy en Render** (`autoDeploy: false`) y **rotar los 3 secretos** | Solo Pablo |
+
+**Tres cosas que nadie tenía en la lista y pesan:**
+
+1. **El correo de reseñas falla en el modo peligroso.** En `main` la reseña **sí** se encola,
+   pero `Plantillas.cs` de `main` no reconoce el tipo, y el despacho deriva de
+   `TienePlantilla` qué filas consulta: esas notificaciones quedan **`Programada` para
+   siempre, con 0 intentos y sin error**. Quien mire la cola verá avisos «en camino» que nunca
+   van a salir. El arreglo (`75612f2`) está solo en `integracion/13-nov`.
+2. **Render está en `plan: free`** y el envío de correo y el `Planificador` son
+   `BackgroundService` **dentro del proceso de la API**. Dormido por inactividad no vacía la
+   cola. Riesgo de arquitectura para el lanzamiento.
+3. **El cobro es la única parte del producto sin documento rector:** `01-casos-de-uso/` llega
+   hasta el subsistema 6 y **no hay subsistema S7**; `api-rest.md` no numera ningún endpoint de
+   suscripción.
+
+
+### Lo primero: `main` ya tiene arreglo, y la causa no era lo que parecía
+
+**El rojo de `main` era UNA prueba y no era un defecto del producto.** Con `gh` autenticado se pudo
+leer por fin el registro de Actions: fallaba
+`CuposFundadorIntegracionPruebas.Sesenta_pidiendo_a_la_vez_se_reparten_exactamente_cincuenta_cupos_sin_repetir`,
+y su propio mensaje decía la causa — «Hacen falta 61 conexiones simultaneas y al servidor le quedan
+30». Es el **techo de conexiones de Postgres en CI**, no el reparto de cupos. La rama de 20 cupos
+estaba verde porque pedía menos conexiones.
+
+Arreglado en **PR #9** (`ci-techo-conexiones`): Postgres se levanta con `docker run … -c
+max_connections=300` porque `services:` no admite argumentos para el servidor, y un paso aparte
+**mira** `SHOW max_connections` en vez de confiar en que el `docker run` no dio error. **CI de esa
+rama en verde, con los números: 674 + 16 + 614, ninguna omitida.**
+
+### Los 8 defectos del repaso en navegador: cerrados (PR #10)
+
+`agente/navegador`, cuatro commits. D1 ya estaba arreglado de antes.
+
+| # | Qué era | Qué se hizo |
+|---|---|---|
+| D2 | `/mi-ficha` mandaba a «crear una cuenta de profesional con otro correo», contra la cuenta única | Ahora invita a activar la ficha con la cuenta que ya tiene |
+| D3 | Entrar bien y que falle `GET /api/mi/cuenta` dejaba la pantalla **muda** | Lo dice y ofrece reintentar (3 unitarias nuevas) |
+| D4 | **El control de radio no existía** (ver más abajo: el documento lo daba por arreglado) | Reconstruido de punta a punta, incluido el parámetro en API-63 |
+| D5 | El pie ofrecía «Entrar» a quien ya había entrado | El pie sigue la sesión |
+| D6 | Tres objetivos táctiles bajo 44 px | Uno era una acción y se arregló; **los otros dos son enlaces dentro de una frase, que WCAG 2.5.8 exceptúa**, y el medidor aprendió la excepción |
+| D7 | El 429 respondía `titulo`/`detalle` y el cliente lee `title`/`detail`: el aviso del limitador **no llegaba nunca** | Arreglado, y apareció la otra mitad: `WriteAsJsonAsync` pisaba el `Content-Type` |
+| D8 | Dos guiones «muertos» | `flujo-real.mjs` no lo estaba: era **un selector**. `mirar-busqueda.mjs` sí: borrado, llevándose antes sus dos comprobaciones únicas |
+| D9 | Los datos de demostración no permitían entrar | Contraseña real (`demo-zass-2026`) y sus dos roles, en los dos sembrados |
+
+**Medido en esta máquina, no por informe ajeno:** interfaz **385/385**, aplicación **679/679**,
+arquitectura **16/16**, integración **616/616**, y **los 7 guiones de navegador en verde** más el
+recorrido completo del prestador (**14/14**).
+
+### Tres cosas que este archivo daba por ciertas y eran falsas
+
+1. **El defecto 15** (más abajo, «Arreglado… Visto en el navegador real»: «¿Hasta qué distancia?»,
+   5/10/20/50 km) **no existía en el código**. Se perdió al pasar al sitio de varias páginas y nadie
+   lo notó porque el soporte seguía vivo en la capa de servicio y sus pruebas seguían verdes:
+   prueban la función, no la pantalla. Y faltaba más de lo que parecía — **API-63, la barra que usa
+   el sitio hoy, ni aceptaba el parámetro `radio`**; el radio solo existía en API-01.
+2. **`flujo-real.mjs` figuraba como prueba** de que el registro funciona de punta a punta, y estaba
+   parado desde que la cuenta única quitó la casilla de rol. Hoy sí corre (14/14).
+3. **`mirar-busqueda.mjs` figuraba como «cómo repetirlo»** y medía una pantalla que ya no existe.
+
+### Lo que el arnés se hacía a sí mismo
+
+- **`mirar-agendar.mjs` deshacía el arreglo de D9**: le prestaba a la prestadora de demostración un
+  hash y el rol, y al limpiar le devolvía el `'x'`. Correr ese guion revertía el arreglo en
+  silencio. Ya no toca la base: entra con la contraseña sembrada.
+- **Dos rojos permanentes** en `mirar-publicas.mjs` eran el 404 correcto de una ficha inexistente.
+- Los barridos en cadena agotaban el limitador (100 peticiones públicas cada 15 min) y los guiones
+  informaban «defectos de pantalla» que eran 429. En **Development** los topes P y G subieron; los
+  de producción no se tocan.
+
+### El radio, como quedó (RN-S3-04)
+
+- Sin radio, la barra busca en **todo Chile**. API-01 sigue aplicando 10 km por omisión: son dos
+  búsquedas distintas, y recortar la barra a 10 km sin pedirlo escondería gente sin decirlo.
+- Fuera de rango se **corrige y se avisa** (E-400 de CU-08). Sin ubicación se ignora con aviso.
+- El radio **sí** va en la dirección (se comparte); la ubicación **no**, como ya era.
+- Quitar la ubicación quita el radio.
+- Contra la base de desarrollo: sin radio 21 personas, a 5 km 16, a 1 km 5, a 500 km se corrige a 50.
+
+### Y los otros dos agujeros del cruce de ramas, cerrados también
+
+**La numeración de endpoints.** `api-rest.md` decía «63 endpoints» y el código tenía **ocho que no
+estaban en ninguna tabla**: API-20b, API-21b, API-22b, API-34-listar, API-34-quitar, API-42b, API-64
+y API-65. Los dos de bloqueos (`API-34-listar` y `API-34-quitar`) aparecieron justo al hacer el
+inventario; nadie los echaba de menos. El documento queda con una **sección 11** que los recoge, el
+total pasa de 63 a **71** y se dice cuántos están construidos de verdad (55, contados contra el
+código, no de memoria).
+
+Y para que no vuelva a pasar, dos pruebas sobre el mapa de rutas real: una caza **nombres
+repetidos** (dos `WithName` iguales devuelven **500 en todas las rutas** desde la primera petición,
+y pasó el 12-nov) y otra es un **inventario escrito a mano**: crear un endpoint deja la prueba roja
+hasta que se añade a la lista, y el mensaje pide añadirlo también al documento. Comprobado que
+muerde, quitando un nombre a propósito.
+
+**El correo de «tu ficha ya está publicada».** Se encolaba desde el primer día y **no tenía
+plantilla**, así que se quedaba en la cola para siempre. Ya la tiene, y enlaza su ficha pública (la
+que va a querer compartir), no el panel.
+
+Al escribirla apareció lo de verdad importante: **al darle plantilla a un tipo, todo lo acumulado se
+vuelve enviable de golpe**. Sin más, al desplegar habrían salido de una vez los avisos de fichas
+publicadas hace semanas. Ahora el procesador **anula** lo que lleva más de 7 días esperando
+(`OpcionesCorreo.CaducaDias`), y eso obligó a entender una trampa del propio esquema:
+`programada_para` **deja de decir cuándo se encoló en cuanto el aviso se reserva** — pasa a valer la
+hora de la reserva. Por eso la regla mira `intentos = 0`, que es el caso en que sigue siendo la
+original. Añadir una columna de «creado en» habría sido más limpio, pero pide migración y la regla
+del proyecto es **una migración de EF a la vez** (la de NoAsistio va primero).
+
+**Un hueco que esto destapa y NO está arreglado:** no hay forma de **pedir otra vez el correo de
+verificación**. Se encola solo al registrarse. Si a alguien no le llega, hoy no tiene salida.
+
+### Las ramas, al cerrar la sesión
+
+**Todas subidas** (`gh auth login` resuelto: el gestor de credenciales de Windows se cuelga esperando
+una ventana invisible; hay que autenticar desde una terminal de verdad, y después `gh auth
+setup-git`).
+
+| Rama | Qué | Estado |
+|---|---|---|
+| `ci-techo-conexiones` | El arreglo del rojo de `main` | **PR #9**, CI verde |
+| `agente/navegador` | Los 8 defectos | **PR #10** |
+| `integracion/12-nov` | Las 5 ramas del 12-nov fusionadas | Subida, CI heredaba el rojo de `main` |
+| `textos-j3`, `textos-j4` | Los seis textos visibles | Subidas, CI verde |
+| `agente/no-asistio-n3`, `agente/resenas-pantalla`, `agente/correo-resenas`, `agente/mis-citas`, `agente/rn-s6-10` | Trabajo de agentes del 12-nov | Subidas, sin fusionar |
+| `diag-ci-rojo` | Rama desechable para leer el CI | **Ya no hace falta**: el registro se leyó directo |
+
+### El siguiente paso exacto
+
+1. **Fusionar PR #9** (`main` vuelve a verde) y después **PR #10**.
+2. Decidir el orden de fusión del resto de ramas, y qué hacer con `ReprogramarAsync`, que **no
+   comprueba la suscripción** (decisión de producto: añadir la guarda deja a quien ya tiene hora sin
+   poder moverla, solo cancelar).
+3. **Migrar Neon**: producción sigue con 20 cupos.
+4. Aprobar los textos de los dos correos de reseñas y los de «mis reseñas».
+
+---
 ## Sesión del 12-nov-2026 — dónde retomar
 
 ### Lo que quedó HECHO y COMPROBADO
@@ -859,7 +1319,7 @@ que es RN-S3-01 y RN-S3-09 funcionando de punta a punta. Lo demás:
 | 11 | **El orden no desempata como dice CU-08** ("por credencial verificada, reputación y completitud"). Hoy todos los prestadores de una zona están a la **misma** distancia (la de su centroide), así que el desempate es lo único que ordena, y hoy sale por `id`, que es un UUID: orden arbitrario | **Arreglado** (ahora desempata verificado, reputación pública, reseñas e id) |
 | 12 | `salir()` dejaba escapar la promesa rechazada (un *Uncaught in promise*) cuando la API fallaba al cerrar sesión | Arreglado, con prueba |
 | 13 | Mi comprobación de la fuente decía OK sin saber nada: `document.fonts.check()` devuelve `true` para una fuente que **ni existe** | Corregida: ahora mira las fuentes que el navegador descargó (400, 600 y 800) |
-| 15 | **La pantalla no tiene control de radio.** Con la ubicación, el radio es 10 km y no se puede cambiar. Quien cubre tu zona pero se basa a más de 10 km (el centroide de su zona principal está a 14,5 km del Centro, en el caso de la prueba) **no aparece nunca**, y no hay cómo ampliar ni se le dice a la persona que hay alguien más lejos. El flujo 4B de CU-08 ("ampliar el radio") existe en el documento y no en el código | **Arreglado.** Con la ubicación aparece "¿Hasta qué distancia?" (5, 10, 20 y 50 km, el mayor es el máximo de RN-S3-04), y sin resultados se propone "Ampliar a 50 km", que repite **la búsqueda que se hizo** y no lo que el formulario diga ahora. Visto en el navegador real: con 20 km aparece el prestador de Labranza, último y "a 15 km". 12 pruebas y 6 mutaciones, 6 rojos |
+| 15 | ⚠️ **ESTO VOLVIÓ A ESTAR ROTO Y SE DIO POR ARREGLADO CASI UN MES.** Ver «Sesión del 13-nov»: el control desapareció al pasar al sitio de varias páginas, y lo de abajo («Visto en el navegador real») dejó de ser cierto sin que nada se pusiera rojo. Reconstruido el 13-nov, ahora con una prueba que mira la pantalla. **La pantalla no tiene control de radio.** Con la ubicación, el radio es 10 km y no se puede cambiar. Quien cubre tu zona pero se basa a más de 10 km (el centroide de su zona principal está a 14,5 km del Centro, en el caso de la prueba) **no aparece nunca**, y no hay cómo ampliar ni se le dice a la persona que hay alguien más lejos. El flujo 4B de CU-08 ("ampliar el radio") existe en el documento y no en el código | **Arreglado.** Con la ubicación aparece "¿Hasta qué distancia?" (5, 10, 20 y 50 km, el mayor es el máximo de RN-S3-04), y sin resultados se propone "Ampliar a 50 km", que repite **la búsqueda que se hizo** y no lo que el formulario diga ahora. Visto en el navegador real: con 20 km aparece el prestador de Labranza, último y "a 15 km". 12 pruebas y 6 mutaciones, 6 rojos |
 | 16 | **"Quitar" medía 18 px de alto**, un objetivo táctil que en un celular se falla. Lo cazó la medición apenas apareció el control de radio, porque "Quitar" solo existe con la ubicación puesta y el guion no la ejercitaba | Arreglado: ahora mide 44 px, y el guion mide también con la ubicación activa |
 | 14 | Los guiones `flujo-real.mjs` y `humo.mjs` asumían que la app abría en "Entrar", y `humo.mjs` habría medido **el botón de la búsqueda escondida** en vez del de la pantalla, sin avisar | Corregidos; pasan |
 
@@ -904,7 +1364,8 @@ red**. Cada visitante le manda su dirección IP a Google antes de ver la página
 autoalojar la fuente, y más con una ley de protección de datos que empieza a regir en
 diciembre de 2026 (revisar si aplica, no lo asumo).
 
-**Repetirlo:** `frontend/pruebas-navegador/mirar-busqueda.mjs`, con los datos de
+**Repetirlo:** (⚠️ `mirar-busqueda.mjs` se borró el 13-nov: medía esta pantalla, que ya no existe.
+Lo que sigue vivo son `mirar-sitio.mjs` y `mirar-publicas.mjs`.) `frontend/pruebas-navegador/mirar-busqueda.mjs`, con los datos de
 `datos/sembrar-visual.sql`. **Ya no hace falta limpiar al terminar**: las pruebas de integración
 tienen su propia base (ver los avisos), así que los prestadores sembrados en la base de
 desarrollo no las afectan. `limpiar-visual.sql` queda para dejar la base de desarrollo vacía.

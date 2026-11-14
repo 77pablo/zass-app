@@ -13,13 +13,23 @@ export class ErrorApi extends Error {
   readonly mensaje: string
   /** Errores por campo de una validacion, con el nombre del campo en minuscula. */
   readonly campos: Record<string, string>
+  /**
+   * El cuerpo tal como lo mando la API. Casi ninguna pantalla lo necesita, pero algunas
+   * respuestas traen datos que hay que MOSTRAR y no caben en una frase: el 422 de CU-16 4E
+   * señala los fragmentos del comentario que parecen datos personales. Vacio si no hubo cuerpo.
+   */
+  readonly datos: Record<string, unknown>
 
-  constructor(estado: number, mensaje: string, campos: Record<string, string> = {}) {
+  constructor(
+    estado: number, mensaje: string, campos: Record<string, string> = {},
+    datos: Record<string, unknown> = {},
+  ) {
     super(mensaje)
     this.name = 'ErrorApi'
     this.estado = estado
     this.mensaje = mensaje
     this.campos = campos
+    this.datos = datos
   }
 }
 
@@ -72,12 +82,17 @@ async function fallo(r: Response): Promise<ErrorApi> {
     }
   }
 
+  // El `title` de un 5xx no lo escribe nadie de este proyecto: lo pone ASP.NET y viene en
+  // ingles de fabrica ("An error occurred while processing your request."). Mostrarlo tal cual
+  // deja texto en ingles delante de una persona en una pantalla que es toda en castellano, y
+  // ademas le cuenta de la maquina en vez de decirle que hacer. Para 5xx manda el texto propio;
+  // `detail`, que si lo escribe la API cuando tiene algo util que decir, se sigue respetando.
   const mensaje =
     (cuerpo.detail as string | undefined) ??
-    (cuerpo.title as string | undefined) ??
+    (r.status >= 500 ? undefined : (cuerpo.title as string | undefined)) ??
     generico(r.status)
 
-  return new ErrorApi(r.status, mensaje, campos)
+  return new ErrorApi(r.status, mensaje, campos, cuerpo)
 }
 
 function generico(estado: number): string {

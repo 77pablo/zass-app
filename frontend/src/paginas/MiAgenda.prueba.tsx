@@ -116,12 +116,32 @@ describe('mi agenda (prestador)', () => {
     expect(guardados().every((g) => (g.cuerpo as { prestadorServicioId: string }).prestadorServicioId === 'ps-tintura')).toBe(true)
   })
 
+  /**
+   * El texto VISIBLE de los dos botones de quitar, no solo su aria-label. Las demas pruebas los
+   * buscan por aria-label, y cuando un boton tiene aria-label ese pasa a ser su nombre accesible:
+   * el texto de dentro deja de comprobarse. Se descubrio mutandolo (quedaba en «Quitar» y las 19
+   * pruebas seguian verdes). «Quitar este horario» y no «Quitar horario» porque lo segundo se lee
+   * como borrar el horario entero, y lo que se quita es solo esa fila.
+   */
+  it('los botones de quitar dicen en pantalla de QUE se quitan, no solo «Quitar»', async () => {
+    bloqueos = [{ id: 'b1', desdeEn: '2027-01-01T03:00:00.000Z', hastaEn: '2027-01-02T03:00:00.000Z', motivo: null }]
+    pintar()
+    await screen.findByRole('region', { name: 'Corte de pelo' })
+
+    const t = tarjeta('Corte de pelo')
+    expect(within(t).getByRole('button', { name: /^Quitar este horario 1/ })).toHaveTextContent('Quitar este horario')
+
+    const b = await screen.findByRole('region', { name: /bloquear fechas/i })
+    await within(b).findByText('El 01-01-2027')
+    expect(within(b).getByRole('button', { name: /^Quitar este bloqueo 1/ })).toHaveTextContent('Quitar este bloqueo')
+  })
+
   it('quitar la ultima franja y guardar manda la lista vacia: asi se quitan todas las horas', async () => {
     pintar()
     await screen.findByRole('region', { name: 'Corte de pelo' })
     const t = tarjeta('Corte de pelo')
 
-    await userEvent.click(within(t).getByRole('button', { name: /quitar franja 1/i }))
+    await userEvent.click(within(t).getByRole('button', { name: 'Quitar este horario 1 (lunes de 09:00 a 13:00)' }))
     await userEvent.click(within(t).getByRole('button', { name: /guardar horario/i }))
 
     await waitFor(() => expect(guardados()).toHaveLength(1))
@@ -139,6 +159,40 @@ describe('mi agenda (prestador)', () => {
 
     expect(guardados()).toHaveLength(0)
     expect(await within(t).findByText(/término tiene que ser posterior/i)).toBeInTheDocument()
+  })
+
+  it('no llama a la API si se vacia la hora de inicio, y lo dice junto a la franja', async () => {
+    // El `type="time"` se puede vaciar. Vaciar SOLO «Desde» pasaba las dos comprobaciones (`'13:00' <= ''`
+    // es falso, y la resta con `NaN` tambien), el PUT salia con `horaInicio: ""` y el servidor contestaba
+    // sin campo ni detalle: la pantalla solo podia decir «No se pudo completar la operacion».
+    pintar()
+    await screen.findByRole('region', { name: 'Corte de pelo' })
+    const t = tarjeta('Corte de pelo')
+
+    await userEvent.clear(within(t).getByLabelText('Desde, franja 1'))
+    await userEvent.click(within(t).getByRole('button', { name: /guardar horario/i }))
+
+    expect(guardados()).toHaveLength(0)
+    expect(await within(t).findByText(/pon la hora de inicio y la de término/i)).toBeInTheDocument()
+  })
+
+  it('tampoco si se vacian las dos horas', async () => {
+    pintar()
+    await screen.findByRole('region', { name: 'Corte de pelo' })
+    const t = tarjeta('Corte de pelo')
+
+    await userEvent.clear(within(t).getByLabelText('Desde, franja 1'))
+    await userEvent.clear(within(t).getByLabelText('Hasta, franja 1'))
+    await userEvent.click(within(t).getByRole('button', { name: /guardar horario/i }))
+
+    expect(guardados()).toHaveLength(0)
+    expect(await within(t).findByText(/pon la hora de inicio y la de término/i)).toBeInTheDocument()
+  })
+
+  it('la pantalla del panel pide quedar fuera del indice de Google', async () => {
+    pintar()
+    await screen.findByRole('region', { name: 'Corte de pelo' })
+    expect(document.head.querySelector('meta[name="robots"]')).toHaveAttribute('content', 'noindex, nofollow')
   })
 
   it('no llama a la API si la franja es mas corta que una hora de atencion', async () => {
@@ -190,7 +244,24 @@ describe('mi agenda (prestador)', () => {
     expect(envio.cuerpo).toEqual({
       desdeEn: '2026-12-24T03:00:00.000Z', hastaEn: '2026-12-26T03:00:00.000Z', motivo: 'Navidad',
     })
-    expect(await within(b).findByText(/bloqueaste/i)).toBeInTheDocument()
+    expect(await within(b).findByText(/nadie podrá agendar contigo/i)).toBeInTheDocument()
+  })
+
+  it('el aviso de bloqueo usa la fecha como en la lista, y con un solo dia lo dice como un dia', async () => {
+    pintar()
+    await screen.findByRole('region', { name: 'Corte de pelo' })
+    const b = screen.getByRole('region', { name: /bloquear fechas/i })
+
+    await userEvent.type(within(b).getByLabelText('Desde el día'), '2026-12-24')
+    await userEvent.type(within(b).getByLabelText('Hasta el día'), '2026-12-25')
+    await userEvent.click(within(b).getByRole('button', { name: /bloquear/i }))
+    expect(await within(b).findByText('Listo: del 24-12-2026 al 25-12-2026 nadie podrá agendar contigo.'))
+      .toBeInTheDocument()
+
+    await userEvent.type(within(b).getByLabelText('Desde el día'), '2027-01-01')
+    await userEvent.type(within(b).getByLabelText('Hasta el día'), '2027-01-01')
+    await userEvent.click(within(b).getByRole('button', { name: /bloquear/i }))
+    expect(await within(b).findByText('Listo: el 01-01-2027 nadie podrá agendar contigo.')).toBeInTheDocument()
   })
 
   it('no bloquea si el ultimo dia es anterior al primero', async () => {
@@ -241,7 +312,7 @@ describe('mi agenda (prestador)', () => {
     const b = await screen.findByRole('region', { name: /bloquear fechas/i })
     await within(b).findByText('Del 24-12-2026 al 25-12-2026')
 
-    await userEvent.click(within(b).getByRole('button', { name: /quitar bloqueo 1/i }))
+    await userEvent.click(within(b).getByRole('button', { name: /quitar este bloqueo 1/i }))
 
     await waitFor(() => expect(borrados()).toHaveLength(1))
     expect(borrados()[0].ruta).toBe('/api/mi/bloqueos/b1')
@@ -256,11 +327,11 @@ describe('mi agenda (prestador)', () => {
     const b = await screen.findByRole('region', { name: /bloquear fechas/i })
     await within(b).findByText('Del 24-12-2026 al 25-12-2026')
 
-    await userEvent.click(within(b).getByRole('button', { name: /quitar bloqueo 1/i }))
+    await userEvent.click(within(b).getByRole('button', { name: /quitar este bloqueo 1/i }))
 
     expect(await within(b).findByRole('alert')).toHaveTextContent(/ese bloqueo ya no existe/i)
     expect(within(b).getByText('Del 24-12-2026 al 25-12-2026')).toBeInTheDocument()
-    await waitFor(() => expect(within(b).getByRole('button', { name: /quitar bloqueo 1/i })).toBeEnabled())
+    await waitFor(() => expect(within(b).getByRole('button', { name: /quitar este bloqueo 1/i })).toBeEnabled())
   })
 
   it('si no puede cargar los bloqueos lo dice y deja reintentar sin tumbar la pagina', async () => {
@@ -291,5 +362,6 @@ describe('mi agenda (prestador)', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/servidor caído/i)
     expect(screen.getByRole('button', { name: /reintentar/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Mi agenda' })).toBeInTheDocument()
   })
 })

@@ -2,16 +2,31 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { Pie } from '../marco/Pie'
+import { Contexto, type EstadoDeSesion, type Usuario } from '../sesion/contexto'
 import { Registrarse } from '../funciones/identidad/Registrarse'
 import { AvisoDeBorrador } from './AvisoDeBorrador'
 import { DatoLegal } from './DatoLegal'
 import { Privacidad } from './Privacidad'
 import { Terminos } from './Terminos'
-import { BORRADOR_LEGAL, CORREO_PRIVACIDAD, estaPendiente, RESPONSABLE } from './legal'
+import { BORRADOR_LEGAL, estaPendiente, RESPONSABLE } from './legal'
 
 afterEach(() => { document.head.innerHTML = ''; document.title = '' })
 
 const enRuta = (ui: React.ReactElement) => render(<MemoryRouter>{ui}</MemoryRouter>)
+
+const DENTRO: Usuario = {
+  id: 'u1', correo: 'ana@zass.local', nombre: 'Ana', correoVerificado: true, roles: ['usuario'],
+}
+
+/** El pie lee la sesion, asi que necesita el contexto: sin el, `useSesion` lanza a proposito. */
+const elPie = (estado: EstadoDeSesion = 'fuera', usuario: Usuario | null = null) =>
+  render(
+    <MemoryRouter>
+      <Contexto.Provider value={{ estado, usuario, recargar: async () => {}, salir: async () => {} }}>
+        <Pie />
+      </Contexto.Provider>
+    </MemoryRouter>,
+  )
 
 describe.each([
   ['Términos de uso', Terminos],
@@ -51,6 +66,21 @@ describe.each([
 })
 
 describe('Términos', () => {
+  /*
+   * Los Terminos decian «el cobro de la mensualidad todavia no esta activo» mientras
+   * /planes ya decia el precio y el boton ya tomaba cupos. Dos pantallas publicas
+   * contradiciendose, y una de las dos es un documento legal. Esta prueba vigila que no
+   * vuelva a pasar: si alguien reescribe los Terminos diciendo que no se cobra, cae.
+   */
+  it('NO dice que el cobro este inactivo, porque la pagina de planes dice el precio', () => {
+    render(<MemoryRouter><Terminos /></MemoryRouter>)
+
+    const texto = document.body.textContent ?? ''
+    expect(texto).not.toMatch(/todav[ií]a no est[aá] activo/i)
+    expect(texto).toMatch(/primer mes gratis/i)
+    expect(screen.getByRole('link', { name: /planes y precios/i })).toBeInTheDocument()
+  })
+
   it('dice que buscar es gratis y que el profesional paga una mensualidad', () => {
     enRuta(<Terminos />)
     expect(screen.getByText(/Buscar y contactar a alguien no te cuesta nada/)).toBeInTheDocument()
@@ -115,10 +145,22 @@ describe('AvisoDeBorrador', () => {
 })
 
 describe('DatoLegal', () => {
+  /*
+   * Esta prueba vigila el MECANISMO, no qué dato sigue vacío.
+   *
+   * Antes afirmaba `estaPendiente(CORREO_PRIVACIDAD) === true`, o sea codificaba que ese
+   * hueco seguía sin llenar: se puso roja el día que se llenó (14-nov-2026), y se habría
+   * puesto roja otra vez cuando Pablo llene la razón social. Un rojo que aparece porque
+   * alguien AVANZÓ no dice nada de nada, y enseña a ignorar los rojos.
+   *
+   * Lo que sí hay que vigilar está abajo, con literales: que un dato entre corchetes se
+   * reconozca como pendiente y uno real no.
+   */
   it('resalta lo pendiente y deja limpio lo lleno', () => {
-    expect(estaPendiente(RESPONSABLE)).toBe(true)
-    expect(estaPendiente(CORREO_PRIVACIDAD)).toBe(true)
+    expect(estaPendiente('[por completar]')).toBe(true)
+    expect(estaPendiente('[Razón social y RUT por completar]')).toBe(true)
     expect(estaPendiente('Ejemplo SpA, 76.123.456-7')).toBe(false)
+    expect(estaPendiente('somoszaschile@gmail.com')).toBe(false)
 
     const { container, rerender } = render(<DatoLegal valor="[por completar]" />)
     expect(container.querySelector('.legal-pendiente')).toHaveTextContent('[por completar]')
@@ -137,10 +179,42 @@ describe('DatoLegal', () => {
 
 describe('enlaces a las paginas legales', () => {
   it('el pie lleva a terminos y a privacidad', () => {
-    enRuta(<Pie />)
+    elPie()
     const pie = within(screen.getByRole('contentinfo'))
     expect(pie.getByRole('link', { name: 'Términos de uso' })).toHaveAttribute('href', '/terminos')
     expect(pie.getByRole('link', { name: 'Privacidad' })).toHaveAttribute('href', '/privacidad')
+  })
+
+  // D5 del repaso en navegador: el pie le ofrecia «Entrar» y «Crear una cuenta» a quien ya estaba
+  // dentro, en la misma pantalla en que la cabecera le ofrece salir.
+  it('a quien esta fuera le ofrece entrar y crear una cuenta', () => {
+    elPie('fuera')
+    const pie = within(screen.getByRole('contentinfo'))
+    expect(pie.getByRole('link', { name: 'Entrar' })).toHaveAttribute('href', '/entrar')
+    expect(pie.getByRole('link', { name: 'Crear una cuenta' })).toHaveAttribute('href', '/crear-cuenta')
+  })
+
+  it('a quien ya entro no le ofrece entrar ni crear una cuenta: le ofrece sus propias paginas', () => {
+    elPie('dentro', DENTRO)
+    const pie = within(screen.getByRole('contentinfo'))
+    expect(pie.queryByRole('link', { name: 'Entrar' })).toBeNull()
+    expect(pie.queryByRole('link', { name: 'Crear una cuenta' })).toBeNull()
+    expect(pie.getByRole('link', { name: 'Mis citas' })).toHaveAttribute('href', '/mis-citas')
+    expect(pie.getByRole('link', { name: 'Ofrecer mis servicios' })).toHaveAttribute('href', '/ofrecer-servicios')
+  })
+
+  it('al prestador le ofrece su ficha, no «ofrecer mis servicios»', () => {
+    elPie('dentro', { ...DENTRO, roles: ['usuario', 'prestador'] })
+    const pie = within(screen.getByRole('contentinfo'))
+    expect(pie.getByRole('link', { name: 'Mi ficha' })).toHaveAttribute('href', '/mi-ficha')
+    expect(pie.queryByRole('link', { name: 'Ofrecer mis servicios' })).toBeNull()
+  })
+
+  it('mientras no se sabe si hay sesion no parpadea ninguna de las dos', () => {
+    elPie('cargando')
+    const pie = within(screen.getByRole('contentinfo'))
+    expect(pie.queryByRole('link', { name: 'Entrar' })).toBeNull()
+    expect(pie.queryByRole('link', { name: 'Mis citas' })).toBeNull()
   })
 
   it('el registro dice «Al crear tu cuenta aceptas» con enlaces a las dos, en pestaña nueva para no perder el formulario', () => {

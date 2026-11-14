@@ -105,8 +105,12 @@ public class CicloDeLaCitaPruebas
                 new RepositorioUsuariosEnMemoria(_base), new RepositorioPerfilesEnMemoria(_base)),
             new ServicioSuscripciones(
                 new RepositorioSuscripcionesEnMemoria(_base), _base, _reloj, _auditor,
-                new ColaEnMemoria()));
+                new ColaEnMemoria()),
+            _avisos);
     }
+
+    /// <summary>Los avisos de cita (JQ-1). Una cola propia, separada de la de suscripciones.</summary>
+    private readonly ColaEnMemoria _avisos = new();
 
     private BloqueHorario UnBloque(
         DateTime? inicio = null, PrestadorServicio? de = null,
@@ -518,7 +522,7 @@ public class CicloDeLaCitaPruebas
     }
 
     [Fact]
-    public async Task Marcar_asistencia_habilita_la_resena_y_marcar_inasistencia_tambien()
+    public async Task Marcar_asistencia_habilita_la_resena()
     {
         var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddHours(3));
         cita.Estado = EstadoCita.PendienteAsistencia;
@@ -526,6 +530,125 @@ public class CicloDeLaCitaPruebas
         await _servicio.RegistrarAsistenciaAsync(cita.Id, ComoPrestador, asistio: true);
 
         Assert.True(await _servicio.CitaRealizadaAsync(_buscador.Id, _prestador.Id));
+    }
+
+    // ========================================================= CS-12, la mitad del cliente
+
+    /// <summary>
+    /// Decisión de Pablo (11-nov-2026). `asistio: false` del prestador ya no es «no pasó
+    /// nada»: es una acusación al CLIENTE, y eso deja a la cita sin reseña.
+    /// </summary>
+    [Fact]
+    public async Task El_prestador_marca_que_falto_el_cliente_y_el_cliente_no_puede_resenar()
+    {
+        var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddHours(3));
+        cita.Estado = EstadoCita.PendienteAsistencia;
+
+        var r = await _servicio.RegistrarAsistenciaAsync(cita.Id, ComoPrestador, asistio: false);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(FaltaEnCita.Cliente, cita.QuienFalto);
+        Assert.False(await _servicio.CitaRealizadaAsync(_buscador.Id, _prestador.Id));
+    }
+
+    /// <summary>La otra mitad: el cliente dice que lo dejaron plantado, y sí puede reseñar.</summary>
+    [Fact]
+    public async Task El_cliente_marca_que_falto_el_prestador_y_si_puede_resenar()
+    {
+        var (cita, bloque) = await UnaCitaAsync(inicio: Ahora.AddHours(3));
+        cita.Estado = EstadoCita.PendienteAsistencia;
+
+        var r = await _servicio.AcusarAusenciaDelPrestadorAsync(cita.Id, ComoBuscador);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(EstadoCita.NoAsistio, cita.Estado);
+        Assert.Equal(FaltaEnCita.Prestador, cita.QuienFalto);
+        Assert.Equal(EstadoBloque.Vencido, bloque.Estado);
+        Assert.True(await _servicio.CitaRealizadaAsync(_buscador.Id, _prestador.Id));
+    }
+
+    /// <summary>
+    /// «Cada parte solo puede acusar a la otra». El prestador no tiene por dónde decir que
+    /// faltó él mismo, y el buscador no tiene por dónde decir que faltó él: lo impide la
+    /// forma de los métodos, pero esto comprueba que además el papel se verifica. El
+    /// prestador que llame al endpoint del cliente recibe el MISMO 404 que un desconocido.
+    /// </summary>
+    [Fact]
+    public async Task El_prestador_no_puede_acusarse_a_si_mismo_por_el_camino_del_cliente()
+    {
+        var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddHours(3));
+        cita.Estado = EstadoCita.PendienteAsistencia;
+
+        var r = await _servicio.AcusarAusenciaDelPrestadorAsync(cita.Id, ComoPrestador);
+
+        Assert.Equal(Fallas.NoEncontrado, r.Codigo);
+        Assert.Equal(FaltaEnCita.Nadie, cita.QuienFalto);
+        Assert.Equal(EstadoCita.PendienteAsistencia, cita.Estado);
+    }
+
+    [Fact]
+    public async Task Un_desconocido_no_puede_acusar_a_nadie()
+    {
+        var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddHours(3));
+        cita.Estado = EstadoCita.PendienteAsistencia;
+
+        var r = await _servicio.AcusarAusenciaDelPrestadorAsync(cita.Id, ComoDesconocido);
+
+        Assert.Equal(Fallas.NoEncontrado, r.Codigo);
+        Assert.Equal(FaltaEnCita.Nadie, cita.QuienFalto);
+    }
+
+    /// <summary>
+    /// El desenlace que importa de verdad: si se contradicen, la reseña se bloquea y la cita
+    /// cae en la cola interna de revisión. No gana el que habló primero.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]    // habla primero el prestador
+    [InlineData(false)]   // habla primero el cliente
+    public async Task Si_los_dos_se_acusan_la_resena_se_bloquea_y_la_cita_queda_en_la_cola(
+        bool primeroElPrestador)
+    {
+        var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddHours(3));
+        cita.Estado = EstadoCita.PendienteAsistencia;
+
+        if (primeroElPrestador)
+        {
+            Assert.True((await _servicio.RegistrarAsistenciaAsync(cita.Id, ComoPrestador, false)).Exito);
+            Assert.True((await _servicio.AcusarAusenciaDelPrestadorAsync(cita.Id, ComoBuscador)).Exito);
+        }
+        else
+        {
+            Assert.True((await _servicio.AcusarAusenciaDelPrestadorAsync(cita.Id, ComoBuscador)).Exito);
+            Assert.True((await _servicio.RegistrarAsistenciaAsync(cita.Id, ComoPrestador, false)).Exito);
+        }
+
+        Assert.Equal(FaltaEnCita.Discrepancia, cita.QuienFalto);
+        Assert.False(await _servicio.CitaRealizadaAsync(_buscador.Id, _prestador.Id));
+        Assert.Contains(await _servicio.CitasEnDisputaAsync(), c => c.Id == cita.Id);
+    }
+
+    /// <summary>Una cita con una sola versión NO entra en la cola: no hay nada que revisar.</summary>
+    [Fact]
+    public async Task Una_inasistencia_sin_contradiccion_no_entra_en_la_cola_de_revision()
+    {
+        var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddHours(3));
+        cita.Estado = EstadoCita.PendienteAsistencia;
+
+        await _servicio.RegistrarAsistenciaAsync(cita.Id, ComoPrestador, asistio: false);
+
+        Assert.Empty(await _servicio.CitasEnDisputaAsync());
+    }
+
+    [Fact]
+    public async Task El_cliente_no_puede_acusar_antes_de_que_pase_la_hora()
+    {
+        var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddDays(3));
+
+        var r = await _servicio.AcusarAusenciaDelPrestadorAsync(cita.Id, ComoBuscador);
+
+        Assert.Equal(Fallas.Conflicto, r.Codigo);
+        Assert.Equal(EstadoCita.Confirmada, cita.Estado);
+        Assert.Equal(FaltaEnCita.Nadie, cita.QuienFalto);
     }
 
     // ========================================================= el historial y la versión
@@ -793,5 +916,212 @@ public class CicloDeLaCitaPruebas
 
         Assert.Equal(0, r.PorAsistir);
         Assert.Equal(EstadoCita.Cancelada, cita.Estado);
+    }
+
+    // ========================================================= JQ-1 avisos de cita
+    //
+    // La cola en memoria solo anota lo que recibe: no filtra, no deduplica y no conoce el índice
+    // único de TBL-27. Así, si el servicio encola de más, aquí se ve; el doble no lo tapa.
+    // Las claves y la carga van escritas a mano, no armadas con las constantes que vigilan.
+
+    private IReadOnlyList<Notificacion> AvisosDe(Guid citaId) =>
+        _avisos.Encoladas.Where(n => n.CitaId == citaId).ToList();
+
+    [Fact]
+    public async Task Pedir_una_hora_manual_avisa_al_prestador_y_a_nadie_mas()
+    {
+        var (cita, _) = await UnaCitaAsync(de: _manual);
+
+        var aviso = Assert.Single(AvisosDe(cita.Id));
+        Assert.Equal(TipoNotificacion.CitaSolicitada, aviso.Tipo);
+        Assert.Equal(_duenoPrestador.Id, aviso.DestinatarioId);
+        Assert.Equal($"cita-solicitada:{cita.Id}", aviso.ClaveIdempotencia);
+        Assert.Equal("{\"rol\":\"prestador\"}", aviso.Cuerpo);
+        Assert.Equal(CanalNotificacion.Correo, aviso.Canal);
+        Assert.Equal(Ahora, aviso.ProgramadaPara);
+    }
+
+    [Fact]
+    public async Task Agendar_en_modo_automatico_avisa_a_los_dos()
+    {
+        var (cita, _) = await UnaCitaAsync();
+
+        var avisos = AvisosDe(cita.Id).OrderBy(n => n.ClaveIdempotencia).ToList();
+        Assert.Equal(2, avisos.Count);
+        Assert.All(avisos, n => Assert.Equal(TipoNotificacion.CitaConfirmada, n.Tipo));
+
+        Assert.Equal($"cita-confirmada:{cita.Id}:buscador", avisos[0].ClaveIdempotencia);
+        Assert.Equal(_buscador.Id, avisos[0].DestinatarioId);
+        Assert.Equal("{\"rol\":\"buscador\"}", avisos[0].Cuerpo);
+
+        Assert.Equal($"cita-confirmada:{cita.Id}:prestador", avisos[1].ClaveIdempotencia);
+        Assert.Equal(_duenoPrestador.Id, avisos[1].DestinatarioId);
+        Assert.Equal("{\"rol\":\"prestador\"}", avisos[1].Cuerpo);
+    }
+
+    [Fact]
+    public async Task Confirmar_avisa_al_buscador()
+    {
+        var (cita, _) = await UnaCitaAsync(de: _manual);
+
+        await _servicio.ConfirmarAsync(cita.Id, ComoPrestador);
+
+        var aviso = Assert.Single(AvisosDe(cita.Id), n => n.Tipo == TipoNotificacion.CitaConfirmada);
+        Assert.Equal(_buscador.Id, aviso.DestinatarioId);
+        Assert.Equal($"cita-confirmada:{cita.Id}:buscador", aviso.ClaveIdempotencia);
+        Assert.Equal("{\"rol\":\"buscador\"}", aviso.Cuerpo);
+    }
+
+    [Fact]
+    public async Task Rechazar_avisa_al_buscador()
+    {
+        var (cita, _) = await UnaCitaAsync(de: _manual);
+
+        await _servicio.RechazarAsync(cita.Id, ComoPrestador, "Ese día estoy en terreno");
+
+        var aviso = Assert.Single(AvisosDe(cita.Id), n => n.Tipo == TipoNotificacion.CitaRechazada);
+        Assert.Equal(_buscador.Id, aviso.DestinatarioId);
+        Assert.Equal($"cita-rechazada:{cita.Id}", aviso.ClaveIdempotencia);
+        // El motivo del prestador NO viaja en la carga: el correo no lleva datos de la otra parte.
+        Assert.Equal("{\"rol\":\"buscador\"}", aviso.Cuerpo);
+    }
+
+    /// <summary>
+    /// Decisión de Joaquín del 13-nov: cuando el planificador rechaza por falta de respuesta, el
+    /// buscador también se entera, con la MISMA clave que un rechazo a mano.
+    /// </summary>
+    [Fact]
+    public async Task Si_la_solicitud_expira_el_buscador_recibe_el_aviso_de_rechazo_una_sola_vez()
+    {
+        var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddDays(5), de: _manual);
+        _reloj.Avanzar(ServicioAgenda.PlazoDeRespuestaManual + TimeSpan.FromMinutes(1));
+
+        var primera = await _servicio.AvanzarPorElTiempoAsync();
+        await _servicio.AvanzarPorElTiempoAsync();
+
+        Assert.Equal(1, primera.Expiradas);
+        var aviso = Assert.Single(AvisosDe(cita.Id), n => n.Tipo == TipoNotificacion.CitaRechazada);
+        Assert.Equal(_buscador.Id, aviso.DestinatarioId);
+        Assert.Equal($"cita-rechazada:{cita.Id}", aviso.ClaveIdempotencia);
+    }
+
+    /// <summary>Lo que el planificador mueve sin rechazar (pasar a esperar asistencia) no avisa.</summary>
+    [Fact]
+    public async Task Pasar_a_esperar_asistencia_no_encola_ningun_aviso()
+    {
+        var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddHours(3));
+        var antes = AvisosDe(cita.Id).Count;
+        _reloj.Avanzar(TimeSpan.FromHours(4));
+
+        await _servicio.AvanzarPorElTiempoAsync();
+
+        Assert.Equal(antes, AvisosDe(cita.Id).Count);
+    }
+
+    [Theory]
+    [InlineData(true)]    // cancela el buscador: se entera el prestador
+    [InlineData(false)]   // cancela el prestador: se entera el buscador
+    public async Task Cancelar_avisa_a_la_otra_parte_y_no_a_quien_cancelo(bool cancelaElBuscador)
+    {
+        var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddDays(3));
+
+        await _servicio.CancelarAsync(new CancelarCitaCmd(
+            cita.Id, cancelaElBuscador ? ComoBuscador : ComoPrestador, $"c-{Guid.NewGuid():N}", null));
+
+        var aviso = Assert.Single(AvisosDe(cita.Id), n => n.Tipo == TipoNotificacion.CitaCancelada);
+        Assert.Equal($"cita-cancelada:{cita.Id}", aviso.ClaveIdempotencia);
+        if (cancelaElBuscador)
+        {
+            Assert.Equal(_duenoPrestador.Id, aviso.DestinatarioId);
+            Assert.Equal("{\"rol\":\"prestador\"}", aviso.Cuerpo);
+        }
+        else
+        {
+            Assert.Equal(_buscador.Id, aviso.DestinatarioId);
+            Assert.Equal("{\"rol\":\"buscador\"}", aviso.Cuerpo);
+        }
+    }
+
+    /// <summary>RN-S4-08 y CC-04: el reintento de red no produce un segundo aviso.</summary>
+    [Fact]
+    public async Task Cancelar_dos_veces_encola_un_solo_aviso()
+    {
+        var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddDays(3));
+        var clave = $"c-{Guid.NewGuid():N}";
+
+        await _servicio.CancelarAsync(new CancelarCitaCmd(cita.Id, ComoBuscador, clave, null));
+        await _servicio.CancelarAsync(new CancelarCitaCmd(cita.Id, ComoBuscador, clave, null));
+
+        Assert.Single(AvisosDe(cita.Id), n => n.Tipo == TipoNotificacion.CitaCancelada);
+    }
+
+    [Theory]
+    [InlineData(true)]    // mueve el buscador: se entera el prestador
+    [InlineData(false)]   // mueve el prestador: se entera el buscador
+    public async Task Reprogramar_avisa_a_la_otra_parte_ligado_a_la_cita_nueva(bool mueveElBuscador)
+    {
+        var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddDays(3));
+        var nuevo = UnBloque(inicio: Ahora.AddDays(4));
+
+        var r = await _servicio.ReprogramarAsync(new ReprogramarCitaCmd(
+            cita.Id, nuevo.Id, mueveElBuscador ? ComoBuscador : ComoPrestador, $"r-{Guid.NewGuid():N}", null));
+
+        Assert.True(r.Exito, r.Mensaje);
+        var nueva = r.Valor!.Id;
+        var aviso = Assert.Single(_avisos.Encoladas, n => n.Tipo == TipoNotificacion.CitaReprogramada);
+        Assert.Equal(nueva, aviso.CitaId);
+        Assert.Equal($"cita-reprogramada:{nueva}", aviso.ClaveIdempotencia);
+        Assert.Equal(mueveElBuscador ? _duenoPrestador.Id : _buscador.Id, aviso.DestinatarioId);
+        Assert.Equal(mueveElBuscador ? "{\"rol\":\"prestador\"}" : "{\"rol\":\"buscador\"}", aviso.Cuerpo);
+    }
+
+    [Fact]
+    public async Task Reprogramar_dos_veces_con_la_misma_clave_encola_un_solo_aviso()
+    {
+        var (cita, _) = await UnaCitaAsync(inicio: Ahora.AddDays(3));
+        var nuevo = UnBloque(inicio: Ahora.AddDays(4));
+        var clave = $"r-{Guid.NewGuid():N}";
+
+        await _servicio.ReprogramarAsync(new ReprogramarCitaCmd(cita.Id, nuevo.Id, ComoBuscador, clave, null));
+        await _servicio.ReprogramarAsync(new ReprogramarCitaCmd(cita.Id, nuevo.Id, ComoBuscador, clave, null));
+
+        Assert.Single(_avisos.Encoladas, n => n.Tipo == TipoNotificacion.CitaReprogramada);
+    }
+
+    /// <summary>Un caso que falla no avisa nada: ni la confirmación ajena ni la cancelación sin motivo.</summary>
+    [Fact]
+    public async Task Lo_que_falla_no_encola_ningun_aviso()
+    {
+        var (manual, _) = await UnaCitaAsync(de: _manual);
+        var (tardia, _) = await UnaCitaAsync(inicio: Ahora.AddHours(6));
+        var antes = _avisos.Encoladas.Count;
+
+        await _servicio.ConfirmarAsync(manual.Id, ComoBuscador);
+        await _servicio.RechazarAsync(manual.Id, ComoDesconocido, null);
+        await _servicio.CancelarAsync(new CancelarCitaCmd(tardia.Id, ComoBuscador, $"c-{Guid.NewGuid():N}", null));
+
+        Assert.Equal(antes, _avisos.Encoladas.Count);
+    }
+
+    /// <summary>
+    /// La cola en memoria no tiene el índice único de TBL-27, así que aquí la barrera es esta: a
+    /// lo largo de una vida completa de varias citas, ninguna clave se repite.
+    /// </summary>
+    [Fact]
+    public async Task En_una_vida_completa_ninguna_clave_de_aviso_se_repite()
+    {
+        var (a, _) = await UnaCitaAsync(inicio: Ahora.AddDays(3), de: _manual);
+        await _servicio.ConfirmarAsync(a.Id, ComoPrestador);
+        var r = await _servicio.ReprogramarAsync(new ReprogramarCitaCmd(
+            a.Id, UnBloque(inicio: Ahora.AddDays(4), de: _manual).Id, ComoBuscador, $"r-{Guid.NewGuid():N}", null));
+        await _servicio.CancelarAsync(new CancelarCitaCmd(r.Valor!.Id, ComoPrestador, $"c-{Guid.NewGuid():N}", null));
+        var (b, _) = await UnaCitaAsync(inicio: Ahora.AddDays(5));
+        await _servicio.CancelarAsync(new CancelarCitaCmd(b.Id, ComoBuscador, $"c-{Guid.NewGuid():N}", null));
+
+        // a: solicitada, confirmada al buscador, reprogramada al prestador, cancelada al
+        // buscador (4). b, automática: confirmada a los dos y cancelada al prestador (3).
+        var claves = _avisos.Encoladas.Select(n => n.ClaveIdempotencia).ToList();
+        Assert.Equal(7, claves.Count);
+        Assert.Equal(claves.Count, claves.Distinct().Count());
     }
 }

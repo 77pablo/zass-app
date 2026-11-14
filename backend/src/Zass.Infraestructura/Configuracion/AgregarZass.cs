@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -14,9 +14,11 @@ using Zass.Aplicacion.Busqueda;
 using Zass.Aplicacion.Geografia;
 using Zass.Aplicacion.Suscripciones;
 using Zass.Aplicacion.Resenas;
+using Zass.Aplicacion.Tarjetas;
 using Zass.Aplicacion.Puertos;
 using Zass.Infraestructura.Correo;
 using Zass.Infraestructura.Fondo;
+using Zass.Infraestructura.Pagos;
 using Zass.Infraestructura.Datos;
 using Zass.Infraestructura.Datos.Repositorios;
 using Zass.Infraestructura.Seguridad;
@@ -74,6 +76,12 @@ public sealed class OpcionesZass
 
 public static class RegistroDeServicios
 {
+    /// <summary>
+    /// Que pasarela de pagos usar. Vive aqui y no en OpcionesZass porque no es un secreto
+    /// ni algo sin lo que la aplicacion no pueda arrancar: tiene un valor por omision.
+    /// </summary>
+    public const string ClavePasarela = "Zass:Pasarela";
+
     /// <summary>
     /// Todo lo que Zass.Api necesita para funcionar, en un solo lugar.
     ///
@@ -176,8 +184,58 @@ public static class RegistroDeServicios
         servicios.AddScoped<IRepositorioResenas, RepositorioResenasEfCore>();
         servicios.AddScoped<IServicioResenas, ServicioResenas>();
 
-        // --- MOD-13 Suscripciones ---
+        // --- MOD-13 Suscripciones y cobros ---
         servicios.AddScoped<IServicioSuscripciones, ServicioSuscripciones>();
+        servicios.AddScoped<IServicioCobros, ServicioCobros>();
+
+        // La pasarela de pagos, elegida por configuracion. Hoy hay un solo adaptador; el
+        // dia que Pablo decida entre Transbank, Flow y Mercado Pago, esto es un caso mas
+        // en este switch y un archivo nuevo en Zass.Infraestructura/Pagos. Nada de la
+        // aplicacion cambia, porque nada de la aplicacion sabe quien cobra.
+        //
+        // Un nombre desconocido NO cae en la simulada por omision: arrancar cobrando de
+        // mentira por un error de escritura en una variable de entorno es la clase de fallo
+        // que no se nota hasta que falta el dinero.
+        //
+        // Y en Produccion la simulada no se resuelve NUNCA, ni por omision ni pedida a
+        // proposito. El caso que importa es el primero: la variable sin poner. El switch
+        // solo se defendia del nombre desconocido, asi que un despliegue que olvidara
+        // Zass:Pasarela arrancaba cobrando de mentira. Esto es N3 a proposito.
+        servicios.AddSingleton<IPasarelaDePagos>(sp =>
+        {
+            var nombre = sp.GetRequiredService<IConfiguration>()
+                .GetValue(ClavePasarela, PasarelaSimulada.NombreDeLaPasarela)!;
+            var elegida = nombre.Trim().ToLowerInvariant();
+
+            var entorno = sp.GetRequiredService<IHostEnvironment>();
+            if (entorno.IsProduction() && elegida == PasarelaSimulada.NombreDeLaPasarela)
+                throw new OptionsValidationException(
+                    OpcionesZass.Seccion, typeof(OpcionesZass),
+                    new[]
+                    {
+                        $"{ClavePasarela} resuelve a '{PasarelaSimulada.NombreDeLaPasarela}' y el "
+                        + "entorno es Produccion. La pasarela simulada no cobra: configura una real.",
+                    });
+
+            return elegida switch
+            {
+                PasarelaSimulada.NombreDeLaPasarela => new PasarelaSimulada(
+                    sp.GetRequiredService<IOptions<OpcionesZass>>(),
+                    sp.GetRequiredService<ILogger<PasarelaSimulada>>()),
+                _ => throw new OptionsValidationException(
+                    OpcionesZass.Seccion, typeof(OpcionesZass),
+                    new[]
+                    {
+                        $"{ClavePasarela} dice '{nombre}' y no hay adaptador con ese nombre. "
+                        + $"El unico que existe hoy es '{PasarelaSimulada.NombreDeLaPasarela}'.",
+                    }),
+            };
+        });
+
+        // --- MOD-12 Tarjetas NFC ---
+        // Scoped como los demas: comparten el DbContext de la peticion.
+        servicios.AddScoped<IRepositorioTarjetas, RepositorioTarjetasEfCore>();
+        servicios.AddScoped<IServicioTarjetas, ServicioTarjetas>();
 
         // --- Trabajos de fondo ---
         // ANCLAJE: el agente de los trabajos de fondo registra SOLO aqui (vencer suscripciones,

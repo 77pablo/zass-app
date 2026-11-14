@@ -97,6 +97,16 @@ public class Pago
     public DateTime PeriodoHasta { get; set; }
     /// <summary>Identificador de la transaccion en la pasarela.</summary>
     public string? ReferenciaPasarela { get; set; }
+
+    /// <summary>
+    /// El intento que lo origino (TBL-36). Nulo en los pagos registrados a mano, que
+    /// son los que existian antes de que hubiera forma de cobrar.
+    ///
+    /// El indice unico parcial ux_pago_intento sobre esta columna es la garantia DE LA
+    /// BASE de que la misma confirmacion no regala dos meses: no es una comprobacion en
+    /// C# que se pueda saltar una condicion de carrera.
+    /// </summary>
+    public Guid? IntentoDePagoId { get; set; }
     public string? MotivoFallo { get; set; }
     public DateTime CreadoEn { get; set; } = DateTime.UtcNow;
     public DateTime? PagadoEn { get; set; }
@@ -124,4 +134,180 @@ public class CupoFundador
     public DateTime? ReservadoHasta { get; set; }
 
     public PerfilPrestador? PerfilPrestador { get; set; }
+}
+
+// ----------------------------------------------------------------- El cobro
+//
+// Hasta el 13 de noviembre de 2026 no habia ninguna forma de cobrar: Suscripcion y Pago
+// existian, y RegistrarPeriodoPagado no tenia ni un solo llamador. Lo que faltaba no era
+// una pasarela, era la pieza intermedia: ALGO que represente "esta persona quiere pagar
+// esto, por este precio, y todavia no se sabe si pago". Eso es IntentoDePago.
+//
+// La pasarela real (Transbank, Flow, Mercado Pago) no esta decidida. El intento es
+// justamente lo que permite que no haga falta decidirla todavia: el adaptador de la
+// pasarela traduce de su mundo al intento, y nadie mas sabe quien cobra.
+
+/// <summary>
+/// TBL-36. Un cobro empezado: cuanto, a quien, por que plan, y como termino.
+///
+/// Existe por dos razones que no se pueden resolver con la tabla de pagos:
+///
+/// 1. El precio se fija AQUI, en el servidor, antes de salir a la pasarela. Si el monto
+///    viniera en la confirmacion sin nada contra lo que compararlo, quien manipule la
+///    vuelta de la pasarela compraria un mes por un peso.
+/// 2. La idempotencia (CC-04). El intento es lo que hace que confirmar dos veces no
+///    regale dos meses: la segunda confirmacion encuentra el intento ya en
+///    <see cref="EstadoIntentoPago.Pagado"/> y no vuelve a extender nada. La garantia
+///    ultima no es esa comprobacion, es el indice unico ux_pago_intento sobre
+///    <see cref="Pago.IntentoDePagoId"/>: un intento no puede tener dos pagos.
+/// </summary>
+public class IntentoDePago
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    public Guid SuscripcionId { get; set; }
+
+    /// <summary>Repetido a proposito: la suscripcion puede cambiar y este dato no.</summary>
+    public Guid PerfilPrestadorId { get; set; }
+
+    /// <summary>El plan que se esta comprando. 'fundador' y 'mensual' cuestan distinto.</summary>
+    public short PlanId { get; set; }
+
+    /// <summary>Cuantos meses compra este intento. Hoy siempre 1.</summary>
+    public short Meses { get; set; } = 1;
+
+    /// <summary>
+    /// Cobro o inscripcion. Una inscripcion va con los tres montos en cero y
+    /// <see cref="Meses"/> en cero: no compra ningun mes, autoriza el medio de pago.
+    /// </summary>
+    public TipoDeIntento Tipo { get; set; } = TipoDeIntento.Cobro;
+
+    /// <summary>Precio de lista del plan, antes del cupon.</summary>
+    public int MontoBruto { get; set; }
+
+    /// <summary>Lo que descuenta el cupon. Cero si no hay cupon.</summary>
+    public int MontoDescuento { get; set; }
+
+    /// <summary>Lo que se le cobra de verdad: <see cref="MontoBruto"/> menos el descuento.</summary>
+    public int Monto { get; set; }
+
+    public string Moneda { get; set; } = "CLP";
+
+    /// <summary>El cupon aplicado, si hubo. El canje no nace hasta que el pago se confirma.</summary>
+    public string? CodigoCupon { get; set; }
+
+    public EstadoIntentoPago Estado { get; set; } = EstadoIntentoPago.Pendiente;
+
+    /// <summary>
+    /// CC-04. La genera el cliente al abrir la pantalla de pago y la manda en cada
+    /// reintento del MISMO envio. Con el indice unico, dos envios del mismo formulario
+    /// producen UN intento, no dos cobros.
+    /// </summary>
+    public string ClaveIdempotencia { get; set; } = "";
+
+    /// <summary>Que adaptador creo este intento ('simulada', y manana el que decida Pablo).</summary>
+    public string Pasarela { get; set; } = "";
+
+    /// <summary>El identificador del cobro en la pasarela. Nulo hasta que la pasarela responde.</summary>
+    public string? ReferenciaPasarela { get; set; }
+
+    /// <summary>A donde hay que mandar a la persona para que pague.</summary>
+    public string? UrlParaPagar { get; set; }
+
+    public DateTime CreadoEn { get; set; } = DateTime.UtcNow;
+    public DateTime? ResueltoEn { get; set; }
+    public string? MotivoFallo { get; set; }
+
+    public Suscripcion? Suscripcion { get; set; }
+    public Plan? Plan { get; set; }
+
+    /// <summary>
+    /// Pasa a pagado. Devuelve falso si ya estaba resuelto, y ese falso es lo que impide
+    /// el segundo mes: quien llama no debe extender la suscripcion si esto dice que no.
+    /// </summary>
+    public bool MarcarPagado(DateTime ahora)
+    {
+        if (Estado != EstadoIntentoPago.Pendiente) return false;
+        Estado = EstadoIntentoPago.Pagado;
+        ResueltoEn = ahora;
+        return true;
+    }
+
+    /// <summary>Lo rechazo la pasarela. Tampoco se puede resolver dos veces.</summary>
+    public bool MarcarFallido(DateTime ahora, string? motivo)
+    {
+        if (Estado != EstadoIntentoPago.Pendiente) return false;
+        Estado = EstadoIntentoPago.Fallido;
+        ResueltoEn = ahora;
+        MotivoFallo = motivo;
+        return true;
+    }
+}
+
+/// <summary>
+/// TBL-34. Un codigo de descuento. Decision de Pablo del 13-nov-2026: 30 % sobre el
+/// primer mes PAGADO.
+///
+/// El detalle que hay que tener presente para no equivocarse: el primer mes de vida de
+/// la cuenta es gratis (la suscripcion 'Prueba' de 30 dias que crea IniciarPruebaAsync),
+/// asi que el cupon cae sobre el SEGUNDO mes, que es el primero que se cobra. Sobre el
+/// precio fundador congelado de 5990 eso son 4193: 1797 de descuento, truncado hacia
+/// abajo. (Este numero decia 4792 hasta el 14-nov-2026, que era el del 20 % que Pablo
+/// descarto el 13: el porcentaje cambio en la fila sembrada y el comentario se quedo.)
+/// </summary>
+public class Cupon
+{
+    /// <summary>El codigo que escribe la persona. Se guarda y se compara en mayusculas.</summary>
+    public string Codigo { get; set; } = "";
+
+    public string? Descripcion { get; set; }
+
+    /// <summary>1..100. El 30 de la decision de Pablo vive en la FILA, no en el codigo: por eso
+    /// cambiarlo es un UPDATE y no un despliegue.</summary>
+    public short PorcentajeDescuento { get; set; }
+
+    /// <summary>Despues de esta fecha no se canjea. Un cupon sin vencimiento es para siempre.</summary>
+    public DateTime VenceEn { get; set; }
+
+    public bool Activo { get; set; } = true;
+
+    /// <summary>Sirve hoy. La fecha y el interruptor son dos cosas distintas a proposito:
+    /// se puede cortar un cupon antes de su vencimiento sin falsear la fecha.</summary>
+    public bool Sirve(DateTime ahora) => Activo && VenceEn > ahora;
+
+    /// <summary>
+    /// Lo que descuenta sobre un monto. Division entera: el descuento se trunca, nunca
+    /// se redondea hacia arriba, para que el cobro no pueda salir mayor que el precio.
+    /// Con 30 % sobre 5990 da 1797 exacto, y sobre 7990 da 2397.
+    /// </summary>
+    public int DescuentoSobre(int monto) =>
+        monto <= 0 ? 0 : monto * PorcentajeDescuento / 100;
+}
+
+/// <summary>
+/// TBL-35. Que cupon se aplico a que pago.
+///
+/// El indice unico ux_canje_cupon_perfil es sobre el PERFIL, no sobre la pareja
+/// (cupon, perfil): «una sola vez por cuenta» de la decision de Pablo. Con un unico
+/// cupon en circulacion las dos cosas coinciden, pero el dia que haya dos codigos la
+/// pareja permitiria encadenarlos, y el descuento es del primer mes pagado, que ocurre
+/// una vez en la vida de la cuenta.
+///
+/// Nace junto con el pago y nunca antes: si naciera al crear el intento, una tarjeta
+/// rechazada le quemaria el cupon a quien no llego a pagar nada.
+/// </summary>
+public class CanjeDeCupon
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string CodigoCupon { get; set; } = "";
+    public Guid PerfilPrestadorId { get; set; }
+
+    /// <summary>El pago al que se le aplico. Es lo que hace auditable el descuento.</summary>
+    public Guid PagoId { get; set; }
+
+    public int MontoDescontado { get; set; }
+    public DateTime CanjeadoEn { get; set; } = DateTime.UtcNow;
+
+    public Cupon? Cupon { get; set; }
+    public Pago? Pago { get; set; }
 }

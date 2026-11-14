@@ -1,4 +1,4 @@
-using System.Threading.RateLimiting;
+﻿using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.RateLimiting;
 
@@ -64,13 +64,24 @@ public static class ConfiguracionDeSeguridad
             opciones.OnRejected = async (contexto, ct) =>
             {
                 contexto.HttpContext.Response.Headers.RetryAfter = "900";
-                contexto.HttpContext.Response.ContentType = "application/problem+json";
+                // Los nombres son los de RFC 7807 (`title`, `detail`, `status`), no `titulo`/`detalle`:
+                // es el contrato que lee el cliente (`api/cliente.ts`) y el que usa el resto de la API
+                // via Results.Problem. Con los nombres en castellano la respuesta era problem+json de
+                // mentira: el cliente no encontraba nada que mostrar y el aviso del limitador no
+                // llegaba nunca a la pantalla. `reintentarEn` se queda como extension, en castellano
+                // porque es nuestra.
                 await contexto.HttpContext.Response.WriteAsJsonAsync(new
                 {
-                    titulo = "Demasiadas peticiones",
-                    detalle = "Espera unos minutos antes de volver a intentar.",
+                    title = "Demasiadas peticiones",
+                    detail = "Espera unos minutos antes de volver a intentar.",
+                    status = StatusCodes.Status429TooManyRequests,
                     reintentarEn = 900,
-                }, ct);
+                },
+                // El tipo de contenido va AQUI y no en Response.ContentType antes de escribir:
+                // WriteAsJsonAsync pone el suyo ("application/json") al escribir y pisaba el
+                // problem+json que se habia declarado una linea mas arriba. Se veia en la
+                // respuesta de verdad, no en el codigo.
+                options: null, contentType: "application/problem+json", cancellationToken: ct);
             };
 
             Ventana(opciones, Tasa.Publico, Limite(Tasa.Publico, 100));
@@ -173,7 +184,9 @@ public static class ConfiguracionDeSeguridad
             cabeceras["Content-Security-Policy"] =
                 "default-src 'self'; "
                 + "img-src 'self' data: https://*.blob.core.windows.net; "
-                + "connect-src 'self' https://api.zass.cl; "
+                // El navegador llama a /api/* en el mismo origen (proxy de Cloudflare Pages / Vite),
+                // asi que 'self' cubre y no se deja un dominio inexistente en la CSP.
+                + "connect-src 'self'; "
                 + "frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
             cabeceras["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload";
             cabeceras["X-Content-Type-Options"] = "nosniff";

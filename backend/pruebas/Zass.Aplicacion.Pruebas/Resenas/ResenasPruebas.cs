@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Pruebas.Dobles;
+using Zass.Aplicacion.Puertos;
 using Zass.Aplicacion.Resenas;
 using Zass.Dominio.Agenda;
 using Zass.Dominio.Comun;
@@ -310,7 +311,10 @@ public class ResenasPruebas
     [Fact]
     public async Task Una_cita_con_inasistencia_se_informa_como_tal_y_no_habilita()
     {
-        // Decisión pendiente (ESTADO.md): NoAsistio no dice quién faltó, así que se cierra la puerta.
+        // Ya NO es una decisión pendiente (se tomó el 11-nov-2026). Esta cita queda en
+        // `no_asistio` sin que nadie haya acusado a nadie, que es el caso de las filas
+        // anteriores a la regla: se cae del lado que no habilita. Quién faltó y qué pasa en
+        // cada caso está en ElegibilidadPorInasistenciaPruebas.
         UnContacto(cita: UnaCita(EstadoCita.NoAsistio));
 
         var e = await Elegibilidad();
@@ -467,6 +471,46 @@ public class ResenasPruebas
         Assert.False(resena.Editada);
         Assert.Equal(Ahora, resena.PublicadaEn);
         Assert.Equal(Ahora.AddHours(72), resena.EditableHasta);
+    }
+
+    /// <summary>
+    /// CU-16 4C.3: «El comentario se marca visiblemente como "reseña por inasistencia"». Ese
+    /// rótulo sale de <c>Tipo</c> en la FILA, así que lo que hay que mirar es la reseña
+    /// publicada, no lo que contestó la elegibilidad.
+    ///
+    /// <para>
+    /// Esta prueba nació de una mutación, el 12-nov-2026: devolver `Tipo = elegibilidad.Tipo` al
+    /// `TipoResena.Servicio` fijo que había antes dejaba las 709 unitarias EN VERDE. Era el único
+    /// sitio del sistema donde se escribe `Inasistencia` y no lo vigilaba nada: la elegibilidad
+    /// tenía prueba, el valor que de verdad se guarda no.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Con_el_prestador_ausente_la_resena_publicada_nace_marcada_por_inasistencia()
+    {
+        var cita = UnaCita(EstadoCita.NoAsistio);
+        cita.QuienFalto = FaltaEnCita.Prestador;
+        var c = UnContacto(hace: TimeSpan.FromMinutes(5), cita: cita);
+
+        var r = await _servicio.PublicarAsync(Pub(c));
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(TipoResena.Inasistencia, Assert.Single(_repo.Resenas).Tipo);
+    }
+
+    /// <summary>
+    /// El contraste, en la misma forma: una cita realizada publica una reseña de SERVICIO. Sin
+    /// el par, poner `Inasistencia` fijo en vez de `Servicio` fijo volvería a pasar inadvertido.
+    /// </summary>
+    [Fact]
+    public async Task Con_la_cita_realizada_la_resena_publicada_nace_de_servicio()
+    {
+        var c = UnContacto(hace: TimeSpan.FromMinutes(5), cita: UnaCita(EstadoCita.Realizada));
+
+        var r = await _servicio.PublicarAsync(Pub(c));
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(TipoResena.Servicio, Assert.Single(_repo.Resenas).Tipo);
     }
 
     [Fact]
@@ -800,12 +844,19 @@ public class ResenasPruebas
         Assert.Equal(anterior, json.RootElement.GetProperty("comentarioAnterior").GetString());
     }
 
+    /// <summary>
+    /// CS-16, por las DOS vías de la Tanda B: el contacto directo y la cita realizada. El plazo
+    /// no depende de cómo nació la reseña, y una regla que lo hiciera depender pasaría
+    /// inadvertida si solo se probara una.
+    /// </summary>
     [Theory]
-    [InlineData(72 * 3600, true)]          // justo a las 72 h todavía se puede
-    [InlineData(72 * 3600 + 1, false)]
-    public async Task El_plazo_de_edicion_es_de_72_horas_exactas(int segundos, bool puede)
+    [InlineData(false, 72 * 3600, true)]          // justo a las 72 h todavía se puede
+    [InlineData(false, 72 * 3600 + 1, false)]
+    [InlineData(true, 72 * 3600, true)]
+    [InlineData(true, 72 * 3600 + 1, false)]
+    public async Task El_plazo_de_edicion_es_de_72_horas_exactas(bool porCita, int segundos, bool puede)
     {
-        var resena = await UnaPublicada();
+        var resena = await UnaPublicadaPor(porCita);
         _reloj.Avanzar(TimeSpan.FromSeconds(segundos));
 
         var r = await _servicio.EditarAsync(new EditarResenaCmd(
@@ -818,6 +869,33 @@ public class ResenasPruebas
             Assert.False(resena.Editada);
             Assert.Equal(5, resena.Calificacion);
         }
+    }
+
+    /// <summary>El plazo que se guarda, con el número escrito a mano y no sacado de `PlazoDeEdicion`.</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Publicar_fija_el_plazo_de_edicion_en_72_horas_por_las_dos_vias(bool porCita)
+    {
+        var resena = await UnaPublicadaPor(porCita);
+
+        Assert.Equal(Ahora, resena.PublicadaEn);
+        Assert.Equal(Ahora.AddHours(72), resena.EditableHasta);
+    }
+
+    /// <summary>
+    /// Una reseña publicada por contacto directo (8 días atrás) o por una cita realizada hace un
+    /// rato, que no espera los 7 días.
+    /// </summary>
+    private async Task<Resena> UnaPublicadaPor(bool porCita)
+    {
+        var c = porCita
+            ? UnContacto(hace: TimeSpan.FromMinutes(5), cita: UnaCita(EstadoCita.Realizada))
+            : UnContacto();
+        var r = await _servicio.PublicarAsync(Pub(c));
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(c.CitaId is not null, porCita);
+        return _repo.Resenas.Single(x => x.Id == r.Valor!.Resena!.Id);
     }
 
     [Fact]
@@ -887,6 +965,40 @@ public class ResenasPruebas
         var aviso = Assert.Single(_avisos.Encoladas);
         Assert.Equal(_ana.Id, aviso.DestinatarioId);
         Assert.Equal(TipoNotificacion.ResenaRespondida, aviso.Tipo);
+    }
+
+    /// <summary>
+    /// El cuerpo del aviso es su CARGA, no el texto del correo (eso lo arma Plantillas), y de
+    /// esta depende el enlace: sin el slug el correo sale apuntando al inicio del sitio en vez
+    /// de a la ficha donde esta la respuesta.
+    /// </summary>
+    [Fact]
+    public async Task El_aviso_de_respuesta_lleva_el_slug_del_perfil_en_la_carga()
+    {
+        var resena = await UnaPublicada();
+        _avisos.Encoladas.Clear();
+
+        await _servicio.ResponderAsync(resena.Id, _luis.Id, "Gracias por confiar en nosotros.");
+
+        var aviso = Assert.Single(_avisos.Encoladas);
+        Assert.Equal(_perfil.Slug, CargaDeAviso.LeerCampo(aviso.Cuerpo, "slug"));
+    }
+
+    /// <summary>
+    /// Lo que el aviso de reseña nueva NO lleva: ni la calificación ni el comentario. La
+    /// reseña puede acabar oculta en moderación (CS-17) y un correo enviado no se retira.
+    /// </summary>
+    [Fact]
+    public async Task El_aviso_de_resena_nueva_no_guarda_la_calificacion_ni_el_comentario()
+    {
+        var c = UnContacto();
+
+        await _servicio.PublicarAsync(Pub(c));
+
+        var aviso = Assert.Single(_avisos.Encoladas);
+        Assert.DoesNotContain(Comentario, aviso.Cuerpo);
+        Assert.Null(CargaDeAviso.LeerCampo(aviso.Cuerpo, "calificacion"));
+        Assert.Null(CargaDeAviso.LeerCampo(aviso.Cuerpo, "comentario"));
     }
 
     [Fact]
@@ -1294,5 +1406,146 @@ public class ResenasPruebas
         var r = await _servicio.ResenasPublicasAsync(borrador.Id, null);
 
         Assert.Equal(Fallas.NoEncontrado, r.Codigo);
+    }
+
+    // ------------------------------------------------------------- API-65 · mis reseñas
+
+    [Fact]
+    public async Task Mis_resenas_traen_solo_las_mias()
+    {
+        var mia = await UnaPublicada();
+        var otroAutor = UnUsuario("buscador");
+        var ajena = await UnaPublicada(autor: otroAutor);
+
+        var mias = (await _servicio.MisResenasAsync(_ana.Id)).Valor!;
+
+        Assert.Equal(new[] { mia.Id }, mias.Select(r => r.Id));
+        Assert.DoesNotContain(mias, r => r.Id == ajena.Id);
+    }
+
+    [Fact]
+    public async Task Mis_resenas_dicen_a_quien_se_la_deje_y_hasta_cuando_puedo_cambiarla()
+    {
+        var resena = await UnaPublicada();
+
+        var mia = Assert.Single((await _servicio.MisResenasAsync(_ana.Id)).Valor!);
+
+        Assert.Equal(_perfil.NombrePublico, mia.PerfilNombre);
+        Assert.Equal(_perfil.Slug, mia.PerfilSlug);
+        Assert.Equal(resena.PublicadaEn + ReglasDeResenas.PlazoDeEdicion, mia.EditableHasta);
+        Assert.Equal(EstadoResena.Publicada, mia.Estado);
+    }
+
+    /// <summary>
+    /// Una reseña retirada en moderación sigue siendo de quien la escribió. Esconderla de su
+    /// autor haría que desapareciera sin explicación, y la pantalla no podría decir qué pasó.
+    /// </summary>
+    [Fact]
+    public async Task Una_resena_retirada_sigue_apareciendo_entre_las_mias_con_su_estado()
+    {
+        var resena = await UnaPublicada();
+        resena.Retirar();
+
+        var mia = Assert.Single((await _servicio.MisResenasAsync(_ana.Id)).Valor!);
+
+        Assert.Equal(EstadoResena.Retirada, mia.Estado);
+    }
+
+    // ------------------------------------------------------------- el origen (11-nov-2026)
+
+    [Fact]
+    public async Task Mis_resenas_distinguen_la_cita_del_contacto_directo()
+    {
+        var cita = UnaCita(EstadoCita.Realizada);
+        var porCita = await _servicio.PublicarAsync(
+            Pub(UnContacto(cita: cita), clave: "con-cita"));
+        var otroPerfil = UnPerfil(UnUsuario("prestador"));
+        var directa = await _servicio.PublicarAsync(
+            Pub(UnContacto(perfil: otroPerfil), clave: "sin-cita"));
+        Assert.True(porCita.Exito && directa.Exito);
+
+        var mias = (await _servicio.MisResenasAsync(_ana.Id)).Valor!;
+
+        Assert.Equal(OrigenDeResena.Cita, mias.Single(r => r.Id == porCita.Valor!.Resena!.Id).Origen);
+        Assert.Equal(OrigenDeResena.Directo, mias.Single(r => r.Id == directa.Valor!.Resena!.Id).Origen);
+    }
+
+    /// <summary>
+    /// El orden de "mis reseñas" es CONTRATO, no casualidad: la pantalla pinta la lista tal como
+    /// llega y lo que la persona viene a buscar es la última que escribió, la que todavía puede
+    /// cambiar. Las tres nacen en instantes distintos a propósito: con `PublicadaEn` empatado el
+    /// desempate queda en el id, que es un Guid al azar, y la prueba saldría cara o cruz.
+    /// </summary>
+    [Fact]
+    public async Task Mis_resenas_llegan_de_la_mas_nueva_a_la_mas_vieja()
+    {
+        var primera = await UnaPublicada(perfil: UnPerfil(UnUsuario("prestador")));
+        _reloj.Avanzar(TimeSpan.FromDays(1));
+        var segunda = await UnaPublicada(perfil: UnPerfil(UnUsuario("prestador")));
+        _reloj.Avanzar(TimeSpan.FromDays(1));
+        var tercera = await UnaPublicada(perfil: UnPerfil(UnUsuario("prestador")));
+
+        var mias = (await _servicio.MisResenasAsync(_ana.Id)).Valor!;
+
+        Assert.Equal(new[] { tercera.Id, segunda.Id, primera.Id }, mias.Select(r => r.Id));
+    }
+
+    /// <summary>
+    /// Lo mismo que usa la API de verdad (Program.cs): nombres en camelCase y los enum como
+    /// TEXTO. Sin el convertidor, `Origen` se serializa como número y la prueba de abajo leería
+    /// unos bytes que nadie recibe nunca.
+    /// </summary>
+    private static readonly JsonSerializerOptions ComoLaApi =
+        new(JsonSerializerDefaults.Web)
+        {
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+        };
+
+    /// <summary>
+    /// Decisión de Pablo del 11-nov-2026: quien reseña tras marcar "ya me atendió" queda
+    /// rotulado «contacto directo, sin cita», y eso tiene que viajar en lo PÚBLICO, que es
+    /// donde se lee. Lo que no viaja es con qué contacto ni con qué cita (CU-16 §7).
+    ///
+    /// El orden (la más nueva primero) también es contrato: el cursor keyset de la lista pública
+    /// va sobre esa misma tupla. Por eso las dos reseñas se publican en instantes distintos.
+    /// </summary>
+    [Fact]
+    public async Task Lo_publico_dice_si_hubo_cita_o_fue_contacto_directo_y_nada_mas()
+    {
+        var cita = UnaCita(EstadoCita.Realizada);
+        var conCita = UnContacto(cita: cita);
+        await _servicio.PublicarAsync(Pub(conCita, clave: "con-cita"));
+        _reloj.Avanzar(TimeSpan.FromMinutes(1));
+        var otroAutor = UnUsuario("buscador");
+        var sinCita = UnContacto(otroAutor);
+        await _servicio.PublicarAsync(Pub(sinCita, autor: otroAutor, clave: "sin-cita"));
+
+        var pagina = (await _servicio.ResenasPublicasAsync(_perfil.Id, null)).Valor!;
+        var json = JsonSerializer.Serialize(pagina, ComoLaApi);
+
+        Assert.Equal(
+            new[] { OrigenDeResena.Directo, OrigenDeResena.Cita },
+            pagina.Resenas.Select(r => r.Origen));
+
+        // Lo que NO sale: ningún identificador con el que cruzar a nadie con nada.
+        Assert.DoesNotContain(cita.Id.ToString(), json);
+        Assert.DoesNotContain(conCita.Id.ToString(), json);
+        Assert.DoesNotContain(sinCita.Id.ToString(), json);
+        Assert.DoesNotContain(_ana.Id.ToString(), json);
+        Assert.DoesNotContain(otroAutor.Id.ToString(), json);
+
+        // Y los campos son EXACTAMENTE estos. `origen` dice "Cita" o "Directo" y ahí se acaba lo
+        // que se sabe del contacto: un campo nuevo que hable de él rompe aquí aunque venga vacío.
+        var campos = JsonDocument.Parse(json).RootElement.GetProperty("resenas").EnumerateArray()
+            .SelectMany(r => r.EnumerateObject().Select(c => c.Name))
+            .Distinct().OrderBy(n => n, StringComparer.Ordinal).ToArray();
+        Assert.Equal(
+            new[]
+            {
+                "aspectos", "calificacion", "comentario", "editada", "id", "origen",
+                "publicadaEn", "respuesta", "tipo",
+            },
+            campos);
     }
 }

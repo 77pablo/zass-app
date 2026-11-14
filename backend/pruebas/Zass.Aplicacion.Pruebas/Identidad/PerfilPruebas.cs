@@ -1,4 +1,4 @@
-using Zass.Aplicacion.Identidad;
+﻿using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Pruebas.Dobles;
 using Zass.Dominio.Catalogo;
 using Zass.Dominio.Comun;
@@ -243,7 +243,9 @@ public class PerfilPruebas
         var aviso = Assert.Single(_cola.Encoladas);
         Assert.Equal(usuarioId, aviso.DestinatarioId);
         Assert.Equal(TipoNotificacion.PerfilPublicado, aviso.Tipo);
-        Assert.Contains("búsquedas", aviso.Cuerpo);
+        // El cuerpo es la CARGA del aviso (JSON con datos), no la frase que lee la persona: eso lo
+        // escribe la plantilla. Lo que tiene que viajar es el slug, para enlazar su ficha publica.
+        Assert.Equal(perfil.Slug, Zass.Aplicacion.Puertos.CargaDeAviso.LeerCampo(aviso.Cuerpo, "slug"));
     }
 
     /// <summary>

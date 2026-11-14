@@ -18,6 +18,7 @@ import { useTitulo } from '../marco/useTitulo'
 import { useSesion } from '../sesion/contexto'
 import { EditorDeZonas } from './EditorDeZonas'
 import { MisCredenciales } from './MisCredenciales'
+import { useMeta } from '../marco/useMeta'
 
 interface Todo {
   perfil: MiPerfil
@@ -39,6 +40,8 @@ function mensajeDe(e: unknown, porDefecto: string): string {
  * no una lista de errores.
  */
 export function MiFicha() {
+  // Pantalla del panel: fuera del indice de Google, igual que `robots.txt` (defensa doble).
+  useMeta({ noindex: true })
   const { estado, usuario } = useSesion()
   const catalogo = useCatalogo()
   useTitulo('Mi ficha')
@@ -81,13 +84,22 @@ export function MiFicha() {
     return (
       <section className="contenedor no-encontrada">
         <p className="sobretitulo sobretitulo--tinta">Mi ficha</p>
-        <h1 className="pagina-titulo">Tu cuenta es de quien busca.</h1>
+        <h1 className="pagina-titulo">Todavía no ofreces servicios.</h1>
+        {/*
+          Aqui decia «crea una cuenta de profesional con otro correo», y eso contradice la decision de
+          CUENTA UNICA: en ZASS! la misma cuenta busca y ofrece, y el rol de prestador se activa desde
+          /ofrecer-servicios. Mandar a alguien a registrarse de nuevo con otro correo le parte la cuenta
+          en dos, le deja las citas y las resenas repartidas y no hace falta para nada.
+        */}
         <p className="bajada">
-          La ficha es para quienes ofrecen un servicio. Si eres profesional, crea una cuenta de
-          profesional con otro correo.
+          La ficha es para quien ofrece un servicio. Con esta misma cuenta puedes empezar a ofrecerlos:
+          no necesitas otro correo.
         </p>
         <p className="seccion-cierre">
-          <Link className="boton boton--amarillo" to="/buscar">Buscar a alguien<Icono nombre="flecha" /></Link>
+          <Link className="boton boton--amarillo" to="/ofrecer-servicios">
+            Ofrecer mis servicios<Icono nombre="flecha" />
+          </Link>
+          <Link className="enlace" to="/buscar">O buscar a alguien</Link>
         </p>
       </section>
     )

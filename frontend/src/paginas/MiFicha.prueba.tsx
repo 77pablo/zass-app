@@ -76,10 +76,19 @@ describe('mi ficha (prestador)', () => {
     expect(await screen.findByText('pantalla de entrar')).toBeInTheDocument()
   })
 
-  it('una cuenta de buscador no ve la ficha', async () => {
+  it('una cuenta de buscador no ve la ficha, y la invitan a ofrecer con la MISMA cuenta', async () => {
     pintar('dentro', ['buscador'])
 
-    expect(await screen.findByText('Tu cuenta es de quien busca.')).toBeInTheDocument()
+    expect(await screen.findByText('Todavía no ofreces servicios.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Ofrecer mis servicios/ })).toHaveAttribute('href', '/ofrecer-servicios')
+    // D2: nunca mas mandar a crear una segunda cuenta. La decision es una sola cuenta por persona.
+    // Se mira lo que de verdad hace dano: que le pidan registrarse otra vez. (La pantalla si puede
+    // decir «no necesitas otro correo», que es lo contrario.)
+    expect(screen.queryByText(/crea una cuenta/i)).toBeNull()
+    expect(screen.queryByText(/cuenta de profesional/)).toBeNull()
+    for (const a of screen.getAllByRole('link')) {
+      expect(a.getAttribute('href')).not.toContain('/crear-cuenta')
+    }
   })
 
   it('publicada con la prueba vigente: sello normal y los dias que quedan', async () => {

@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Npgsql;
@@ -79,7 +79,8 @@ public class ProcesadorDeCorreoPruebas : IAsyncLifetime
     }
 
     private async Task<Guid> EncolarAsync(Guid usuarioId, string token,
-        TipoNotificacion tipo = TipoNotificacion.CorreoVerificacion, string? cuerpo = null)
+        TipoNotificacion tipo = TipoNotificacion.CorreoVerificacion, string? cuerpo = null,
+        TimeSpan? antiguedad = null)
     {
         using var ctx = ContextoDePrueba.Crear();
         var n = new Notificacion
@@ -90,7 +91,7 @@ public class ProcesadorDeCorreoPruebas : IAsyncLifetime
             ClaveIdempotencia = $"prueba:{Guid.NewGuid():N}",
             Asunto = "x",
             Cuerpo = cuerpo ?? CargaDeAviso.ConToken(token),
-            ProgramadaPara = _reloj.Ahora.AddSeconds(-1),
+            ProgramadaPara = _reloj.Ahora - (antiguedad ?? TimeSpan.FromSeconds(1)),
         };
         ctx.Notificaciones.Add(n);
         await ctx.SaveChangesAsync();
@@ -377,11 +378,74 @@ public class ProcesadorDeCorreoPruebas : IAsyncLifetime
         Assert.Equal(EstadoEnvio.Anulada, (await LeerAsync(id)).Estado);
     }
 
+    /// <summary>
+    /// Encolar y enviar estan separados a proposito, asi que un tipo sin plantilla se acumula en la
+    /// cola hasta que alguien la escriba. El dia que esa plantilla llega, TODO lo acumulado se
+    /// vuelve enviable de golpe y la gente recibe avisos de algo que hizo hace semanas. Paso de
+    /// verdad con PerfilPublicado, que llevaba encolandose sin plantilla desde el primer dia.
+    /// </summary>
+    [Fact]
+    public async Task Un_aviso_que_lleva_semanas_esperando_se_anula_en_vez_de_enviarse()
+    {
+        var u = await CrearUsuarioAsync();
+        var viejo = await EncolarAsync(u.Id, "x", TipoNotificacion.PerfilPublicado,
+            cuerpo: CargaDeAviso.ConCampos(("slug", "ana-rojas")), antiguedad: TimeSpan.FromDays(30));
+        var m = ManejadorFalso.Responde(HttpStatusCode.Created);
+
+        await CicloAsync(m);
+
+        Assert.Equal(0, m.Cuenta);
+        var n = await LeerAsync(viejo);
+        Assert.Equal(EstadoEnvio.Anulada, n.Estado);
+    }
+
+    /// <summary>Y el del mismo tipo recien encolado si sale: el corte es por tiempo, no por tipo.</summary>
+    [Fact]
+    public async Task Un_aviso_de_ficha_publicada_recien_encolado_si_se_envia()
+    {
+        var u = await CrearUsuarioAsync();
+        var fresco = await EncolarAsync(u.Id, "x", TipoNotificacion.PerfilPublicado,
+            cuerpo: CargaDeAviso.ConCampos(("slug", "ana-rojas")));
+        var m = ManejadorFalso.Responde(HttpStatusCode.Created);
+
+        await CicloAsync(m);
+
+        Assert.Equal(1, m.Cuenta);
+        Assert.Equal(EstadoEnvio.Enviada, (await LeerAsync(fresco)).Estado);
+    }
+
+    /// <summary>
+    /// JQ-1, el defecto de las reseñas visto desde el despacho: un aviso de cita recién encolado
+    /// tiene que salir, no quedarse «Programada» con 0 intentos. Los cinco, con la carga que
+    /// encola la agenda escrita a mano.
+    /// </summary>
+    [Theory]
+    [InlineData(TipoNotificacion.CitaSolicitada, "{\"rol\":\"prestador\"}")]
+    [InlineData(TipoNotificacion.CitaConfirmada, "{\"rol\":\"buscador\"}")]
+    [InlineData(TipoNotificacion.CitaRechazada, "{\"rol\":\"buscador\"}")]
+    [InlineData(TipoNotificacion.CitaCancelada, "{\"rol\":\"prestador\"}")]
+    [InlineData(TipoNotificacion.CitaReprogramada, "{\"rol\":\"buscador\"}")]
+    public async Task Un_aviso_de_cita_recien_encolado_se_envia(TipoNotificacion tipo, string carga)
+    {
+        var u = await CrearUsuarioAsync();
+        var aviso = await EncolarAsync(u.Id, "x", tipo, cuerpo: carga);
+        var m = ManejadorFalso.Responde(HttpStatusCode.Created);
+
+        await CicloAsync(m);
+
+        Assert.Equal(1, m.Cuenta);
+        var n = await LeerAsync(aviso);
+        Assert.Equal(EstadoEnvio.Enviada, n.Estado);
+        Assert.Equal(1, n.Intentos);
+    }
+
     [Fact]
     public async Task Un_aviso_sin_plantilla_ni_de_otro_canal_no_se_toca()
     {
+        // Recordatorio24h: PerfilPublicado tiene plantilla desde el 13-nov-2026 y CitaConfirmada
+        // desde JQ-1. La prueba necesita un tipo que de verdad no la tenga, o no estaria probando nada.
         var u = await CrearUsuarioAsync();
-        var otroTipo = await EncolarAsync(u.Id, "x", TipoNotificacion.PerfilPublicado, cuerpo: "Tu perfil ya es visible");
+        var otroTipo = await EncolarAsync(u.Id, "x", TipoNotificacion.Recordatorio24h, cuerpo: "Faltan 24 horas para tu cita");
         var m = ManejadorFalso.Responde(HttpStatusCode.Created);
 
         Assert.Equal(0, await CicloAsync(m));
@@ -390,7 +454,7 @@ public class ProcesadorDeCorreoPruebas : IAsyncLifetime
         var n = await LeerAsync(otroTipo);
         Assert.Equal(EstadoEnvio.Programada, n.Estado);
         Assert.Equal(0, n.Intentos);
-        Assert.Equal("Tu perfil ya es visible", n.Cuerpo);
+        Assert.Equal("Faltan 24 horas para tu cita", n.Cuerpo);
     }
 
     [Fact]
@@ -404,6 +468,51 @@ public class ProcesadorDeCorreoPruebas : IAsyncLifetime
 
         Assert.Equal(0, m.Cuenta);
         Assert.Equal(EstadoEnvio.Fallida, (await LeerAsync(id)).Estado);
+    }
+
+    // ------------------------------------------------------------ avisos de reseñas
+
+    /// <summary>
+    /// El defecto que esta prueba fija: S5 encolaba el aviso de reseña nueva y el despacho
+    /// no lo tomaba, porque el tipo no estaba en <c>TienePlantilla</c>. No fallaba nada; el
+    /// correo simplemente no existía. Se encola con la MISMA carga en prosa que escribe
+    /// ServicioResenas, para que la prueba cubra también los avisos ya encolados.
+    /// </summary>
+    [Fact]
+    public async Task Un_aviso_de_resena_nueva_se_envia_con_el_enlace_al_panel()
+    {
+        var u = await CrearUsuarioAsync("Luis Pérez", verificado: true);
+        var id = await EncolarAsync(u.Id, "", TipoNotificacion.ResenaNueva,
+            cuerpo: "Alguien dejó una reseña en tu perfil. Entra a ZASS! para verla y responder.");
+        var m = ManejadorFalso.Responde(HttpStatusCode.Created);
+
+        Assert.Equal(1, await CicloAsync(m));
+
+        var p = Assert.Single(m.Peticiones);
+        Assert.Contains("https://zass.test/mi-ficha", p.Cuerpo);
+        Assert.Contains(u.Correo, p.Cuerpo);
+        var n = await LeerAsync(id);
+        Assert.Equal(EstadoEnvio.Enviada, n.Estado);
+        Assert.NotNull(n.EnviadaEn);
+        Assert.Equal(1, n.Intentos);
+        Assert.Null(n.UltimoError);
+        // No lleva token: la carga se conserva, como en los avisos de suscripción.
+        Assert.NotEqual(CargaDeAviso.Purgada, n.Cuerpo);
+    }
+
+    [Fact]
+    public async Task Un_aviso_de_resena_respondida_se_envia_con_el_enlace_a_la_ficha_publica()
+    {
+        var u = await CrearUsuarioAsync("Ana Pérez", verificado: true);
+        var id = await EncolarAsync(u.Id, "", TipoNotificacion.ResenaRespondida,
+            cuerpo: CargaDeAviso.ConCampos(("slug", "luis-perez-gasfiter")));
+        var m = ManejadorFalso.Responde(HttpStatusCode.Created);
+
+        Assert.Equal(1, await CicloAsync(m));
+
+        var p = Assert.Single(m.Peticiones);
+        Assert.Contains("https://zass.test/prestadores/luis-perez-gasfiter", p.Cuerpo);
+        Assert.Equal(EstadoEnvio.Enviada, (await LeerAsync(id)).Estado);
     }
 
     // ------------------------------------------------------------ reserva (lease)

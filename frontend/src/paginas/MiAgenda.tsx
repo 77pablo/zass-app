@@ -8,6 +8,7 @@ import {
 } from '../funciones/agenda/servicio'
 import { useTitulo } from '../marco/useTitulo'
 import { useSesion } from '../sesion/contexto'
+import { useMeta } from '../marco/useMeta'
 
 /** Los mismos limites que valida el servidor (Zass.Aplicacion/Agenda/Validadores.cs). */
 const MAXIMO_FRANJAS = 30
@@ -23,6 +24,11 @@ function mensajeDe(e: unknown, porDefecto: string): string {
 
 /** Lo que el servidor rechazaria, dicho ANTES de mandarlo y junto a la franja que lo causa. */
 function errorDeFranja(f: Franja): string | null {
+  // Un `type="date|time"` se puede vaciar, y con la hora vacía las cuentas de abajo dan `NaN`: la
+  // comparación es falsa, el error no aparece y el PUT sale con `horaInicio: ""`. El servidor falla al
+  // convertirlo a `TimeOnly` ANTES de validar, así que contesta sin campo ni detalle y la pantalla
+  // solo puede decir «No se pudo completar la operación». Se ataja aquí, junto a la franja que lo causa.
+  if (!f.horaInicio || !f.horaFin) return 'Pon la hora de inicio y la de término.'
   if (f.horaFin <= f.horaInicio) return 'La hora de término tiene que ser posterior a la de inicio.'
   const [hi, mi] = f.horaInicio.split(':').map(Number)
   const [hf, mf] = f.horaFin.split(':').map(Number)
@@ -63,6 +69,8 @@ function rangoDeBloqueo(b: Bloqueo): string {
  * rechazarlas y marcar asistencia: repetirlo aquí serían dos lugares que se desincronizan.
  */
 export function MiAgenda() {
+  // Pantalla del panel: fuera del indice de Google, igual que `robots.txt` (defensa doble).
+  useMeta({ noindex: true })
   const { estado, usuario } = useSesion()
   useTitulo('Mi agenda')
   const esPrestador = usuario?.roles.includes('prestador') ?? false
@@ -100,6 +108,7 @@ export function MiAgenda() {
   if (error) {
     return (
       <div className="contenedor ficha-pagina">
+        <h1 className="pagina-titulo">Mi agenda</h1>
         <p className="aviso-linea" role="alert">
           {error}{' '}
           <button type="button" className="enlace" onClick={() => { setError(null); setRecarga((n) => n + 1) }}>
@@ -110,7 +119,12 @@ export function MiAgenda() {
     )
   }
   if (servicios === null) {
-    return <div className="contenedor ficha-pagina"><p className="cargando-linea" role="status">Cargando tu horario…</p></div>
+    return (
+      <div className="contenedor ficha-pagina">
+        <h1 className="pagina-titulo">Mi agenda</h1>
+        <p className="cargando-linea" role="status">Cargando tu horario…</p>
+      </div>
+    )
   }
 
   return (
@@ -217,9 +231,10 @@ function TarjetaDeServicio({ servicio }: { servicio: DisponibilidadDeServicio })
                     {DURACIONES.map((m) => <option key={m} value={m}>{m} min</option>)}
                   </select>
                 </label>
-                <button type="button" className="boton boton--chico" aria-label={`Quitar franja ${n}`}
+                <button type="button" className="boton boton--chico"
+                  aria-label={`Quitar este horario ${n} (${DIAS.find((d) => d.valor === f.diaSemana)?.nombre.toLowerCase() ?? ''} de ${f.horaInicio} a ${f.horaFin})`}
                   onClick={() => { setFranjas((fs) => fs.filter((_, k) => k !== i)); setErrores({}); setListo(null) }}>
-                  Quitar
+                  Quitar este horario
                 </button>
               </div>
               {errores[i] && <p className="aviso aviso--malo">{errores[i]}</p>}
@@ -286,7 +301,9 @@ function BloquearFechas() {
       const siguiente = new Date(`${hasta}T12:00:00Z`)
       siguiente.setUTCDate(siguiente.getUTCDate() + 1)
       await crearBloqueo(inicioDeDiaEnChile(desde), inicioDeDiaEnChile(siguiente.toISOString().slice(0, 10)), motivo)
-      setAviso({ tono: 'bueno', texto: `Bloqueaste del ${desde} al ${hasta}: nadie podrá agendar esos días.` })
+      // J3 #3 y #4: mismo formato de fecha que la lista, y un solo día se dice como un día.
+      const cuando = desde === hasta ? `el ${fechaCorta(desde)}` : `del ${fechaCorta(desde)} al ${fechaCorta(hasta)}`
+      setAviso({ tono: 'bueno', texto: `Listo: ${cuando} nadie podrá agendar contigo.` })
       setDesde(''); setHasta(''); setMotivo('')
       setRecarga((n) => n + 1)
     } catch (er) {
@@ -352,13 +369,13 @@ function BloquearFechas() {
       ) : (
         <ul className="franjas">
           {bloqueos.map((b, i) => (
-            <li key={b.id} className="franja">
+            <li key={b.id} className="franja franja--bloqueo">
               <span>{rangoDeBloqueo(b)}</span>
-              {b.motivo && <span className="bloque-texto">· {b.motivo}</span>}
+              {b.motivo && <span className="franja-motivo">· {b.motivo}</span>}
               <button type="button" className="boton boton--chico" disabled={quitando !== null}
-                aria-label={`Quitar bloqueo ${i + 1}`}
+                aria-label={`Quitar este bloqueo ${i + 1} (${rangoDeBloqueo(b)})`}
                 onClick={() => { void quitar(b.id) }}>
-                {quitando === b.id ? 'Quitando…' : 'Quitar'}
+                {quitando === b.id ? 'Quitando…' : 'Quitar este bloqueo'}
               </button>
             </li>
           ))}

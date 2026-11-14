@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Zass.Aplicacion.Busqueda;
 using Zass.Aplicacion.Catalogo;
 using Zass.Aplicacion.Credenciales;
@@ -59,6 +59,7 @@ public class BusquedaIntegracionPruebas : IDisposable
                 trabajo, _reloj, auditor),
             new ServicioIdentidad(new RepositorioUsuariosEfCore(ctx), new RepositorioPerfilesEfCore(ctx)),
             new ServicioCredenciales(new RepositorioCredencialesEfCore(ctx), trabajo, _reloj, auditor),
+            _suscripciones,
             _reloj);
     }
 
@@ -711,12 +712,12 @@ public class BusquedaIntegracionPruebas : IDisposable
     private async Task<IReadOnlyList<FilaDeTexto>> TextoAsync(
         string? q, string orden = "recomendados", int? zona = null,
         double lat = CentroLat, double lon = CentroLon, int limite = 50, int desplazamiento = 0,
-        bool soloVerificados = false, decimal? notaMinima = null)
+        bool soloVerificados = false, decimal? notaMinima = null, short? radioKm = null)
     {
         var (formas, grupos) = TextoDeBusqueda.Grupos(q);
         return await _repo.PorTextoAsync(new CriteriosDeTexto(
             formas, grupos, lat, lon, zona, orden, _reloj.Ahora, limite, desplazamiento,
-            soloVerificados, notaMinima));
+            soloVerificados, notaMinima, radioKm));
     }
 
     private static string[] Nombres(IEnumerable<FilaDeTexto> filas) => filas.Select(f => f.NombrePublico).ToArray();
@@ -832,6 +833,44 @@ public class BusquedaIntegracionPruebas : IDisposable
         Assert.Equal(new[] { "En el centro", "En Labranza" }, Nombres(desdeElCentro));
         Assert.Equal(new[] { "En Labranza", "En el centro" }, Nombres(desdeLabranza));
         Assert.True(desdeElCentro[0].Tramo < desdeElCentro[1].Tramo);
+    }
+
+    /// <summary>
+    /// RN-S3-04 en la barra de busqueda (API-63). Esto NO lo puede probar una unitaria con repositorio
+    /// falso: lo que se mide aqui es que el metro del filtro lo pone PostGIS sobre los datos de
+    /// verdad. Labranza esta a unos 16 km del centro de Temuco, asi que a 5 km se queda fuera y a
+    /// 50 km entra.
+    /// </summary>
+    [Fact]
+    public async Task El_radio_recorta_por_distancia_de_verdad_y_el_total_cuenta_solo_a_los_que_entran()
+    {
+        await UnPrestadorBuscableAsync(nombre: "En el centro", zonaId: Centro);
+        await UnPrestadorBuscableAsync(nombre: "En Labranza", zonaId: Labranza);
+
+        var sinRadio = await TextoAsync(null, lat: CentroLat, lon: CentroLon);
+        var cerca = await TextoAsync(null, lat: CentroLat, lon: CentroLon, radioKm: 5);
+        var lejos = await TextoAsync(null, lat: CentroLat, lon: CentroLon, radioKm: 50);
+
+        Assert.Equal(2, sinRadio.Count);
+        Assert.Equal(new[] { "En el centro" }, Nombres(cerca));
+        Assert.Equal(2, lejos.Count);
+
+        // El recuento que se le muestra a la persona («12 personas») sale de COUNT(*) OVER (): si el
+        // filtro estuviera dentro de la consulta base, diria 2 mientras se ve 1.
+        Assert.Equal(1, cerca[0].TotalFilas);
+        Assert.Equal(2, lejos[0].TotalFilas);
+    }
+
+    [Fact]
+    public async Task Desde_Labranza_el_mismo_radio_deja_fuera_al_del_centro()
+    {
+        // El filtro se mide desde la persona, no desde un punto fijo del mapa.
+        await UnPrestadorBuscableAsync(nombre: "En el centro", zonaId: Centro);
+        await UnPrestadorBuscableAsync(nombre: "En Labranza", zonaId: Labranza);
+
+        var cerca = await TextoAsync(null, lat: LabranzaLat, lon: LabranzaLon, radioKm: 5);
+
+        Assert.Equal(new[] { "En Labranza" }, Nombres(cerca));
     }
 
     /// <summary>

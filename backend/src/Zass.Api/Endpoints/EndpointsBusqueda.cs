@@ -1,4 +1,4 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using Zass.Api.Configuracion;
 using Zass.Aplicacion.Busqueda;
 using Zass.Aplicacion.Catalogo;
@@ -29,7 +29,7 @@ public sealed record BusquedaHttpQuery(
 /// <summary>API-63: <c>GET /api/buscar?q=abogado&amp;lat=&amp;lon=&amp;orden=cercania&amp;pagina=1</c>.</summary>
 public sealed record BuscarTextoHttpQuery(
     string? Q, double? Lat, double? Lon, int? Zona, OrdenDeTexto? Orden, int? Pagina,
-    bool? Verificados, decimal? Calificacion);
+    bool? Verificados, decimal? Calificacion, short? Radio);
 
 public static class EndpointsBusqueda
 {
@@ -82,7 +82,7 @@ public static class EndpointsBusqueda
         grupo.MapGet("/buscar", async ([AsParameters] BuscarTextoHttpQuery q, IServicioBusqueda busqueda) =>
                 Respuestas.DeResultado(await busqueda.BuscarPorTextoAsync(new CriteriosDeTextoDeBusqueda(
                     q.Q, q.Lat, q.Lon, q.Zona, q.Orden ?? OrdenDeTexto.Recomendados, q.Pagina ?? 1,
-                    q.Verificados ?? false, q.Calificacion))))
+                    q.Verificados ?? false, q.Calificacion, q.Radio))))
             .RequireRateLimiting(Tasa.Publico)
             .WithName("API-63");
 

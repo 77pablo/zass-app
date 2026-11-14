@@ -50,7 +50,8 @@ public class AgendaIntegracionPruebas : IAsyncLifetime
                 new RepositorioUsuariosEfCore(ctx), new RepositorioPerfilesEfCore(ctx)),
             new ServicioSuscripciones(
                 new RepositorioSuscripcionesEfCore(ctx), trabajo, _reloj, auditor,
-                new ColaNotificacionesEfCore(ctx)));
+                new ColaNotificacionesEfCore(ctx)),
+            new ColaNotificacionesEfCore(ctx));
         return (agenda, ctx);
     }
 
@@ -277,6 +278,154 @@ public class AgendaIntegracionPruebas : IAsyncLifetime
         CreadaEn = _reloj.Ahora,
     };
 
+    // ========================================================= T10 · quién faltó, contra la base
+
+    /// <summary>
+    /// `ck_cita_quien_falto` sobre la tabla de verdad: alguien marcado como ausente en una cita
+    /// que no quedó en `no_asistio` es un estado imposible, y la base lo rechaza aunque el
+    /// código lo intente.
+    ///
+    /// Es la capa que seguiría protegiendo la decisión del 11-nov-2026 si mañana alguien
+    /// escribiera una ruta nueva que mueve el estado y se olvida de la columna: la elegibilidad
+    /// de reseña empezaría a decir «sí» justo donde la decisión dice «no».
+    /// </summary>
+    [Theory]
+    [InlineData(EstadoCita.Solicitada, FaltaEnCita.Cliente)]
+    [InlineData(EstadoCita.Confirmada, FaltaEnCita.Prestador)]
+    [InlineData(EstadoCita.PendienteAsistencia, FaltaEnCita.Cliente)]
+    [InlineData(EstadoCita.Realizada, FaltaEnCita.Cliente)]
+    [InlineData(EstadoCita.Realizada, FaltaEnCita.Prestador)]
+    [InlineData(EstadoCita.Realizada, FaltaEnCita.Discrepancia)]
+    [InlineData(EstadoCita.Cancelada, FaltaEnCita.Prestador)]
+    [InlineData(EstadoCita.Rechazada, FaltaEnCita.Cliente)]
+    public async Task La_base_rechaza_un_ausente_en_una_cita_que_no_quedo_en_no_asistio(
+        EstadoCita estado, FaltaEnCita quienFalto)
+    {
+        var bloque = await UnBloqueLibreAsync();
+        await using var ctx = ContextoDePrueba.Crear();
+
+        var cita = NuevaCitaCruda(bloque, estado);
+        cita.QuienFalto = quienFalto;
+        ctx.Citas.Add(cita);
+
+        var choque = await Assert.ThrowsAsync<DbUpdateException>(() => ctx.SaveChangesAsync());
+
+        var pg = Assert.IsType<PostgresException>(choque.InnerException);
+        Assert.Equal(PostgresErrorCodes.CheckViolation, pg.SqlState);
+        Assert.Equal("ck_cita_quien_falto", pg.ConstraintName);
+    }
+
+    /// <summary>
+    /// El contrapunto, y el que impide que el CHECK sea de más: con la cita en `no_asistio`
+    /// caben los cuatro desenlaces, y `Nadie` cabe en cualquier estado. Sin esto, un CHECK con
+    /// un <c>AND</c> donde va el <c>OR</c> pasaría la prueba de arriba y no dejaría guardar
+    /// ninguna cita.
+    /// </summary>
+    [Theory]
+    [InlineData(EstadoCita.NoAsistio, FaltaEnCita.Nadie)]
+    [InlineData(EstadoCita.NoAsistio, FaltaEnCita.Cliente)]
+    [InlineData(EstadoCita.NoAsistio, FaltaEnCita.Prestador)]
+    [InlineData(EstadoCita.NoAsistio, FaltaEnCita.Discrepancia)]
+    [InlineData(EstadoCita.Confirmada, FaltaEnCita.Nadie)]
+    [InlineData(EstadoCita.Realizada, FaltaEnCita.Nadie)]
+    public async Task La_base_acepta_las_combinaciones_que_si_pueden_existir(
+        EstadoCita estado, FaltaEnCita quienFalto)
+    {
+        var bloque = await UnBloqueLibreAsync();
+        await using var ctx = ContextoDePrueba.Crear();
+
+        var cita = NuevaCitaCruda(bloque, estado);
+        cita.QuienFalto = quienFalto;
+        ctx.Citas.Add(cita);
+        await ctx.SaveChangesAsync();                 // no debe lanzar
+
+        await using var fin = ContextoDePrueba.Crear();
+        Assert.Equal(quienFalto, (await fin.Citas.SingleAsync(c => c.Id == cita.Id)).QuienFalto);
+    }
+
+    /// <summary>
+    /// El caso por el que el CHECK existe, y que no es el INSERT: una cita ya acusada que
+    /// alguien mueve a otro estado sin limpiar la columna.
+    /// </summary>
+    [Fact]
+    public async Task La_base_rechaza_mover_una_cita_acusada_sin_limpiar_el_ausente()
+    {
+        var bloque = await UnBloqueLibreAsync();
+        await using var ctx = ContextoDePrueba.Crear();
+
+        var cita = NuevaCitaCruda(bloque, EstadoCita.PendienteAsistencia);
+        ctx.Citas.Add(cita);
+        await ctx.SaveChangesAsync();
+
+        Assert.True(cita.AcusarInasistencia(FaltaEnCita.Cliente).Exito);
+        await ctx.SaveChangesAsync();
+
+        cita.Estado = EstadoCita.Realizada;           // sin tocar QuienFalto
+        var choque = await Assert.ThrowsAsync<DbUpdateException>(() => ctx.SaveChangesAsync());
+
+        var pg = Assert.IsType<PostgresException>(choque.InnerException);
+        Assert.Equal(PostgresErrorCodes.CheckViolation, pg.SqlState);
+        Assert.Equal("ck_cita_quien_falto", pg.ConstraintName);
+    }
+
+    /// <summary>
+    /// El SQL de <c>HuboCitaRealizadaAsync</c>, que es una COPIA de la condición que tiene el
+    /// doble en memoria. Nada en las pruebas unitarias ve que las dos digan lo mismo: si
+    /// alguien cambia esta de aquí, allá todo sigue verde. Esto es lo único que lo mira.
+    /// </summary>
+    [Theory]
+    [InlineData(FaltaEnCita.Prestador, true)]     // plantón: el cliente sí reseña
+    [InlineData(FaltaEnCita.Cliente, false)]      // no se presentó
+    [InlineData(FaltaEnCita.Discrepancia, false)] // en disputa: bloqueada
+    [InlineData(FaltaEnCita.Nadie, false)]        // fila anterior a la regla
+    public async Task El_sql_de_elegibilidad_solo_cuenta_la_inasistencia_del_prestador(
+        FaltaEnCita quienFalto, bool habilita)
+    {
+        var bloque = await UnBloqueLibreAsync();
+        await using var ctx = ContextoDePrueba.Crear();
+
+        var cita = NuevaCitaCruda(bloque, EstadoCita.NoAsistio);
+        cita.QuienFalto = quienFalto;
+        ctx.Citas.Add(cita);
+        await ctx.SaveChangesAsync();
+
+        var repo = new RepositorioAgendaEfCore(ctx);
+        Assert.Equal(habilita, await repo.HuboCitaRealizadaAsync(_usuarioBuscador, _perfil));
+    }
+
+    /// <summary>
+    /// La cola interna de revisión con el SQL real: solo las citas en disputa, que es la
+    /// consulta para la que existe el índice parcial `ix_cita_en_disputa`.
+    /// </summary>
+    [Fact]
+    public async Task La_cola_de_revision_trae_solo_las_citas_en_disputa()
+    {
+        await using var ctx = ContextoDePrueba.Crear();
+
+        var enDisputa = NuevaCitaCruda(await UnBloqueLibreAsync(), EstadoCita.NoAsistio);
+        enDisputa.QuienFalto = FaltaEnCita.Discrepancia;
+        var soloElCliente = NuevaCitaCruda(
+            await UnBloqueLibreAsync(_reloj.Ahora.AddDays(2)), EstadoCita.NoAsistio);
+        soloElCliente.QuienFalto = FaltaEnCita.Cliente;
+        var realizada = NuevaCitaCruda(
+            await UnBloqueLibreAsync(_reloj.Ahora.AddDays(3)), EstadoCita.Realizada);
+
+        ctx.Citas.AddRange(enDisputa, soloElCliente, realizada);
+        await ctx.SaveChangesAsync();
+
+        var cola = await new RepositorioAgendaEfCore(ctx).CitasEnDisputaAsync(200);
+
+        Assert.Contains(cola, c => c.Id == enDisputa.Id);
+        Assert.DoesNotContain(cola, c => c.Id == soloElCliente.Id);
+        Assert.DoesNotContain(cola, c => c.Id == realizada.Id);
+        // Y nada que no sea una disputa, venga de donde venga.
+        Assert.All(cola, c =>
+        {
+            Assert.Equal(EstadoCita.NoAsistio, c.Estado);
+            Assert.Equal(FaltaEnCita.Discrepancia, c.QuienFalto);
+        });
+    }
+
     // ========================================================= CC-04
 
     /// <summary>
@@ -468,6 +617,81 @@ public class AgendaIntegracionPruebas : IAsyncLifetime
             c => c.BloqueHorarioId == nuevo && c.Estado == EstadoCita.Confirmada));
     }
 
+    // ========================================================= JQ-1 avisos contra la base
+
+    /// <summary>
+    /// Lo que la lista en memoria no contesta: que los avisos queden de verdad en TBL-27, en la
+    /// misma transacción que la cita, con la relectura del perfil hecha por el SQL real, y que el
+    /// tipo se guarde como el texto que el despacho busca.
+    /// </summary>
+    [Fact]
+    public async Task Agendar_y_cancelar_dejan_los_avisos_en_la_tabla_de_notificaciones()
+    {
+        var bloque = await UnBloqueLibreAsync(_reloj.Ahora.AddDays(3));
+        var replica = UnaReplica();
+
+        var cita = await replica.Agenda.AgendarAsync(new AgendarCmd(
+            _usuarioBuscador, bloque, $"av-{Guid.NewGuid():N}", null));
+        Assert.True(cita.Exito, cita.Mensaje);
+        var id = cita.Valor!.Id;
+
+        var cancelada = await replica.Agenda.CancelarAsync(new CancelarCitaCmd(
+            id, new AutorDeCambio(_usuarioBuscador, null), $"avc-{Guid.NewGuid():N}", null));
+        Assert.True(cancelada.Exito, cancelada.Mensaje);
+
+        using var ctx = ContextoDePrueba.Crear();
+        var filas = await ctx.Database.SqlQueryRaw<string>(
+                """
+                SELECT tipo || '|' || clave_idempotencia || '|' || destinatario_id || '|' || estado
+                       || '|' || canal || '|' || cuerpo AS "Value"
+                FROM notificaciones WHERE cita_id = {0} ORDER BY clave_idempotencia
+                """, id)
+            .ToListAsync();
+
+        Assert.Equal(new[]
+        {
+            $"CitaCancelada|cita-cancelada:{id}|{_usuarioPrestador}|Programada|Correo|{{\"rol\":\"prestador\"}}",
+            $"CitaConfirmada|cita-confirmada:{id}:buscador|{_usuarioBuscador}|Programada|Correo|{{\"rol\":\"buscador\"}}",
+            $"CitaConfirmada|cita-confirmada:{id}:prestador|{_usuarioPrestador}|Programada|Correo|{{\"rol\":\"prestador\"}}",
+        }, filas);
+    }
+
+    /// <summary>
+    /// PLAN-JOAQUIN §7 pedía comprobarlo en <c>pg_constraint</c> y no confiar en el modelo: si
+    /// hubiera un CHECK sobre los valores de <c>tipo</c>, los cinco Cita* fallarían al insertar.
+    /// Y las claves ajenas, escritas a mano: la limpieza de estas pruebas borra las citas antes
+    /// que los avisos, y eso solo funciona mientras <c>cita_id</c> no tenga una.
+    /// </summary>
+    [Fact]
+    public async Task La_tabla_de_notificaciones_no_restringe_el_tipo_y_solo_tiene_la_clave_ajena_al_destinatario()
+    {
+        using var ctx = ContextoDePrueba.Crear();
+
+        var checks = await ctx.Database.SqlQueryRaw<string>(
+                """
+                SELECT pg_get_constraintdef(oid) AS "Value" FROM pg_constraint
+                WHERE conrelid = 'notificaciones'::regclass AND contype = 'c'
+                """)
+            .ToListAsync();
+        var ajenas = await ctx.Database.SqlQueryRaw<string>(
+                """
+                SELECT pg_get_constraintdef(oid) AS "Value" FROM pg_constraint
+                WHERE conrelid = 'notificaciones'::regclass AND contype = 'f'
+                """)
+            .ToListAsync();
+        var largoDelTipo = await ctx.Database.SqlQueryRaw<int>(
+                """
+                SELECT character_maximum_length AS "Value" FROM information_schema.columns
+                WHERE table_name = 'notificaciones' AND column_name = 'tipo'
+                """)
+            .SingleAsync();
+
+        Assert.DoesNotContain(checks, c => c.Contains("tipo"));
+        Assert.Equal(new[] { "FOREIGN KEY (destinatario_id) REFERENCES usuarios(id) ON DELETE CASCADE" }, ajenas);
+        // El nombre más largo de los cinco, «CitaReprogramada», tiene 16: cabe con holgura en 40.
+        Assert.Equal(40, largoDelTipo);
+    }
+
     // ========================================================= A-09 contra la base
 
     /// <summary>
@@ -616,7 +840,8 @@ public class AgendaIntegracionPruebas : IAsyncLifetime
             new ServicioIdentidad(new RepositorioUsuariosEfCore(ctx), new RepositorioPerfilesEfCore(ctx)),
             new ServicioSuscripciones(
                 new RepositorioSuscripcionesEfCore(ctx), trabajo, reloj, auditor,
-                new ColaNotificacionesEfCore(ctx)));
+                new ColaNotificacionesEfCore(ctx)),
+            new ColaNotificacionesEfCore(ctx));
     }
 
     /// <summary>El reloj real corrido hacia adelante. Así «pasaron 4 horas» sin esperarlas.</summary>

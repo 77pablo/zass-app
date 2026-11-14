@@ -124,6 +124,7 @@ public class ArquitecturaPruebas
         ("Credenciales", new[] { "IRepositorioCredenciales" }),
         ("Agenda", new[] { "IRepositorioAgenda" }),
         ("Identidad", new[] { "IRepositorioUsuarios", "IRepositorioSesiones", "IRepositorioPerfiles" }),
+        ("Tarjetas", new[] { "IRepositorioTarjetas" }),
     };
 
     public static IEnumerable<object[]> CadaModulo() => Modulos.Select(m => new object[] { m.Modulo });

@@ -104,8 +104,12 @@ public class AgendaPruebas
             new ServicioIdentidad(
                 new RepositorioUsuariosEnMemoria(_base), new RepositorioPerfilesEnMemoria(_base)),
             new ServicioSuscripciones(
-                new RepositorioSuscripcionesEnMemoria(_base), _base, _reloj, _auditor, _cola));
+                new RepositorioSuscripcionesEnMemoria(_base), _base, _reloj, _auditor, _cola),
+            _avisos);
     }
+
+    /// <summary>Los avisos de cita (JQ-1). Una cola propia, separada de la de suscripciones.</summary>
+    private readonly ColaEnMemoria _avisos = new();
 
     /// <summary>Un bloque libre, por omisión mañana a las 10:00 UTC (muy por sobre las 2 h).</summary>
     private BloqueHorario UnBloque(
@@ -308,6 +312,44 @@ public class AgendaPruebas
         var r = await _servicio.BloquesLibresAsync(_automatico.Id, Ahora, Ahora.AddDays(7));
 
         Assert.Equal(Fallas.NoEncontrado, r.Codigo);
+    }
+
+    /// <summary>
+    /// RN-S6-10 y RN-S3-09. Antes el calendario se pintaba igual, con horas que parecían
+    /// libres, y el «no» llegaba recién al confirmar: quien elegía una hora se enteraba al
+    /// final. La falla es la MISMA que al agendar, y no un 404: la ficha sigue visible.
+    /// </summary>
+    [Fact]
+    public async Task Sin_suscripcion_vigente_el_calendario_no_muestra_horas()
+    {
+        _base.Suscripciones.Single(s => s.PerfilPrestadorId == _prestador.Id)
+            .Estado = EstadoSuscripcion.Vencida;
+        UnBloque();
+
+        var r = await _servicio.BloquesLibresAsync(_automatico.Id, Ahora, Ahora.AddDays(7));
+
+        Assert.False(r.Exito);
+        Assert.Equal(Fallas.Conflicto, r.Codigo);
+        Assert.Null(r.Valor);
+        Assert.Equal("Ese prestador no está recibiendo horas por ahora.", r.Mensaje);
+    }
+
+    /// <summary>
+    /// El mismo «no» en los dos sitios: si alguien se saltara el calendario y mandara el
+    /// bloque a mano, tampoco agenda. El calendario es comodidad; la guarda de AgendarAsync
+    /// es la que protege de verdad.
+    /// </summary>
+    [Fact]
+    public async Task Sin_suscripcion_vigente_tampoco_se_puede_agendar_el_bloque_a_mano()
+    {
+        var b = UnBloque();
+        _base.Suscripciones.Single(s => s.PerfilPrestadorId == _prestador.Id)
+            .Estado = EstadoSuscripcion.Vencida;
+
+        var r = await AgendarAsync(b);
+
+        Assert.Equal(Fallas.Conflicto, r.Codigo);
+        Assert.Equal("Ese prestador no está recibiendo horas por ahora.", r.Mensaje);
     }
 
     // ========================================================= CU-12 agendar automático
@@ -582,16 +624,28 @@ public class AgendaPruebas
         Assert.False(await _servicio.CitaRealizadaAsync(_buscador.Id, _prestador.Id));
     }
 
+    /// <summary>
+    /// Decisión de Pablo (11-nov-2026). Antes esta prueba decía que CUALQUIER `no_asistio`
+    /// habilitaba, con el comentario «si faltó el prestador, se puede reseñar» — y la cita no
+    /// guardaba quién había faltado, así que también habilitaba cuando el ausente era el
+    /// cliente. Ahora hay que decir quién.
+    /// </summary>
     [Theory]
-    [InlineData(EstadoCita.Realizada, true)]
-    [InlineData(EstadoCita.NoAsistio, true)]   // si faltó el prestador, se puede reseñar
-    [InlineData(EstadoCita.Confirmada, false)]
-    [InlineData(EstadoCita.Cancelada, false)]
-    [InlineData(EstadoCita.PendienteAsistencia, false)]
-    public async Task Solo_una_cita_cumplida_habilita_a_resenar(EstadoCita estado, bool habilita)
+    [InlineData(EstadoCita.Realizada, FaltaEnCita.Nadie, true)]
+    [InlineData(EstadoCita.NoAsistio, FaltaEnCita.Prestador, true)]      // plantón: sí reseña
+    [InlineData(EstadoCita.NoAsistio, FaltaEnCita.Cliente, false)]       // no se presentó
+    [InlineData(EstadoCita.NoAsistio, FaltaEnCita.Discrepancia, false)]  // cada uno dice una cosa
+    [InlineData(EstadoCita.NoAsistio, FaltaEnCita.Nadie, false)]         // fila vieja: no habilita
+    [InlineData(EstadoCita.Confirmada, FaltaEnCita.Nadie, false)]
+    [InlineData(EstadoCita.Cancelada, FaltaEnCita.Nadie, false)]
+    [InlineData(EstadoCita.PendienteAsistencia, FaltaEnCita.Nadie, false)]
+    public async Task Solo_una_cita_cumplida_habilita_a_resenar(
+        EstadoCita estado, FaltaEnCita quienFalto, bool habilita)
     {
         await AgendarAsync(UnBloque());
-        _base.Citas.Single().Estado = estado;
+        var cita = _base.Citas.Single();
+        cita.Estado = estado;
+        cita.QuienFalto = quienFalto;
 
         Assert.Equal(habilita, await _servicio.CitaRealizadaAsync(_buscador.Id, _prestador.Id));
     }

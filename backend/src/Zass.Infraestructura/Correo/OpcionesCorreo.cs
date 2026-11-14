@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Options;
 
 namespace Zass.Infraestructura.Correo;
 
@@ -30,6 +30,18 @@ public sealed class OpcionesCorreo
     public int PurgaDeFallidasHoras { get; set; } = 24;
     /// <summary>Plazo que un trabajador se reserva un aviso; si muere, otro lo retoma pasado este tiempo.</summary>
     public int ReservaSegundos { get; set; } = 120;
+    /// <summary>
+    /// Cuanto puede tardar un aviso en salir antes de que deje de tener sentido mandarlo. Pasado
+    /// ese plazo se ANULA en vez de enviarse.
+    ///
+    /// No es una optimizacion: encolar y enviar estan separados a proposito, y un tipo sin
+    /// plantilla se queda en la cola hasta que alguien la escriba. El dia que esa plantilla
+    /// aparece, TODO lo acumulado se vuelve enviable de golpe, y la gente recibiria avisos de algo
+    /// que hizo hace semanas. Paso aqui con PerfilPublicado: estuvo encolandose sin plantilla desde
+    /// el primer dia. Siete dias es el plazo: un correo transaccional que llega mas tarde que eso
+    /// ya no informa de nada, confunde.
+    /// </summary>
+    public int CaducaDias { get; set; } = 7;
 }
 
 /// <summary>

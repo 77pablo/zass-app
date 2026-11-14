@@ -42,7 +42,7 @@ En .NET el `:` de la configuración se escribe `__` en una variable de entorno (
 ### 3.1 Base de datos en Neon
 1. Crea el proyecto en Neon (elige una región cercana a la de Render).
 2. En el editor SQL de Neon, **sobre la base de la aplicación**: `CREATE EXTENSION IF NOT EXISTS postgis;`
-   (las migraciones de la aplicación crean `citext` y `pgcrypto` ellas mismas; verifica en la documentación de Neon que ambas están permitidas).
+   (las migraciones de la aplicación declaran `citext` y `postgis` ellas mismas —no usan `pgcrypto`—; verifica en la documentación de Neon que ambas están permitidas).
 3. Copia la cadena de conexión y conviértela al formato de Npgsql (sección 2).
 4. **Neon pausa el cómputo por inactividad** y la primera consulta tras la pausa tarda más. La sonda `/api/salud/lista` espera 3 s: tras una pausa larga puede dar 503 una vez y recuperarse. Verifica en la página de Neon cuánto tarda en pausarse tu plan.
 

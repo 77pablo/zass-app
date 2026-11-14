@@ -17,6 +17,12 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
     /// <summary>Plan con el que arranca quien publica su perfil por primera vez.</summary>
     public const string PlanInicial = "prueba";
 
+    /// <summary>Plan de lanzamiento, el de los 50 cupos. Precio congelado en la fila del plan.</summary>
+    public const string PlanFundador = "fundador";
+
+    /// <summary>El plan de siempre, al que puede pasarse quien no alcanzo cupo fundador.</summary>
+    public const string PlanMensual = "mensual";
+
     /// <summary>
     /// Con cuanta antelacion se avisa. Dos momentos, como los recordatorios de cita
     /// (RN-S4-07): uno con tiempo para decidir y otro el dia antes, para quien lo dejo pasar.
@@ -29,6 +35,14 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
     /// ese plazo sin confirmar, el cupo vuelve a estar disponible para otra persona.
     /// </summary>
     public static readonly TimeSpan DuracionReservaPorDefecto = TimeSpan.FromMinutes(25);
+
+    /// <summary>
+    /// RN-S7-03. El mes gratis del fundador, en dias.
+    ///
+    /// Vive aqui y NO en <c>dias_prueba</c> del plan, que es 0 explicito en los dos planes
+    /// de pago: el mes gratis es del camino del fundador, no una propiedad del plan.
+    /// </summary>
+    public const int DiasDeMesGratis = 30;
 
     /// <summary>Tope de una reserva: evita que un llamado erroneo deje un cupo bloqueado dias.</summary>
     private static readonly TimeSpan DuracionReservaMaxima = TimeSpan.FromHours(24);
@@ -151,14 +165,18 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
         return Resultado.Ok();
     }
 
-    public async Task<Resultado> RegistrarPeriodoPagadoAsync(
+    public async Task<Resultado<Guid>> RegistrarPeriodoPagadoAsync(
         Guid suscripcionId, int meses = 1, int montoPagado = 0, string? referencia = null,
-        CancellationToken ct = default)
+        Guid? intentoDePagoId = null, CancellationToken ct = default)
     {
         var ahora = _reloj.Ahora;
         var s = await _repo.PorIdAsync(suscripcionId, ct);
         if (s is null)
-            return Resultado.Falla(Fallas.NoEncontrado, "Esa suscripción no existe.");
+            return Resultado.Falla<Guid>(Fallas.NoEncontrado, "Esa suscripción no existe.");
+
+        if (meses < 1)
+            return Resultado.Falla<Guid>(
+                Fallas.Validacion, "Un periodo pagado es de un mes o más.");
 
         var desde = s.VigenteHasta > ahora ? s.VigenteHasta : ahora;
 
@@ -166,7 +184,7 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
         // no puede perder los 5 que le quedaban, y esa regla pertenece al dominio.
         s.RegistrarPeriodoPagado(ahora, meses);
 
-        _repo.AgregarPago(new Pago
+        var pago = new Pago
         {
             SuscripcionId = s.Id,
             Monto = montoPagado,
@@ -175,16 +193,18 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
             PeriodoDesde = desde,
             PeriodoHasta = s.VigenteHasta,
             ReferenciaPasarela = referencia,
+            IntentoDePagoId = intentoDePagoId,
             CreadoEn = ahora,
             PagadoEn = ahora,
-        });
+        };
+        _repo.AgregarPago(pago);
 
         _auditor.Registrar(Auditar.Entrada(
             "suscripcion_pagada", "suscripciones", s.Id, ahora,
             contexto: new { meses, vigenteHasta = s.VigenteHasta }));
 
         await _trabajo.GuardarAsync(ct);
-        return Resultado.Ok();
+        return Resultado.Ok(pago.Id);
     }
 
     public async Task<Resultado> CancelarAsync(Guid suscripcionId, CancellationToken ct = default)
@@ -301,6 +321,32 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
     public Task<int> CuposFundadorDisponiblesAsync(CancellationToken ct = default) =>
         _repo.CuposFundadorDisponiblesAsync(_reloj.Ahora, ct);
 
+    public async Task<Resultado<PlanFundadorDto>> EstadoDelPlanFundadorAsync(
+        CancellationToken ct = default)
+    {
+        var plan = await _repo.PlanPorCodigoAsync(PlanFundador, ct);
+        if (plan is null)
+            return Resultado.Falla<PlanFundadorDto>(
+                Fallas.ReglaDeNegocio,
+                $"No existe el plan '{PlanFundador}'. Falta sembrarlo en la base.");
+
+        var disponibles = await _repo.CuposFundadorDisponiblesAsync(_reloj.Ahora, ct);
+
+        // El total no se lee de una constante que ademas vigile la prueba: se cuenta lo
+        // sembrado. Si alguien cambiara los cupos de la base sin migracion, esto lo dice.
+        var totales = await _repo.CuposFundadorTotalesAsync(ct);
+
+        return Resultado.Ok(new PlanFundadorDto(
+            Abierto: disponibles > 0,
+            CuposTotales: totales,
+            CuposDisponibles: disponibles,
+            PrecioMensual: plan.PrecioMensual,
+            Mensaje: disponibles > 0
+                ? $"Quedan {disponibles} de {totales} cupos del precio de lanzamiento."
+                : $"El plan fundador está cerrado: se tomaron los {totales} cupos. "
+                  + "El precio de lanzamiento no vuelve a abrirse."));
+    }
+
     public async Task<Resultado<short>> ReservarCupoFundadorAsync(
         Guid perfilPrestadorId, TimeSpan? duracion = null, CancellationToken ct = default)
     {
@@ -316,9 +362,15 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
         var numero = await _repo.IntentarReservarCupoFundadorAsync(
             perfilPrestadorId, ahora, ahora.Add(plazo), ct);
 
+        // El cierre, dicho entero y en una sola frase. Antes esto era «Ya no quedan cupos
+        // del plan fundador», que deja a quien lo lee esperando una lista de espera o un
+        // paso automatico al plan normal. No hay ni lo uno ni lo otro (decision de Pablo,
+        // 12-nov-2026): quien quiera el plan mensual lo elige a mano.
         if (numero is null)
             return Resultado.Falla<short>(
-                Fallas.Conflicto, "Ya no quedan cupos del plan fundador.");
+                Fallas.Conflicto,
+                "El plan fundador está cerrado: se tomaron todos los cupos y el precio de "
+                + "lanzamiento no vuelve a abrirse. Puedes suscribirte al plan mensual.");
 
         _auditor.Registrar(Auditar.Entrada(
             "cupo_fundador_reservado", "perfiles_prestador", perfilPrestadorId, ahora,
@@ -353,6 +405,47 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
             "cupo_fundador_liberado", "perfiles_prestador", perfilPrestadorId, _reloj.Ahora));
         await _trabajo.GuardarAsync(ct);
         return Resultado.Ok();
+    }
+
+    public async Task<Resultado<DateTime>> PasarAFundadorConMesGratisAsync(
+        Guid suscripcionId, string? medioInscrito = null, CancellationToken ct = default)
+    {
+        var s = await _repo.PorIdAsync(suscripcionId, ct);
+        if (s is null)
+            return Resultado.Falla<DateTime>(Fallas.NoEncontrado, "Esa suscripcion no existe.");
+
+        var plan = await _repo.PlanPorCodigoAsync(PlanFundador, ct);
+        if (plan is null || !plan.Activo)
+            return Resultado.Falla<DateTime>(
+                Fallas.ReglaDeNegocio, "El plan fundador no esta disponible.");
+
+        var mesGratis = _reloj.Ahora.AddDays(DiasDeMesGratis);
+
+        s.PlanId = plan.Id;
+        s.Estado = EstadoSuscripcion.Prueba;
+        s.CanceladaEn = null;
+
+        // El medio de pago inscrito, en la SUSCRIPCION y no solo en el intento. Sin esta
+        // linea, el cobro automatico del dia 31 (C3) lee la suscripcion, no encuentra con
+        // que cobrar, y no le cobra a NADIE: la inscripcion servia para tomar el cupo y
+        // para nada mas. Lo encontro C3 al construir el cobro, no una prueba de C1.
+        //
+        // Ojo con lo que se guarda: la pasarela simulada devuelve la referencia de la
+        // transaccion, y con esa se puede cobrar. Una pasarela real devuelve un
+        // identificador del MEDIO inscrito (el `tbk_user` de Oneclick), que es otra cosa;
+        // cuando se escriba el adaptador real, lo que tiene que devolver en la inscripcion
+        // es ese identificador y no el de la transaccion.
+        if (!string.IsNullOrWhiteSpace(medioInscrito)) s.ReferenciaPasarela = medioInscrito;
+
+        // RN-S7-07. La fecha mas lejana de las dos: a quien le quedaban 45 dias no se le
+        // quitan 15 para dejarlo en 30, y a quien le quedaban 3 no se le suman 30 encima.
+        s.VigenteHasta = s.VigenteHasta > mesGratis ? s.VigenteHasta : mesGratis;
+
+        _auditor.Registrar(Auditar.Entrada(
+            "suscripcion_a_fundador", "suscripciones", s.Id, _reloj.Ahora,
+            contexto: new { vigenteHasta = s.VigenteHasta, diasDeMesGratis = DiasDeMesGratis }));
+
+        return Resultado.Ok(s.VigenteHasta);
     }
     public async Task<IReadOnlyList<SuscripcionPorVencer>> PorVencerAsync(
         int dentroDeDias, CancellationToken ct = default)

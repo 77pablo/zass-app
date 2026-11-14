@@ -155,15 +155,34 @@ public sealed class RepositorioAgendaEfCore : IRepositorioAgenda
                  && (c.Estado == EstadoCita.Solicitada || c.Estado == EstadoCita.Confirmada), ct);
 
     /// <summary>
-    /// Incluye <c>NoAsistio</c>: si faltó el prestador, el buscador puede reseñar igual
-    /// (nota de estados-cita.md). Quién faltó lo resuelve MOD-11 con el contacto.
+    /// Incluye <c>NoAsistio</c>, pero SOLO cuando faltó el prestador (nota de estados-cita.md
+    /// y decisión de Pablo del 11-nov-2026).
+    ///
+    /// Antes aceptaba cualquier <c>NoAsistio</c> y se justificaba diciendo «quién faltó lo
+    /// resuelve MOD-11 con el contacto». MOD-11 no lo resolvía: la cita no guardaba quién había
+    /// faltado, así que no había dónde mirarlo. Hoy sí, y esto responde LO MISMO que
+    /// <c>ReglasDeResenas.EvaluarContacto</c>, que es la regla que de verdad corre.
     /// </summary>
     public Task<bool> HuboCitaRealizadaAsync(
         Guid buscadorId, Guid perfilPrestadorId, CancellationToken ct = default) =>
         _ctx.Citas.AnyAsync(
             c => c.BuscadorId == buscadorId
                  && c.PerfilPrestadorId == perfilPrestadorId
-                 && (c.Estado == EstadoCita.Realizada || c.Estado == EstadoCita.NoAsistio), ct);
+                 && (c.Estado == EstadoCita.Realizada
+                     || (c.Estado == EstadoCita.NoAsistio
+                         && c.QuienFalto == FaltaEnCita.Prestador)), ct);
+
+    /// <summary>
+    /// La cola interna de revisión: las citas en las que cada parte acusa a la otra. No hay
+    /// tabla aparte ni aviso a nadie —`ServicioAgenda` no emite notificaciones—: la cola ES
+    /// esta consulta, y existe como método para que se pueda encontrar.
+    /// </summary>
+    public async Task<IReadOnlyList<Cita>> CitasEnDisputaAsync(
+        int maximo, CancellationToken ct = default) =>
+        await Completa()
+            .Where(c => c.Estado == EstadoCita.NoAsistio
+                        && c.QuienFalto == FaltaEnCita.Discrepancia)
+            .OrderBy(c => c.CreadaEn).Take(maximo).ToListAsync(ct);
 
     public async Task<IReadOnlyList<Cita>> CitasDeBuscadorAsync(
         Guid buscadorId, CancellationToken ct = default) =>

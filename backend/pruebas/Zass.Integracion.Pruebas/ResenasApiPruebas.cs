@@ -4,8 +4,13 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Zass.Aplicacion.Agenda;
+using Zass.Dominio.Agenda;
+using Zass.Dominio.Catalogo;
 using Zass.Dominio.Comun;
 using Zass.Dominio.Identidad;
+using Zass.Dominio.Suscripciones;
 
 namespace Zass.Integracion.Pruebas;
 
@@ -160,11 +165,257 @@ public class ResenasApiPruebas : IAsyncLifetime
         return await IdAsync(r);
     }
 
+    /// <summary>
+    /// Liga una cita REALIZADA al contacto que ya existe. Se arma en la base y no por HTTP a
+    /// propósito: API-46 rechaza el origen «cita» desde fuera (la cita es de MOD-06), y lo que hay
+    /// que ejercitar aquí es la rama `contacto.cita_id IS NOT NULL` de la consulta de verdad, que
+    /// el doble en memoria solo puede imitar a mano.
+    /// </summary>
+    private static async Task<Guid> ConCitaRealizadaAsync(Guid contactoId)
+    {
+        using var ctx = ContextoDePrueba.Crear();
+        var contacto = await ctx.Contactos.SingleAsync(c => c.Id == contactoId);
+        var oferta = new PrestadorServicio
+        {
+            PerfilPrestadorId = contacto.PerfilPrestadorId, ServicioId = 101,
+        };
+        var disp = new Disponibilidad
+        {
+            PerfilPrestadorId = contacto.PerfilPrestadorId, PrestadorServicioId = oferta.Id,
+            DiaSemana = 1, HoraInicio = new TimeOnly(9, 0), HoraFin = new TimeOnly(12, 0),
+            VigenteDesde = DateOnly.FromDateTime(DateTime.UtcNow),
+        };
+        var inicio = DateTime.UtcNow.AddDays(-2);
+        var bloque = new BloqueHorario
+        {
+            DisponibilidadId = disp.Id, PerfilPrestadorId = contacto.PerfilPrestadorId,
+            PrestadorServicioId = oferta.Id, InicioEn = inicio, FinEn = inicio.AddMinutes(30),
+            Estado = EstadoBloque.Reservado,
+        };
+        var cita = new Cita
+        {
+            BloqueHorarioId = bloque.Id, BuscadorId = contacto.BuscadorId,
+            PrestadorServicioId = oferta.Id, PerfilPrestadorId = contacto.PerfilPrestadorId,
+            Estado = EstadoCita.Realizada, Codigo = Cita.GenerarCodigo(),
+        };
+        contacto.CitaId = cita.Id;
+        ctx.AddRange(oferta, disp, bloque, cita);
+        await ctx.SaveChangesAsync();
+        return cita.Id;
+    }
+
+    // ------------------------------------------------------------- la vía «cita realizada», entera
+
+    // A diferencia de `ConCitaRealizadaAsync`, aquí nadie escribe el contacto a mano: lo crea la
+    // agenda al agendar (Origen = Cita, ServicioAgenda paso 11), que es el único camino que existe
+    // en producción. Tampoco se construye `ServicioAgenda` con `new`: lo que haga falta se pide al
+    // contenedor de la API, para que un parámetro nuevo en su constructor no rompa estas pruebas.
+
+    /// <summary>
+    /// Un prestador publicado, con una oferta automática, suscripción vigente y dos horas libres
+    /// mañana: la segunda sirve para reprogramar.
+    /// </summary>
+    private async Task<(Persona Prestador, Guid Bloque, Guid OtroBloque)> UnPrestadorConHorasAsync()
+    {
+        var prestador = await UnaPersonaAsync("prestador", publicado: true);
+        var perfil = prestador.PerfilId!.Value;
+        var ahora = DateTime.UtcNow;
+        // Hora fija del día siguiente: con `ahora + 1 día` la regla podría cruzar la medianoche.
+        var manana = ahora.Date.AddDays(1).AddHours(15);
+
+        using var ctx = ContextoDePrueba.Crear();
+        var oferta = new PrestadorServicio
+        {
+            PerfilPrestadorId = perfil, ServicioId = 101,
+            DuracionMinutos = 30, ModoAgenda = ModoAgenda.Automatico, Activo = true,
+        };
+        var plan = await ctx.Planes.FirstAsync(p => p.Codigo == "prueba");
+        var suscripcion = new Suscripcion
+        {
+            PerfilPrestadorId = perfil, PlanId = plan.Id, Estado = EstadoSuscripcion.Activa,
+            IniciaEn = ahora.AddDays(-2), VigenteHasta = ahora.AddDays(28),
+        };
+        var regla = new Disponibilidad
+        {
+            PerfilPrestadorId = perfil, PrestadorServicioId = oferta.Id,
+            DiaSemana = (short)(((int)manana.DayOfWeek + 6) % 7 + 1),
+            HoraInicio = TimeOnly.FromDateTime(manana), HoraFin = TimeOnly.FromDateTime(manana).AddMinutes(60),
+            DuracionBloqueMin = 30, VigenteDesde = DateOnly.FromDateTime(manana),
+        };
+        var uno = new BloqueHorario
+        {
+            DisponibilidadId = regla.Id, PerfilPrestadorId = perfil, PrestadorServicioId = oferta.Id,
+            InicioEn = manana, FinEn = manana.AddMinutes(30), Estado = EstadoBloque.Libre,
+        };
+        var otro = new BloqueHorario
+        {
+            DisponibilidadId = regla.Id, PerfilPrestadorId = perfil, PrestadorServicioId = oferta.Id,
+            InicioEn = manana.AddMinutes(30), FinEn = manana.AddMinutes(60), Estado = EstadoBloque.Libre,
+        };
+        ctx.AddRange(oferta, suscripcion, regla, uno, otro);
+        await ctx.SaveChangesAsync();
+        return (prestador, uno.Id, otro.Id);
+    }
+
+    /// <summary>API-36, como lo hace la pantalla: CSRF y clave de idempotencia.</summary>
+    private static async Task<Guid> AgendarAsync(Persona buscador, Guid bloqueId)
+    {
+        var r = await buscador.EnviarAsync(HttpMethod.Post, "/api/citas",
+            new { bloqueId, notaBuscador = (string?)null }, $"agendar-{Guid.NewGuid():N}");
+        Assert.Equal(HttpStatusCode.Created, r.StatusCode);
+        return await IdAsync(r);
+    }
+
+    /// <summary>
+    /// Que pase la hora de la cita: se corre su bloque al pasado y se ejecuta la pasada del
+    /// tiempo de la agenda tal como la registra la API. La cita queda `PendienteAsistencia`.
+    /// </summary>
+    private async Task PasarLaHoraAsync(Guid citaId)
+    {
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var bloque = await ctx.Citas.Where(c => c.Id == citaId).Select(c => c.BloqueHorarioId).SingleAsync();
+            var inicio = DateTime.UtcNow.AddHours(-2);
+            await ctx.Bloques.Where(b => b.Id == bloque).ExecuteUpdateAsync(s => s
+                .SetProperty(b => b.InicioEn, inicio)
+                .SetProperty(b => b.FinEn, inicio.AddMinutes(30)));
+        }
+
+        using (var ambito = _app.Services.CreateScope())
+            await ambito.ServiceProvider.GetRequiredService<IServicioAgenda>().AvanzarPorElTiempoAsync();
+
+        using var leer = ContextoDePrueba.Crear();
+        Assert.Equal(EstadoCita.PendienteAsistencia,
+            await leer.Citas.Where(c => c.Id == citaId).Select(c => c.Estado).SingleAsync());
+    }
+
+    /// <summary>API-42: el prestador dice que el cliente vino.</summary>
+    private static async Task MarcarAsistenciaAsync(Persona prestador, Guid citaId)
+    {
+        var r = await prestador.EnviarAsync(HttpMethod.Post, $"/api/citas/{citaId}/asistencia", new { asistio = true });
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+    }
+
+    /// <summary>API-47 y después API-48, con el contacto que la propia elegibilidad ofrece.</summary>
+    private async Task<(Guid ResenaId, Guid ContactoId)> ResenarComoElegibleAsync(Persona autor, Persona prestador)
+    {
+        var e = (await autor.Http.GetFromJsonAsync<JsonDocument>(
+            $"/api/mi/elegibilidad?perfilId={prestador.PerfilId}"))!.RootElement;
+        Assert.True(e.GetProperty("elegible").GetBoolean(), e.GetRawText());
+        var contactoId = e.GetProperty("contactoId").GetGuid();
+        return (await PublicadaAsync(autor, contactoId), contactoId);
+    }
+
+    /// <summary>Lo público y lo propio dicen «Cita», y ninguno de los dos lleva qué cita ni qué contacto.</summary>
+    private async Task SaleComoCitaSinIdentificadoresAsync(
+        Persona autor, Persona prestador, Guid contactoId, params Guid[] citas)
+    {
+        var publico = await (await Visitante().Http.GetAsync($"/api/prestadores/{prestador.Slug}/resenas"))
+            .Content.ReadAsStringAsync();
+        var mias = await (await autor.Http.GetAsync("/api/mi/resenas")).Content.ReadAsStringAsync();
+
+        Assert.Contains("\"origen\":\"Cita\"", publico);
+        Assert.Contains("\"origen\":\"Cita\"", mias);
+        Assert.DoesNotContain("\"origen\":\"Directo\"", publico);
+        SinIdentidad(publico, autor, contactoId);
+        foreach (var crudo in new[] { publico, mias })
+        {
+            Assert.DoesNotContain(contactoId.ToString(), crudo, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("citaId", crudo, StringComparison.OrdinalIgnoreCase);
+            foreach (var cita in citas)
+                Assert.DoesNotContain(cita.ToString(), crudo, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    /// <summary>
+    /// Tanda B, «Listo cuando» 1 y 2, por el único camino que existe en producción: agendar por
+    /// HTTP, que pase la hora, que el prestador marque la asistencia, reseñar con lo que ofrece la
+    /// elegibilidad, y leer los BYTES de lo público y de «mis reseñas».
+    /// </summary>
+    [Fact]
+    public async Task La_cita_realizada_se_resena_y_sale_como_Cita_por_el_camino_real()
+    {
+        var (prestador, bloque, _) = await UnPrestadorConHorasAsync();
+        var autor = await UnaPersonaAsync("buscador");
+
+        var cita = await AgendarAsync(autor, bloque);
+        await PasarLaHoraAsync(cita);
+        await MarcarAsistenciaAsync(prestador, cita);
+        var (_, contactoId) = await ResenarComoElegibleAsync(autor, prestador);
+
+        // El contacto con el que se publicó es el que creó la agenda, no uno de la ficha.
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var contacto = await ctx.Contactos.AsNoTracking().SingleAsync(c => c.Id == contactoId);
+            Assert.Equal(cita, contacto.CitaId);
+            Assert.Equal(OrigenContacto.Cita, contacto.Origen);
+        }
+        await SaleComoCitaSinIdentificadoresAsync(autor, prestador, contactoId, cita);
+    }
+
+    /// <summary>
+    /// RN-S4-05 llevado hasta la reseña: el contacto apunta a la PRIMERA cita de la cadena, que
+    /// queda `Reprogramada`; la que se atiende es la segunda. La reseña tiene que salir igual
+    /// como «Cita», y sin filtrar ninguna de las dos.
+    /// </summary>
+    [Fact]
+    public async Task Una_cita_reprogramada_y_despues_realizada_se_resena_como_Cita()
+    {
+        var (prestador, bloque, otroBloque) = await UnPrestadorConHorasAsync();
+        var autor = await UnaPersonaAsync("buscador");
+
+        var primera = await AgendarAsync(autor, bloque);
+        var mover = await autor.EnviarAsync(HttpMethod.Post, $"/api/citas/{primera}/reprogramar",
+            new { bloqueNuevoId = otroBloque, motivo = (string?)null }, $"reprogramar-{Guid.NewGuid():N}");
+        Assert.Equal(HttpStatusCode.Created, mover.StatusCode);
+        var segunda = await IdAsync(mover);
+
+        await PasarLaHoraAsync(segunda);
+        await MarcarAsistenciaAsync(prestador, segunda);
+        var (_, contactoId) = await ResenarComoElegibleAsync(autor, prestador);
+
+        await SaleComoCitaSinIdentificadoresAsync(autor, prestador, contactoId, primera, segunda);
+    }
+
+    /// <summary>
+    /// Tanda B, «Listo cuando» 4: la ventana de edición de 72 h (CS-16) vale igual para una
+    /// reseña que nació de una cita. Las 72 h van escritas a mano, no sacadas de la constante.
+    /// </summary>
+    [Fact]
+    public async Task Una_resena_de_cita_se_edita_dentro_de_las_72_horas_y_no_despues()
+    {
+        var (prestador, bloque, _) = await UnPrestadorConHorasAsync();
+        var autor = await UnaPersonaAsync("buscador");
+        var cita = await AgendarAsync(autor, bloque);
+        await PasarLaHoraAsync(cita);
+        await MarcarAsistenciaAsync(prestador, cita);
+        var (id, _) = await ResenarComoElegibleAsync(autor, prestador);
+
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var r = await ctx.Resenas.AsNoTracking().SingleAsync(x => x.Id == id);
+            Assert.Equal(TimeSpan.FromHours(72), r.EditableHasta - r.PublicadaEn);
+        }
+
+        var dentro = await autor.EnviarAsync(HttpMethod.Put, $"/api/resenas/{id}",
+            new { calificacion = 4, comentario = "Lo pensé mejor: muy bien, aunque llegaron un poco tarde." });
+        Assert.Equal(HttpStatusCode.OK, dentro.StatusCode);
+
+        using (var ctx = ContextoDePrueba.Crear())
+            await ctx.Resenas.Where(r => r.Id == id)
+                .ExecuteUpdateAsync(s => s.SetProperty(r => r.EditableHasta, DateTime.UtcNow.AddMinutes(-1)));
+
+        var fuera = await autor.EnviarAsync(HttpMethod.Put, $"/api/resenas/{id}",
+            new { calificacion = 1, comentario = "Ya pasó el plazo pero quiero cambiarla igual." });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, fuera.StatusCode);
+    }
+
     // ------------------------------------------------------------- sesión, CSRF, clave
 
     [Theory]
     [InlineData("POST", "/api/contactos")]
     [InlineData("GET", "/api/mi/elegibilidad?perfilId=00000000-0000-0000-0000-000000000001")]
+    [InlineData("GET", "/api/mi/resenas")]
     [InlineData("POST", "/api/resenas")]
     [InlineData("PUT", "/api/resenas/00000000-0000-0000-0000-000000000001")]
     [InlineData("POST", "/api/resenas/00000000-0000-0000-0000-000000000001/respuesta")]
@@ -305,6 +556,85 @@ public class ResenasApiPruebas : IAsyncLifetime
         Assert.DoesNotContain("usuario", crudo, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// API-65. Lo que de verdad separa mis reseñas de las de cualquier otro es el FILTRO POR
+    /// AUTOR de la consulta, y eso solo se puede comprobar contra la base: la sesión decide
+    /// quién soy y no hay ningún parámetro con el que pedir las de otra persona.
+    /// </summary>
+    [Fact]
+    public async Task Mis_reseñas_son_solo_las_mias_y_traen_el_plazo_de_edicion()
+    {
+        var (autor, prestador, contactoId) = await ConContactoMaduroAsync();
+        var miaId = await PublicadaAsync(autor, contactoId, cal: 4);
+
+        // Otra persona, otro prestador, otra reseña: no puede aparecer en la lista del primero.
+        var otroPrestador = await UnaPersonaAsync("prestador", publicado: true);
+        var otroAutor = await UnaPersonaAsync("buscador");
+        var otroContacto = await otroAutor.EnviarAsync(HttpMethod.Post, "/api/contactos",
+            new { perfilId = otroPrestador.PerfilId, origen = "Ficha", canal = "Telefono" });
+        var otroContactoId = await IdAsync(otroContacto);
+        await EnvejecerContactoAsync(otroContactoId, TimeSpan.FromDays(8));
+        var ajenaId = await PublicadaAsync(otroAutor, otroContactoId);
+
+        var mias = (await autor.Http.GetFromJsonAsync<JsonDocument>("/api/mi/resenas"))!.RootElement;
+
+        var ids = mias.EnumerateArray().Select(r => r.GetProperty("id").GetGuid()).ToList();
+        Assert.Equal(new[] { miaId }, ids);
+        Assert.DoesNotContain(ajenaId, ids);
+
+        var mia = mias.EnumerateArray().Single();
+        Assert.Equal(prestador.Slug, mia.GetProperty("perfilSlug").GetString());
+        Assert.Equal("Publicada", mia.GetProperty("estado").GetString());
+        // Sin cita de por medio: es el «contacto directo, sin cita» que se rotula en la pantalla.
+        Assert.Equal("Directo", mia.GetProperty("origen").GetString());
+        Assert.True(mia.GetProperty("editableHasta").GetDateTime() > DateTime.UtcNow.AddHours(71));
+    }
+
+    /// <summary>
+    /// La otra rama del origen, la que el doble en memoria NO puede demostrar: que el
+    /// `LEFT JOIN` al contacto de la consulta real distingue de verdad una cita de un contacto
+    /// directo. Si la traducción a SQL se rompiera, todo saldría «Directo» y la etiqueta mentiría.
+    /// </summary>
+    [Fact]
+    public async Task Mis_reseñas_dicen_Cita_cuando_el_contacto_nacio_de_una_cita()
+    {
+        var (autor, _, contactoId) = await ConContactoMaduroAsync();
+        var citaId = await ConCitaRealizadaAsync(contactoId);
+        await PublicadaAsync(autor, contactoId);
+
+        var mias = (await autor.Http.GetFromJsonAsync<JsonDocument>("/api/mi/resenas"))!.RootElement;
+
+        var mia = mias.EnumerateArray().Single();
+        Assert.Equal("Cita", mia.GetProperty("origen").GetString());
+        // Ni aquí, que es la lista PROPIA, viaja con qué cita ni con qué contacto: el origen y nada
+        // más (minimización de datos, decisión del 11-nov-2026).
+        var crudo = mias.GetRawText();
+        Assert.DoesNotContain(citaId.ToString(), crudo, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(contactoId.ToString(), crudo, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("citaId", crudo, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("contacto", crudo, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// El origen también viaja en lo PÚBLICO, que es donde se lee la etiqueta «contacto directo,
+    /// sin cita», y ahí se mira en los BYTES: el rótulo sí, el identificador de la cita no.
+    /// </summary>
+    [Fact]
+    public async Task La_lectura_publica_dice_el_origen_y_no_la_cita_que_lo_habilito()
+    {
+        var (autor, prestador, contactoId) = await ConContactoMaduroAsync();
+        var citaId = await ConCitaRealizadaAsync(contactoId);
+        await PublicadaAsync(autor, contactoId);
+
+        var publica = await Visitante().Http.GetAsync($"/api/prestadores/{prestador.Slug}/resenas");
+        Assert.Equal(HttpStatusCode.OK, publica.StatusCode);
+        var crudo = await publica.Content.ReadAsStringAsync();
+
+        Assert.Contains("\"origen\":\"Cita\"", crudo);
+        Assert.DoesNotContain(citaId.ToString(), crudo, StringComparison.OrdinalIgnoreCase);
+        SinIdentidad(crudo, autor, contactoId);
+    }
+
     [Fact]
     public async Task Las_reseñas_de_una_ficha_que_no_existe_o_no_esta_publicada_responden_404()
     {
@@ -366,7 +696,12 @@ public class ResenasApiPruebas : IAsyncLifetime
 
         var aviso = await autor.EnviarAsync(HttpMethod.Post, "/api/resenas", CuerpoResena(contactoId, 5, texto), "k1");
         Assert.Equal(HttpStatusCode.UnprocessableEntity, aviso.StatusCode);
+        // api-rest.md: TODOS los errores viajan como problem+json, tambien este, que es el unico
+        // que ademas lleva datos que hay que mostrar.
+        Assert.Equal("application/problem+json", aviso.Content.Headers.ContentType!.MediaType);
         var cuerpo = (await aviso.Content.ReadFromJsonAsync<JsonDocument>())!.RootElement;
+        Assert.Equal("Revisa tu comentario", cuerpo.GetProperty("title").GetString());
+        Assert.Contains("datos personales", cuerpo.GetProperty("detail").GetString()!);
         Assert.True(cuerpo.GetProperty("requiereConfirmacion").GetBoolean());
         Assert.NotEmpty(cuerpo.GetProperty("fragmentos").EnumerateArray());
         using (var ctx = ContextoDePrueba.Crear())

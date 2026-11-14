@@ -1,10 +1,11 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using Zass.Aplicacion.Catalogo;
 using Zass.Aplicacion.Credenciales;
 using Zass.Aplicacion.Geografia;
 using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Puertos;
+using Zass.Aplicacion.Suscripciones;
 using Zass.Dominio.Comun;
 
 namespace Zass.Aplicacion.Busqueda;
@@ -15,6 +16,10 @@ namespace Zass.Aplicacion.Busqueda;
 /// Consume MOD-03 —para rechazar un rubro inexistente— y MOD-04 —para resolver el punto a
 /// zona y para nombrarla—, que es lo que la tabla de modulos permite. No tiene tablas
 /// propias y no debe tenerlas.
+///
+/// Tambien MOD-13, por su interfaz y nunca por su tabla: desde RN-S3-09 la busqueda depende
+/// de la suscripcion (dependencias-entre-modulos.md, seccion 1), y la ficha de CU-09 necesita
+/// saber si el prestador esta al dia para apagarle los botones (RN-S6-10).
 /// </summary>
 public sealed class ServicioBusqueda : IServicioBusqueda
 {
@@ -23,14 +28,17 @@ public sealed class ServicioBusqueda : IServicioBusqueda
     private readonly IServicioGeografia _geografia;
     private readonly IServicioIdentidad _identidad;
     private readonly IServicioCredenciales _credenciales;
+    private readonly IServicioSuscripciones _suscripciones;
     private readonly IRelojSistema _reloj;
 
     public ServicioBusqueda(
         IRepositorioBusqueda repo, IServicioCatalogo catalogo,
         IServicioGeografia geografia, IServicioIdentidad identidad,
-        IServicioCredenciales credenciales, IRelojSistema reloj)
+        IServicioCredenciales credenciales, IServicioSuscripciones suscripciones,
+        IRelojSistema reloj)
     {
         _credenciales = credenciales;
+        _suscripciones = suscripciones;
         _repo = repo;
         _catalogo = catalogo;
         _geografia = geografia;
@@ -184,11 +192,38 @@ public sealed class ServicioBusqueda : IServicioBusqueda
         // Ordenar por cercania sin saber donde esta la persona no tiene sentido. No es un error:
         // se ordena por recomendados y se dice, para que la pantalla pueda ofrecer compartir la ubicacion.
         var orden = criterios.Orden;
-        string? aviso = null;
+        var avisos = new List<string>();
         if (orden == OrdenDeTexto.Cercania && !conUbicacion)
         {
             orden = OrdenDeTexto.Recomendados;
-            aviso = "Para ordenar por cercania necesitamos tu ubicacion.";
+            avisos.Add("Para ordenar por cercania necesitamos tu ubicacion.");
+        }
+
+        // El radio (RN-S3-04). Mismo criterio que API-01, E-400 de CU-08: uno fuera de rango se
+        // CORRIGE al valor valido mas cercano y se dice; quien pide 500 km quiere buscar lejos, no
+        // leer un error. Sin ubicacion se ignora en vez de rechazar la busqueda: no hay desde donde
+        // medir, y negarle los resultados a quien aun no comparte su ubicacion es peor que darselos.
+        short? radioKm = null;
+        if (criterios.RadioKm is not null)
+        {
+            if (!conUbicacion)
+            {
+                avisos.Add("Para buscar por distancia necesitamos tu ubicacion.");
+            }
+            else
+            {
+                radioKm = criterios.RadioKm.Value;
+                if (radioKm < LimitesDeBusqueda.RadioMinimoKm)
+                {
+                    radioKm = LimitesDeBusqueda.RadioMinimoKm;
+                    avisos.Add($"El radio minimo es {LimitesDeBusqueda.RadioMinimoKm} km.");
+                }
+                else if (radioKm > LimitesDeBusqueda.RadioMaximoKm)
+                {
+                    radioKm = LimitesDeBusqueda.RadioMaximoKm;
+                    avisos.Add($"El radio maximo es {LimitesDeBusqueda.RadioMaximoKm} km.");
+                }
+            }
         }
 
         var pagina = Math.Clamp(criterios.Pagina, 1, PaginaMaximaDeTexto);
@@ -200,7 +235,7 @@ public sealed class ServicioBusqueda : IServicioBusqueda
         var filas = await _repo.PorTextoAsync(new CriteriosDeTexto(
             formas, grupos, origen?.Latitud, origen?.Longitud, zonaId, CodigoDeOrden(orden),
             _reloj.Ahora, PorPaginaDeTexto + 1, (pagina - 1) * PorPaginaDeTexto,
-            criterios.SoloVerificados, criterios.CalificacionMinima), ct);
+            criterios.SoloVerificados, criterios.CalificacionMinima, radioKm), ct);
 
         var hayMas = filas.Count > PorPaginaDeTexto;
         var visibles = hayMas ? filas.Take(PorPaginaDeTexto).ToList() : filas.ToList();
@@ -218,7 +253,10 @@ public sealed class ServicioBusqueda : IServicioBusqueda
             f.TotalResenas,
             f.PrecioDesde)).ToList();
 
-        return Resultado.Ok(new PaginaDeTexto(resultados, total, pagina, hayMas, orden, conUbicacion, aviso));
+        return Resultado.Ok(new PaginaDeTexto(
+            resultados, total, pagina, hayMas, orden, conUbicacion,
+            avisos.Count == 0 ? null : string.Join(' ', avisos),
+            radioKm));
     }
 
     // ------------------------------------------------------------- API-62, la comunidad
@@ -259,6 +297,15 @@ public sealed class ServicioBusqueda : IServicioBusqueda
         var zonas = await _geografia.ZonasDeCoberturaAsync(perfil.Id, ct);
         var credenciales = await _credenciales.CredencialesPublicasAsync(perfil.Id, ct);
 
+        // RN-S6-10. La ficha se sigue viendo entera: lo que se apaga es contactar y agendar.
+        // El contacto se vacia AQUI, en el servidor, por lo mismo que se vacia sin sesion: si
+        // viajara en la respuesta, esconder los botones solo lo escondería de quien no mira.
+        var vigente = await _suscripciones.EstaVigenteAsync(perfil.Id, ct);
+        var contacto = vigente
+            ? new ContactoPublicoDto(
+                perfil.TelefonoPublico, perfil.Whatsapp, perfil.CorreoPublico, perfil.SitioWeb)
+            : new ContactoPublicoDto(null, null, null, null);
+
         return new FichaPublicaDto(
             perfil.Id,
             perfil.Slug,
@@ -272,9 +319,9 @@ public sealed class ServicioBusqueda : IServicioBusqueda
             credenciales,
             perfil.PromedioCalificacion,      // MOD-01 ya aplico RN-S5-11
             perfil.TotalResenas,
-            new ContactoPublicoDto(
-                perfil.TelefonoPublico, perfil.Whatsapp, perfil.CorreoPublico, perfil.SitioWeb),
-            perfil.PublicadoEn);
+            contacto,
+            perfil.PublicadoEn,
+            vigente);
     }
 
     // ------------------------------------------------------------- armado
