@@ -160,7 +160,7 @@ public class TrabajoDiarioCobraPruebas
             throw new NotSupportedException();
 
         public Task<Resultado<DateTime>> PasarAFundadorConMesGratisAsync(
-            Guid suscripcionId, CancellationToken ct = default) =>
+            Guid suscripcionId, string? medioInscrito = null, CancellationToken ct = default) =>
             throw new NotSupportedException();
     }
 }

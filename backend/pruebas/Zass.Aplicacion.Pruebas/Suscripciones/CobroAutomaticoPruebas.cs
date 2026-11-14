@@ -89,18 +89,29 @@ public class CobroAutomaticoPruebas
     /// Deja en la suscripcion la referencia del medio de pago inscrito.
     ///
     /// <para>
-    /// <b>Se pone a mano porque hoy no la escribe nadie.</b> La inscripcion de C1 guarda su
-    /// referencia en el INTENTO (<c>intentos_pago.referencia_pasarela</c>) y nunca en
-    /// <c>suscripcion.referencia_pasarela</c>, que es la columna que el cobro recurrente
-    /// necesita. Esta prueba describe el cobro suponiendo esa columna llena, y
-    /// <see cref="Sin_medio_de_pago_inscrito_no_se_cobra_nada"/> describe lo que pasa hoy
-    /// de verdad. Cuando se tape el agujero, las dos siguen valiendo.
+    /// Se pone a mano para no depender del camino de la inscripcion en una prueba que
+    /// habla del COBRO. Desde el 14-nov-2026 la inscripcion si deja esa columna llena
+    /// —antes no, y ese era el agujero que encontro C3: el cobro recurrente lee
+    /// <c>suscripcion.referencia_pasarela</c> y la inscripcion solo guardaba la del
+    /// intento—, asi que este ayudante ya no tapa nada: solo fija el escenario.
     /// </para>
     /// </summary>
     private Suscripcion ConMedioInscrito(Guid perfilId, string referencia = "medio-inscrito-1")
     {
         var s = _base.Suscripciones.Single(x => x.PerfilPrestadorId == perfilId);
         s.ReferenciaPasarela = referencia;
+        return s;
+    }
+
+    /// <summary>
+    /// Deja la suscripcion SIN medio de pago, a proposito. Es un escenario real y no un
+    /// defecto: alguien cuya inscripcion fue rechazada, o un perfil que se publico antes
+    /// de que existiera la inscripcion.
+    /// </summary>
+    private Suscripcion SinMedioInscrito(Guid perfilId)
+    {
+        var s = _base.Suscripciones.Single(x => x.PerfilPrestadorId == perfilId);
+        s.ReferenciaPasarela = null;
         return s;
     }
 
@@ -348,16 +359,23 @@ public class CobroAutomaticoPruebas
     // ------------------------------------------- Lo que NO se cobra, y por que
 
     /// <summary>
-    /// El agujero de C1, escrito como prueba: la inscripcion no deja la referencia del
-    /// medio de pago en la suscripcion, asi que hoy no hay con que cobrar. Y cuando no hay
-    /// con que cobrar, NO se cobra y no se supone nada: se cuenta, se audita, y se ve en
-    /// el resumen del trabajo diario.
+    /// Cuando no hay con que cobrar, NO se cobra y no se supone nada: se cuenta, se
+    /// audita, y se ve en el resumen del trabajo diario. Sigue siendo un caso real aunque
+    /// la inscripcion ya deje el medio guardado: una inscripcion rechazada no deja medio,
+    /// y los perfiles publicados antes de que existiera la inscripcion tampoco tienen.
     /// </summary>
     [Fact]
     public async Task Sin_medio_de_pago_inscrito_no_se_cobra_nada()
     {
         var perfil = UnFundadorDelLanzamiento();
-        Assert.Null(SuscripcionDe(perfil.Id).ReferenciaPasarela);   // lo que deja C1 hoy
+
+        // Se deja sin medio A PROPOSITO. Antes esta linea era
+        // `Assert.Null(SuscripcionDe(perfil.Id).ReferenciaPasarela)` con el comentario «lo
+        // que deja C1 hoy»: o sea, la prueba codificaba el agujero como estado esperado y
+        // se puso roja el dia que se tapo (14-nov-2026). Un rojo que aparece porque
+        // alguien ARREGLO algo no vigila nada.
+        SinMedioInscrito(perfil.Id);
+        Assert.Null(SuscripcionDe(perfil.Id).ReferenciaPasarela);
 
         DiasAntesDelFinDelMesGratis(7);
         var resumen = await _cobros.CobrarVencimientosAsync();

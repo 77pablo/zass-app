@@ -128,8 +128,14 @@ public interface IServicioSuscripciones
     /// Vive en este modulo y no en el del cobro porque la vigencia es regla de S7, no del
     /// camino de pago.
     /// </summary>
+    /// <param name="medioInscrito">
+    /// El identificador del medio de pago que la pasarela acaba de inscribir, para poder
+    /// cobrarle el mes siguiente. Se guarda en la suscripcion y no solo en el intento: el
+    /// cobro automatico lee la suscripcion, y sin esto **no tendria con que cobrar**.
+    /// Nulo lo deja como estaba.
+    /// </param>
     Task<Resultado<DateTime>> PasarAFundadorConMesGratisAsync(
-        Guid suscripcionId, CancellationToken ct = default);
+        Guid suscripcionId, string? medioInscrito = null, CancellationToken ct = default);
 }
 
 /// <summary>

@@ -408,7 +408,7 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
     }
 
     public async Task<Resultado<DateTime>> PasarAFundadorConMesGratisAsync(
-        Guid suscripcionId, CancellationToken ct = default)
+        Guid suscripcionId, string? medioInscrito = null, CancellationToken ct = default)
     {
         var s = await _repo.PorIdAsync(suscripcionId, ct);
         if (s is null)
@@ -424,6 +424,18 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
         s.PlanId = plan.Id;
         s.Estado = EstadoSuscripcion.Prueba;
         s.CanceladaEn = null;
+
+        // El medio de pago inscrito, en la SUSCRIPCION y no solo en el intento. Sin esta
+        // linea, el cobro automatico del dia 31 (C3) lee la suscripcion, no encuentra con
+        // que cobrar, y no le cobra a NADIE: la inscripcion servia para tomar el cupo y
+        // para nada mas. Lo encontro C3 al construir el cobro, no una prueba de C1.
+        //
+        // Ojo con lo que se guarda: la pasarela simulada devuelve la referencia de la
+        // transaccion, y con esa se puede cobrar. Una pasarela real devuelve un
+        // identificador del MEDIO inscrito (el `tbk_user` de Oneclick), que es otra cosa;
+        // cuando se escriba el adaptador real, lo que tiene que devolver en la inscripcion
+        // es ese identificador y no el de la transaccion.
+        if (!string.IsNullOrWhiteSpace(medioInscrito)) s.ReferenciaPasarela = medioInscrito;
 
         // RN-S7-07. La fecha mas lejana de las dos: a quien le quedaban 45 dias no se le
         // quitan 15 para dejarlo en 30, y a quien le quedaban 3 no se le suman 30 encima.

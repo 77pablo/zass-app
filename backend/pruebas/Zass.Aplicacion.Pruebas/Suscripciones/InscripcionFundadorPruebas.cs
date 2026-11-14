@@ -174,6 +174,43 @@ public class InscripcionFundadorPruebas
     }
 
     [Fact]
+    public async Task La_inscripcion_deja_en_la_SUSCRIPCION_el_medio_con_que_cobrar_despues()
+    {
+        // El hueco que encontró C3 al construir el cobro automático, y que ninguna prueba
+        // de C1 veía: la inscripción guardaba su referencia solo en el intento, y el cobro
+        // del día 31 lee la SUSCRIPCIÓN. Sin esto, el 23 de diciembre no se le cobra a
+        // nadie: la inscripción habría servido para tomar el cupo y para nada más.
+        var perfil = UnPrestadorConSuscripcion();
+        await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
+        var intento = ElIntento();
+        LaPasarelaResponde(intento);
+
+        await _cobros.ConfirmarAsync(UnAviso());
+
+        var s = SuscripcionDe(perfil.Id);
+        Assert.False(
+            string.IsNullOrWhiteSpace(s.ReferenciaPasarela),
+            $"la suscripcion quedo sin medio de pago; el intento traia "
+            + $"'{intento.ReferenciaPasarela ?? "(nulo)"}' y la suscripcion "
+            + $"'{s.ReferenciaPasarela ?? "(nulo)"}'");
+        Assert.Equal(intento.ReferenciaPasarela, s.ReferenciaPasarela);
+    }
+
+    [Fact]
+    public async Task Una_inscripcion_rechazada_NO_deja_medio_de_pago_en_la_suscripcion()
+    {
+        var perfil = UnPrestadorConSuscripcion();
+        await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
+        LaPasarelaResponde(ElIntento(), aprobado: false);
+
+        await _cobros.ConfirmarAsync(UnAviso());
+
+        // Si quedara guardado, el cobro automático intentaría cobrarle a quien nunca
+        // llegó a inscribir nada.
+        Assert.True(string.IsNullOrWhiteSpace(SuscripcionDe(perfil.Id).ReferenciaPasarela));
+    }
+
+    [Fact]
     public async Task Una_inscripcion_NO_crea_una_fila_de_pago_porque_no_se_cobro_nada()
     {
         var perfil = UnPrestadorConSuscripcion();

@@ -697,7 +697,7 @@ public sealed class ServicioCobros : IServicioCobros
                 await _suscripciones.ConfirmarCupoFundadorAsync(intento.PerfilPrestadorId, t);
 
                 var cambio = await _suscripciones.PasarAFundadorConMesGratisAsync(
-                    intento.SuscripcionId, t);
+                    intento.SuscripcionId, intento.ReferenciaPasarela, t);
                 if (!cambio.Exito)
                     return Resultado.Falla<ConfirmacionDto>(cambio.Codigo!, cambio.Mensaje!);
 
