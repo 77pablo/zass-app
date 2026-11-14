@@ -124,8 +124,13 @@ try {
   await prestadora.waitForURL(/mi-ficha/, { timeout: 20000 })
   comprobar('la prestadora entra y cae en Mi ficha', true)
   await foto(prestadora, '02-mi-ficha-prestadora')
-  comprobar('Mi ficha muestra su nombre publico',
-    await prestadora.getByRole('heading', { level: 1, name: /Marcela Soto Rivas/ }).isVisible())
+  // `isVisible()` NO espera: devuelve lo que hay en ese instante. Y en ese instante la
+  // ficha todavia esta pidiendo sus datos, asi que la pagina no tiene NINGUN h1 (medido:
+  // [] al llegar, ["Marcela Soto Rivas"] tres segundos despues). El rojo era del guion,
+  // no del producto. Se espera al titulo, como hacen los demas guiones.
+  const suNombre = prestadora.getByRole('heading', { level: 1, name: /Marcela Soto Rivas/ })
+  await suNombre.waitFor({ timeout: 20000 })
+  comprobar('Mi ficha muestra su nombre publico', await suNombre.isVisible())
 
   // --- 4. Mi agenda: horario todos los dias, para que haya horas en los 7 dias visibles ----
   await prestadora.goto(`${BASE}/mi-agenda`, { waitUntil: 'networkidle' })
