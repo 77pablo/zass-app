@@ -30,6 +30,7 @@ export function Pie() {
           <nav aria-label="Cuenta">
             <ul>
               <li><Link to="/profesionales">Para profesionales</Link></li>
+              <li><Link to="/planes">Planes y precios</Link></li>
               {estado === 'dentro' && (
                 <>
                   <li><Link to="/mis-citas">Mis citas</Link></li>
