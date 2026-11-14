@@ -1,8 +1,10 @@
 # ZASS! — estado del desarrollo
 
-**Última sesión:** 13 de noviembre de 2026 — ver **«Sesión del 13-nov»** justo debajo.
+**Última sesión:** 14 de noviembre de 2026 (madrugada) — ver **«Sesión del 14-nov»** justo debajo.
 
-**Sesión anterior:** 12 de noviembre de 2026 (ver «Sesión del 12-nov» más abajo).
+**Sesión anterior:** 13 de noviembre de 2026 (ver «Sesión del 13-nov» más abajo).
+
+**Sesión anterior a esa:** 12 de noviembre de 2026.
 
 **Sesión anterior a esa:** 9 de noviembre de 2026 (se rescataron las dos ramas de agentes que habían quedado sin
 verificar —`verificacion` y `fondo`—, se construyó el planificador A-09 y **MOD-06 Agenda** entero en el
@@ -16,6 +18,97 @@ Este archivo existe para retomar sin reconstruir contexto. Dice **qué está hec
 comprobado**, **qué no**, y **el siguiente paso exacto**.
 
 ---
+
+## Sesión del 14-nov-2026 (madrugada) — dónde retomar
+
+### C1 está CERRADO: el cupo fundador funciona de punta a punta
+
+Las once tareas del plan `docs/superpowers/plans/2026-11-13-cupo-fundador.md`, en la rama
+**`cupo-fundador`**, con el **CI en verde**: **810** pruebas de aplicación, **17** de
+arquitectura y **722** de integración, cero fallos. Cada prueba nueva con su mutación.
+
+| Tarea | Qué quedó |
+|---|---|
+| 1 | El doble en memoria con los 11 miembros nuevos del repositorio |
+| 2 | La migración `20261114012145_CobroIntentosYCupones`: tres tablas, `ux_pago_intento`, y el cupón **LANZAMIENTO30 al 30 %**. **SIN APLICAR a ninguna base** |
+| 3-5 | 17 pruebas de cotizar, 12 de iniciar, 10 de confirmar |
+| 6 | La guarda: la pasarela simulada ya **no arranca en Producción** (su comentario lo prometía y el `switch` no lo cumplía) |
+| 7 | La inscripción con cobro **$0** confirma el cupo y arranca el mes gratis (RN-S7-01, 03 y 07) |
+| 8 | **API-66 a API-70** y 9 pruebas por HTTP. Son cinco y no cuatro: la inscripción va aparte del cobro |
+| 9 | La página **`/planes`** con el contador «quedan N de 50», el cupón y sus cuatro estados, más `PagoSimulado` y `PlanesListo`. 12 pruebas |
+| 10 | El documento rector de **S7**, que no existía |
+| 11 | Las pruebas contra PostgreSQL y el guion de navegador |
+
+### El defecto de producción que encontró la tarea 11
+
+`RepositorioSuscripciones.cs:146` hacía `SELECT * FROM intentos_pago … FOR UPDATE` y la tabla
+se llama **`intentos_de_pago`**: el **bloqueo de fila que impide que dos confirmaciones del
+mismo cobro regalen dos meses reventaba con `42P01`** en cuanto se usaba de verdad.
+
+Es SQL crudo —el compilador no lo ve— y ninguna prueba en memoria podía verlo, porque su doble
+devuelve el mismo objeto sin tocar la base. **Lo cazó la primera prueba que lo corrió contra
+PostgreSQL**, una hora después de escribirla. Es justo para lo que existía la tarea 11.
+
+Y dos fallos de las pruebas nuevas, del mismo tipo y encontrados igual:
+`new ContextoDePrueba()` **abre una transacción en su constructor**, así que `EnTransaccionAsync`
+no abría la suya y **no commiteaba nada** (las dos confirmaciones se creían primeras); y la
+columna de auditoría es `actor_id`, no `usuario_id`. Las pruebas de concurrencia ahora incluyen
+una que **mira `pg_indexes`** antes de confiar en que `ux_pago_intento` existe.
+
+### La documentación: documento nuevo, y por fin con historial
+
+- **`subsistema-7-suscripciones-y-pagos.md`** existe, con **RN-S7-01 a RN-S7-10** y las dos
+  excepciones de seguridad escritas (API-70 sin CSRF ni sesión; un aviso repetido responde 200).
+- **API-66 a API-70** en `api-rest.md`: el contrato pasa de 71 a **76**.
+- **TBL-33 a TBL-36** en el diccionario (ni los cupos fundador estaban documentados): de 32 a **36**.
+- El actor **A-11 Pasarela de pago** y una **columna S7** en la matriz de actores, que no existía.
+- **Ojo:** el documento **no llegaba al HTML** hasta registrarlo en `sitio/construir.py`. El
+  script decía «Listo» y la página no tenía el texto. Comprobado ahora buscando seis textos
+  **dentro** del HTML generado.
+- La carpeta de documentación **ya es un repositorio git** y está en GitHub, privado:
+  `https://github.com/77pablo/zass-documentacion`. Antes no tenía historial de ninguna clase.
+
+### Lo demás que se movió
+
+- **El sitio se puede cerrar**: rama `web/mantenimiento`, un `_middleware.js` de Cloudflare Pages
+  que responde **503** (no 200, para que Google no indexe «en mantenimiento») con un pase para
+  mirar el sitio por dentro. **Encendido por omisión**: para abrirlo hay que poner
+  `MANTENIMIENTO=0` en Cloudflare. 10 pruebas, tres mutaciones. **Sin desplegar.**
+- **`/planes` ya se puede encontrar**: antes nada la enlazaba. Ahora está en el pie y en
+  `/profesionales`, que además **dice el precio por primera vez** en una pantalla pública.
+- **`legal.ts`**: llenos el correo de privacidad (Ley 21.719) y la lista de proveedores con su
+  país. Siguen pendientes **la razón social con RUT y el plazo de los registros**, y
+  `BORRADOR_LEGAL` sigue en `true` hasta que un abogado revise las dos páginas.
+- **PR #13 fusionado** (de otra IA): `aggregateRating` en el JSON-LD de la ficha desde 3 reseñas
+  (RN-S5-11), con cinco mutaciones comprobadas.
+- **El CI tenía un fallo intermitente propio**, no del código: Postgres arranca dos veces
+  (initdb levanta un servidor temporal y lo apaga) y el paso del techo de conexiones llegaba en
+  el apagón. Arreglado con reintento, en `cupo-fundador` y en `integracion/13-nov`.
+- `docs-frontend` y `docs-raiz`, que llevaban dos días **solo en local**, ya están en `origin`.
+
+### Dos cosas del entorno que bloquean, y son de Pablo
+
+1. **Windows bloquea los DLL de prueba de .NET recién compilados** en este PC:
+   `FileLoadException 0x800711C7`, «una directiva de Control de aplicaciones bloqueó este
+   archivo». Comprobado en las dos direcciones: con el DLL del 12-nov pasan 17/17; con uno
+   nuevo, caen antes de ejecutar nada. **Mientras siga así, el CI es la única autoridad sobre el
+   backend.** Se arregla excluyendo la carpeta del repositorio en Seguridad de Windows.
+2. **Otra IA trabaja en la carpeta `zass-app-1` y cambia de rama.** Por eso Claude se mudó a su
+   propio worktree, `zass-wt-c1`.
+
+### El siguiente paso exacto
+
+1. **Pablo:** mergear **#11** (52 commits, CI verde) y **#12** (el plan de Joaquín);
+   **aplicar la migración** del cobro y **migrar Neon** (producción sigue con 20 cupos y le
+   faltan tres migraciones en orden); **encender `Zass:Verificacion:PermitirSinDocumentos` en
+   Render**; **desplegar `web/mantenimiento`** si quiere el sitio cerrado; y decidir si se honra
+   el booleano de `MarcarPagado` o se documenta como defensa redundante.
+2. **Claude:** C3, el cobro del día 31 —lo está construyendo un agente en
+   `c3/cobro-del-dia-31`—. **Fecha límite real: 23 de diciembre de 2026**, cuando se le termina
+   el mes gratis a quien tome su cupo el 23 de noviembre. Si no existe para entonces, los
+   fundadores desaparecen de la búsqueda sin que nadie les haya cobrado un peso.
+3. **Joaquín:** sus doce tandas en `PLAN-JOAQUIN.md`, empezando por las cuatro ramas de rescate
+   `web/*`, que ya están en `origin`.
 
 ## Sesión del 13-nov-2026 — dónde retomar
 
