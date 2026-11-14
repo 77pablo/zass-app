@@ -27,35 +27,69 @@ jobs:
       - name: PostgreSQL con PostGIS y techo de conexiones alto
         run: |
           docker run -d --name zass-postgres             -e POSTGRES_USER=zass             -e POSTGRES_PASSWORD=zass_ci_clave_local             -e POSTGRES_DB=postgres             -p 5432:5432             postgis/postgis:17-3.5             -c max_connections=300
-          for intento in $(seq 1 30); do
-            if docker exec zass-postgres pg_isready -U zass -d postgres >/dev/null 2>&1; then
+
+          # Espera ACTIVA al servidor DEFINITIVO, sondeando POR TCP. No basta con que
+          # `docker run` no diera error: eso solo dice que el contenedor arrancó.
+          #
+          # Por qué por TCP y no por el socket: la imagen de Postgres arranca DOS veces. La
+          # primera es la de inicialización (initdb), que levanta un servidor temporal
+          # escuchando SOLO en el socket local (`listen_addresses` vacío) y después lo apaga.
+          # Un `pg_isready` contra el socket contesta «listo» en esa ventana, el paso
+          # siguiente se encuentra con «the database system is shutting down» o con
+          # «rejecting connections», y el rojo parece un defecto de la aplicación. Pasó tres
+          # veces el 13 y el 14 de noviembre de 2026 (carreras 43507284232, 43534953922 y
+          # 43543057135). Por TCP ese servidor temporal no contesta NUNCA, así que del bucle
+          # solo se sale con el servidor de verdad.
+          espera_max=120
+          esperado=0
+          listo=no
+          while [ "$esperado" -lt "$espera_max" ]; do
+            if docker exec zass-postgres pg_isready -h 127.0.0.1 -p 5432 -U zass -d postgres >/dev/null 2>&1; then
+              listo=si
+              break
+            fi
+            sleep 2
+            esperado=$((esperado + 2))
+          done
+          if [ "$listo" != "si" ]; then
+            echo "DETENIDO: Postgres no aceptó conexiones TCP en ${espera_max} s."
+            docker logs zass-postgres 2>&1 | tail -60
+            exit 1
+          fi
+          echo "El servidor acepta TCP dentro del contenedor (tras ${esperado} s)."
+
+          # Y ahora desde el HOST, que es por donde conectan las pruebas
+          # (Host=127.0.0.1;Port=5432): el puerto publicado puede tardar un instante más
+          # que el servidor, y es esa dirección la que hay que dar por buena, no otra.
+          desde_host=no
+          for intento in $(seq 1 15); do
+            if docker run --rm --network host postgis/postgis:17-3.5                  pg_isready -h 127.0.0.1 -p 5432 -U zass -d postgres >/dev/null 2>&1; then
+              desde_host=si
               break
             fi
             sleep 2
           done
-          docker exec zass-postgres pg_isready -U zass -d postgres
+          if [ "$desde_host" != "si" ]; then
+            echo "DETENIDO: el servidor está arriba pero 127.0.0.1:5432 no responde desde el host."
+            docker logs zass-postgres 2>&1 | tail -60
+            exit 1
+          fi
+          echo "127.0.0.1:5432 responde desde el host (al intento $intento)."
 
       - name: Comprobar el techo de conexiones
-        # Se MIRA el valor que quedo puesto, no se supone porque el `docker run` no dio error:
-        # un argumento mal escrito no impide arrancar y dejaria el techo de fabrica. Y si algun
-        # dia el paso de arriba se rompe en silencio, este falla aqui y no 20 minutos despues
+        # Se MIRA el valor que quedó puesto, no se supone porque el `docker run` no dio error:
+        # un argumento mal escrito no impide arrancar y dejaría el techo de fábrica. Y si algún
+        # día el paso de arriba se rompe en silencio, este falla aquí y no 20 minutos después
         # dentro de una prueba de concurrencia.
+        #
+        # Sin reintentos a propósito: la espera del paso anterior ya garantiza el servidor
+        # definitivo por TCP. Si esto falla, es una señal de verdad y hay que mirarla, no un
+        # parpadeo que convenga tapar con un bucle. Va por TCP (-h 127.0.0.1) y no por el
+        # socket, por la misma razón que la espera, y de paso comprueba que la autenticación
+        # por contraseña funciona por esa vía.
         run: |
-          # Se reintenta porque la imagen de Postgres arranca DOS veces: initdb levanta un
-          # servidor temporal, lo apaga y vuelve a levantarlo. El `pg_isready` del paso
-          # anterior puede acertar contra ese temporal y este paso llegar justo cuando se
-          # esta apagando («the database system is shutting down»), que es lo que tuvo el
-          # CI en rojo dos veces el 13-nov-2026 sin que nada del codigo estuviera mal.
-          techo=""
-          for intento in $(seq 1 30); do
-            techo=$(docker exec zass-postgres psql -U zass -d postgres -tAc "SHOW max_connections" 2>/dev/null || true)
-            case "$techo" in
-              ''|*[!0-9]*) techo=""; sleep 2 ;;
-              *) break ;;
-            esac
-          done
-          test -n "$techo" || { echo "Postgres no contesto en 60 s"; exit 1; }
-          echo "max_connections = $techo (al intento $intento)"
+          techo=$(docker exec -e PGPASSWORD=zass_ci_clave_local zass-postgres                     psql -h 127.0.0.1 -p 5432 -U zass -d postgres -tAc "SHOW max_connections")
+          echo "max_connections = $techo"
           test "$techo" -ge 200
 
       - uses: actions/setup-dotnet@v4
