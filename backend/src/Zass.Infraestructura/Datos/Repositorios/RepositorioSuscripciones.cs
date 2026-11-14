@@ -143,7 +143,12 @@ public sealed class RepositorioSuscripcionesEfCore : IRepositorioSuscripciones
     /// </summary>
     public Task<IntentoDePago?> TomarIntentoAsync(Guid id, CancellationToken ct = default) =>
         _ctx.IntentosDePago
-            .FromSqlInterpolated($"SELECT * FROM intentos_pago WHERE id = {id} FOR UPDATE")
+            // El nombre de la tabla va a mano aqui porque es SQL crudo, y por eso mismo
+            // nadie lo compila: decia `intentos_pago` y la tabla es `intentos_de_pago`, asi
+            // que ESTE bloqueo de fila —el que impide pagar dos veces— reventaba con 42P01
+            // en cuanto se usaba de verdad. Lo cazó la primera prueba que lo corrió contra
+            // PostgreSQL, el 14-nov-2026; ninguna prueba en memoria podía verlo.
+            .FromSqlInterpolated($"SELECT * FROM intentos_de_pago WHERE id = {id} FOR UPDATE")
             .AsTracking()
             .FirstOrDefaultAsync(ct);
 

@@ -60,7 +60,7 @@ public class CobroConcurrenciaIntegracionPruebas : IDisposable
                     DELETE FROM suscripciones WHERE perfil_prestador_id IN
                         (SELECT id FROM perfiles_prestador WHERE usuario_id = {0});
                     DELETE FROM perfiles_prestador WHERE usuario_id = {0};
-                    DELETE FROM registro_auditoria WHERE usuario_id = {0};
+                    DELETE FROM auditoria WHERE usuario_id = {0};
                     DELETE FROM usuarios WHERE id = {0};
                     """,
                     id);
