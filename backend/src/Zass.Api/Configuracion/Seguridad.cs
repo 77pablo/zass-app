@@ -170,9 +170,13 @@ public static class ConfiguracionDeSeguridad
     }
 
     /// <summary>
-    /// Las siete cabeceras de seguridad.md, seccion 4. En produccion las repite N-01
-    /// Front Door; aqui van igual, para que un despliegue sin Front Door no quede
-    /// desnudo.
+    /// Las siete cabeceras de seguridad.md, seccion 4. Las pone la propia API, en su respuesta.
+    ///
+    /// El diseno original hablaba de que «N-01 Front Door» las repetiria por delante. Front Door es
+    /// de Azure y Azure no se uso: el despliegue real es Cloudflare Pages (sitio) + Render (API) +
+    /// Neon (base). Cloudflare Pages pone su propio juego de cabeceras al HTML del sitio
+    /// (`frontend/public/_headers`), y esas NO cubren las respuestas de la API, que salen de Render.
+    /// Por eso estas no son una repeticion de nada: son las unicas que trae la respuesta de la API.
     /// </summary>
     public static IApplicationBuilder UsarCabecerasDeSeguridad(this IApplicationBuilder app) =>
         app.Use(async (contexto, siguiente) =>
@@ -183,7 +187,14 @@ public static class ConfiguracionDeSeguridad
             // comun, al costo de que ningun estilo ni guion pueda vivir en el HTML.
             cabeceras["Content-Security-Policy"] =
                 "default-src 'self'; "
-                + "img-src 'self' data: https://*.blob.core.windows.net; "
+                // img-src: solo el propio origen y `data:`. La API responde JSON y, en desarrollo,
+                // Swagger UI, cuyas imagenes salen de /swagger (mismo origen) o van incrustadas como
+                // `data:`. Aqui estuvo `https://*.blob.core.windows.net` (almacenamiento de Azure):
+                // resto del plan que nunca se desplego. No hay nada alojado ahi — la foto del
+                // prestador (`UrlFoto`) no se puede subir todavia y ninguna pantalla la pinta — asi
+                // que era un origen de mas desde el que el navegador habria aceptado imagenes.
+                // Lo vigila Zass.Arquitectura.Pruebas/CabecerasDeSeguridadPruebas.
+                + "img-src 'self' data:; "
                 // El navegador llama a /api/* en el mismo origen (proxy de Cloudflare Pages / Vite),
                 // asi que 'self' cubre y no se deja un dominio inexistente en la CSP.
                 + "connect-src 'self'; "
