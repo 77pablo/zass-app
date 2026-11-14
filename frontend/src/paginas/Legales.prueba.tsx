@@ -66,6 +66,21 @@ describe.each([
 })
 
 describe('Términos', () => {
+  /*
+   * Los Terminos decian «el cobro de la mensualidad todavia no esta activo» mientras
+   * /planes ya decia el precio y el boton ya tomaba cupos. Dos pantallas publicas
+   * contradiciendose, y una de las dos es un documento legal. Esta prueba vigila que no
+   * vuelva a pasar: si alguien reescribe los Terminos diciendo que no se cobra, cae.
+   */
+  it('NO dice que el cobro este inactivo, porque la pagina de planes dice el precio', () => {
+    render(<MemoryRouter><Terminos /></MemoryRouter>)
+
+    const texto = document.body.textContent ?? ''
+    expect(texto).not.toMatch(/todav[ií]a no est[aá] activo/i)
+    expect(texto).toMatch(/primer mes gratis/i)
+    expect(screen.getByRole('link', { name: /planes y precios/i })).toBeInTheDocument()
+  })
+
   it('dice que buscar es gratis y que el profesional paga una mensualidad', () => {
     enRuta(<Terminos />)
     expect(screen.getByText(/Buscar y contactar a alguien no te cuesta nada/)).toBeInTheDocument()

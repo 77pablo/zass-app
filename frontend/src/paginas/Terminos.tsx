@@ -35,8 +35,14 @@ export function Terminos() {
         <p>
           Buscar y contactar a alguien no te cuesta nada, y no hace falta tener cuenta. Quien ofrece un servicio
           paga una mensualidad por mantener su ficha visible en las búsquedas. Al publicar su ficha parte con un
-          período de prueba de 30 días. El cobro de la mensualidad todavía no está activo: antes de cobrar te
-          informaremos el valor y cómo pagar, y si no quieres seguir, tu ficha simplemente deja de aparecer.
+          <strong> primer mes gratis</strong>, y puede ver los planes y sus precios en{' '}
+          <Link to="/planes">Planes y precios</Link>.
+        </p>
+        <p>
+          Antes de cobrarte por primera vez te avisamos por correo con el valor y la fecha. Si no quieres seguir,
+          tu ficha deja de aparecer en las búsquedas y tus datos, tus citas y tus reseñas siguen guardados. El
+          precio de lanzamiento de los primeros cincuenta prestadores se mantiene mientras la suscripción siga
+          activa; si se interrumpe, ese precio se pierde.
         </p>
 
         <h2>3. Tu cuenta</h2>
