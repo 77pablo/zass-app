@@ -104,10 +104,19 @@ cd backend;  dotnet test;  cd ..
 cd frontend; npm run prueba; npx tsc -b; npx oxlint; cd ..
 ```
 
-Referencia: backend 674 (aplicación) + 614 (integración) + 16 (arquitectura); frontend 373 pruebas en 28 archivos.
+Referencia al 14-nov-2026: backend **827** (aplicación) + **727** (integración) + **17**
+(arquitectura); frontend **501** pruebas en 37 archivos. Si tu número es menor, falta algo:
+no abras el PR hasta entender qué.
 
 - Las pruebas de integración usan la base `zass_pruebas`. Nunca corras dos suites de integración a la vez.
 - Smart App Control de Windows puede bloquear en local las DLL de pruebas y `oxlint`. Si pasa, dilo: el backend se valida en GitHub Actions.
+- **Un rojo local puede ser mentira, y cuesta horas.** El mismo bloqueo impide a veces *copiar*
+  la DLL de producción recién compilada, así que la suite corre contra el **binario viejo**: el
+  código ya está arreglado y las pruebas siguen en rojo. La pista que lo delata es absurda y
+  por eso vale: la prueba **pasa** al añadirle una línea de diagnóstico. Antes de creerle a un
+  rojo local, `dotnet build --no-incremental` y vuelve a correrla.
+- Las pruebas de integración necesitan la base local **con las migraciones aplicadas**. Si no
+  la tienes, no las corras a medias: el CI es la autoridad sobre el backend.
 
 ## Flujo de trabajo
 
@@ -146,6 +155,12 @@ Referencia: backend 674 (aplicación) + 614 (integración) + 16 (arquitectura); 
 - En el PR se anota qué se cambió y qué prueba cayó.
 - Después se borra la rama `mut-*`.
 - Un verde por sí solo no prueba nada.
+- **Si la prueba no se puede correr en local** (integración sin base, o el bloqueo de Windows),
+  la mutación se empuja a la rama `mut-*` y la evidencia es **la carrera roja del CI**: se
+  anota el número de carrera y qué prueba cayó. Ojo con una trampa que ya pasó: si la mutación
+  rompe también la suite de aplicación, el CI **salta** el paso de integración y tus pruebas
+  nuevas no se ejecutan — el rojo que ves no es el que buscabas. Para probar una de integración,
+  muta solo lo que esa prueba vigila.
 
 ## Secretos
 
