@@ -127,6 +127,36 @@ agotado y la reserva vencida a los 25 minutos).
 Informa de lo que veas aunque no lo arregles tú: en este proyecto mirar las pantallas por primera
 vez ha encontrado nueve defectos de una sentada.
 
+### JQ-9 — Subir fotos y documentos · N3 (es la que más vale de todas)
+
+Hoy **no se puede subir ni un archivo**. `MiFicha` lo dice con todas sus letras: «Por ahora no
+puedes subir tu foto, tus títulos ni tu dirección», y `UrlFoto` **nunca se escribe en ninguna
+capa**. Dos consecuencias: un directorio de profesionales sin caras se ve abandonado, y la
+verificación de credenciales existe en el backend (`POST /mi/credenciales`, `/enviar`) pero
+**nadie puede adjuntar el título** que habría que verificar.
+
+**No esperes a Pablo para empezar.** Constrúyelo detrás de un puerto (`IAlmacenDeArchivos` en
+`Zass.Aplicacion/Puertos/`, igual que se hizo con la pasarela), con dos implementaciones: una
+local para desarrollo y pruebas, y otra contra almacenamiento compatible con S3 — el destino
+previsto es **R2 de Cloudflare**, y las credenciales las pone Pablo cuando la pieza esté. Así el
+código entero se escribe, se prueba y se mergea sin depender de que exista la cuenta.
+
+Qué tiene que quedar:
+
+- Subir y reemplazar la **foto de perfil**, con redimensionado en el servidor: nadie sube una foto
+  de 8 MB desde el celular, y el navegador no es quien debe decidir eso.
+- Adjuntar **documentos a una credencial**, que es lo que desbloquea S2 entero.
+- **Validación en el servidor, no en el formulario**: tipo real del archivo leyendo sus primeros
+  bytes (no la extensión ni el `Content-Type` que manda el cliente), tope de tamaño, y nombre de
+  archivo generado por nosotros — jamás el que venía puesto.
+- **La foto es pública; el título NO.** Un documento de credencial es dato personal sensible: va
+  en almacenamiento privado, se sirve con enlace firmado y de corta vida, y no aparece en el
+  sitemap ni en ninguna respuesta pública. Si esto queda mal es una filtración, no un defecto.
+- Borrar la foto, y que borrar la cuenta se lleve los archivos.
+
+Es **N3** por seguridad e infraestructura: describe el PR entero para que Pablo lo revise
+completo. Si necesitas una migración, **dilo en el PR y espera**.
+
 ### Si acabas todo eso — JQ-8, métricas del prestador · N2
 
 Cuántas veces vieron su ficha, cuántos escaneos tuvo su tarjeta y cuántos contactos recibió. Va
