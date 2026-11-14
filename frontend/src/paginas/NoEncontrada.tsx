@@ -17,6 +17,8 @@ export function NoEncontrada({
       <p className="bajada">{texto}</p>
       <p className="seccion-cierre">
         <Link className="boton boton--amarillo" to="/buscar">Buscar a alguien<Icono nombre="flecha" /></Link>
+        <Link className="boton" to="/oficios">Ver oficios</Link>
+        <Link className="boton" to="/comunas">Ver comunas</Link>
         <Link className="boton" to="/">Ir al inicio</Link>
       </p>
     </section>
