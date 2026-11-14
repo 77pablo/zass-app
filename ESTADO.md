@@ -1,8 +1,10 @@
 # ZASS! — estado del desarrollo
 
-**Última sesión:** 14 de noviembre de 2026 (madrugada) — ver **«Sesión del 14-nov»** justo debajo.
+**Última sesión:** 14 de noviembre de 2026 (mañana) — ver **«Sesión del 14-nov, mañana»** justo debajo.
 
-**Sesión anterior:** 13 de noviembre de 2026 (ver «Sesión del 13-nov» más abajo).
+**Sesión anterior:** 14 de noviembre de 2026 (madrugada), cuando se cerró C1.
+
+**Antes de eso:** 13 de noviembre de 2026 (ver «Sesión del 13-nov» más abajo).
 
 **Sesión anterior a esa:** 12 de noviembre de 2026.
 
@@ -18,6 +20,111 @@ Este archivo existe para retomar sin reconstruir contexto. Dice **qué está hec
 comprobado**, **qué no**, y **el siguiente paso exacto**.
 
 ---
+
+## Sesión del 14-nov-2026 (mañana) — dónde retomar
+
+### C3 está CERRADO: el cobro del día 31 existe y lo dispara el planificador
+
+Fusionado de `c3/cobro-del-dia-31` a **`cupo-fundador`**. Era lo último que faltaba del camino
+del dinero: C1 dejaba inscribir el medio de pago y **nadie cobraba nunca**.
+
+Lo dispara **A-09 Planificador**, en la misma tarea diaria que vence suscripciones y avisa, y
+**antes** que ellas: a quien se le acaba de cobrar bien no hay que mandarle un «te queda poco»,
+y el aviso se calcula sobre la fecha que el cobro acaba de mover.
+
+| Decisión | Por qué así |
+|---|---|
+| Cobra **7 días antes** del vencimiento | No es un calendario inventado: es el mayor umbral de aviso que ya existía, leído del mismo sitio. Un rechazo tiene margen en vez de ser «desapareces hoy» (RN-S7-11) |
+| Clave determinista `cobro-automatico:<suscripción>:<vigente-hasta>` | Con la fecha de hoy, dos corridas dentro de la ventana de 7 días cobrarían **dos veces el mismo mes** (RN-S7-12) |
+| Un rechazo **no se reintenta** solo | La política de reintento es decisión de Pablo y no existe (RN-S7-13) |
+| Sin medio inscrito **no se cobra y no se supone nada** | Se cuenta y se audita: un agujero que se ve, no uno que se tapa (RN-S7-14) |
+
+13 pruebas y 15 mutaciones. Dos mutantes no cayeron y el agente **los reemplazó en vez de
+dejarlos pasar**, porque eran equivalentes.
+
+### El hueco de C1 que encontró C3, y que importaba de verdad
+
+La inscripción del medio de pago guardaba su referencia **en el intento y nunca en la
+suscripción**, que es la columna que el cobro recurrente lee. El 23 de diciembre el cobro habría
+recorrido las 50 suscripciones y **no habría cobrado a nadie**: la inscripción servía para tomar
+el cupo y para nada más. Ninguna prueba de C1 lo veía porque todas miraban el intento.
+
+Arreglado en `ServicioSuscripciones.PasarAFundadorConMesGratisAsync`, con el límite escrito al
+lado: **la pasarela simulada devuelve la referencia de la TRANSACCIÓN, y una real devuelve la del
+MEDIO inscrito** (el `tbk_user` de Oneclick). Eso lo tendrá que devolver el adaptador real, y
+está dicho en el documento de S7.
+
+Dos pruebas nuevas, la segunda vigilando el lado que se olvida: **una inscripción rechazada no
+deja medio guardado**, porque si lo dejara el cobro intentaría cobrarle a quien nunca inscribió
+nada.
+
+### La auditoría del cobro nombraba una tabla que no existe
+
+Cuatro entradas de `ServicioCobros` decían que la entidad afectada era `intentos_pago`, y la
+tabla es **`intentos_de_pago`**. Es el **mismo error que el bloqueo de fila** de la madrugada,
+en otro sitio: el SQL crudo reventaba con `42P01`, pero una etiqueta de auditoría no revienta
+nunca. Se habría notado el día que alguien tuviera que explicar un cobro: la consulta por tabla
+no devuelve ni una fila, y la conclusión natural es «no hay rastro de ese cobro».
+
+`AuditoriaDeCobrosPruebas`, 3 pruebas. Es el primer archivo del cobro que le pasa a
+`ServicioCobros` el **mismo** auditor que luego mira; los demás le pasan uno de usar y tirar, y
+por eso ninguno podía ver esto. La tercera prueba comprueba que **el identificador es de la
+tabla que dice ser**, y se ganó su sitio con una mutación: etiquetar `cobro_confirmado` como
+`suscripciones` —que SÍ es una tabla— con el id del intento engaña a las dos primeras y solo
+cae esa.
+
+### La documentación, con dos inconsistencias mías cerradas
+
+- **`clases-05-suscripciones-y-pagos.md`** existe: **CL-26 a CL-32**, las siete clases de S7, que
+  eran el único subsistema sin diagrama de clases. La matriz decía **4 clases y un total de 29**
+  cuando en el código son **siete**: corregido a 7 y 32, y su §3.1 pasa a llamarse «las 25 clases
+  de S1 a S6» porque las de S7 no tienen caso de uso que las pida —eso es el hallazgo de su §3.5,
+  no un hueco—.
+- **S7 pasa de tres operaciones a cuatro** (cotizar, iniciar, **cobrar lo que vence**, confirmar),
+  con una §2.1 nueva y **RN-S7-11 a RN-S7-14**. Su §9 decía que «el cobro del día 31 no existe»,
+  que desde hoy es falso: ahora lo que queda abierto ahí es la pasarela real, la política de
+  rechazo y `renovacion_automatica`.
+- **A-09 en `beneficiarios.md`**: es el único actor que mueve dinero sin que haya nadie delante, y
+  eso no estaba dicho.
+- Comprobado con el guion nuevo **`mirar-diagramas.mjs`** en un navegador de verdad: 10 páginas,
+  **42 diagramas, 0 con problemas**; `clases.html` pasa de 5 a 7 diagramas y el de S7 renderiza
+  con su nodo nuevo. Ese guion existe porque **un error de sintaxis de Mermaid también dibuja un
+  SVG**, así que buscar SVG no comprueba nada.
+
+### Dos decisiones que te esperan, y bloquean el cobro de verdad
+
+1. **La política de rechazo.** Cuando la tarjeta se rechaza el 16 de diciembre: ¿se reintenta
+   solo —cuántas veces, cada cuántos días— o queda en manos de la persona? Y los «3 días de
+   gracia»: ¿son visibilidad extra **después** del vencimiento, o margen **antes** de darlo por
+   perdido? ¿Correo propio de «no pudimos cobrarte»?
+2. **`RenovacionAutomatica` es `false` para todo el mundo** y el panel lo muestra. El cobro **no
+   la consulta**, porque si la consultara no cobraría a nadie. ¿Se pone en `true` al inscribir y
+   el cobro la respeta, o se saca de la pantalla? Tenerla visible y sin efecto es lo peor de las
+   tres opciones.
+
+### Los números, con el CI como autoridad
+
+Carrera **43585114349** en verde sobre `cupo-fundador`: **824** de aplicación, **17** de
+arquitectura y **723** de integración, cero fallos. Con las 3 de la auditoría, la suite de
+aplicación va en **827** en local, y la carrera **43595018358** quedó en curso al escribir esto.
+
+### Una trampa del entorno que costó tres rojos falsos
+
+El bloqueo de Windows impide copiar el DLL de producción recién compilado, así que la suite corría
+contra **el binario viejo**: tres pruebas «fallaban» por código que ya estaba arreglado. La pista
+fue que una prueba **pasaba al añadirle una línea de diagnóstico**. Desde ahora,
+`dotnet build --no-incremental` antes de creerle a un rojo local.
+
+### El siguiente paso exacto
+
+1. **Pablo:** lo de la madrugada sigue en pie (mergear **#11** y **#12**, aplicar la migración del
+   cobro, **migrar Neon**, encender `Zass:Verificacion:PermitirSinDocumentos` en Render, desplegar
+   `web/mantenimiento`), **más las dos decisiones de arriba**, que son las que separan a esto de
+   cobrar de verdad.
+2. **Claude:** la pasarela real es lo único que falta del camino del dinero, y necesita que Pablo
+   elija proveedor (Transbank, Flow o Mercado Pago) y abra la cuenta. Mientras no esté, el cobro
+   automático corre entero contra la simulada y **no entra un peso**.
+3. **Joaquín:** sus doce tandas en `PLAN-JOAQUIN.md`.
 
 ## Sesión del 14-nov-2026 (madrugada) — dónde retomar
 
