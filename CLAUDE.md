@@ -1,6 +1,6 @@
 # ZASS! — reglas para Claude Code
 
-ZASS! es una plataforma comunitaria de servicios locales en Chile. Backend .NET 8 por capas (Dominio, Aplicación, Infraestructura, Api, con minimal APIs). Frontend React 19 + TypeScript + Vite. Base PostgreSQL con PostGIS: **18 en producción (Neon)** y **16.4 en el clúster portable local**. No son la misma versión, y eso ya impidió una restauración de emergencia: `pg_restore` 16.4 rechaza un volcado de `pg_dump` 18.
+ZASS! es una plataforma comunitaria de servicios locales en Chile. Backend .NET 8 por capas (Dominio, Aplicación, Infraestructura, Api, con minimal APIs). Frontend React 19 + TypeScript + Vite. Base PostgreSQL con PostGIS en **tres versiones distintas**: **18 en producción (Neon)**, **17 en el CI** (`postgis/postgis:17-3.5` en `.github/workflows/pruebas.yml`) y **16.4 en el clúster portable local** (`herramientas\pgsql`). No son la misma versión, y eso ya impidió una restauración de emergencia: el flujo de copias vuelca con `pg_dump` 18 (imagen `postgres:18`) y el `pg_restore` de este PC es 16.4, que no lee un archivo de una mayor más nueva. Un procedimiento de restauración escrito dando por hecho «todo es 18» no se puede ejecutar aquí.
 
 Antes de cualquier tarea, lee `CONTRIBUIR.md` (flujo y niveles de revisión) y la sección de `ESTADO.md` que corresponda. `ESTADO.md` es la fuente de verdad del estado del proyecto.
 
