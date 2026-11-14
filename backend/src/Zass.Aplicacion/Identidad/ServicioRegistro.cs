@@ -169,17 +169,24 @@ public sealed class ServicioRegistro
     /// <summary>
     /// El slug es unico en la base. Dos "Juan Perez" existen de verdad, asi que el segundo
     /// lleva sufijo en vez de un error que la persona no puede resolver.
+    ///
+    /// Un slug reservado (Texto.SlugsReservados: choca con una ruta literal como
+    /// /api/prestadores/mapa) se trata igual que uno ya ocupado: sufijo, nunca un registro que
+    /// falla. Quien se llama «Mapa» no tiene por que saber como enruta ASP.NET.
     /// </summary>
     private async Task<string> SlugLibreAsync(string nombre, CancellationToken ct)
     {
         var baseSlug = Texto.Slug(nombre);
-        if (!await _perfiles.ExisteSlugAsync(baseSlug, ct)) return baseSlug;
+        if (!await OcupadoAsync(baseSlug)) return baseSlug;
 
         for (var n = 2; n <= 50; n++)
         {
             var intento = $"{baseSlug}-{n}";
-            if (!await _perfiles.ExisteSlugAsync(intento, ct)) return intento;
+            if (!await OcupadoAsync(intento)) return intento;
         }
         return $"{baseSlug}-{Guid.NewGuid():N}"[..Math.Min(baseSlug.Length + 9, 100)];
+
+        async Task<bool> OcupadoAsync(string slug) =>
+            Texto.EsSlugReservado(slug) || await _perfiles.ExisteSlugAsync(slug, ct);
     }
 }

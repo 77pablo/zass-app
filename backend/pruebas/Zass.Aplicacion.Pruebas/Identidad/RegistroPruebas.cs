@@ -142,6 +142,39 @@ public class RegistroPruebas
         Assert.Equal(slugs.Count, slugs.Distinct().Count());
     }
 
+    // Un prestador llamado «Mapa» generaba el slug «mapa», que choca con la ruta literal
+    // GET /api/prestadores/mapa (API-64): la ficha quedaba inalcanzable por la API.
+    [Fact]
+    public async Task Un_nombre_que_choca_con_una_ruta_reservada_no_se_queda_con_ese_slug()
+    {
+        var r = await _servicio.RegistrarAsync(Cmd(nombre: "Mapa", rol: "prestador"));
+
+        Assert.True(r.Exito, r.Mensaje);
+        var perfil = Assert.Single(_base.PerfilesPrestador);
+        Assert.NotEqual("mapa", perfil.Slug);
+        Assert.Equal("mapa-2", perfil.Slug);
+    }
+
+    // Las mayusculas y las tildes se normalizan ANTES de mirar la lista: «Mápa» tambien llega a «mapa».
+    [Fact]
+    public async Task Un_nombre_con_tildes_que_normaliza_a_una_palabra_reservada_tampoco_la_toma()
+    {
+        var r = await _servicio.RegistrarAsync(Cmd(nombre: "MÁPA", rol: "prestador"));
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal("mapa-2", Assert.Single(_base.PerfilesPrestador).Slug);
+    }
+
+    // El candado no puede morder a los demas: un nombre normal conserva su slug limpio.
+    [Fact]
+    public async Task Un_nombre_normal_conserva_su_slug_sin_sufijo()
+    {
+        var r = await _servicio.RegistrarAsync(Cmd(nombre: "Mapas del Sur", rol: "prestador"));
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal("mapas-del-sur", Assert.Single(_base.PerfilesPrestador).Slug);
+    }
+
     [Fact]
     public async Task Quien_se_registra_como_buscador_queda_con_preferencias_por_omision()
     {

@@ -31,6 +31,22 @@ public static class Texto
     }
 
     /// <summary>
+    /// Slugs que una ficha no puede llevar porque hay una ruta literal con ese nombre al mismo
+    /// nivel que <c>/prestadores/{slug}</c>, y la literal gana en el enrutador de ASP.NET.
+    ///
+    /// Hoy es una sola: «mapa», por <c>GET /api/prestadores/mapa</c> (API-64, el sitemap). Un
+    /// prestador llamado «Mapa» tendria una ficha inalcanzable por la API. La lista es corta a
+    /// proposito: solo entran segmentos literales que existen de verdad en el enrutador. Las rutas
+    /// del frontend (/buscar, /planes...) son hermanas de /prestadores, no de {slug}, asi que no
+    /// chocan.
+    /// </summary>
+    public static readonly IReadOnlySet<string> SlugsReservados =
+        new HashSet<string>(StringComparer.Ordinal) { "mapa" };
+
+    /// <summary>true si el slug ya normalizado choca con una ruta literal. Ver <see cref="SlugsReservados"/>.</summary>
+    public static bool EsSlugReservado(string slug) => SlugsReservados.Contains(slug);
+
+    /// <summary>
     /// Slug para la ficha publica (API-05 /prestadores/{slug}). Sin tildes, sin enes, sin
     /// signos: lo que sobreviva a una URL y a un QR impreso en una tarjeta.
     /// </summary>
