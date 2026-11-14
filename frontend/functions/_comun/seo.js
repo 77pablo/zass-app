@@ -73,6 +73,11 @@ export function recortar(texto, maximo) {
 
 const NOMBRE = (v) => (typeof v === 'string' ? limpiarTexto(v) : '')
 
+/** Un promedio de 1 a 5, o null. Un texto, un NaN, un 0, un negativo o un >5 no son promedio. */
+const PROMEDIO = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 1 && v <= 5 ? v : null)
+/** Un total de resenas entero no negativo, o 0. Un -3 o un 2.5 no son un recuento. */
+const RESENAS = (v) => (typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : 0)
+
 /**
  * De la ficha publica (API-05) saca SOLO lo que se publica en las etiquetas: nombre, oficio, zonas y
  * descripcion. Es una lista blanca: aunque la API un dia mandara de mas (contacto, correo, coordenadas),
@@ -103,7 +108,12 @@ export function datosDeFicha(ficha) {
   // deshacer que indexar unas horas de mas a un impago.
   const indexable = ficha.suscripcionVigente !== false
 
-  return { nombre, oficio, zonas: zonas.map((z) => z.nombre), principal, descripcion, indexable }
+  // RN-S5-11: con menos de 3 resenas la API manda el promedio nulo. Se filtra igual por
+  // si un dia dejara de mandarlo asi: el umbral es de negocio, no de confianza en la fuente.
+  const promedioCalificacion = PROMEDIO(ficha.promedioCalificacion)
+  const totalResenas = RESENAS(ficha.totalResenas)
+
+  return { nombre, oficio, zonas: zonas.map((z) => z.nombre), principal, descripcion, promedioCalificacion, totalResenas, indexable }
 }
 
 /** «Corretaje de propiedades en Centro»; sin zona, solo el oficio; sin nada, cadena vacia. */
@@ -149,6 +159,22 @@ export function metaDeFicha(d, slug, origen) {
     description: descripcion,
     ...(d.oficio ? { serviceType: d.oficio } : {}),
     ...(d.zonas.length > 0 ? { areaServed: d.zonas.map((z) => ({ '@type': 'Place', name: z })) } : {}),
+    // RN-S5-11: el promedio es publico desde la TERCERA resena. Con menos, el JSON-LD va sin
+    // `aggregateRating`: Google no debe ver un numero que la ficha visible no muestra.
+    // `toFixed(1)` para que el JSON-LD diga exactamente lo mismo que la ficha ("4,3"), y no
+    // "4.333333...": un rich result con un valor que la pagina no respalda es un rich result
+    // que Google puede retirar.
+    ...(d.totalResenas >= 3 && d.promedioCalificacion !== null
+      ? {
+          aggregateRating: {
+            '@type': 'AggregateRating',
+            ratingValue: Number(d.promedioCalificacion.toFixed(1)),
+            reviewCount: d.totalResenas,
+            bestRating: 5,
+            worstRating: 1,
+          },
+        }
+      : {}),
   }
 
   return [
