@@ -399,6 +399,193 @@ public sealed class ServicioCobros : IServicioCobros
         new(i.Id, codigoPlan, i.MontoBruto, i.MontoDescuento, i.Monto, i.CodigoCupon,
             i.Estado.ToString(), i.UrlParaPagar, i.ReferenciaPasarela, nueva);
 
+    // -------------------------------------------- El cobro del vencimiento (C3)
+
+    /// <summary>
+    /// Con cuanta antelacion se cobra, en dias.
+    ///
+    /// <para>
+    /// NO es un calendario nuevo: es el umbral de aviso mas grande que ya existe
+    /// (<see cref="ServicioSuscripciones.DiasDeAviso"/>). Se cobra el dia en que la
+    /// suscripcion entra en «por vencer», no el dia del vencimiento, por dos razones que
+    /// valen plata:
+    /// </para>
+    ///
+    /// <list type="number">
+    /// <item>Un rechazo deja margen. Cobrar el ultimo dia convierte una tarjeta sin saldo
+    /// en desaparecer de la busqueda (RN-S3-09) el mismo dia, sin que nadie se enterara.
+    /// Cobrando aqui, al rechazo le quedan los dias del umbral, y el aviso del umbral
+    /// pequeño —el de 1 dia, que ya existe y ya se manda— llega como ultima llamada
+    /// porque un cobro rechazado no mueve <c>VigenteHasta</c>.</item>
+    /// <item>Cobrar antes no regala ni quita dias:
+    /// <see cref="IServicioSuscripciones.RegistrarPeriodoPagadoAsync"/> suma el mes SOBRE
+    /// lo que quedaba, asi que quien se adelanta una semana sigue teniendo su mes
+    /// completo.</item>
+    /// </list>
+    ///
+    /// <para>
+    /// Y un efecto que es correcto y conviene saber: a quien se le cobra bien ya no le
+    /// llega el aviso de «te queda poco», porque deja de estar por vencer. Avisarle de un
+    /// vencimiento que acabamos de pagar seria mentirle.
+    /// </para>
+    /// </summary>
+    public static int DiasAntesDeVencer => ServicioSuscripciones.DiasDeAviso.Max();
+
+    /// <summary>
+    /// CC-04. La clave del cobro automatico, determinista: la suscripcion y el periodo
+    /// que se esta cobrando.
+    ///
+    /// <para>
+    /// No la pone un cliente porque aqui no hay cliente: la pone el servidor, y por eso
+    /// tiene que salir siempre igual de los mismos datos. Correr el trabajo dos veces el
+    /// mismo dia produce la MISMA clave, y entonces el segundo intento no nace: lo para
+    /// la comprobacion de abajo y, si dos replicas entran a la vez, lo para el indice
+    /// unico <c>ux_intento_pago_clave</c>, que es la garantia de verdad.
+    /// </para>
+    ///
+    /// <para>
+    /// El periodo es <c>VigenteHasta</c>, no la fecha de hoy: con la fecha de hoy, correr
+    /// el trabajo dos dias seguidos dentro de la ventana de cobro daria dos claves
+    /// distintas y cobraria dos veces el mismo mes. Y como un cobro bueno mueve
+    /// <c>VigenteHasta</c> un mes, el mes siguiente la clave cambia sola.
+    /// </para>
+    /// </summary>
+    public static string ClaveDeCobroAutomatico(Guid suscripcionId, DateTime vigenteHasta) =>
+        $"cobro-automatico:{suscripcionId:D}:{vigenteHasta:yyyy-MM-dd}";
+
+    public async Task<ResumenDeCobros> CobrarVencimientosAsync(CancellationToken ct = default)
+    {
+        // La misma consulta que usa el aviso, con el mismo umbral. Si algun dia cambia
+        // DiasDeAviso, el cobro se mueve con el y no se queda en otro calendario.
+        var porVencer = await _suscripciones.PorVencerAsync(DiasAntesDeVencer, ct);
+
+        int cobradas = 0, rechazadas = 0, sinMedio = 0, yaIntentadas = 0, paraRevisar = 0;
+
+        foreach (var cercana in porVencer)
+        {
+            var s = await _repo.PorIdAsync(cercana.SuscripcionId, ct);
+            if (s is null) continue;
+
+            var plan = await _repo.PlanPorIdAsync(s.PlanId, ct);
+            if (plan is null) continue;
+
+            // El precio sale del MISMO sitio que la cotizacion y el cobro a mano, y sin
+            // cupon: un codigo de descuento lo escribe una persona, y aqui no hay nadie
+            // escribiendo. Esto tambien es lo que descarta, sin contarlo, a quien esta en
+            // el plan de prueba: ese mes es gratis y no se cobra nunca.
+            var calculo = await CalcularAsync(cercana.PerfilPrestadorId, plan.Codigo, null, ct);
+            if (!calculo.Exito || calculo.Valor is null) continue;
+
+            // Con QUE se cobra. La suscripcion tiene que traer la referencia del medio de
+            // pago que la persona inscribio; sin ella no hay contra que cobrar y NO se
+            // supone nada. Se cuenta y se audita, que es como un agujero se ve en vez de
+            // taparse: hoy esta columna no la escribe nadie (ver el informe de C3).
+            if (string.IsNullOrWhiteSpace(s.ReferenciaPasarela))
+            {
+                sinMedio++;
+                _auditor.Registrar(Auditar.Entrada(
+                    "cobro_sin_medio_inscrito", "suscripciones", s.Id, _reloj.Ahora,
+                    contexto: new { diasRestantes = cercana.DiasRestantes }));
+                continue;
+            }
+
+            var clave = ClaveDeCobroAutomatico(s.Id, s.VigenteHasta);
+
+            // Ya hubo un intento para esta suscripcion y este periodo. Da igual como
+            // acabo: no se cobra otra vez hoy. Un rechazo NO se reintenta solo, porque la
+            // politica de reintento y la «gracia» son decision de Pablo y todavia no
+            // existen (RN-S7-10 solo dice que el rechazo es normal).
+            if (await _repo.IntentoPorClaveAsync(clave, ct) is not null)
+            {
+                yaIntentadas++;
+                continue;
+            }
+
+            var intento = await _trabajo.EnTransaccionAsync(async t =>
+            {
+                // Entre la lectura de arriba y este INSERT cabe otra corrida, igual que en
+                // IniciarAsync.
+                if (await _repo.IntentoPorClaveAsync(clave, t) is not null)
+                    return (IntentoDePago?)null;
+
+                var nuevo = new IntentoDePago
+                {
+                    SuscripcionId = s.Id,
+                    PerfilPrestadorId = cercana.PerfilPrestadorId,
+                    PlanId = plan.Id,
+                    Meses = MesesPorCobro,
+                    MontoBruto = plan.PrecioMensual,
+                    MontoDescuento = 0,
+                    Monto = calculo.Valor.Total,
+                    Moneda = "CLP",
+                    CodigoCupon = null,
+                    Estado = EstadoIntentoPago.Pendiente,
+                    ClaveIdempotencia = clave,
+                    Pasarela = _pasarela.Nombre,
+                    CreadoEn = _reloj.Ahora,
+                };
+                _repo.AgregarIntento(nuevo);
+
+                // El cupo fundador NO se toca: quien renueva ya lo tiene confirmado, y
+                // volverle a poner plazo de reserva seria arriesgarse a que el trabajo
+                // diario se lo suelte.
+                _auditor.Registrar(Auditar.Entrada(
+                    "cobro_automatico_iniciado", "intentos_pago", nuevo.Id, _reloj.Ahora,
+                    contexto: new
+                    {
+                        plan = plan.Codigo,
+                        monto = nuevo.Monto,
+                        diasRestantes = cercana.DiasRestantes,
+                        pasarela = _pasarela.Nombre,
+                    }));
+
+                await _trabajo.GuardarAsync(t);
+                return nuevo;
+            }, ct);
+
+            if (intento is null)
+            {
+                yaIntentadas++;
+                continue;
+            }
+
+            // La salida a internet, FUERA de la transaccion, por lo mismo que en
+            // PedirElCobroAsync: una llamada de red con una transaccion abierta deja filas
+            // bloqueadas el tiempo que tarde la pasarela en contestar.
+            var cobro = await _pasarela.CobrarAsync(
+                new SolicitudDeCobro(
+                    IntentoDePagoId: intento.Id,
+                    Monto: intento.Monto,
+                    Moneda: intento.Moneda,
+                    Descripcion: $"ZASS! {plan.Nombre} - {MesesPorCobro} mes")
+                {
+                    MedioInscrito = s.ReferenciaPasarela,
+                },
+                ct);
+
+            // La pasarela no contesto: no se sabe si cobro. El intento se queda Pendiente
+            // con su clave, nadie extiende nada, y lo mira una persona. Reintentar a
+            // ciegas lo que no se sabe si se cobro es como se cobra dos veces.
+            if (!cobro.Exito || cobro.Valor is null)
+            {
+                paraRevisar++;
+                continue;
+            }
+
+            // El mismo camino que el aviso de la pasarela. El rechazo deja el intento
+            // Fallido y la suscripcion EXACTAMENTE como estaba (RN-S7-10).
+            var resuelto = await ResolverAsync(cobro.Valor, ct);
+            if (!resuelto.Exito || resuelto.Valor is null) paraRevisar++;
+            else if (resuelto.Valor.Aprobado) cobradas++;
+            else rechazadas++;
+        }
+
+        // Los contadores de arriba son numeros y nada mas: este resumen lo lee cualquiera
+        // que mire trabajos_de_fondo (S7 §6).
+        await _trabajo.GuardarAsync(ct);
+        return new ResumenDeCobros(cobradas, rechazadas, sinMedio, yaIntentadas, paraRevisar);
+    }
+
     // ------------------------------------------------------------- Confirmar
 
     public async Task<Resultado<ConfirmacionDto>> ConfirmarAsync(
@@ -411,9 +598,27 @@ public sealed class ServicioCobros : IServicioCobros
             return Resultado.Falla<ConfirmacionDto>(
                 leido.Codigo ?? Fallas.Validacion,
                 leido.Mensaje ?? "No se pudo leer la confirmación de la pasarela.");
-        var r = leido.Valor;
 
-        return await _trabajo.EnTransaccionAsync(async t =>
+        return await ResolverAsync(leido.Valor, ct);
+    }
+
+    /// <summary>
+    /// Lo que se hace con un veredicto, venga del aviso de la pasarela (
+    /// <see cref="ConfirmarAsync"/>) o del cobro automatico (
+    /// <see cref="CobrarVencimientosAsync"/>).
+    ///
+    /// <para>
+    /// Esta extraido para que esos dos caminos no se bifurquen: la idempotencia del
+    /// intento, la comparacion del monto, el canje del cupon y la UNICA llamada a
+    /// <see cref="IServicioSuscripciones.RegistrarPeriodoPagadoAsync"/> viven aqui y en
+    /// ningun otro sitio. Dos copias de esta logica serian dos reglas de vigencia, y la
+    /// segunda se enteraria tarde de cada arreglo de la primera.
+    /// </para>
+    /// </summary>
+    private Task<Resultado<ConfirmacionDto>> ResolverAsync(
+        CobroResuelto r, CancellationToken ct)
+    {
+        return _trabajo.EnTransaccionAsync(async t =>
         {
             // El bloqueo de fila. La segunda confirmacion del mismo cobro ESPERA aqui y,
             // cuando entra, lee el estado ya cambiado. Es lo mismo que hace CC-01 con el

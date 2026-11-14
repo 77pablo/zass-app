@@ -79,6 +79,10 @@ public class CobroConcurrenciaIntegracionPruebas : IDisposable
             SolicitudDeCobro s, CancellationToken ct = default) =>
             Task.FromResult(Resultado.Ok(new CobroIniciado("ref_fijada", "https://local.test/pagar")));
 
+        public Task<Resultado<CobroResuelto>> CobrarAsync(
+            SolicitudDeCobro s, CancellationToken ct = default) =>
+            Task.FromResult(Resultado.Ok(_veredicto with { IntentoDePagoId = s.IntentoDePagoId }));
+
         public Task<Resultado<CobroResuelto>> LeerConfirmacionAsync(
             AvisoDePasarela a, CancellationToken ct = default) =>
             Task.FromResult(Resultado.Ok(_veredicto));

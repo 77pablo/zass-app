@@ -45,6 +45,43 @@ public sealed class PasarelaFalsa : IPasarelaDePagos
             "https://pasarela.falsa/pagar/" + solicitud.IntentoDePagoId)));
     }
 
+    /// <summary>La pasarela no contesta al cobrar contra el medio inscrito.</summary>
+    public bool FallaAlCobrar { get; set; }
+
+    /// <summary>
+    /// Cuantas veces se le pidio un cobro RECURRENTE. Separado de
+    /// <see cref="CobrosPedidos"/> porque la prueba de idempotencia del trabajo diario
+    /// mide justamente este: dos corridas, un cobro.
+    /// </summary>
+    public int CobrosRecurrentes { get; private set; }
+
+    /// <summary>La ultima solicitud de cobro recurrente, para ver QUE medio se uso.</summary>
+    public SolicitudDeCobro? UltimoCobroRecurrente { get; private set; }
+
+    /// <summary>
+    /// Lo que devuelve <see cref="CobrarAsync"/>. Lo fija la prueba, igual que
+    /// <see cref="Veredicto"/>; si no se fija, se aprueba por el monto pedido.
+    /// </summary>
+    public bool RechazaElCobro { get; set; }
+
+    public Task<Resultado<CobroResuelto>> CobrarAsync(
+        SolicitudDeCobro solicitud, CancellationToken ct = default)
+    {
+        CobrosRecurrentes++;
+        UltimoCobroRecurrente = solicitud;
+
+        if (FallaAlCobrar)
+            return Task.FromResult(Resultado.Falla<CobroResuelto>(
+                Fallas.ReglaDeNegocio, "La pasarela no respondio."));
+
+        return Task.FromResult(Resultado.Ok(new CobroResuelto(
+            IntentoDePagoId: solicitud.IntentoDePagoId,
+            ReferenciaPasarela: "rec_" + solicitud.IntentoDePagoId.ToString("N")[..8],
+            Aprobado: !RechazaElCobro,
+            MontoConfirmado: solicitud.Monto,
+            MotivoFallo: RechazaElCobro ? "Tarjeta rechazada." : null)));
+    }
+
     public Task<Resultado<CobroResuelto>> LeerConfirmacionAsync(
         AvisoDePasarela aviso, CancellationToken ct = default)
     {
