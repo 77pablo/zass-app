@@ -844,12 +844,19 @@ public class ResenasPruebas
         Assert.Equal(anterior, json.RootElement.GetProperty("comentarioAnterior").GetString());
     }
 
+    /// <summary>
+    /// CS-16, por las DOS vías de la Tanda B: el contacto directo y la cita realizada. El plazo
+    /// no depende de cómo nació la reseña, y una regla que lo hiciera depender pasaría
+    /// inadvertida si solo se probara una.
+    /// </summary>
     [Theory]
-    [InlineData(72 * 3600, true)]          // justo a las 72 h todavía se puede
-    [InlineData(72 * 3600 + 1, false)]
-    public async Task El_plazo_de_edicion_es_de_72_horas_exactas(int segundos, bool puede)
+    [InlineData(false, 72 * 3600, true)]          // justo a las 72 h todavía se puede
+    [InlineData(false, 72 * 3600 + 1, false)]
+    [InlineData(true, 72 * 3600, true)]
+    [InlineData(true, 72 * 3600 + 1, false)]
+    public async Task El_plazo_de_edicion_es_de_72_horas_exactas(bool porCita, int segundos, bool puede)
     {
-        var resena = await UnaPublicada();
+        var resena = await UnaPublicadaPor(porCita);
         _reloj.Avanzar(TimeSpan.FromSeconds(segundos));
 
         var r = await _servicio.EditarAsync(new EditarResenaCmd(
@@ -862,6 +869,33 @@ public class ResenasPruebas
             Assert.False(resena.Editada);
             Assert.Equal(5, resena.Calificacion);
         }
+    }
+
+    /// <summary>El plazo que se guarda, con el número escrito a mano y no sacado de `PlazoDeEdicion`.</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Publicar_fija_el_plazo_de_edicion_en_72_horas_por_las_dos_vias(bool porCita)
+    {
+        var resena = await UnaPublicadaPor(porCita);
+
+        Assert.Equal(Ahora, resena.PublicadaEn);
+        Assert.Equal(Ahora.AddHours(72), resena.EditableHasta);
+    }
+
+    /// <summary>
+    /// Una reseña publicada por contacto directo (8 días atrás) o por una cita realizada hace un
+    /// rato, que no espera los 7 días.
+    /// </summary>
+    private async Task<Resena> UnaPublicadaPor(bool porCita)
+    {
+        var c = porCita
+            ? UnContacto(hace: TimeSpan.FromMinutes(5), cita: UnaCita(EstadoCita.Realizada))
+            : UnContacto();
+        var r = await _servicio.PublicarAsync(Pub(c));
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(c.CitaId is not null, porCita);
+        return _repo.Resenas.Single(x => x.Id == r.Valor!.Resena!.Id);
     }
 
     [Fact]
