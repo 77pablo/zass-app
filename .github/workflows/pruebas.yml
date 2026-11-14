@@ -41,8 +41,21 @@ jobs:
         # dia el paso de arriba se rompe en silencio, este falla aqui y no 20 minutos despues
         # dentro de una prueba de concurrencia.
         run: |
-          techo=$(docker exec zass-postgres psql -U zass -d postgres -tAc "SHOW max_connections")
-          echo "max_connections = $techo"
+          # Se reintenta porque la imagen de Postgres arranca DOS veces: initdb levanta un
+          # servidor temporal, lo apaga y vuelve a levantarlo. El `pg_isready` del paso
+          # anterior puede acertar contra ese temporal y este paso llegar justo cuando se
+          # esta apagando («the database system is shutting down»), que es lo que tuvo el
+          # CI en rojo dos veces el 13-nov-2026 sin que nada del codigo estuviera mal.
+          techo=""
+          for intento in $(seq 1 30); do
+            techo=$(docker exec zass-postgres psql -U zass -d postgres -tAc "SHOW max_connections" 2>/dev/null || true)
+            case "$techo" in
+              ''|*[!0-9]*) techo=""; sleep 2 ;;
+              *) break ;;
+            esac
+          done
+          test -n "$techo" || { echo "Postgres no contesto en 60 s"; exit 1; }
+          echo "max_connections = $techo (al intento $intento)"
           test "$techo" -ge 200
 
       - uses: actions/setup-dotnet@v4
