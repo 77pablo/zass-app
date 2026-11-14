@@ -1,0 +1,53 @@
+{
+  "routes": [
+    {
+      "routePath": "/prestadores/:slug",
+      "mountPath": "/prestadores",
+      "method": "",
+      "module": [
+        "prestadores/[slug].js:onRequest"
+      ]
+    },
+    {
+      "routePath": "/sitemaps/:n",
+      "mountPath": "/sitemaps",
+      "method": "",
+      "module": [
+        "sitemaps/[n].js:onRequest"
+      ]
+    },
+    {
+      "routePath": "/t/:segmento",
+      "mountPath": "/t",
+      "method": "",
+      "module": [
+        "t/[segmento].js:onRequest"
+      ]
+    },
+    {
+      "routePath": "/api/:ruta*",
+      "mountPath": "/api",
+      "method": "",
+      "module": [
+        "api/[[ruta]].js:onRequest"
+      ]
+    },
+    {
+      "routePath": "/sitemap.xml",
+      "mountPath": "/",
+      "method": "",
+      "module": [
+        "sitemap.xml.js:onRequest"
+      ]
+    },
+    {
+      "routePath": "/",
+      "mountPath": "/",
+      "method": "",
+      "middleware": [
+        "_middleware.js:onRequest"
+      ]
+    }
+  ],
+  "baseURL": "/"
+}

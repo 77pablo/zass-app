@@ -19,6 +19,7 @@ import { useSesion } from '../sesion/contexto'
 import { EditorDeZonas } from './EditorDeZonas'
 import { MisCredenciales } from './MisCredenciales'
 import { useMeta } from '../marco/useMeta'
+import { PaginaCargando } from '../marco/PaginaCargando'
 
 interface Todo {
   perfil: MiPerfil
@@ -76,7 +77,7 @@ export function MiFicha() {
   const recargar = useCallback(() => setRecarga((n) => n + 1), [])
 
   if (estado === 'cargando') {
-    return <div className="contenedor ficha-pagina"><p className="cargando-linea" role="status">Cargando…</p></div>
+    return <PaginaCargando titulo="Mi ficha" />
   }
   if (estado === 'fuera') return <Navigate to="/entrar" replace state={{ despues: '/mi-ficha' }} />
 
@@ -116,7 +117,7 @@ export function MiFicha() {
     )
   }
   if (todo === null || catalogo.datos === null) {
-    return <div className="contenedor ficha-pagina"><p className="cargando-linea" role="status">Cargando tu ficha…</p></div>
+    return <PaginaCargando titulo="Mi ficha" aviso="Cargando tu ficha…" />
   }
 
   const { perfil, servicios, cobertura, suscripcion, credenciales } = todo

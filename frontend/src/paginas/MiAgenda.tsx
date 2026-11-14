@@ -9,6 +9,7 @@ import {
 import { useTitulo } from '../marco/useTitulo'
 import { useSesion } from '../sesion/contexto'
 import { useMeta } from '../marco/useMeta'
+import { PaginaCargando } from '../marco/PaginaCargando'
 
 /** Los mismos limites que valida el servidor (Zass.Aplicacion/Agenda/Validadores.cs). */
 const MAXIMO_FRANJAS = 30
@@ -89,7 +90,7 @@ export function MiAgenda() {
   }, [estado, esPrestador, recarga])
 
   if (estado === 'cargando') {
-    return <div className="contenedor ficha-pagina"><p className="cargando-linea" role="status">Cargando…</p></div>
+    return <PaginaCargando titulo="Mi agenda" />
   }
   if (estado === 'fuera') return <Navigate to="/entrar" replace state={{ despues: '/mi-agenda' }} />
 

@@ -11,6 +11,7 @@ import { useSesion } from '../sesion/contexto'
 import { useTitulo } from '../marco/useTitulo'
 import { ReprogramarCita } from './ReprogramarCita'
 import { useMeta } from '../marco/useMeta'
+import { PaginaCargando } from '../marco/PaginaCargando'
 
 const ETIQUETA: Record<EstadoDeCita, string> = {
   Solicitada: 'Esperando confirmación',
@@ -87,7 +88,7 @@ export function MisCitas() {
   }, [citas, miPerfilId])
 
   if (estado === 'cargando') {
-    return <div className="contenedor ficha-pagina"><p className="cargando-linea" role="status">Cargando…</p></div>
+    return <PaginaCargando titulo="Mis citas" />
   }
   if (estado === 'fuera') return <Navigate to="/entrar" replace state={{ despues: '/mis-citas' }} />
 
@@ -102,7 +103,7 @@ export function MisCitas() {
     )
   }
   if (citas === null) {
-    return <div className="contenedor ficha-pagina"><p className="cargando-linea" role="status">Cargando tus citas…</p></div>
+    return <PaginaCargando titulo="Mis citas" aviso="Cargando tus citas…" />
   }
 
   return (
