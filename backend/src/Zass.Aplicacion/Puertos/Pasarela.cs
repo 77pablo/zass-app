@@ -52,6 +52,31 @@ public interface IPasarelaDePagos
         SolicitudDeCobro solicitud, CancellationToken ct = default);
 
     /// <summary>
+    /// Autoriza un medio de pago SIN cobrar nada. Es lo que necesita el cupo fundador
+    /// (RN-S7-01): la persona inscribe su tarjeta, su primer mes es gratis (RN-S7-03) y el
+    /// primer cobro llega 30 dias despues.
+    ///
+    /// <para>
+    /// Es un metodo aparte de <see cref="IniciarCobroAsync"/>, y su solicitud NO lleva
+    /// monto, porque una inscripcion no tiene monto que llevar. Antes del 14-nov-2026 el
+    /// camino del fundador pedia un COBRO de cero pesos, y las tres pasarelas candidatas
+    /// rechazan eso igual que lo rechazaba la simulada: nadie podia tomar un cupo. Que el
+    /// monto no exista en el tipo es justamente el arreglo — asi el error no se puede
+    /// volver a escribir.
+    /// </para>
+    ///
+    /// <para>
+    /// Devuelve lo mismo que iniciar un cobro —una referencia y una direccion a la que
+    /// mandar a la persona— porque del otro lado pasa lo mismo: la persona autoriza fuera
+    /// de ZASS! y la respuesta vuelve por <see cref="LeerConfirmacionAsync"/>. Las tres
+    /// candidatas tienen este camino (Oneclick Inscripcion en Transbank, la autorizacion
+    /// de Flow, la tarjeta guardada de Mercado Pago).
+    /// </para>
+    /// </summary>
+    Task<Resultado<CobroIniciado>> IniciarInscripcionAsync(
+        SolicitudDeInscripcion solicitud, CancellationToken ct = default);
+
+    /// <summary>
     /// Cobra AHORA contra un medio de pago que la persona ya inscribio, sin navegador y
     /// sin que nadie apriete nada: es el cobro del dia del vencimiento (C3).
     ///
@@ -137,6 +162,19 @@ public sealed record SolicitudDeCobro(
     /// </summary>
     public string? MedioInscrito { get; init; }
 }
+
+/// <summary>
+/// Lo que la pasarela necesita para autorizar un medio de pago sin cobrarlo.
+///
+/// <para>
+/// No lleva monto NI moneda a proposito: una inscripcion no cobra. Si manana hiciera falta
+/// cobrar un peso para validar la tarjeta (algunas pasarelas lo hacen y lo devuelven), eso
+/// es un detalle del adaptador y se resuelve ahi, no en el puerto.
+/// </para>
+/// </summary>
+public sealed record SolicitudDeInscripcion(
+    Guid IntentoDePagoId,
+    string Descripcion);
 
 /// <summary>El cobro ya creado en la pasarela.</summary>
 public sealed record CobroIniciado(string ReferenciaPasarela, string? UrlParaPagar);
