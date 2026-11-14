@@ -1,0 +1,28 @@
+# Despierta la API antes de que llegue la gente.
+# NO arregla la causa: la causa es el plan gratis de Render, que duerme el servicio tras
+# ~15 min sin trafico. Esto solo tapa el sintoma: el primer visitante del dia no espera ~26 s.
+# GitHub solo lanza `schedule` y `workflow_dispatch` desde la rama por defecto (main).
+name: Despertar API
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # cada 10 min (hora UTC); GitHub puede atrasarlo
+  workflow_dispatch: {}      # a mano desde la pestaña Actions
+
+permissions:
+  contents: read
+
+jobs:
+  despertar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Pedir /api/salud y anotar cuanto tardo
+        run: |
+          # URL_API existe solo para probar sin tocar produccion. El workflow no la define.
+          URL="${URL_API:-https://zass-api.onrender.com/api/salud}"
+          salida=$(curl -s -o /dev/null --max-time 60 -w '%{http_code} %{time_total}' "$URL" || true)
+          codigo=${salida%% *}
+          tiempo=${salida##* }
+          echo "$(date -u +%H:%M:%S) UTC | HTTP ${codigo:-sin respuesta} | ${tiempo:-?} s | $URL"
+          test "$codigo" = "200" || { echo "No respondio 200 (respondio '${codigo}')" >&2; exit 1; }
