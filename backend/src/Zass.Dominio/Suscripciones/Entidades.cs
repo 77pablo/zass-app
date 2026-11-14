@@ -251,7 +251,9 @@ public class IntentoDePago
 /// El detalle que hay que tener presente para no equivocarse: el primer mes de vida de
 /// la cuenta es gratis (la suscripcion 'Prueba' de 30 dias que crea IniciarPruebaAsync),
 /// asi que el cupon cae sobre el SEGUNDO mes, que es el primero que se cobra. Sobre el
-/// precio fundador congelado de 5990 eso son 4792.
+/// precio fundador congelado de 5990 eso son 4193: 1797 de descuento, truncado hacia
+/// abajo. (Este numero decia 4792 hasta el 14-nov-2026, que era el del 20 % que Pablo
+/// descarto el 13: el porcentaje cambio en la fila sembrada y el comentario se quedo.)
 /// </summary>
 public class Cupon
 {

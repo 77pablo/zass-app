@@ -688,8 +688,9 @@ public class ZassDbContext : DbContext
             // TBL-02. Sin el de prueba, IniciarPruebaAsync no tiene con que arrancar
             // y NADIE llegaria nunca a estar vigente: con RN-S3-09, eso seria una
             // busqueda permanentemente vacia. Los de pago son la salida de la
-            // prueba: mensual es el precio normal; fundador son los primeros 20
-            // cupos a precio de lanzamiento (el cupo vive en su propia tabla).
+            // prueba: mensual es el precio normal; fundador son los primeros 50
+            // cupos a precio de lanzamiento (el cupo vive en su propia tabla, con
+            // sus 50 filas sembradas; RN-S7-06).
             e.HasData(
                 new Plan
                 {
