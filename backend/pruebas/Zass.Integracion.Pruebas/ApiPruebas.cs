@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Routing;
@@ -1959,6 +1959,10 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-11",
             "API-12",
             "API-13",
+            // Reenviar el enlace de verificacion. Hermano de API-13 y de API-14: mismo grupo de
+            // tasa, misma respuesta indistinguible exista o no la cuenta. Falta anadirlo a
+            // api-rest.md con su numero definitivo (el documento vive en OneDrive).
+            "API-13b",
             "API-14",
             "API-15",
             "API-16",

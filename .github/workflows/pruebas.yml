@@ -2,7 +2,14 @@ name: Pruebas
 
 on:
   push:
+    branches: [main, "integracion/**"]
   pull_request:
+
+# Una corrida viva por rama: un push nuevo cancela la corrida anterior de esa rama.
+# En main no se cancela, para no interrumpir la validacion de una fusion.
+concurrency:
+  group: pruebas-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -109,6 +116,10 @@ jobs:
         env:
           ZASS_CADENA_PRUEBAS: Host=127.0.0.1;Port=5432;Database=zass_pruebas;Username=zass;Password=zass_ci_clave_local
         run: dotnet test backend/pruebas/Zass.Integracion.Pruebas --no-build
+
+      - name: Registro de Postgres si las pruebas fallan
+        if: failure()
+        run: docker logs zass-postgres 2>&1 | tail -n 200 || true
 
   frontend:
     runs-on: ubuntu-latest
