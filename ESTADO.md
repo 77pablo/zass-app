@@ -1,6 +1,8 @@
 # ZASS! — estado del desarrollo
 
-**Última sesión:** 14 de noviembre de 2026 (mañana) — ver **«Sesión del 14-nov, mañana»** justo debajo.
+**Última sesión:** 14 de noviembre de 2026 (tarde) — ver **«Sesión del 14-nov-2026 (tarde)»** justo debajo.
+
+**Sesión anterior:** 14 de noviembre de 2026 (mañana), cuando se cerró C3.
 
 **Sesión anterior:** 14 de noviembre de 2026 (madrugada), cuando se cerró C1.
 
@@ -20,6 +22,74 @@ Este archivo existe para retomar sin reconstruir contexto. Dice **qué está hec
 comprobado**, **qué no**, y **el siguiente paso exacto**.
 
 ---
+
+## Sesión del 14-nov-2026 (tarde) — dónde retomar
+
+**`main` está en verde y con TODO fusionado.** Era el bloqueo nº 1 de la lista del lunes 23 y
+está cerrado. Carrera de referencia: **43610418794** (commit del merge de #30), con los números
+leídos del registro, no del color:
+
+| Suite | Hoy | Antes de esta sesión |
+|---|---|---|
+| Aplicación | **848** | 827 |
+| Arquitectura | **20** | 17 |
+| Integración | **777** | 727 |
+| Interfaz | **528** en 39 archivos | 501 en 37 |
+
+Ninguna omitida en ninguna de las tres de backend.
+
+### Lo que se fusionó
+
+Primero la cola que estaba apilada sobre `integracion/13-nov` (**9 PR**: #14 avisos de cita por
+correo, #15 despertar la API, #16 JQ-2, #17, #18, #19 página 404, #20, #21, y **#22 S7 completo:
+cupo fundador + cobro automático**), y luego **#11 `integracion/13-nov` → `main`**, 53 commits,
+que de paso cerró solos #6, #7, #9 y #10.
+
+**El rojo de `main` del 12-nov ya no existe.** Era el techo de conexiones de Postgres en CI
+(PR #9), no un defecto del producto.
+
+### Siete tareas nuevas, hechas por agentes en paralelo y ya en `main`
+
+| PR | Qué entró | Lo que vale de cada una |
+|---|---|---|
+| #23 | Slug `mapa` reservado y desambiguado (`Texto.SlugsReservados`) | El propio código ya decía que una ficha con slug `mapa` era inalcanzable. Se reservó **una** palabra, no una lista «por si acaso»: las demás rutas no son hermanas de `{slug}` |
+| #24 | CI espera a Postgres **por TCP**, no por el socket | Tres carreras rojas con `FATAL: the database system is shutting down`. El bucle de reintentos del 13-nov **tapaba el síntoma**: seguía preguntando por el socket |
+| #25 | xunit 2.5.3 → 2.9.3 | Cierra las **dos** vulnerabilidades altas del proyecto, las dos solo en pruebas. Producción: 0 en backend y 0 en frontend |
+| #26 | `AUDITORIA-INDICES.md` | **SQL propuesto, no aplicado** |
+| #27 | `CLAUDE.md`, `CONTRIBUIR.md`, `DESPLIEGUE-API.md` corregidos | Ver abajo: dos variables de Render que importan |
+| #28 | Azure fuera de la CSP de la API | `img-src` permitía `blob.core.windows.net` sin nada detrás: la API no sirve ni una imagen |
+| #29 | La sonda de salud **ejecuta PostGIS** | Cierra el caso real: `/api/salud/lista` decía «lista» mientras la búsqueda daba 500 |
+| #30 | Manifiesto web e iconos instalables | Sin service worker, a propósito |
+
+### Lo que esta sesión MIDIÓ y conviene no olvidar
+
+1. **`citas.bloque_horario_id` no tiene índice** y su FK es `ON DELETE RESTRICT`: editar la
+   disponibilidad borra cientos de bloques en una sentencia y la sonda de integridad corre fila
+   por fila. Con 10.000 citas acumuladas son ~2.000.000 de filas leídas bajo el bloqueo de la
+   transacción. El SQL está en `AUDITORIA-INDICES.md`, **sin aplicar**: necesita migración, y
+   eso es N3 de Pablo.
+2. **.NET 8 llegó a fin de soporte el 10-nov-2026.** Ya no hay parches de seguridad del runtime.
+   Salto mayor que arrastra EF Core, Npgsql y el resto: decisión de Pablo, no para antes del 23.
+3. **Dos variables de Render que hoy no están puestas y muerden:** sin `Zass:UrlPublica` **no
+   sale ningún correo** y la API arranca igual sin quejarse; y en `Production`, un
+   `Zass:Pasarela` sin poner **hace fallar el arranque a propósito** — con el cobro ya en `main`,
+   el próximo despliegue la necesita o no levanta.
+4. **La instancia viva de Render corre un binario viejo**: su CSP todavía menciona `api.zass.cl`.
+   Nada de lo de hoy llega a producción hasta que haya un Manual Deploy.
+5. **El cupón sembrado es `LANZAMIENTO30`, al 30 %**, y la decisión escrita de Pablo era **20 %**.
+   Hay que resolver cuál manda.
+6. **Nadie ha instalado la PWA en un teléfono físico.** Manifiesto válido ≠ icono correcto en la
+   pantalla de inicio.
+
+### El siguiente paso exacto
+
+1. **De Pablo, y solo suyo:** migrar Neon (van **tres** migraciones pendientes: `CuposFundadorA50`,
+   `NoAsistioQuienFalto` y `CobroIntentosYCupones`), Manual Deploy en Render con las dos variables
+   de arriba, rotar los tres secretos, y el abogado para los textos legales.
+2. **De Joaquín:** su cola nueva está en `PLAN-JOAQUIN.md`, en la raíz. Ninguna de sus tareas
+   depende de que Pablo mire nada antes.
+3. **Lo único grande que queda del producto es la pasarela de verdad.** El camino completo existe
+   pero cobra una simulada. No puede empezar hasta que Pablo elija Flow, Transbank o Mercado Pago.
 
 ## Sesión del 14-nov-2026 (mañana) — dónde retomar
 
