@@ -14,7 +14,7 @@ REM La base se baja con su propia herramienta, no a la fuerza:
 REM matar el proceso deja el cluster marcado como mal cerrado.
 "%RAIZ%herramientas\pgsql\bin\pg_ctl.exe" -D "%RAIZ%datos-pg" stop -m fast >nul 2>&1
 
-echo   Listo. Puertos 5173, 5052 y 5433 libres.
+echo   Listo. Puertos 5173, 7277 y 5433 libres.
 echo.
 pause
 endlocal
