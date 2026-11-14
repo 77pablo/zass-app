@@ -530,7 +530,10 @@ public sealed class ServicioCobros : IServicioCobros
                 // volverle a poner plazo de reserva seria arriesgarse a que el trabajo
                 // diario se lo suelte.
                 _auditor.Registrar(Auditar.Entrada(
-                    "cobro_automatico_iniciado", "intentos_pago", nuevo.Id, _reloj.Ahora,
+                    // La tabla se llama intentos_de_pago. Hay entradas mas viejas en este
+                    // archivo que la llaman «intentos_pago», que no es ninguna tabla; no se
+                    // tocan aqui, pero quedan dichas en el informe.
+                    "cobro_automatico_iniciado", "intentos_de_pago", nuevo.Id, _reloj.Ahora,
                     contexto: new
                     {
                         plan = plan.Codigo,
