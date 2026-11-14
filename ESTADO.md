@@ -1,6 +1,8 @@
 # ZASS! — estado del desarrollo
 
-**Última sesión:** 14 de noviembre de 2026 (tarde) — ver **«Sesión del 14-nov-2026 (tarde)»** justo debajo.
+**Última sesión:** 14 de noviembre de 2026 (noche) — ver **«Sesión del 14-nov-2026 (noche)»** justo debajo. **El sitio público está CERRADO** (mantenimiento), a propósito.
+
+**Sesión anterior:** 14 de noviembre de 2026 (tarde), cuando se fusionó todo a `main`.
 
 **Sesión anterior:** 14 de noviembre de 2026 (mañana), cuando se cerró C3.
 
@@ -22,6 +24,103 @@ Este archivo existe para retomar sin reconstruir contexto. Dice **qué está hec
 comprobado**, **qué no**, y **el siguiente paso exacto**.
 
 ---
+
+## Sesión del 14-nov-2026 (noche) — EL SITIO ESTÁ CERRADO, y el cupo fundador no funcionaba
+
+### 1. `zass.cl` está cerrado al público, comprobado desde fuera
+
+Decisión de Pablo: que nadie entre hasta el lanzamiento, porque hoy se ve una plataforma con
+textos legales en BORRADOR, datos de demostración y sin cobro real.
+
+`frontend/functions/_middleware.js` (PR #35) corre **antes que todo y para toda petición** en
+Cloudflare Pages: páginas, recursos, las Functions de la ficha y del sitemap, y el proxy de
+`/api/*`. Estaba escrito desde el 13-nov en una rama local olvidada (`web/mantenimiento`); se
+rescató, se midió y se subió.
+
+Medido contra `https://zass.cl` después del despliegue:
+
+| Qué se pidió | Qué contesta |
+|---|---|
+| Navegador (`Accept: text/html`) | **503** + «Estamos terminando de construir ZASS!», con `noindex, nofollow`, `no-store` y `Retry-After: 3600` |
+| `fetch` o robot | **503** `application/problem+json`, no la página |
+| `/robots.txt`, `/sitemap.xml`, `/api/*` por zass.cl | **503** |
+| API directa en Render | **200** — sigue viva, el despertador no se rompe |
+
+**Cómo se maneja (y dónde, que es lo que confunde):** las variables van en **Cloudflare Pages**
+(proyecto `zass` → Settings → Variables), NO en Render, que solo corre la API.
+
+- Está **cerrado por omisión**: para abrirlo hay que poner `MANTENIMIENTO=0`.
+- Para mirarlo sin abrirlo: `MANTENIMIENTO_PASE=<algo largo>`, entrar una vez a
+  `zass.cl/?pase=<eso>` y quedan 8 h de cookie. Sin esa variable **no hay puerta de atrás**.
+- **Una variable nueva NO se aplica a un despliegue que ya existe**: hay que volver a desplegar.
+- `wrangler pages deploy` usa **el nombre de la rama en la que estás**. Desplegado desde una rama
+  cualquiera sale una *vista previa* y `zass.cl` no cambia (pasó: el preview daba 503 y
+  producción seguía en 200). Producción exige `--branch main`.
+- Responde **503 y no 200** a propósito: a Google un 503 le dice «vuelve después» y no indexa; un
+  200 con la palabra «mantenimiento» le dice que ESE es el contenido del sitio, y eso queda en el
+  buscador semanas.
+- **Los textos de esa página están pendientes de que Pablo los apruebe.**
+
+### 2. El cupo fundador NO funcionaba, con 1.650 pruebas en verde (PR #32)
+
+Lo encontró un repaso en navegador sobre `main` **después** de fusionar, no una prueba.
+
+El botón «Quiero mi cupo» devolvía **400 · «No se puede cobrar un monto de cero»**. El mes gratis
+hace que la inscripción sea de $0, el servicio creaba el intento con `Monto = 0` —correcto— y
+llamaba a `IniciarCobroAsync`, que empieza con `if (Monto <= 0) → falla`. **El puerto solo sabía
+cobrar, no inscribir**, y las tres pasarelas candidatas rechazan un cobro de cero igual que la
+simulada.
+
+**Segunda mitad del mismo defecto:** `PasarelaSimulada` mandaba a `/pagar/simulado`, que **no es
+ninguna ruta del sitio** (la pantalla vive en `/pago/inscripcion`). Aunque el monto hubiera
+pasado, la persona caía en «Esta página no existe».
+
+**Por qué el verde mentía:** `PasarelaFalsa`, el doble, **no tenía la guarda de monto** que sí
+tiene la pasarela de verdad. Un doble más permisivo que la cosa real no es un doble, es un tapón.
+
+Arreglo: el puerto gana `IniciarInscripcionAsync` y su `SolicitudDeInscripcion` **no lleva
+monto** —así el error no se puede volver a escribir—; la simulada lo implementa y sus direcciones
+salen de `RutaDeLaPantalla`; el doble gana la misma guarda. Medido: el guion
+`cupo-fundador.mjs` recorre el camino entero **19/19 en un navegador de verdad** (antes reventaba
+esperando una navegación que nunca llegaba), y mutar el servicio para que vuelva a cobrar tumba
+**15** pruebas, 13 de ellas viejas que antes pasaban con el producto roto.
+
+### 3. Lo demás que entró esta noche
+
+| PR | Qué |
+|---|---|
+| #33 | «Ver los planes y cuántos cupos quedan» medía 20 px: ahora es botón de 44. Lo trajo el PR #22 de hoy y lo cazó el medidor de `mirar-sitio.mjs` |
+| #34 | El único rojo de `mirar-agendar` era **del arnés**: `isVisible()` no espera y al llegar a Mi ficha la página aún no tiene **ningún** `h1` (medido: `[]` al llegar, el nombre 3 s después) |
+| #31 | Este archivo y `PLAN-JOAQUIN.md` |
+
+**Los 12 guiones de navegador quedan sin un solo rojo**, y `main` en verde con **850 aplicación ·
+20 arquitectura · 781 integración · 529 interfaz en 40 archivos**.
+
+### 4. Limpieza
+
+Cinco ramas locales borradas (`base/cobro`, `c1/guarda-pasarela-prod`, `mut-sonda-postgis`,
+`plan-joaquin-ampliado`, `verificacion-plan`) y tres worktrees viejos. `base/cobro` se revisó
+antes: estaba **por detrás** de `main` y habría reintroducido el dominio de Azure en la CSP y el
+429 con los nombres de campo equivocados. El PR #12 se cerró: lo reemplaza `PLAN-JOAQUIN.md`.
+
+### 5. Lo que sigue abierto, y de quién es
+
+**De Pablo, y nadie más puede:** migrar Neon (**tres** migraciones), Manual Deploy en Render con
+`Zass:UrlPublica` y **`Zass:Pasarela`** —sin la segunda la API **no arranca**, es una guarda a
+propósito—, rotar los tres secretos, decidir si el cupón es 20 % o 30 % (el sembrado dice
+`LANZAMIENTO30`), elegir pasarela, y los textos legales (su papá es abogado).
+
+**De Joaquín:** `PLAN-JOAQUIN.md`, seis tandas, ninguna dependiente de Pablo.
+
+**Sin dueño todavía:**
+
+1. **Un intento de inscripción fallido reserva el cupo 25 minutos** y el contador se ve mordido
+   mientras tanto. Con el botón arreglado ya no pasa en el camino normal; falta decidir si una
+   inscripción abandonada debería soltarlo antes.
+2. **Índice de `citas.bloque_horario_id`** (`AUDITORIA-INDICES.md`): necesita migración, y eso es
+   N3 de Pablo.
+3. **.NET 8 sin soporte desde el 10-nov-2026.** Después del lanzamiento.
+4. **`/mi-ficha` no tiene ningún `h1` mientras carga.** Pequeño, de accesibilidad.
 
 ## Sesión del 14-nov-2026 (tarde) — dónde retomar
 
