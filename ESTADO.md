@@ -115,6 +115,62 @@ contra **el binario viejo**: tres pruebas «fallaban» por código que ya estaba
 fue que una prueba **pasaba al añadirle una línea de diagnóstico**. Desde ahora,
 `dotnet build --no-incremental` antes de creerle a un rojo local.
 
+### Cierre de la sesión del 14-nov (mañana) — todo guardado y empujado
+
+Nada quedó sin commitear: `cupo-fundador` en `f5e295b` y la documentación en `0bf2347`, las dos
+ramas al día con `origin` y los dos árboles de trabajo limpios.
+
+**PR #22** abierto y **MERGEABLE**: `cupo-fundador` → `integracion/13-nov`, con C1 y C3 completos.
+Lleva un comentario con la evidencia de mutación de las 7 pruebas del último empujón, como pide
+`CONTRIBUIR.md`.
+
+**La evidencia de mutación quedó completa, y de dos maneras distintas:**
+
+| Prueba | Cómo se vio en rojo |
+|---|---|
+| Las 3 de `AuditoriaDeCobrosPruebas` | En local. La segunda mutación —etiquetar `cobro_confirmado` como `suscripciones`, que **sí** es una tabla, con el id del intento— cae solo en la tercera prueba, y eso es lo que justifica que exista |
+| 3 de `CobroAutomaticoIntegracionPruebas` | Carrera **43596101562** del CI: 3 caídas, 724 verdes |
+| La cuarta, la del formato de la clave | En local: no toca la base, así que sí corre aquí |
+
+**Y una trampa de la mutación por CI que ya está escrita en `CONTRIBUIR.md`:** la primera carrera
+(**43595940161**) salió roja por donde no quería. Mutar `ClaveDeCobroAutomatico` tumba dos pruebas
+**de aplicación** de C3, y entonces el CI **salta** el paso de integración: las cuatro nuevas no se
+ejecutaron. Para probar una prueba de integración hay que mutar solo lo que esa prueba vigila.
+La rama `mut-*` ya está borrada, en local y en `origin`.
+
+**La auditoría de solo lectura que corrió un agente:** cruzó los dos documentos nuevos de S7 con el
+código, afirmación por afirmación. **77 comprobadas, 0 falsas** en los documentos. Lo que sí
+encontró fueron **dos comentarios del código con números viejos**, arreglados en `9eaf864`:
+
+- `Entidades.cs`, en `Cupon`: decía que el cupón sobre el precio fundador deja **4792**, que es el
+  resultado del **20 %** que Pablo descartó el 13-nov. Con el 30 % vigente deja **4193**.
+- `ZassDbContext.cs`, en la siembra de planes: «fundador son los primeros **20** cupos», cuando se
+  siembran **50** (RN-S7-06). Los datos estaban bien; el comentario no.
+
+Los dos son solo comentarios, pero son los dos sitios donde alguien mira para saber cuánto se
+cobra, y un comentario con el número viejo al lado del código con el nuevo es peor que no tenerlo.
+
+**Lo demás que se cerró en este tramo:**
+
+- **CC-04** pasa a explicar **las dos clases de clave de idempotencia** y por qué no son
+  intercambiables: la que pone el cliente al montar la pantalla (API-68) y la que deriva el
+  servidor del período (RN-S7-12). El cobro tiene las dos, y es el mejor ejemplo de la diferencia.
+- **Las cuentas de la documentación al día**: el diccionario abría diciendo «las 28 tablas» y su
+  propio resumen dice 36; `api-rest.md` decía 71 endpoints y la tabla llega a 76; el README
+  anunciaba el ER en 3 partes cuando hay 4. Y había **dos secciones 3.5** en la matriz desde que
+  se añadió S7: la de S7 pasa a 3.7.
+- **`CONTRIBUIR.md`**: los números de referencia eran del 12-nov (674 + 614 + 16 y 373), ahora
+  827 + 727 + 17 y 501. Una referencia vieja hace inverificable la regla de «todo verde».
+
+**Una tarea que quedó a medias, y no pasa nada:** un segundo agente estaba auditando las pantallas
+de S7 (`/planes`, el pago simulado, la clave de idempotencia generada al montar, los cuatro
+estados) contra el documento y el servidor. Era de solo lectura y se detuvo antes de entregar, así
+que **no escribió nada**: se puede volver a lanzar igual cuando se retome.
+
+**Dónde retomar:** las dos decisiones de Pablo siguen siendo lo que bloquea el cobro de verdad
+—la política de rechazo y `renovacion_automatica`—, y la pasarela real necesita que elija proveedor.
+Todo está en la sección de arriba y en el PR #22.
+
 ### El siguiente paso exacto
 
 1. **Pablo:** lo de la madrugada sigue en pie (mergear **#11** y **#12**, aplicar la migración del
