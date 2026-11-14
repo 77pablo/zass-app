@@ -254,9 +254,14 @@ Cuatro cosas que ya mordieron y conviene tener a mano:
 - **La suite de arquitectura no corre en este PC** por un bloqueo de Windows sobre el DLL recién
   compilado (`FileLoadException 0x800711C7`). Es el punto 9 de §9, y es de Pablo. Mientras no esté,
   esas 16 pruebas las valida GitHub Actions, no tu máquina. **No es un rojo tuyo.**
-- **Agregar una ruta de panel deja roja una prueba a propósito**:
+- **La prueba del mapa del sitio NO te va a avisar de todo, y conviene saber de qué sí.**
   `frontend/src/pruebas-functions/sitemap.prueba.js:206` compara `robots.txt` con las rutas que
-  declara `App.tsx`. Es un rojo esperado hasta que actualices `public/robots.txt`.
+  declara `App.tsx`, pero **solo recoge las que empiezan por `mi-` o `mis-`**:
+  `[...app.matchAll(/path="(mis?-[^"]*)"/g)]` (`:208`), contra la lista a mano
+  `RUTAS_DEL_PANEL = ['/mi-ficha','/mi-agenda','/mis-citas','/mis-resenas']` (`:196`). Si agregas
+  una ruta `mi-algo`, sí se pone roja y es un rojo esperado hasta que actualices
+  `public/robots.txt`. Si agregas cualquier otra —`/interno/...`, por ejemplo— **la prueba se queda
+  verde y no te cubre nada**. Comprobado el 13-nov.
 - **Smart App Control de Windows** puede bloquear en local las DLL de pruebas y `oxlint`. Si pasa,
   dilo: el backend se valida en Actions.
 
@@ -369,8 +374,8 @@ calendario (`Ficha.tsx:162-189`). Las etiquetas se pintan sin explicación (`Fic
 | Qué | Dónde | Detalle |
 |---|---|---|
 | Reservar el alto, para que no salte | `index.css:637-640` | `.hero-rejilla`, `.hero-texto` y `.hero-mapa` no tienen `min-height`: el mapa y las cifras de la portada se insertan al llegar los datos y empujan todo. **Comprobado:** las reglas están ahí; el `min-height` no |
-| La distancia también en la ficha | `Ficha.tsx:114-132` | Al abrir la ficha se pierde el dato por el que se la eligió. La tarjeta la muestra; la ficha no |
-| Desde cuándo está la persona en ZASS! | `Ficha.tsx:114-132` | «Aquí desde noviembre de 2026» vale más que nada cuando todavía no hay reseñas. **Sin comprobar:** no verifiqué que la fecha de alta viaje en el DTO de la ficha. Si no viaja, **para**: añadirla es backend de tu carril, pero mira primero que no pida migración (§2.4.1) |
+| La distancia también en la ficha | `Ficha.tsx:114-132` **y backend** | Al abrir la ficha se pierde el dato por el que se la eligió. La tarjeta la muestra; la ficha no. **Comprobado el 13-nov, y no es solo pantalla:** `FichaPublicaDto` **no tiene** `Distancia` (`Aplicacion/Busqueda/IServicioBusqueda.cs:202-235`; el campo existe solo en `ResultadoDeBusqueda`, `:189`) y el endpoint recibe **solo el slug**, sin coordenadas (`Api/Endpoints/EndpointsIdentidad.cs:353-354`). O sea que hay dos caminos y **eliges tú**: (a) lo barato y sin backend — la tarjeta ya la tiene, así que se pasa en el `state` del `<Link>` y la ficha la pinta si llegó (el patrón de `destino.ts` que usa `Entrar.tsx`), con el borde de que se pierde al recargar o al llegar por enlace directo; (b) añadir el dato al DTO y un parámetro de ubicación al endpoint, que es backend de tu carril. **No pide migración** por ninguno de los dos caminos: la distancia se calcula, no se guarda |
+| Desde cuándo está la persona en ZASS! | `Ficha.tsx:114-132` | «Aquí desde noviembre de 2026» vale más que nada cuando todavía no hay reseñas. **Ya comprobado el 13-nov: el dato SÍ viaja** — `FichaPublicaDto` trae `DateTime? PublicadoEn` (`Aplicacion/Busqueda/IServicioBusqueda.cs:217`). Esto es **solo pantalla**, no hay nada que añadir al backend ni que parar. Ojo con el nombre: es la fecha en que **publicó su ficha**, no la del registro, así que el texto tiene que decir la verdad de eso; y puede venir nula (ficha nunca publicada), caso que la pantalla tiene que resolver sin pintar «Aquí desde invalid date» |
 | Esqueleto mientras carga | `Ficha.tsx:91-97` | Hoy pinta una línea («Cargando la ficha…», `:94`) y después la ficha entera de golpe |
 
 **Listo cuando:**
@@ -379,8 +384,10 @@ calendario (`Ficha.tsx:162-189`). Las etiquetas se pintan sin explicación (`Fic
    DOM sigue siendo artículo → aside (compruébalo con el tabulador, no solo con los ojos).
 2. El promedio enlaza a las reseñas, y el enlace dice cuántas son.
 3. Las credenciales van antes del calendario y traen su explicación.
-4. La ficha dice la distancia cuando se llegó a ella con ubicación, y desde cuándo está la persona
-   —o el PR dice por qué eso último no se pudo.
+4. La ficha dice desde cuándo está la persona (es solo pantalla: el dato ya viaja), y dice la
+   distancia cuando se llegó a ella con ubicación —con el PR diciendo **cuál de los dos caminos**
+   tomaste para la distancia, (a) el `state` del enlace o (b) el DTO, y qué se ve al llegar a la
+   ficha por enlace directo, que es donde el camino (a) no tiene el dato.
 5. Mientras carga hay un esqueleto, y al llegar los datos **nada salta**.
 6. Las pruebas nuevas, con su mutación.
 
@@ -656,9 +663,16 @@ dejaba abierta.** Comprobado hoy:
 credencial dura **30 minutos** (CC-03); nadie revisa la propia (RN-S2-09); y **403 y 404 responden
 igual a propósito**, así que la pantalla no puede dar a entender cuál de los dos fue.
 
-**Y una cuarta, de tu lado:** las rutas nuevas del panel van en `public/robots.txt` y piden
-`noindex`, o la prueba `frontend/src/pruebas-functions/sitemap.prueba.js:206` te deja en rojo. Es
-un rojo que muerde a propósito: no lo silencies, actualiza el archivo.
+**Y una cuarta, de tu lado, que no es la que decía este plan antes del 13-nov: aquí el candado no
+existe y hay que construirlo.** Las rutas nuevas del panel van en `public/robots.txt` y piden
+`noindex`, pero **no esperes ningún rojo que te lo recuerde**: la prueba
+`frontend/src/pruebas-functions/sitemap.prueba.js:206` solo mira las rutas `mi-`/`mis-` (su regex
+es `/path="(mis?-[^"]*)"/g`, `:208`), así que una ruta `/interno/...` **la deja verde**. Y
+`robots.txt` ya trae `Disallow: /interno`, de modo que si tus rutas cuelgan de ahí puede que no
+haya nada que agregar — compruébalo, no lo supongas. **Lo que sí es trabajo tuyo en esta tanda:**
+hacer que la prueba cubra también las rutas internas, ampliando el patrón y `RUTAS_DEL_PANEL`
+(`:196`), de forma que la **próxima** pantalla de panel que alguien agregue no pueda escaparse a
+Google en silencio. Es el mismo candado que ya existe para `mi-*`, extendido a lo que falta.
 
 **Esta tanda no espera a nadie.** Quién va a sellar las credenciales de los primeros 50 es una
 decisión de Pablo (§9.7), pero es una decisión sobre **quién usa** la pantalla, no sobre si se
@@ -672,7 +686,10 @@ construye. Constrúyela.
    de si existe o no.
 4. Existe una prueba de que tomar un caso ya tomado por otro **no lo roba**.
 5. La reserva de 30 minutos se nota en pantalla.
-6. `robots.txt` cubre las rutas nuevas y la prueba del mapa del sitio está verde.
+6. `robots.txt` cubre las rutas nuevas, y la prueba del mapa del sitio **las vigila de verdad**:
+   la ampliaste para que alcance a las rutas internas y lo demostraste con su mutación (agrega una
+   ruta de panel sin ponerla en `robots.txt` y mira que la prueba **caiga**; con la prueba de hoy
+   no cae, y ahí está el punto).
 7. Las pruebas nuevas, con su mutación.
 
 ---
@@ -930,9 +947,21 @@ hacer es dejar la discrepancia callada.
    (`EndpointsResenas.cs:229`), y viven en `:233` y `:245`.
 3. En `frontend/pruebas-navegador/` hay **diez** archivos de guion, no siete.
 
-Y trae tres cosas marcadas como **sin comprobar**, que no se pueden dar por ciertas sin mirarlas:
-si la fecha de alta viaja en el DTO de la ficha (Tanda 2); si la cabecera desborda entre 880 y
-1100 px (Tanda 4); y si la base tiene un `CHECK` sobre `notificaciones.tipo` (Tanda 7).
+Y trae **dos** cosas marcadas como **sin comprobar**, que no se pueden dar por ciertas sin mirarlas:
+si la cabecera desborda entre 880 y 1100 px (Tanda 4); y si la base tiene un `CHECK` sobre
+`notificaciones.tipo` (Tanda 7).
+
+**Tres correcciones más, de la revisión del 13-nov sobre este mismo archivo.** Las dos primeras
+estaban al revés y por eso se dicen aquí además de en su tanda:
+
+4. **La fecha de alta de la ficha SÍ viaja** (`IServicioBusqueda.cs:217`, `DateTime? PublicadoEn`):
+   la Tanda 2 decía «sin comprobar, y si no viaja para». No hay nada que parar, es solo pantalla.
+5. **La distancia en la ficha NO es solo pantalla:** `FichaPublicaDto` no tiene el campo y el
+   endpoint no recibe coordenadas (`IServicioBusqueda.cs:202-235`, `EndpointsIdentidad.cs:353-354`).
+   La Tanda 2 la daba por gratis.
+6. **La prueba del mapa del sitio no vigila las rutas que no empiecen por `mi-`/`mis-`**
+   (`sitemap.prueba.js:208`). Este plan decía antes que cualquier ruta de panel nueva la pondría
+   roja; no es cierto, y la Tanda 8 incluye ampliarla.
 
 ---
 
