@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Lo que deja `wrangler pages deploy`: el Worker compilado de las Functions y sus temporales.
+# Es codigo generado, no fuente. Ademas, sin esto oxlint lo lee y avisa de sus propias lineas.
+.wrangler/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
