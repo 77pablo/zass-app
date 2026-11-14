@@ -396,6 +396,9 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.HasIndex("PerfilPrestadorId", "Estado")
                         .HasDatabaseName("i_x_citas_perfil_prestador_id_estado");
 
+                    b.HasIndex(new[] { "BloqueHorarioId" }, "ix_cita_bloque_horario")
+                        .HasDatabaseName("ix_cita_bloque_horario");
+
                     b.ToTable("citas", t =>
                         {
                             t.HasCheckConstraint("ck_cita_origen", "cita_origen_id IS NULL OR cita_origen_id <> id");
@@ -6734,6 +6737,10 @@ namespace Zass.Infraestructura.Datos.Migraciones
 
                     b.HasIndex("Estado", "VigenteHasta")
                         .HasDatabaseName("i_x_suscripciones_estado_vigente_hasta");
+
+                    b.HasIndex("PerfilPrestadorId", "IniciaEn")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_suscripcion_perfil_inicia");
 
                     b.ToTable("suscripciones");
                 });

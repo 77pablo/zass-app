@@ -534,6 +534,29 @@ public class ZassDbContext : DbContext
             e.HasIndex(x => new { x.PerfilPrestadorId, x.Estado });
             e.HasIndex(x => x.CitaOrigenId);
 
+            // El indice de la clave foranea, que NO es el de arriba.
+            //
+            // PostgreSQL no crea indice al declarar un FOREIGN KEY, y `ux_cita_bloque_activo`
+            // no sirve para esto: es parcial (`estado IN ('Solicitada','Confirmada')`) y el
+            // planificador no puede deducir ese filtro de un `bloque_horario_id = $1`.
+            //
+            // La FK es `RESTRICT` (R-8), asi que PostgreSQL comprueba la tabla de citas ANTES
+            // de dejar borrar cada bloque, y `RepositorioAgenda.QuitarBloquesLibresDeAsync`
+            // borra «hasta cientos de filas» en UNA sentencia: la comprobacion corre una vez
+            // por fila borrada. Medido con `enable_seqscan = off` y EXPLAIN el 14-nov-2026:
+            // sin este indice es Seq Scan. Con 10.000 citas acumuladas, un prestador que
+            // edita su disponibilidad lee ~2.000.000 de filas bajo el bloqueo de la
+            // transaccion. Hoy no se nota porque `citas` tiene 0 filas.
+            //
+            // OJO con la forma de declararlo: `HasIndex(x => x.BloqueHorarioId)` NO sirve aqui.
+            // EF indexa por conjunto de propiedades, asi que esa llamada **reemplaza** al
+            // indice que ya existe sobre la misma columna, y la migracion que genera es un
+            // RenameIndex de `ux_cita_bloque_activo` -> `ix_cita_bloque_horario`: la
+            // restriccion R-1, la que impide la doble reserva, DESAPARECE sin que nadie lo
+            // pida. Visto y descartado el 14-nov-2026 leyendo la migracion generada. La
+            // sobrecarga con nombre crea un indice que convive con el otro.
+            e.HasIndex(new[] { nameof(Cita.BloqueHorarioId) }, "ix_cita_bloque_horario");
+
             // R-8 · no se borra un bloque con cita viva
             e.HasOne(x => x.BloqueHorario).WithOne(bl => bl.Cita)
                 .HasForeignKey<Cita>(x => x.BloqueHorarioId)
@@ -742,6 +765,16 @@ public class ZassDbContext : DbContext
                 .HasFilter("estado IN ('Prueba','Activa')")
                 .HasDatabaseName("ux_suscripcion_vigente");
             e.HasIndex(x => new { x.Estado, x.VigenteHasta });
+
+            // Igual que en `citas`: `ux_suscripcion_vigente` es parcial y no cubre la clave
+            // foranea. Esta FK es `CASCADE`, y ademas esta columna es la de la consulta mas
+            // caliente del producto —«¿este prestador esta al dia?»—, que ordena por
+            // `inicia_en` y toma la primera. Con `inicia_en` descendente de segunda columna,
+            // ese ORDER BY ... LIMIT 1 sale del indice sin ordenar nada.
+            e.HasIndex(x => new { x.PerfilPrestadorId, x.IniciaEn })
+                .IsDescending(false, true)
+                .HasDatabaseName("ix_suscripcion_perfil_inicia");
+
             e.HasOne(x => x.PerfilPrestador).WithMany()
                 .HasForeignKey(x => x.PerfilPrestadorId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Plan).WithMany().HasForeignKey(x => x.PlanId);
