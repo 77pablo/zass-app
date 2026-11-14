@@ -494,9 +494,97 @@ public class ValidacionDeArranquePruebas
     }
 }
 
-/// <summary>/api/salud/lista: lista solo si la base responde, y sin contar nada interno.</summary>
+/// <summary>
+/// /api/salud/lista: lista solo si la base sirve para lo que el producto hace, y sin contar
+/// nada interno. «Sirve» incluye PostGIS: una base que conecta pero no lo tiene deja
+/// /api/buscar en 500, y eso ya paso en produccion con esta ruta diciendo «lista».
+/// </summary>
 public class SaludPruebas
 {
+    private const string BaseSinPostgis = "zass_pruebas_salud_sin_postgis";
+
+    private static string CadenaDeBase(string baseDeDatos) =>
+        new NpgsqlConnectionStringBuilder(Conexion.Cadena) { Database = baseDeDatos }.ConnectionString;
+
+    /// <summary>
+    /// Una base recien creada, vacia y SIN la extension: es exactamente lo que habia en
+    /// produccion. No se migra a proposito, porque la sonda no debe depender de que haya
+    /// tablas; lo unico que la separa de servir es PostGIS.
+    /// </summary>
+    private static void RecrearSinPostgis(string nombre, bool crear)
+    {
+        NpgsqlConnection.ClearAllPools();
+        var mant = new NpgsqlConnectionStringBuilder(Conexion.Cadena) { Database = "postgres" };
+        using var con = new NpgsqlConnection(mant.ConnectionString);
+        con.Open();
+        using (var d = new NpgsqlCommand($"DROP DATABASE IF EXISTS \"{nombre}\" WITH (FORCE)", con))
+            d.ExecuteNonQuery();
+        if (crear)
+            using (var d = new NpgsqlCommand($"CREATE DATABASE \"{nombre}\"", con))
+                d.ExecuteNonQuery();
+    }
+
+    private static void InstalarPostgis(string nombre)
+    {
+        using var con = new NpgsqlConnection(CadenaDeBase(nombre));
+        con.Open();
+        using var d = new NpgsqlCommand("CREATE EXTENSION IF NOT EXISTS postgis", con);
+        d.ExecuteNonQuery();
+    }
+
+    [Fact]
+    public async Task Sin_PostGIS_la_base_conecta_pero_la_sonda_NO_dice_lista()
+    {
+        // El fallo de produccion, reproducido: la base contesta (un SELECT 1 pasaria) y la
+        // busqueda estaria rota. Render tiene que ver 503 y sacar esta replica del rodeo.
+        RecrearSinPostgis(BaseSinPostgis, crear: true);
+        try
+        {
+            using var app = new AplicacionConProxy(cadena: CadenaDeBase(BaseSinPostgis));
+            using var c = app.Cliente();
+
+            // La base responde de verdad: si esto fallara, la prueba de abajo no mediria PostGIS.
+            await using (var con = new NpgsqlConnection(CadenaDeBase(BaseSinPostgis)))
+            {
+                await con.OpenAsync();
+                await using var d = new NpgsqlCommand("SELECT 1", con);
+                Assert.Equal(1, Convert.ToInt32(await d.ExecuteScalarAsync()));
+            }
+
+            var r = await c.GetAsync("/api/salud/lista");
+            var cuerpo = await r.Content.ReadAsStringAsync();
+
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, r.StatusCode);
+            // El motivo va al registro, nunca al cuerpo: la ruta es publica.
+            Assert.Equal("{\"estado\":\"no-lista\"}", cuerpo);
+            Assert.DoesNotContain("postgis", cuerpo, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("ST_", cuerpo, StringComparison.Ordinal);
+            Assert.DoesNotContain(BaseSinPostgis, cuerpo);
+        }
+        finally { RecrearSinPostgis(BaseSinPostgis, crear: false); }
+    }
+
+    [Fact]
+    public async Task Con_PostGIS_en_esa_misma_base_vacia_la_sonda_SI_dice_lista()
+    {
+        // La pareja de la anterior, y lo que demuestra que mide PostGIS y no «base vacia»:
+        // misma base, mismo vacio, solo cambia la extension. De paso fija que la sonda no
+        // depende de las migraciones ni de que haya datos.
+        RecrearSinPostgis(BaseSinPostgis, crear: true);
+        try
+        {
+            InstalarPostgis(BaseSinPostgis);
+            using var app = new AplicacionConProxy(cadena: CadenaDeBase(BaseSinPostgis));
+            using var c = app.Cliente();
+
+            var r = await c.GetAsync("/api/salud/lista");
+
+            Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+            Assert.Equal("lista", (await r.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("estado").GetString());
+        }
+        finally { RecrearSinPostgis(BaseSinPostgis, crear: false); }
+    }
+
     [Fact]
     public async Task Con_la_base_viva_la_sonda_de_lista_responde_200()
     {

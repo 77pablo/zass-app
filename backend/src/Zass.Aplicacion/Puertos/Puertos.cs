@@ -84,7 +84,9 @@ public interface IUnidadDeTrabajo
 }
 
 /// <summary>
-/// La sonda de disponibilidad de /api/salud/lista: ?responde la base de verdad?
+/// La sonda de disponibilidad de /api/salud/lista: ?puede esta replica SERVIR, no solo
+/// conectarse? Una base que acepta conexiones pero no tiene PostGIS deja la busqueda —el
+/// producto entero— en 500, y eso tiene que contar como no-lista.
 ///
 /// Es un puerto y no una consulta dentro del endpoint porque los endpoints no hablan con la
 /// base (la prueba de arquitectura «los endpoints no tocan la base ni los repositorios» lo
