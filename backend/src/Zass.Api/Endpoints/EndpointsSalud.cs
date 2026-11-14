@@ -10,6 +10,9 @@ public static class EndpointsSalud
     /// vive detrás de ISondaDeBase (Zass.Infraestructura): este endpoint no habla con la base.
     /// /api/salud (ya existente) solo dice que el proceso vive.
     ///
+    /// «De verdad» incluye PostGIS, no solo que la base conteste: ya pasó en producción que
+    /// esta ruta dijera «lista» mientras /api/buscar daba 500 porque faltaba la extensión.
+    ///
     /// La respuesta es deliberadamente pobre: «lista» o «no-lista». El motivo (host de la base,
     /// texto del error de Npgsql) lo registra la sonda, nunca el cuerpo: es información que
     /// sirve a quien ataca y esta ruta es pública.
