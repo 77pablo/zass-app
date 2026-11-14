@@ -144,6 +144,16 @@ public partial class ApiPruebas : IAsyncLifetime
     }
 
     [Fact]
+    public async Task La_politica_de_contenido_restringe_connect_src_a_self_sin_dominios_inexistentes()
+    {
+        var respuesta = await _cliente.GetAsync("/api/salud");
+        var csp = string.Join(" ", respuesta.Headers.GetValues("Content-Security-Policy"));
+
+        Assert.Contains("connect-src 'self';", csp);
+        Assert.DoesNotContain("api.zass.cl", csp, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Las_cabeceras_acompanan_tambien_a_una_respuesta_de_error()
     {
         // Si el middleware estuviera despues del enrutado, un 404 saldria desnudo.
