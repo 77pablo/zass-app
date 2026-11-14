@@ -14,6 +14,7 @@ import * as T from '../funciones/resenas/textos'
 import { useSesion } from '../sesion/contexto'
 import { useTitulo } from '../marco/useTitulo'
 import { useMeta } from '../marco/useMeta'
+import { PaginaCargando } from '../marco/PaginaCargando'
 
 const RUTA = '/mis-resenas'
 
@@ -69,7 +70,7 @@ export function MisResenas() {
   }, [])
 
   if (estado === 'cargando') {
-    return <div className="contenedor ficha-pagina"><p className="cargando-linea" role="status">Cargando…</p></div>
+    return <PaginaCargando titulo={T.TITULO} />
   }
   if (estado === 'fuera') return <Navigate to="/entrar" replace state={{ despues: RUTA }} />
 
@@ -84,7 +85,7 @@ export function MisResenas() {
     )
   }
   if (resenas === null) {
-    return <div className="contenedor ficha-pagina"><p className="cargando-linea" role="status">{T.CARGANDO}</p></div>
+    return <PaginaCargando titulo={T.TITULO} aviso={T.CARGANDO} />
   }
 
   return (

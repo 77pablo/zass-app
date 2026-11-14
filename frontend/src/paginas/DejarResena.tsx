@@ -13,6 +13,7 @@ import {
 } from '../funciones/resenas/servicio'
 import { useSesion } from '../sesion/contexto'
 import { useTitulo } from '../marco/useTitulo'
+import { PaginaCargando } from '../marco/PaginaCargando'
 
 type Carga =
   | { tipo: 'cargando' }
@@ -56,13 +57,13 @@ export function DejarResena() {
   }, [])
 
   if (sesion === 'cargando') {
-    return <div className="contenedor ficha-pagina"><p className="cargando-linea" role="status">Cargando…</p></div>
+    return <PaginaCargando titulo="Dejar una reseña" />
   }
   if (sesion === 'fuera') {
     return <Navigate to="/entrar" replace state={{ despues: `/prestadores/${slug}/resena` }} />
   }
   if (carga.tipo === 'cargando') {
-    return <div className="contenedor ficha-pagina"><p className="cargando-linea" role="status">Cargando…</p></div>
+    return <PaginaCargando titulo="Dejar una reseña" />
   }
   if (carga.tipo === 'error') {
     return (

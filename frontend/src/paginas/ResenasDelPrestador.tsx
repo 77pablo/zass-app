@@ -8,6 +8,7 @@ import { resenasPublicas, type ResenaPublica } from '../funciones/resenas/servic
 import { useSesion } from '../sesion/contexto'
 import { useTitulo } from '../marco/useTitulo'
 import { NoEncontrada } from './NoEncontrada'
+import { PaginaCargando } from '../marco/PaginaCargando'
 
 function mensajeDe(e: unknown, porDefecto: string): string {
   return e instanceof ErrorApi ? e.mensaje : porDefecto
@@ -84,7 +85,7 @@ export function ResenasDelPrestador() {
 
   if (carga.tipo === 'no-existe') return <NoEncontrada />
   if (carga.tipo === 'cargando') {
-    return <div className="contenedor ficha-pagina"><p className="cargando-linea" role="status">Cargando reseñas…</p></div>
+    return <PaginaCargando titulo="Reseñas" aviso="Cargando reseñas…" />
   }
   if (carga.tipo === 'error') {
     return (
