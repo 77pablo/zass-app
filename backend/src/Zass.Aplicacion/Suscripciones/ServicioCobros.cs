@@ -230,7 +230,7 @@ public sealed class ServicioCobros : IServicioCobros
             _repo.AgregarIntento(nuevo);
 
             _auditor.Registrar(Auditar.Entrada(
-                "cobro_iniciado", "intentos_pago", nuevo.Id, _reloj.Ahora,
+                "cobro_iniciado", "intentos_de_pago", nuevo.Id, _reloj.Ahora,
                 contexto: new
                 {
                     plan = c.Plan.Codigo,
@@ -530,9 +530,6 @@ public sealed class ServicioCobros : IServicioCobros
                 // volverle a poner plazo de reserva seria arriesgarse a que el trabajo
                 // diario se lo suelte.
                 _auditor.Registrar(Auditar.Entrada(
-                    // La tabla se llama intentos_de_pago. Hay entradas mas viejas en este
-                    // archivo que la llaman «intentos_pago», que no es ninguna tabla; no se
-                    // tocan aqui, pero quedan dichas en el informe.
                     "cobro_automatico_iniciado", "intentos_de_pago", nuevo.Id, _reloj.Ahora,
                     contexto: new
                     {
@@ -660,7 +657,7 @@ public sealed class ServicioCobros : IServicioCobros
                     await _suscripciones.LiberarCupoFundadorAsync(intento.PerfilPrestadorId, t);
 
                 _auditor.Registrar(Auditar.Entrada(
-                    "cobro_rechazado", "intentos_pago", intento.Id, _reloj.Ahora,
+                    "cobro_rechazado", "intentos_de_pago", intento.Id, _reloj.Ahora,
                     contexto: new { motivo = r.MotivoFallo }));
                 await _trabajo.GuardarAsync(t);
 
@@ -678,7 +675,7 @@ public sealed class ServicioCobros : IServicioCobros
             if (r.MontoConfirmado is { } confirmado && confirmado != intento.Monto)
             {
                 _auditor.Registrar(Auditar.Entrada(
-                    "cobro_monto_no_coincide", "intentos_pago", intento.Id, _reloj.Ahora,
+                    "cobro_monto_no_coincide", "intentos_de_pago", intento.Id, _reloj.Ahora,
                     contexto: new { esperado = intento.Monto, confirmado }));
                 await _trabajo.GuardarAsync(t);
                 return Resultado.Falla<ConfirmacionDto>(
@@ -739,7 +736,7 @@ public sealed class ServicioCobros : IServicioCobros
                 await _suscripciones.ConfirmarCupoFundadorAsync(intento.PerfilPrestadorId, t);
 
             _auditor.Registrar(Auditar.Entrada(
-                "cobro_confirmado", "intentos_pago", intento.Id, _reloj.Ahora,
+                "cobro_confirmado", "intentos_de_pago", intento.Id, _reloj.Ahora,
                 contexto: new { monto = intento.Monto, cupon = intento.CodigoCupon }));
 
             await _trabajo.GuardarAsync(t);
