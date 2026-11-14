@@ -72,7 +72,9 @@ public static class Plantillas
              or TipoNotificacion.CitaConfirmada
              or TipoNotificacion.CitaRechazada
              or TipoNotificacion.CitaCancelada
-             or TipoNotificacion.CitaReprogramada;
+             or TipoNotificacion.CitaReprogramada
+             or TipoNotificacion.Recordatorio24h
+             or TipoNotificacion.Recordatorio2h;
 
     /// <summary>
     /// Los que llevan un secreto en la carga. Importa porque de esos el cuerpo se purga en
@@ -126,6 +128,12 @@ public static class Plantillas
         TipoNotificacion.CitaReprogramada => EsParaPrestador(carga)
             ? CitaReprogramadaAlPrestador(nombre, EnlaceDeMisCitas(urlPublica))
             : CitaReprogramadaAlBuscador(nombre, EnlaceDeMisCitas(urlPublica)),
+        TipoNotificacion.Recordatorio24h => EsParaPrestador(carga)
+            ? Recordatorio24hAlPrestador(nombre, EnlaceDeMisCitas(urlPublica))
+            : Recordatorio24hAlBuscador(nombre, EnlaceDeMisCitas(urlPublica)),
+        TipoNotificacion.Recordatorio2h => EsParaPrestador(carga)
+            ? Recordatorio2hAlPrestador(nombre, EnlaceDeMisCitas(urlPublica))
+            : Recordatorio2hAlBuscador(nombre, EnlaceDeMisCitas(urlPublica)),
         _ => null,
     };
 
@@ -393,6 +401,55 @@ public static class Plantillas
         introEnlace: "Puedes revisarla aquí",
         boton: "Ver mis citas", enlace,
         aviso: "Si el horario nuevo no te acomoda, puedes cambiarlo o cancelarlo desde «Mis citas».");
+
+    // ------------------------------------------------------------ recordatorios (JQ-3)
+    //
+    // Misma regla que los avisos de cita: ni fecha, ni hora, ni servicio, ni la otra parte.
+    // «Dentro de las proximas N horas» es cierto en toda la ventana, aunque la pasada llegue tarde.
+
+    /// <summary>RN-S4-07: faltan 24 horas o menos; al buscador.</summary>
+    public static CorreoRenderizado Recordatorio24hAlBuscador(string nombre, string enlace) => AvisoDeCita(
+        asunto: "Recordatorio: tienes una hora en ZASS!",
+        titulo: "Se acerca tu hora",
+        nombre,
+        parrafo: "Te recordamos que tienes una hora agendada dentro de las próximas 24 horas. "
+            + "El detalle está en «Mis citas».",
+        introEnlace: "Puedes verla aquí",
+        boton: "Ver mis citas", enlace,
+        aviso: "Si ya no puedes ir, cancela o cambia la hora desde «Mis citas»: a quien te iba a "
+            + "atender le sirve saberlo con tiempo.");
+
+    /// <summary>RN-S4-07: faltan 24 horas o menos; al prestador.</summary>
+    public static CorreoRenderizado Recordatorio24hAlPrestador(string nombre, string enlace) => AvisoDeCita(
+        asunto: "Recordatorio: tienes una hora agendada en ZASS!",
+        titulo: "Tienes una hora en las próximas 24 horas",
+        nombre,
+        parrafo: "Te recordamos que tienes una hora agendada con un cliente dentro de las próximas "
+            + "24 horas. El detalle está en «Mis citas».",
+        introEnlace: "Puedes verla aquí",
+        boton: "Ver mis citas", enlace,
+        aviso: "Si no vas a poder atender, cancélala desde «Mis citas» lo antes posible: la persona "
+            + "recibirá un aviso.");
+
+    /// <summary>RN-S4-07: faltan 2 horas o menos; al buscador. «Mis citas» no muestra la direccion.</summary>
+    public static CorreoRenderizado Recordatorio2hAlBuscador(string nombre, string enlace) => AvisoDeCita(
+        asunto: "Tu hora en ZASS! es pronto",
+        titulo: "Tu hora es pronto",
+        nombre,
+        parrafo: "Tu hora es dentro de las próximas 2 horas. Revisa el detalle en «Mis citas».",
+        introEnlace: "Puedes verla aquí",
+        boton: "Ver mis citas", enlace,
+        aviso: "Si a última hora no puedes ir, cancela desde «Mis citas» para avisar.");
+
+    /// <summary>RN-S4-07: faltan 2 horas o menos; al prestador.</summary>
+    public static CorreoRenderizado Recordatorio2hAlPrestador(string nombre, string enlace) => AvisoDeCita(
+        asunto: "Tienes una hora pronto en ZASS!",
+        titulo: "Tu próxima hora es pronto",
+        nombre,
+        parrafo: "Tienes una hora con un cliente dentro de las próximas 2 horas. El detalle está en «Mis citas».",
+        introEnlace: "Puedes verla aquí",
+        boton: "Ver mis citas", enlace,
+        aviso: "Si surge un imprevisto, cancela desde «Mis citas»: la persona recibirá un aviso enseguida.");
 
     private static CorreoRenderizado AvisoDeCita(string asunto, string titulo, string nombre,
         string parrafo, string introEnlace, string boton, string enlace, string aviso)
