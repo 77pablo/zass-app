@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="ZASS!">
+  <!-- Version `maskable`: el sistema recorta este cuadrado con la forma que quiera (circulo, gota,
+       cuadrado redondeado). Por eso el amarillo va a sangre, sin esquinas redondeadas, y la Z se
+       dibuja mas chica para caber entera dentro de la zona segura (el circulo central del 80%). -->
+  <rect width="512" height="512" fill="#F6C81E"/>
+  <text x="256" y="346" font-family="Montserrat,Arial,sans-serif" font-size="250"
+        font-weight="800" fill="#1A1A1A" text-anchor="middle">Z</text>
+</svg>

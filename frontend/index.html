@@ -4,7 +4,17 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#07070a" />
+    <!--
+      ZASS! se usa en la calle, desde el celular, despues de tocar una tarjeta NFC: «Agregar a la
+      pantalla de inicio» tiene que dar el nombre y el icono de la marca. El manifiesto va aqui,
+      FUERA de las marcas seo, porque la Function de /prestadores/:slug reemplaza lo de adentro.
+      iOS no lee el manifiesto: por eso ademas el apple-touch-icon.
+      No hay service worker ni cache offline a proposito (ver el PR).
+    -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="ZASS!" />
+    <meta name="theme-color" content="#1A1A1A" />
     <!--
       Lo que va entre las marcas seo:inicio y seo:fin es lo que la Function de /prestadores/:slug reemplaza
       por las etiquetas de cada ficha. NO quites las marcas: sin ellas las fichas salen sin meta (hay una
