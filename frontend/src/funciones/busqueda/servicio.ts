@@ -119,6 +119,8 @@ export interface FichaPublica {
   suscripcionVigente: boolean
   /** Verdadero si no hay sesion: buscar es publico, pero el contacto se ve solo con cuenta. */
   contactoRequiereCuenta?: boolean
+  /** Hay sesion, pero la cuenta no ha verificado su correo: tampoco viaja el contacto. */
+  contactoRequiereCorreoVerificado?: boolean
 }
 
 export function fichaPublica(slug: string): Promise<FichaPublica> {

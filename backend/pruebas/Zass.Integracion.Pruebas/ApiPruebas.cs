@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Routing;
@@ -1184,6 +1184,76 @@ public partial class ApiPruebas : IAsyncLifetime
         Assert.Equal("contacto@soto.cl", contacto.GetProperty("correo").GetString());
         Assert.Equal("https://soto.cl", contacto.GetProperty("sitioWeb").GetString());
         Assert.False(ficha.GetProperty("contactoRequiereCuenta").GetBoolean());
+    }
+
+    /// <summary>
+    /// El muro del contacto exige **correo verificado**, no solo sesion.
+    ///
+    /// <para>
+    /// Lo encontro la auditoria de autorizacion del 14-nov-2026: registrarse es gratis y toma
+    /// treinta segundos, asi que un muro que solo pide «cuenta» cuesta un correo inventado, y
+    /// la lista de telefonos y WhatsApp de todos los prestadores queda a un script de
+    /// distancia. Es exactamente lo que el muro existe para evitar. Verificar el correo ya se
+    /// exige para dejar y para reportar una resena (CU-16, RN-S5-04): aqui faltaba.
+    /// </para>
+    ///
+    /// <para>
+    /// Esta cuenta SI puede entrar —eso es a proposito y no cambia— pero el contacto no viaja,
+    /// y se le dice por que con un campo propio: pedirle «crea tu cuenta» a quien ya tiene una
+    /// seria absurdo.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Con_sesion_pero_SIN_correo_verificado_la_ficha_no_trae_el_contacto()
+    {
+        var slug = await UnaFichaCompletaAsync();
+        var primero = _cliente;
+
+        // Otra persona, con su propia jarra de cookies, que entra SIN verificar su correo.
+        using var sinVerificar = _app.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            HandleCookies = true, AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost"),
+        });
+        _cliente = sinVerificar;
+        try
+        {
+            var correo = NuevoCorreo();
+            Assert.Equal(HttpStatusCode.Created, (await _cliente.PostAsJsonAsync("/api/auth/registro", new
+            {
+                correo, contrasena = "contrasena-larga-1", nombre = "Sin Verificar", rol = "buscador",
+            })).StatusCode);
+
+            // A proposito NO se llama a /api/auth/correo/verificar.
+            Assert.Equal(HttpStatusCode.OK, (await _cliente.PostAsJsonAsync("/api/auth/sesion", new
+            {
+                correo, contrasena = "contrasena-larga-1",
+            })).StatusCode);
+
+            var respuesta = await _cliente.GetAsync($"/api/prestadores/{slug}");
+            Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
+
+            var ficha = (await respuesta.Content.ReadFromJsonAsync<JsonDocument>())!.RootElement;
+            var contacto = ficha.GetProperty("contacto");
+            Assert.Null(contacto.GetProperty("telefono").GetString());
+            Assert.Null(contacto.GetProperty("whatsapp").GetString());
+            Assert.Null(contacto.GetProperty("correo").GetString());
+            Assert.Null(contacto.GetProperty("sitioWeb").GetString());
+
+            // El motivo correcto: no es «te falta cuenta», es «te falta verificar».
+            Assert.True(ficha.GetProperty("contactoRequiereCorreoVerificado").GetBoolean());
+            Assert.False(ficha.GetProperty("contactoRequiereCuenta").GetBoolean());
+
+            // Y el numero no puede estar en NINGUNA parte del texto, que es lo que leeria un
+            // guion que recorre todas las fichas con una cuenta recien inventada.
+            var texto = await (await _cliente.GetAsync($"/api/prestadores/{slug}")).Content.ReadAsStringAsync();
+            Assert.DoesNotContain("1234 5678", texto);
+            Assert.DoesNotContain("912345678", texto);
+            Assert.DoesNotContain("contacto@soto.cl", texto);
+        }
+        finally
+        {
+            _cliente = primero;
+        }
     }
 
     [Fact]

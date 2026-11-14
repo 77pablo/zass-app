@@ -549,6 +549,25 @@ describe('el sitio de varias paginas', () => {
     expect(screen.getByText(/desde \$60\.000/)).toBeInTheDocument()
   })
 
+  it('con sesion pero sin el correo verificado pide VERIFICAR, no crear otra cuenta', async () => {
+    const original = fetch
+    vi.stubGlobal('fetch', vi.fn(async (ruta: string) =>
+      ruta === '/api/prestadores/marcela-soto'
+        ? json({
+          ...FICHA,
+          contacto: { telefono: null, whatsapp: null, correo: null, sitioWeb: null },
+          contactoRequiereCorreoVerificado: true,
+        })
+        : original(ruta)))
+    en('/prestadores/marcela-soto')
+
+    await screen.findByRole('heading', { level: 1, name: 'Marcela Soto' })
+    expect(screen.getByText(/verifica tu correo/i)).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /WhatsApp/ })).not.toBeInTheDocument()
+    // El error facil: a quien YA tiene cuenta no se le puede pedir que se cree una.
+    expect(screen.queryByRole('link', { name: /Crear mi cuenta gratis/ })).not.toBeInTheDocument()
+  })
+
   it('la ficha muestra las credenciales con la etiqueta publica, sin estado interno', async () => {
     en('/prestadores/marcela-soto')
 
