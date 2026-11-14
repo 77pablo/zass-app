@@ -115,7 +115,11 @@ public sealed class PasarelaSimulada : IPasarelaDePagos
                 Fallas.Validacion,
                 $"La confirmación no trae un «{CampoIntento}» que sea un identificador."));
 
-        if (!int.TryParse(aviso.Campo(CampoMonto), out var monto) || monto <= 0)
+        // Cero es un monto VALIDO: es el de una inscripcion de medio de pago (RN-S7-01),
+        // que autoriza el cobro de despues sin cobrar nada. Hasta el 13-nov-2026 esto
+        // exigia monto > 0 y por eso una inscripcion no se podia confirmar nunca por este
+        // adaptador: las pruebas unitarias no lo veian porque su doble no valida el monto.
+        if (!int.TryParse(aviso.Campo(CampoMonto), out var monto) || monto < 0)
             return Task.FromResult(Resultado.Falla<CobroResuelto>(
                 Fallas.Validacion, $"La confirmación no trae un «{CampoMonto}» válido."));
 
