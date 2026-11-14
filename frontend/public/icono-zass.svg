@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="ZASS!">
+  <!-- Icono de la aplicacion: el mismo mark de favicon.svg, a 512. Amarillo #F6C81E, Z en tinta #1A1A1A. -->
+  <rect width="512" height="512" rx="112" fill="#F6C81E"/>
+  <text x="256" y="368" font-family="Montserrat,Arial,sans-serif" font-size="320"
+        font-weight="800" fill="#1A1A1A" text-anchor="middle">Z</text>
+</svg>
