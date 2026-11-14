@@ -5,6 +5,7 @@ using Zass.Aplicacion.Suscripciones;
 using Zass.Dominio.Comun;
 using Zass.Dominio.Identidad;
 using Zass.Dominio.Suscripciones;
+using Zass.Infraestructura.Datos;
 using Zass.Infraestructura.Datos.Repositorios;
 using Zass.Infraestructura.Seguridad;
 
@@ -31,10 +32,7 @@ public sealed class ColeccionCobroConcurrencia
 [Collection(ColeccionCobroConcurrencia.Nombre)]
 public class CobroConcurrenciaIntegracionPruebas : IDisposable
 {
-    private readonly ContextoDePrueba _prueba;
     private readonly List<Guid> _usuariosCreados = new();
-
-    public CobroConcurrenciaIntegracionPruebas() => _prueba = new ContextoDePrueba();
 
     public void Dispose()
     {
@@ -60,14 +58,12 @@ public class CobroConcurrenciaIntegracionPruebas : IDisposable
                     DELETE FROM suscripciones WHERE perfil_prestador_id IN
                         (SELECT id FROM perfiles_prestador WHERE usuario_id = {0});
                     DELETE FROM perfiles_prestador WHERE usuario_id = {0};
-                    DELETE FROM auditoria WHERE usuario_id = {0};
+                    DELETE FROM auditoria WHERE actor_id = {0};
                     DELETE FROM usuarios WHERE id = {0};
                     """,
                     id);
             }
         }
-
-        _prueba.Dispose();
     }
 
     /// <summary>La pasarela, fijada por la prueba: devuelve el veredicto que se le dice.</summary>
@@ -88,14 +84,21 @@ public class CobroConcurrenciaIntegracionPruebas : IDisposable
             Task.FromResult(Resultado.Ok(_veredicto));
     }
 
-    private static ServicioCobros Cobros(ContextoDePrueba ctx, CobroResuelto veredicto)
+    /// <summary>
+    /// Sobre un contexto PLANO (`ContextoDePrueba.Crear()`), nunca sobre `new
+    /// ContextoDePrueba()`: ese abre una transaccion en su constructor para aislar la prueba,
+    /// y entonces `EnTransaccionAsync` ve que ya hay una, no abre la suya y **no commitea**.
+    /// Resultado: nada persiste, el `FOR UPDATE` no serializa a nadie y las dos
+    /// confirmaciones se creen primeras. Me paso, y el CI lo cazo.
+    /// </summary>
+    private static ServicioCobros Cobros(ZassDbContext ctx, CobroResuelto veredicto)
     {
-        var repo = new RepositorioSuscripcionesEfCore(ctx.Ctx);
-        var trabajo = new UnidadDeTrabajoEfCore(ctx.Ctx);
+        var repo = new RepositorioSuscripcionesEfCore(ctx);
+        var trabajo = new UnidadDeTrabajoEfCore(ctx);
         var reloj = new RelojUtc();
-        var auditor = new AuditorEfCore(ctx.Ctx);
+        var auditor = new AuditorEfCore(ctx);
         var suscripciones = new ServicioSuscripciones(
-            repo, trabajo, reloj, auditor, new ColaNotificacionesEfCore(ctx.Ctx));
+            repo, trabajo, reloj, auditor, new ColaNotificacionesEfCore(ctx));
 
         return new ServicioCobros(
             repo, suscripciones, new PasarelaFijada(veredicto), trabajo, reloj, auditor);
@@ -172,6 +175,24 @@ public class CobroConcurrenciaIntegracionPruebas : IDisposable
     // ------------------------------------------------------------------------------
 
     [Fact]
+    public async Task El_indice_que_todo_esto_vigila_EXISTE_en_la_base()
+    {
+        // La leccion de este proyecto: no confiar en que la migracion lo creo. Se mira.
+        using var ctx = ContextoDePrueba.Crear();
+        var conexion = ctx.Database.GetDbConnection();
+        await ctx.Database.OpenConnectionAsync();
+        using var cmd = conexion.CreateCommand();
+        cmd.CommandText =
+            "SELECT indexdef FROM pg_indexes WHERE tablename = 'pagos' AND indexname = 'ux_pago_intento'";
+        var definicion = (string?)await cmd.ExecuteScalarAsync();
+
+        Assert.NotNull(definicion);
+        Assert.Contains("UNIQUE", definicion);
+        Assert.Contains("intento_de_pago_id", definicion);
+        Assert.Contains("IS NOT NULL", definicion);   // parcial, como se diseno
+    }
+
+    [Fact]
     public async Task Dos_confirmaciones_del_MISMO_cobro_a_la_vez_dejan_UN_pago_y_UN_mes()
     {
         var (perfil, suscripcion) = await UnPrestadorPublicadoAsync();
@@ -190,8 +211,8 @@ public class CobroConcurrenciaIntegracionPruebas : IDisposable
         // TomarIntentoAsync y, cuando entra, lee el estado ya cambiado.
         var tareas = Enumerable.Range(0, 2).Select(_ => Task.Run(async () =>
         {
-            using var ctx = new ContextoDePrueba();
-            await ctx.Ctx.Database.OpenConnectionAsync();
+            using var ctx = ContextoDePrueba.Crear();
+            await ctx.Database.OpenConnectionAsync();
             var cobros = Cobros(ctx, veredicto);
             await puerta.Task;
             return await cobros.ConfirmarAsync(
@@ -227,7 +248,7 @@ public class CobroConcurrenciaIntegracionPruebas : IDisposable
         var intento = await UnIntentoPendienteAsync(perfil, suscripcion, 7990);
 
         var veredicto = new CobroResuelto(intento, "ref_1", Aprobado: true, MontoConfirmado: 7990, null);
-        using (var ctx = new ContextoDePrueba())
+        using (var ctx = ContextoDePrueba.Crear())
         {
             var r = await Cobros(ctx, veredicto).ConfirmarAsync(
                 new AvisoDePasarela(new Dictionary<string, string>()));
@@ -267,7 +288,7 @@ public class CobroConcurrenciaIntegracionPruebas : IDisposable
         // La pasarela dice que cobró un peso. Es el aviso manipulado.
         var veredicto = new CobroResuelto(intento, "ref_1", Aprobado: true, MontoConfirmado: 1, null);
 
-        using (var ctx = new ContextoDePrueba())
+        using (var ctx = ContextoDePrueba.Crear())
         {
             var r = await Cobros(ctx, veredicto).ConfirmarAsync(
                 new AvisoDePasarela(new Dictionary<string, string>()));
