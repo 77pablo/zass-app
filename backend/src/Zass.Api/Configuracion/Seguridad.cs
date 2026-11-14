@@ -184,7 +184,9 @@ public static class ConfiguracionDeSeguridad
             cabeceras["Content-Security-Policy"] =
                 "default-src 'self'; "
                 + "img-src 'self' data: https://*.blob.core.windows.net; "
-                + "connect-src 'self' https://api.zass.cl; "
+                // El navegador llama a /api/* en el mismo origen (proxy de Cloudflare Pages / Vite),
+                // asi que 'self' cubre y no se deja un dominio inexistente en la CSP.
+                + "connect-src 'self'; "
                 + "frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
             cabeceras["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload";
             cabeceras["X-Content-Type-Options"] = "nosniff";
