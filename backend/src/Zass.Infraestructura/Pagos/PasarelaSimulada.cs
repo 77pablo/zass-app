@@ -59,6 +59,15 @@ public sealed class PasarelaSimulada : IPasarelaDePagos
     /// </summary>
     public const int MontoQueRechaza = 13;
 
+    /// <summary>
+    /// La pantalla de esta pasarela, tal como la declara <c>App.tsx</c>. Hasta el
+    /// 14-nov-2026 este adaptador mandaba a <c>/pagar/simulado</c>, que NO es ninguna ruta
+    /// del sitio: quien llegaba ahi veia «Esta pagina no existe». Ninguna prueba de C#
+    /// podia verlo, porque las rutas viven en el otro lado; lo caza el guion de navegador
+    /// <c>cupo-fundador.mjs</c>, que recorre el camino entero.
+    /// </summary>
+    public const string RutaDeLaPantalla = "/pago/inscripcion";
+
     /// <summary>Lo que manda la confirmacion para decir que el cobro salio bien.</summary>
     public const string CampoIntento = "intento";
     public const string CampoEstado = "estado";
@@ -93,13 +102,40 @@ public sealed class PasarelaSimulada : IPasarelaDePagos
         // que venga del cliente: una direccion de retorno elegida por quien llama es un
         // redirector abierto con forma de formulario de pago.
         var raiz = (_opciones.Value.UrlPublica ?? "").TrimEnd('/');
-        var url = $"{raiz}/pagar/simulado?{CampoIntento}={solicitud.IntentoDePagoId}"
+        var url = $"{raiz}{RutaDeLaPantalla}?{CampoIntento}={solicitud.IntentoDePagoId}"
                   + $"&{CampoReferencia}={referencia}&{CampoMonto}={solicitud.Monto}";
 
         _registro.LogWarning(
             "Cobro SIMULADO de {Monto} {Moneda} para el intento {Intento}. "
             + "No se cobro nada de verdad.",
             solicitud.Monto, solicitud.Moneda, solicitud.IntentoDePagoId);
+
+        return Task.FromResult(Resultado.Ok(new CobroIniciado(referencia, url)));
+    }
+
+    /// <summary>
+    /// La inscripcion del medio de pago: autoriza y no cobra.
+    ///
+    /// <para>
+    /// No comprueba el monto porque no hay monto que comprobar — <see cref="SolicitudDeInscripcion"/>
+    /// no lo lleva. Esa es la diferencia con <see cref="IniciarCobroAsync"/>, y es la que
+    /// faltaba: el camino del fundador pedia un cobro de cero pesos y esta misma clase lo
+    /// rechazaba, con razon.
+    /// </para>
+    /// </summary>
+    public Task<Resultado<CobroIniciado>> IniciarInscripcionAsync(
+        SolicitudDeInscripcion solicitud, CancellationToken ct = default)
+    {
+        var referencia = $"sim-{Guid.NewGuid():N}"[..20];
+
+        var raiz = (_opciones.Value.UrlPublica ?? "").TrimEnd('/');
+        var url = $"{raiz}{RutaDeLaPantalla}?{CampoIntento}={solicitud.IntentoDePagoId}"
+                  + $"&{CampoReferencia}={referencia}&{CampoMonto}=0";
+
+        _registro.LogWarning(
+            "Inscripcion SIMULADA del medio de pago para el intento {Intento}. "
+            + "No se cobro nada de verdad y no hay ninguna tarjeta inscrita.",
+            solicitud.IntentoDePagoId);
 
         return Task.FromResult(Resultado.Ok(new CobroIniciado(referencia, url)));
     }

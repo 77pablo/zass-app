@@ -305,9 +305,14 @@ public sealed class ServicioCobros : IServicioCobros
         var plan = await _repo.PlanPorIdAsync(intento.PlanId, ct);
         var codigo = plan?.Codigo ?? "desconocido";
 
+        // Un intento de inscripcion se reintenta INSCRIBIENDO. Pedirle un cobro aqui seria
+        // el mismo defecto por la puerta de atras: la pasarela anterior no contesto, se
+        // vuelve a intentar, y la segunda vez falla por monto cero.
         if (intento.Estado == EstadoIntentoPago.Pendiente && intento.ReferenciaPasarela is null
             && plan is not null)
-            return await PedirElCobroAsync(intento, plan, nueva: false, ct);
+            return intento.Tipo == TipoDeIntento.Inscripcion
+                ? await PedirLaInscripcionAsync(intento, plan, nueva: false, ct)
+                : await PedirElCobroAsync(intento, plan, nueva: false, ct);
 
         return Resultado.Ok(ADto(intento, codigo, nueva: false));
     }
@@ -392,7 +397,40 @@ public sealed class ServicioCobros : IServicioCobros
 
         if (intento.ReferenciaPasarela is not null) return await RetomarAsync(intento, ct);
 
-        return await PedirElCobroAsync(intento, plan, nueva: true, ct);
+        return await PedirLaInscripcionAsync(intento, plan, nueva: true, ct);
+    }
+
+    /// <summary>
+    /// La salida a internet de la inscripcion. Hermana de <see cref="PedirElCobroAsync"/>,
+    /// y separada por la misma razon que lo estan en el puerto: aqui no se cobra nada.
+    ///
+    /// <para>
+    /// Hasta el 14-nov-2026 esta llamada era <c>IniciarCobroAsync</c> con monto cero, y la
+    /// pasarela la rechazaba con «No se puede cobrar un monto de cero»: el boton «Quiero mi
+    /// cupo» devolvia 400 y NADIE podia tomar un cupo fundador. Las 1.650 pruebas estaban en
+    /// verde porque el doble de pruebas no tenia la guarda que si tiene la pasarela de
+    /// verdad. Por eso el doble la tiene desde hoy.
+    /// </para>
+    /// </summary>
+    private async Task<Resultado<IntentoDePagoDto>> PedirLaInscripcionAsync(
+        IntentoDePago intento, Plan plan, bool nueva, CancellationToken ct)
+    {
+        var inscripcion = await _pasarela.IniciarInscripcionAsync(
+            new SolicitudDeInscripcion(
+                IntentoDePagoId: intento.Id,
+                Descripcion: $"ZASS! {plan.Nombre} - inscripcion del medio de pago"),
+            ct);
+
+        if (!inscripcion.Exito || inscripcion.Valor is null)
+            return Resultado.Falla<IntentoDePagoDto>(
+                inscripcion.Codigo ?? Fallas.ReglaDeNegocio,
+                inscripcion.Mensaje ?? "La pasarela de pagos no respondió. Vuelve a intentarlo.");
+
+        intento.ReferenciaPasarela = inscripcion.Valor.ReferenciaPasarela;
+        intento.UrlParaPagar = inscripcion.Valor.UrlParaPagar;
+        await _trabajo.GuardarAsync(ct);
+
+        return Resultado.Ok(ADto(intento, plan.Codigo, nueva));
     }
 
     private static IntentoDePagoDto ADto(IntentoDePago i, string codigoPlan, bool nueva) =>

@@ -108,6 +108,50 @@ public class InscripcionFundadorPruebas
         Assert.Equal(49, await _suscripciones.CuposFundadorDisponiblesAsync());
     }
 
+    /// <summary>
+    /// El defecto del 14-nov-2026, fijado. Una inscripcion NO es un cobro de cero pesos: es
+    /// otro camino del puerto. Mientras fue un cobro, la pasarela de verdad respondia «No se
+    /// puede cobrar un monto de cero» y NADIE podia tomar un cupo fundador — con todas las
+    /// pruebas en verde, porque el doble aceptaba el cero que la real rechaza.
+    /// </summary>
+    [Fact]
+    public async Task La_inscripcion_INSCRIBE_y_no_le_pide_ningun_cobro_a_la_pasarela()
+    {
+        var perfil = UnPrestadorConSuscripcion();
+
+        var r = await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k-inscribe");
+
+        Assert.True(r.Exito);
+        Assert.Equal(1, _pasarela.InscripcionesPedidas);
+        Assert.Equal(0, _pasarela.CobrosPedidos);
+        Assert.NotNull(_pasarela.UltimaInscripcion);
+        Assert.Equal(ElIntento().Id, _pasarela.UltimaInscripcion!.IntentoDePagoId);
+    }
+
+    /// <summary>
+    /// El mismo defecto por la puerta de atras: si la pasarela no contesta, el intento queda
+    /// Pendiente y sin referencia, y reintentar con la misma clave tiene que volver a
+    /// INSCRIBIR. Pedir un cobro aqui fallaria por monto cero igual que fallaba antes.
+    /// </summary>
+    [Fact]
+    public async Task Si_la_pasarela_no_contesta_el_reintento_vuelve_a_INSCRIBIR()
+    {
+        var perfil = UnPrestadorConSuscripcion();
+        _pasarela.FallaAlInscribir = true;
+
+        var primera = await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k-reintento");
+        Assert.False(primera.Exito);
+        Assert.Null(ElIntento().ReferenciaPasarela);
+
+        _pasarela.FallaAlInscribir = false;
+        var segunda = await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k-reintento");
+
+        Assert.True(segunda.Exito);
+        Assert.Equal(2, _pasarela.InscripcionesPedidas);
+        Assert.Equal(0, _pasarela.CobrosPedidos);
+        Assert.NotNull(ElIntento().ReferenciaPasarela);
+    }
+
     [Fact]
     public async Task CC_04_el_doble_clic_no_toma_dos_cupos()
     {
