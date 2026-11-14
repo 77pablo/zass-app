@@ -98,6 +98,7 @@ app.MapearSalud();                                    // /api/salud/lista (readi
 app.MapearAgenda();                                    // ANCLAJE MOD-06 Agenda
 
 app.MapearResenas();
+app.MapearSuscripciones();                               // API-66 a API-70 (S7 suscripciones y pagos)
 
 app.MapearVerificacion();
 

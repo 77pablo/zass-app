@@ -8,7 +8,7 @@ import { AvisoDeBorrador } from './AvisoDeBorrador'
 import { DatoLegal } from './DatoLegal'
 import { Privacidad } from './Privacidad'
 import { Terminos } from './Terminos'
-import { BORRADOR_LEGAL, CORREO_PRIVACIDAD, estaPendiente, RESPONSABLE } from './legal'
+import { BORRADOR_LEGAL, estaPendiente, RESPONSABLE } from './legal'
 
 afterEach(() => { document.head.innerHTML = ''; document.title = '' })
 
@@ -66,6 +66,21 @@ describe.each([
 })
 
 describe('Términos', () => {
+  /*
+   * Los Terminos decian «el cobro de la mensualidad todavia no esta activo» mientras
+   * /planes ya decia el precio y el boton ya tomaba cupos. Dos pantallas publicas
+   * contradiciendose, y una de las dos es un documento legal. Esta prueba vigila que no
+   * vuelva a pasar: si alguien reescribe los Terminos diciendo que no se cobra, cae.
+   */
+  it('NO dice que el cobro este inactivo, porque la pagina de planes dice el precio', () => {
+    render(<MemoryRouter><Terminos /></MemoryRouter>)
+
+    const texto = document.body.textContent ?? ''
+    expect(texto).not.toMatch(/todav[ií]a no est[aá] activo/i)
+    expect(texto).toMatch(/primer mes gratis/i)
+    expect(screen.getByRole('link', { name: /planes y precios/i })).toBeInTheDocument()
+  })
+
   it('dice que buscar es gratis y que el profesional paga una mensualidad', () => {
     enRuta(<Terminos />)
     expect(screen.getByText(/Buscar y contactar a alguien no te cuesta nada/)).toBeInTheDocument()
@@ -130,10 +145,22 @@ describe('AvisoDeBorrador', () => {
 })
 
 describe('DatoLegal', () => {
+  /*
+   * Esta prueba vigila el MECANISMO, no qué dato sigue vacío.
+   *
+   * Antes afirmaba `estaPendiente(CORREO_PRIVACIDAD) === true`, o sea codificaba que ese
+   * hueco seguía sin llenar: se puso roja el día que se llenó (14-nov-2026), y se habría
+   * puesto roja otra vez cuando Pablo llene la razón social. Un rojo que aparece porque
+   * alguien AVANZÓ no dice nada de nada, y enseña a ignorar los rojos.
+   *
+   * Lo que sí hay que vigilar está abajo, con literales: que un dato entre corchetes se
+   * reconozca como pendiente y uno real no.
+   */
   it('resalta lo pendiente y deja limpio lo lleno', () => {
-    expect(estaPendiente(RESPONSABLE)).toBe(true)
-    expect(estaPendiente(CORREO_PRIVACIDAD)).toBe(true)
+    expect(estaPendiente('[por completar]')).toBe(true)
+    expect(estaPendiente('[Razón social y RUT por completar]')).toBe(true)
     expect(estaPendiente('Ejemplo SpA, 76.123.456-7')).toBe(false)
+    expect(estaPendiente('somoszaschile@gmail.com')).toBe(false)
 
     const { container, rerender } = render(<DatoLegal valor="[por completar]" />)
     expect(container.querySelector('.legal-pendiente')).toHaveTextContent('[por completar]')

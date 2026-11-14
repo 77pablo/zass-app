@@ -30,9 +30,29 @@ public sealed class Planificador : BackgroundService
 
     internal static readonly Tarea[] Tareas =
     {
+        // Cobrar va ANTES de vencer y avisar, y en la MISMA tarea, por tres razones:
+        //
+        // 1. A quien se le cobra bien ya no hay que avisarle de que se le acaba, y el aviso
+        //    sale de PorVencerAsync, que lee la fecha que el cobro acaba de mover. Al
+        //    reves, se le mandaria un «te queda poco» a quien acaba de pagar.
+        // 2. Una tarea aparte seria otra fila de trabajos_de_fondo con su propia reserva y
+        //    su propio ritmo, y el cobro tiene que correr exactamente una vez al dia, en el
+        //    mismo ciclo que decide quien desaparece de la busqueda.
+        // 3. Si el cobro lanza, no corre el resto y la tarea se reintenta entera. Es lo
+        //    correcto: vencer suscripciones a las que no se les pudo ni intentar cobrar es
+        //    justo el dano que C3 existe para evitar.
+        //
+        // No lo llama ServicioSuscripciones.CorrerDiarioAsync porque ServicioCobros ya
+        // depende de IServicioSuscripciones, y al reves seria una dependencia circular.
         new(Trabajos.Suscripciones, o => TimeSpan.FromHours(o.IntervaloHoras),
             async (sp, ct) =>
-                (await sp.GetRequiredService<IServicioSuscripciones>().CorrerDiarioAsync(ct)).ToString()),
+            {
+                var cobros = await sp.GetRequiredService<IServicioCobros>()
+                    .CobrarVencimientosAsync(ct);
+                var diario = await sp.GetRequiredService<IServicioSuscripciones>()
+                    .CorrerDiarioAsync(ct);
+                return $"{cobros}; {diario}";
+            }),
 
         new(Trabajos.Citas, o => TimeSpan.FromMinutes(o.CitasCadaMinutos),
             async (sp, ct) =>

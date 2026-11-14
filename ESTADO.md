@@ -1,8 +1,12 @@
 # ZASS! — estado del desarrollo
 
-**Última sesión:** 13 de noviembre de 2026 — ver **«Sesión del 13-nov»** justo debajo.
+**Última sesión:** 14 de noviembre de 2026 (mañana) — ver **«Sesión del 14-nov, mañana»** justo debajo.
 
-**Sesión anterior:** 12 de noviembre de 2026 (ver «Sesión del 12-nov» más abajo).
+**Sesión anterior:** 14 de noviembre de 2026 (madrugada), cuando se cerró C1.
+
+**Antes de eso:** 13 de noviembre de 2026 (ver «Sesión del 13-nov» más abajo).
+
+**Sesión anterior a esa:** 12 de noviembre de 2026.
 
 **Sesión anterior a esa:** 9 de noviembre de 2026 (se rescataron las dos ramas de agentes que habían quedado sin
 verificar —`verificacion` y `fondo`—, se construyó el planificador A-09 y **MOD-06 Agenda** entero en el
@@ -16,6 +20,258 @@ Este archivo existe para retomar sin reconstruir contexto. Dice **qué está hec
 comprobado**, **qué no**, y **el siguiente paso exacto**.
 
 ---
+
+## Sesión del 14-nov-2026 (mañana) — dónde retomar
+
+### C3 está CERRADO: el cobro del día 31 existe y lo dispara el planificador
+
+Fusionado de `c3/cobro-del-dia-31` a **`cupo-fundador`**. Era lo último que faltaba del camino
+del dinero: C1 dejaba inscribir el medio de pago y **nadie cobraba nunca**.
+
+Lo dispara **A-09 Planificador**, en la misma tarea diaria que vence suscripciones y avisa, y
+**antes** que ellas: a quien se le acaba de cobrar bien no hay que mandarle un «te queda poco»,
+y el aviso se calcula sobre la fecha que el cobro acaba de mover.
+
+| Decisión | Por qué así |
+|---|---|
+| Cobra **7 días antes** del vencimiento | No es un calendario inventado: es el mayor umbral de aviso que ya existía, leído del mismo sitio. Un rechazo tiene margen en vez de ser «desapareces hoy» (RN-S7-11) |
+| Clave determinista `cobro-automatico:<suscripción>:<vigente-hasta>` | Con la fecha de hoy, dos corridas dentro de la ventana de 7 días cobrarían **dos veces el mismo mes** (RN-S7-12) |
+| Un rechazo **no se reintenta** solo | La política de reintento es decisión de Pablo y no existe (RN-S7-13) |
+| Sin medio inscrito **no se cobra y no se supone nada** | Se cuenta y se audita: un agujero que se ve, no uno que se tapa (RN-S7-14) |
+
+13 pruebas y 15 mutaciones. Dos mutantes no cayeron y el agente **los reemplazó en vez de
+dejarlos pasar**, porque eran equivalentes.
+
+### El hueco de C1 que encontró C3, y que importaba de verdad
+
+La inscripción del medio de pago guardaba su referencia **en el intento y nunca en la
+suscripción**, que es la columna que el cobro recurrente lee. El 23 de diciembre el cobro habría
+recorrido las 50 suscripciones y **no habría cobrado a nadie**: la inscripción servía para tomar
+el cupo y para nada más. Ninguna prueba de C1 lo veía porque todas miraban el intento.
+
+Arreglado en `ServicioSuscripciones.PasarAFundadorConMesGratisAsync`, con el límite escrito al
+lado: **la pasarela simulada devuelve la referencia de la TRANSACCIÓN, y una real devuelve la del
+MEDIO inscrito** (el `tbk_user` de Oneclick). Eso lo tendrá que devolver el adaptador real, y
+está dicho en el documento de S7.
+
+Dos pruebas nuevas, la segunda vigilando el lado que se olvida: **una inscripción rechazada no
+deja medio guardado**, porque si lo dejara el cobro intentaría cobrarle a quien nunca inscribió
+nada.
+
+### La auditoría del cobro nombraba una tabla que no existe
+
+Cuatro entradas de `ServicioCobros` decían que la entidad afectada era `intentos_pago`, y la
+tabla es **`intentos_de_pago`**. Es el **mismo error que el bloqueo de fila** de la madrugada,
+en otro sitio: el SQL crudo reventaba con `42P01`, pero una etiqueta de auditoría no revienta
+nunca. Se habría notado el día que alguien tuviera que explicar un cobro: la consulta por tabla
+no devuelve ni una fila, y la conclusión natural es «no hay rastro de ese cobro».
+
+`AuditoriaDeCobrosPruebas`, 3 pruebas. Es el primer archivo del cobro que le pasa a
+`ServicioCobros` el **mismo** auditor que luego mira; los demás le pasan uno de usar y tirar, y
+por eso ninguno podía ver esto. La tercera prueba comprueba que **el identificador es de la
+tabla que dice ser**, y se ganó su sitio con una mutación: etiquetar `cobro_confirmado` como
+`suscripciones` —que SÍ es una tabla— con el id del intento engaña a las dos primeras y solo
+cae esa.
+
+### La documentación, con dos inconsistencias mías cerradas
+
+- **`clases-05-suscripciones-y-pagos.md`** existe: **CL-26 a CL-32**, las siete clases de S7, que
+  eran el único subsistema sin diagrama de clases. La matriz decía **4 clases y un total de 29**
+  cuando en el código son **siete**: corregido a 7 y 32, y su §3.1 pasa a llamarse «las 25 clases
+  de S1 a S6» porque las de S7 no tienen caso de uso que las pida —eso es el hallazgo de su §3.5,
+  no un hueco—.
+- **S7 pasa de tres operaciones a cuatro** (cotizar, iniciar, **cobrar lo que vence**, confirmar),
+  con una §2.1 nueva y **RN-S7-11 a RN-S7-14**. Su §9 decía que «el cobro del día 31 no existe»,
+  que desde hoy es falso: ahora lo que queda abierto ahí es la pasarela real, la política de
+  rechazo y `renovacion_automatica`.
+- **A-09 en `beneficiarios.md`**: es el único actor que mueve dinero sin que haya nadie delante, y
+  eso no estaba dicho.
+- Comprobado con el guion nuevo **`mirar-diagramas.mjs`** en un navegador de verdad: 10 páginas,
+  **42 diagramas, 0 con problemas**; `clases.html` pasa de 5 a 7 diagramas y el de S7 renderiza
+  con su nodo nuevo. Ese guion existe porque **un error de sintaxis de Mermaid también dibuja un
+  SVG**, así que buscar SVG no comprueba nada.
+
+### Dos decisiones que te esperan, y bloquean el cobro de verdad
+
+1. **La política de rechazo.** Cuando la tarjeta se rechaza el 16 de diciembre: ¿se reintenta
+   solo —cuántas veces, cada cuántos días— o queda en manos de la persona? Y los «3 días de
+   gracia»: ¿son visibilidad extra **después** del vencimiento, o margen **antes** de darlo por
+   perdido? ¿Correo propio de «no pudimos cobrarte»?
+2. **`RenovacionAutomatica` es `false` para todo el mundo** y el panel lo muestra. El cobro **no
+   la consulta**, porque si la consultara no cobraría a nadie. ¿Se pone en `true` al inscribir y
+   el cobro la respeta, o se saca de la pantalla? Tenerla visible y sin efecto es lo peor de las
+   tres opciones.
+
+### Los números, con el CI como autoridad
+
+Carrera **43585114349** en verde sobre `cupo-fundador`: **824** de aplicación, **17** de
+arquitectura y **723** de integración, cero fallos. Con las 3 de la auditoría, la suite de
+aplicación va en **827** en local, y la carrera **43595018358** quedó en curso al escribir esto.
+
+### Una trampa del entorno que costó tres rojos falsos
+
+El bloqueo de Windows impide copiar el DLL de producción recién compilado, así que la suite corría
+contra **el binario viejo**: tres pruebas «fallaban» por código que ya estaba arreglado. La pista
+fue que una prueba **pasaba al añadirle una línea de diagnóstico**. Desde ahora,
+`dotnet build --no-incremental` antes de creerle a un rojo local.
+
+### Cierre de la sesión del 14-nov (mañana) — todo guardado y empujado
+
+Nada quedó sin commitear: `cupo-fundador` en `f5e295b` y la documentación en `0bf2347`, las dos
+ramas al día con `origin` y los dos árboles de trabajo limpios.
+
+**PR #22** abierto y **MERGEABLE**: `cupo-fundador` → `integracion/13-nov`, con C1 y C3 completos.
+Lleva un comentario con la evidencia de mutación de las 7 pruebas del último empujón, como pide
+`CONTRIBUIR.md`.
+
+**La evidencia de mutación quedó completa, y de dos maneras distintas:**
+
+| Prueba | Cómo se vio en rojo |
+|---|---|
+| Las 3 de `AuditoriaDeCobrosPruebas` | En local. La segunda mutación —etiquetar `cobro_confirmado` como `suscripciones`, que **sí** es una tabla, con el id del intento— cae solo en la tercera prueba, y eso es lo que justifica que exista |
+| 3 de `CobroAutomaticoIntegracionPruebas` | Carrera **43596101562** del CI: 3 caídas, 724 verdes |
+| La cuarta, la del formato de la clave | En local: no toca la base, así que sí corre aquí |
+
+**Y una trampa de la mutación por CI que ya está escrita en `CONTRIBUIR.md`:** la primera carrera
+(**43595940161**) salió roja por donde no quería. Mutar `ClaveDeCobroAutomatico` tumba dos pruebas
+**de aplicación** de C3, y entonces el CI **salta** el paso de integración: las cuatro nuevas no se
+ejecutaron. Para probar una prueba de integración hay que mutar solo lo que esa prueba vigila.
+La rama `mut-*` ya está borrada, en local y en `origin`.
+
+**La auditoría de solo lectura que corrió un agente:** cruzó los dos documentos nuevos de S7 con el
+código, afirmación por afirmación. **77 comprobadas, 0 falsas** en los documentos. Lo que sí
+encontró fueron **dos comentarios del código con números viejos**, arreglados en `9eaf864`:
+
+- `Entidades.cs`, en `Cupon`: decía que el cupón sobre el precio fundador deja **4792**, que es el
+  resultado del **20 %** que Pablo descartó el 13-nov. Con el 30 % vigente deja **4193**.
+- `ZassDbContext.cs`, en la siembra de planes: «fundador son los primeros **20** cupos», cuando se
+  siembran **50** (RN-S7-06). Los datos estaban bien; el comentario no.
+
+Los dos son solo comentarios, pero son los dos sitios donde alguien mira para saber cuánto se
+cobra, y un comentario con el número viejo al lado del código con el nuevo es peor que no tenerlo.
+
+**Lo demás que se cerró en este tramo:**
+
+- **CC-04** pasa a explicar **las dos clases de clave de idempotencia** y por qué no son
+  intercambiables: la que pone el cliente al montar la pantalla (API-68) y la que deriva el
+  servidor del período (RN-S7-12). El cobro tiene las dos, y es el mejor ejemplo de la diferencia.
+- **Las cuentas de la documentación al día**: el diccionario abría diciendo «las 28 tablas» y su
+  propio resumen dice 36; `api-rest.md` decía 71 endpoints y la tabla llega a 76; el README
+  anunciaba el ER en 3 partes cuando hay 4. Y había **dos secciones 3.5** en la matriz desde que
+  se añadió S7: la de S7 pasa a 3.7.
+- **`CONTRIBUIR.md`**: los números de referencia eran del 12-nov (674 + 614 + 16 y 373), ahora
+  827 + 727 + 17 y 501. Una referencia vieja hace inverificable la regla de «todo verde».
+
+**Una tarea que quedó a medias, y no pasa nada:** un segundo agente estaba auditando las pantallas
+de S7 (`/planes`, el pago simulado, la clave de idempotencia generada al montar, los cuatro
+estados) contra el documento y el servidor. Era de solo lectura y se detuvo antes de entregar, así
+que **no escribió nada**: se puede volver a lanzar igual cuando se retome.
+
+**Dónde retomar:** las dos decisiones de Pablo siguen siendo lo que bloquea el cobro de verdad
+—la política de rechazo y `renovacion_automatica`—, y la pasarela real necesita que elija proveedor.
+Todo está en la sección de arriba y en el PR #22.
+
+### El siguiente paso exacto
+
+1. **Pablo:** lo de la madrugada sigue en pie (mergear **#11** y **#12**, aplicar la migración del
+   cobro, **migrar Neon**, encender `Zass:Verificacion:PermitirSinDocumentos` en Render, desplegar
+   `web/mantenimiento`), **más las dos decisiones de arriba**, que son las que separan a esto de
+   cobrar de verdad.
+2. **Claude:** la pasarela real es lo único que falta del camino del dinero, y necesita que Pablo
+   elija proveedor (Transbank, Flow o Mercado Pago) y abra la cuenta. Mientras no esté, el cobro
+   automático corre entero contra la simulada y **no entra un peso**.
+3. **Joaquín:** sus doce tandas en `PLAN-JOAQUIN.md`.
+
+## Sesión del 14-nov-2026 (madrugada) — dónde retomar
+
+### C1 está CERRADO: el cupo fundador funciona de punta a punta
+
+Las once tareas del plan `docs/superpowers/plans/2026-11-13-cupo-fundador.md`, en la rama
+**`cupo-fundador`**, con el **CI en verde**: **810** pruebas de aplicación, **17** de
+arquitectura y **722** de integración, cero fallos. Cada prueba nueva con su mutación.
+
+| Tarea | Qué quedó |
+|---|---|
+| 1 | El doble en memoria con los 11 miembros nuevos del repositorio |
+| 2 | La migración `20261114012145_CobroIntentosYCupones`: tres tablas, `ux_pago_intento`, y el cupón **LANZAMIENTO30 al 30 %**. **SIN APLICAR a ninguna base** |
+| 3-5 | 17 pruebas de cotizar, 12 de iniciar, 10 de confirmar |
+| 6 | La guarda: la pasarela simulada ya **no arranca en Producción** (su comentario lo prometía y el `switch` no lo cumplía) |
+| 7 | La inscripción con cobro **$0** confirma el cupo y arranca el mes gratis (RN-S7-01, 03 y 07) |
+| 8 | **API-66 a API-70** y 9 pruebas por HTTP. Son cinco y no cuatro: la inscripción va aparte del cobro |
+| 9 | La página **`/planes`** con el contador «quedan N de 50», el cupón y sus cuatro estados, más `PagoSimulado` y `PlanesListo`. 12 pruebas |
+| 10 | El documento rector de **S7**, que no existía |
+| 11 | Las pruebas contra PostgreSQL y el guion de navegador |
+
+### El defecto de producción que encontró la tarea 11
+
+`RepositorioSuscripciones.cs:146` hacía `SELECT * FROM intentos_pago … FOR UPDATE` y la tabla
+se llama **`intentos_de_pago`**: el **bloqueo de fila que impide que dos confirmaciones del
+mismo cobro regalen dos meses reventaba con `42P01`** en cuanto se usaba de verdad.
+
+Es SQL crudo —el compilador no lo ve— y ninguna prueba en memoria podía verlo, porque su doble
+devuelve el mismo objeto sin tocar la base. **Lo cazó la primera prueba que lo corrió contra
+PostgreSQL**, una hora después de escribirla. Es justo para lo que existía la tarea 11.
+
+Y dos fallos de las pruebas nuevas, del mismo tipo y encontrados igual:
+`new ContextoDePrueba()` **abre una transacción en su constructor**, así que `EnTransaccionAsync`
+no abría la suya y **no commiteaba nada** (las dos confirmaciones se creían primeras); y la
+columna de auditoría es `actor_id`, no `usuario_id`. Las pruebas de concurrencia ahora incluyen
+una que **mira `pg_indexes`** antes de confiar en que `ux_pago_intento` existe.
+
+### La documentación: documento nuevo, y por fin con historial
+
+- **`subsistema-7-suscripciones-y-pagos.md`** existe, con **RN-S7-01 a RN-S7-10** y las dos
+  excepciones de seguridad escritas (API-70 sin CSRF ni sesión; un aviso repetido responde 200).
+- **API-66 a API-70** en `api-rest.md`: el contrato pasa de 71 a **76**.
+- **TBL-33 a TBL-36** en el diccionario (ni los cupos fundador estaban documentados): de 32 a **36**.
+- El actor **A-11 Pasarela de pago** y una **columna S7** en la matriz de actores, que no existía.
+- **Ojo:** el documento **no llegaba al HTML** hasta registrarlo en `sitio/construir.py`. El
+  script decía «Listo» y la página no tenía el texto. Comprobado ahora buscando seis textos
+  **dentro** del HTML generado.
+- La carpeta de documentación **ya es un repositorio git** y está en GitHub, privado:
+  `https://github.com/77pablo/zass-documentacion`. Antes no tenía historial de ninguna clase.
+
+### Lo demás que se movió
+
+- **El sitio se puede cerrar**: rama `web/mantenimiento`, un `_middleware.js` de Cloudflare Pages
+  que responde **503** (no 200, para que Google no indexe «en mantenimiento») con un pase para
+  mirar el sitio por dentro. **Encendido por omisión**: para abrirlo hay que poner
+  `MANTENIMIENTO=0` en Cloudflare. 10 pruebas, tres mutaciones. **Sin desplegar.**
+- **`/planes` ya se puede encontrar**: antes nada la enlazaba. Ahora está en el pie y en
+  `/profesionales`, que además **dice el precio por primera vez** en una pantalla pública.
+- **`legal.ts`**: llenos el correo de privacidad (Ley 21.719) y la lista de proveedores con su
+  país. Siguen pendientes **la razón social con RUT y el plazo de los registros**, y
+  `BORRADOR_LEGAL` sigue en `true` hasta que un abogado revise las dos páginas.
+- **PR #13 fusionado** (de otra IA): `aggregateRating` en el JSON-LD de la ficha desde 3 reseñas
+  (RN-S5-11), con cinco mutaciones comprobadas.
+- **El CI tenía un fallo intermitente propio**, no del código: Postgres arranca dos veces
+  (initdb levanta un servidor temporal y lo apaga) y el paso del techo de conexiones llegaba en
+  el apagón. Arreglado con reintento, en `cupo-fundador` y en `integracion/13-nov`.
+- `docs-frontend` y `docs-raiz`, que llevaban dos días **solo en local**, ya están en `origin`.
+
+### Dos cosas del entorno que bloquean, y son de Pablo
+
+1. **Windows bloquea los DLL de prueba de .NET recién compilados** en este PC:
+   `FileLoadException 0x800711C7`, «una directiva de Control de aplicaciones bloqueó este
+   archivo». Comprobado en las dos direcciones: con el DLL del 12-nov pasan 17/17; con uno
+   nuevo, caen antes de ejecutar nada. **Mientras siga así, el CI es la única autoridad sobre el
+   backend.** Se arregla excluyendo la carpeta del repositorio en Seguridad de Windows.
+2. **Otra IA trabaja en la carpeta `zass-app-1` y cambia de rama.** Por eso Claude se mudó a su
+   propio worktree, `zass-wt-c1`.
+
+### El siguiente paso exacto
+
+1. **Pablo:** mergear **#11** (52 commits, CI verde) y **#12** (el plan de Joaquín);
+   **aplicar la migración** del cobro y **migrar Neon** (producción sigue con 20 cupos y le
+   faltan tres migraciones en orden); **encender `Zass:Verificacion:PermitirSinDocumentos` en
+   Render**; **desplegar `web/mantenimiento`** si quiere el sitio cerrado; y decidir si se honra
+   el booleano de `MarcarPagado` o se documenta como defensa redundante.
+2. **Claude:** C3, el cobro del día 31 —lo está construyendo un agente en
+   `c3/cobro-del-dia-31`—. **Fecha límite real: 23 de diciembre de 2026**, cuando se le termina
+   el mes gratis a quien tome su cupo el 23 de noviembre. Si no existe para entonces, los
+   fundadores desaparecen de la búsqueda sin que nadie les haya cobrado un peso.
+3. **Joaquín:** sus doce tandas en `PLAN-JOAQUIN.md`, empezando por las cuatro ramas de rescate
+   `web/*`, que ya están en `origin`.
 
 ## Sesión del 13-nov-2026 — dónde retomar
 

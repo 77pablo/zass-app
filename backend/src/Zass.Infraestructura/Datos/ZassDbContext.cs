@@ -62,6 +62,9 @@ public class ZassDbContext : DbContext
     public DbSet<Suscripcion> Suscripciones => Set<Suscripcion>();
     public DbSet<Pago> Pagos => Set<Pago>();
     public DbSet<CupoFundador> CuposFundador => Set<CupoFundador>();
+    public DbSet<IntentoDePago> IntentosDePago => Set<IntentoDePago>();
+    public DbSet<Cupon> Cupones => Set<Cupon>();
+    public DbSet<CanjeDeCupon> CanjesDeCupon => Set<CanjeDeCupon>();
 
     // Transversal
     public DbSet<Notificacion> Notificaciones => Set<Notificacion>();
@@ -685,8 +688,9 @@ public class ZassDbContext : DbContext
             // TBL-02. Sin el de prueba, IniciarPruebaAsync no tiene con que arrancar
             // y NADIE llegaria nunca a estar vigente: con RN-S3-09, eso seria una
             // busqueda permanentemente vacia. Los de pago son la salida de la
-            // prueba: mensual es el precio normal; fundador son los primeros 20
-            // cupos a precio de lanzamiento (el cupo vive en su propia tabla).
+            // prueba: mensual es el precio normal; fundador son los primeros 50
+            // cupos a precio de lanzamiento (el cupo vive en su propia tabla, con
+            // sus 50 filas sembradas; RN-S7-06).
             e.HasData(
                 new Plan
                 {
@@ -748,9 +752,120 @@ public class ZassDbContext : DbContext
             e.HasKey(x => x.Id);
             e.Property(x => x.Estado).HasConversion<string>().HasMaxLength(20);
             e.Property(x => x.Moneda).HasMaxLength(3);
+            e.Property(x => x.ReferenciaPasarela).HasMaxLength(100);
             e.HasIndex(x => new { x.SuscripcionId, x.CreadoEn });
             e.HasOne(x => x.Suscripcion).WithMany(s => s.Pagos)
                 .HasForeignKey(x => x.SuscripcionId).OnDelete(DeleteBehavior.Cascade);
+
+            // LA restriccion que hace que la misma confirmacion no regale dos meses. No es
+            // una comprobacion en C# que una condicion de carrera pueda saltarse: es la
+            // base negandose a insertar un segundo pago para el mismo intento.
+            //
+            // Parcial porque la columna es nula en los pagos registrados a mano, y sin el
+            // filtro dos nulos chocarian... en realidad no, PostgreSQL considera distintos
+            // dos NULL en un unico. El filtro esta igual para que el indice solo cubra las
+            // filas que importan y se lea en el catalogo que es exactamente eso.
+            e.HasIndex(x => x.IntentoDePagoId).IsUnique()
+                .HasFilter("intento_de_pago_id IS NOT NULL")
+                .HasDatabaseName("ux_pago_intento");
+        });
+
+        b.Entity<IntentoDePago>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Estado).HasConversion<string>().HasMaxLength(20);
+            // Como texto y no como numero: una fila de pagos se lee a mano mas veces de
+            // las que uno cree, y «Inscripcion» se entiende y un 1 no.
+            e.Property(x => x.Tipo).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.Moneda).HasMaxLength(3);
+            e.Property(x => x.Pasarela).HasMaxLength(30).IsRequired();
+            e.Property(x => x.ClaveIdempotencia).HasMaxLength(120).IsRequired();
+            e.Property(x => x.CodigoCupon).HasMaxLength(30);
+            e.Property(x => x.ReferenciaPasarela).HasMaxLength(100);
+            e.Property(x => x.UrlParaPagar).HasMaxLength(500);
+            e.Property(x => x.MotivoFallo).HasMaxLength(300);
+
+            // CC-04, R-18: la clave de idempotencia es unica y por eso el doble envio del
+            // mismo formulario no puede producir dos cobros.
+            e.HasIndex(x => x.ClaveIdempotencia).IsUnique()
+                .HasDatabaseName("ux_intento_pago_clave");
+            e.HasIndex(x => new { x.PerfilPrestadorId, x.CreadoEn });
+
+            // Los tres montos tienen que contar la misma historia. Sin esto, un intento
+            // podria quedar con descuento mayor que el precio, o con un total que no es la
+            // resta de los otros dos, y nadie se enteraria hasta mirar la factura.
+            e.ToTable(t => t.HasCheckConstraint(
+                "ck_intento_pago_montos",
+                "monto_bruto >= 0 AND monto_descuento >= 0 "
+                + "AND monto_descuento <= monto_bruto AND monto = monto_bruto - monto_descuento"));
+
+            // Descuento sin cupon, o cupon sin descuento, son dos estados imposibles: el
+            // descuento SOLO existe porque hay un cupon detras, y un cupon de 0 % no se
+            // guarda (el porcentaje tiene su propio CHECK en cupones).
+            e.ToTable(t => t.HasCheckConstraint(
+                "ck_intento_pago_cupon",
+                "(codigo_cupon IS NULL AND monto_descuento = 0) "
+                + "OR (codigo_cupon IS NOT NULL AND monto_descuento > 0)"));
+
+            e.HasOne(x => x.Suscripcion).WithMany()
+                .HasForeignKey(x => x.SuscripcionId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Plan).WithMany().HasForeignKey(x => x.PlanId);
+        });
+
+        b.Entity<Cupon>(e =>
+        {
+            e.HasKey(x => x.Codigo);
+            e.Property(x => x.Codigo).HasMaxLength(30);
+            e.Property(x => x.Descripcion).HasMaxLength(200);
+
+            // 1..100. Un cupon del 0 % no descuenta nada y uno de mas de 100 regalaria
+            // dinero; los dos son errores de quien crea el cupon, no desenlaces posibles.
+            e.ToTable(t => t.HasCheckConstraint(
+                "ck_cupon_porcentaje",
+                "porcentaje_descuento > 0 AND porcentaje_descuento <= 100"));
+
+            // El cupon del lanzamiento, sembrado con el esquema como los planes: 30 % sobre
+            // el primer mes PAGADO (decision de Pablo, 13-nov-2026; el 12-nov habia dicho
+            // 20 % y lo subio). Sobre el mensual de 7990 son 2397 y el total queda en 5593;
+            // sobre el fundador congelado de 5990 son 1797 y el total 4193.
+            //
+            // El codigo dice el porcentaje a proposito: un LANZAMIENTO20 que descontara 30
+            // seria una trampa para quien lea esta fila en seis meses.
+            //
+            // La FECHA es la unica cosa de esta fila que Pablo todavia no confirmo. Se puso
+            // al 31 de marzo de 2027 para que el cupon exista y el flujo se pueda usar;
+            // cambiarla es un UPDATE de una celda, no una migracion.
+            e.HasData(new Cupon
+            {
+                Codigo = "LANZAMIENTO30",
+                Descripcion = "30 % de descuento sobre el primer mes pagado.",
+                PorcentajeDescuento = 30,
+                VenceEn = new DateTime(2027, 3, 31, 23, 59, 59, DateTimeKind.Utc),
+                Activo = true,
+            });
+        });
+
+        b.Entity<CanjeDeCupon>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.CodigoCupon).HasMaxLength(30).IsRequired();
+
+            // Un cupon por cuenta y para siempre. Sobre el PERFIL y no sobre la pareja
+            // (cupon, perfil): el descuento es del primer mes que se paga, que ocurre una
+            // sola vez en la vida de la cuenta, y la pareja permitiria encadenar codigos el
+            // dia que haya dos.
+            e.HasIndex(x => x.PerfilPrestadorId).IsUnique()
+                .HasDatabaseName("ux_canje_cupon_perfil");
+
+            // Un pago lleva un canje como maximo: dos descuentos sobre el mismo cobro no
+            // son nada que se pueda explicar en una factura.
+            e.HasIndex(x => x.PagoId).IsUnique().HasDatabaseName("ux_canje_cupon_pago");
+
+            e.HasOne(x => x.Cupon).WithMany().HasForeignKey(x => x.CodigoCupon);
+            e.HasOne(x => x.Pago).WithMany().HasForeignKey(x => x.PagoId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<PerfilPrestador>().WithMany().HasForeignKey(x => x.PerfilPrestadorId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<CupoFundador>(e =>

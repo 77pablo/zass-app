@@ -182,6 +182,74 @@ public sealed class RepositorioSuscripcionesEnMemoria : IRepositorioSuscripcione
         }
     }
 
+    // ------------------------------------------------------- TBL-36 intentos de pago
+    //
+    // Los nombres y la semantica se copiaron de RepositorioSuscripciones.cs, no se
+    // inventaron: un doble que significa otra cosa que la consulta real hace pasar
+    // pruebas que no valen.
+
+    public Task<IntentoDePago?> IntentoPorIdAsync(Guid id, CancellationToken ct = default) =>
+        Task.FromResult(_base.IntentosDePago.FirstOrDefault(i => i.Id == id));
+
+    public Task<IntentoDePago?> IntentoPorClaveAsync(
+        string clave, CancellationToken ct = default) =>
+        Task.FromResult(_base.IntentosDePago.FirstOrDefault(i => i.ClaveIdempotencia == clave));
+
+    /// <summary>
+    /// En memoria no hay <c>FOR UPDATE</c>: devuelve el mismo objeto. Que la segunda
+    /// confirmacion ESPERE de verdad en el bloqueo de fila solo lo puede probar
+    /// integracion, contra PostgreSQL.
+    /// </summary>
+    public Task<IntentoDePago?> TomarIntentoAsync(Guid id, CancellationToken ct = default) =>
+        IntentoPorIdAsync(id, ct);
+
+    public void AgregarIntento(IntentoDePago intento) => _base.IntentosDePago.Add(intento);
+
+    /// <summary>
+    /// Igual que la consulta EF: se mira la tabla de PAGOS y no el estado de la
+    /// suscripcion, porque una Activa pudo llegar ahi sin pagar.
+    /// </summary>
+    public Task<bool> TuvoMesPagadoAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default) =>
+        Task.FromResult(_base.Pagos.Any(
+            p => p.Estado == EstadoPago.Pagado
+                 && _base.Suscripciones.Any(
+                     s => s.Id == p.SuscripcionId && s.PerfilPrestadorId == perfilPrestadorId)));
+
+    // ------------------------------------------------------------ TBL-34/35 el cupon
+
+    public Task<Cupon?> CuponPorCodigoAsync(string codigo, CancellationToken ct = default) =>
+        Task.FromResult(_base.Cupones.FirstOrDefault(c => c.Codigo == codigo));
+
+    public Task<bool> YaCanjeoCuponAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default) =>
+        Task.FromResult(_base.Canjes.Any(c => c.PerfilPrestadorId == perfilPrestadorId));
+
+    public void AgregarCanje(CanjeDeCupon canje) => _base.Canjes.Add(canje);
+
+    // ------------------------------------------------------------ Planes y cupos
+
+    public Task<Plan?> PlanPorIdAsync(short id, CancellationToken ct = default) =>
+        Task.FromResult(_base.Planes.FirstOrDefault(p => p.Id == id));
+
+    public Task<int> CuposFundadorTotalesAsync(CancellationToken ct = default) =>
+        Task.FromResult(_base.CuposFundador.Count);
+
+    /// <summary>
+    /// El numero del cupo de ese perfil, reservado o confirmado. Nulo si no tiene. Igual
+    /// que la consulta EF: no distingue estado, solo pertenencia.
+    /// </summary>
+    public Task<short?> CupoFundadorDeAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        lock (_base.CuposFundador)
+        {
+            var propio = _base.CuposFundador
+                .FirstOrDefault(c => c.PerfilPrestadorId == perfilPrestadorId);
+            return Task.FromResult(propio is null ? (short?)null : propio.Numero);
+        }
+    }
+
     public Task<int> LiberarReservasFundadorVencidasAsync(DateTime ahora, CancellationToken ct = default)
     {
         lock (_base.CuposFundador)

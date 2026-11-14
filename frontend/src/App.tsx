@@ -16,6 +16,8 @@ import { PaginaBuscar } from './paginas/PaginaBuscar'
 import { Portada } from './paginas/Portada'
 import { Privacidad } from './paginas/Privacidad'
 import { Profesionales } from './paginas/Profesionales'
+import { PagoSimulado } from './paginas/PagoSimulado'
+import { Planes, PlanesListo } from './paginas/Planes'
 import { ResenasDelPrestador } from './paginas/ResenasDelPrestador'
 import { Terminos } from './paginas/Terminos'
 import { RecuperarContrasena, RestablecerContrasena, VerificarCorreo } from './paginas/Recuperacion'
@@ -40,6 +42,9 @@ export function App() {
         <Route path="barrios" element={<Navigate to="/comunas" replace />} />
         <Route path="oficios" element={<Oficios />} />
         <Route path="profesionales" element={<Profesionales />} />
+        <Route path="planes" element={<Planes />} />
+        <Route path="planes/listo" element={<PlanesListo />} />
+        <Route path="pago/inscripcion" element={<PagoSimulado />} />
         <Route path="terminos" element={<Terminos />} />
         <Route path="privacidad" element={<Privacidad />} />
         <Route path="entrar" element={<Entrar />} />

@@ -6080,6 +6080,52 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.ToTable("respuestas_resena");
                 });
 
+            modelBuilder.Entity("Zass.Dominio.Suscripciones.CanjeDeCupon", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CanjeadoEn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("canjeado_en");
+
+                    b.Property<string>("CodigoCupon")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("codigo_cupon");
+
+                    b.Property<int>("MontoDescontado")
+                        .HasColumnType("integer")
+                        .HasColumnName("monto_descontado");
+
+                    b.Property<Guid>("PagoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("pago_id");
+
+                    b.Property<Guid>("PerfilPrestadorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("perfil_prestador_id");
+
+                    b.HasKey("Id")
+                        .HasName("p_k_canjes_de_cupon");
+
+                    b.HasIndex("CodigoCupon")
+                        .HasDatabaseName("i_x_canjes_de_cupon_codigo_cupon");
+
+                    b.HasIndex("PagoId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_canje_cupon_pago");
+
+                    b.HasIndex("PerfilPrestadorId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_canje_cupon_perfil");
+
+                    b.ToTable("canjes_de_cupon");
+                });
+
             modelBuilder.Entity("Zass.Dominio.Suscripciones.CupoFundador", b =>
                 {
                     b.Property<short>("Numero")
@@ -6307,6 +6353,166 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         });
                 });
 
+            modelBuilder.Entity("Zass.Dominio.Suscripciones.Cupon", b =>
+                {
+                    b.Property<string>("Codigo")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("codigo");
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activo");
+
+                    b.Property<string>("Descripcion")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("descripcion");
+
+                    b.Property<short>("PorcentajeDescuento")
+                        .HasColumnType("smallint")
+                        .HasColumnName("porcentaje_descuento");
+
+                    b.Property<DateTime>("VenceEn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("vence_en");
+
+                    b.HasKey("Codigo")
+                        .HasName("p_k_cupones");
+
+                    b.ToTable("cupones", t =>
+                        {
+                            t.HasCheckConstraint("ck_cupon_porcentaje", "porcentaje_descuento > 0 AND porcentaje_descuento <= 100");
+                        });
+
+                    b.HasData(
+                        new
+                        {
+                            Codigo = "LANZAMIENTO30",
+                            Activo = true,
+                            Descripcion = "30 % de descuento sobre el primer mes pagado.",
+                            PorcentajeDescuento = (short)30,
+                            VenceEn = new DateTime(2027, 3, 31, 23, 59, 59, 0, DateTimeKind.Utc)
+                        });
+                });
+
+            modelBuilder.Entity("Zass.Dominio.Suscripciones.IntentoDePago", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ClaveIdempotencia")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("clave_idempotencia");
+
+                    b.Property<string>("CodigoCupon")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("codigo_cupon");
+
+                    b.Property<DateTime>("CreadoEn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creado_en");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("estado");
+
+                    b.Property<short>("Meses")
+                        .HasColumnType("smallint")
+                        .HasColumnName("meses");
+
+                    b.Property<string>("Moneda")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("moneda");
+
+                    b.Property<int>("Monto")
+                        .HasColumnType("integer")
+                        .HasColumnName("monto");
+
+                    b.Property<int>("MontoBruto")
+                        .HasColumnType("integer")
+                        .HasColumnName("monto_bruto");
+
+                    b.Property<int>("MontoDescuento")
+                        .HasColumnType("integer")
+                        .HasColumnName("monto_descuento");
+
+                    b.Property<string>("MotivoFallo")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("motivo_fallo");
+
+                    b.Property<string>("Pasarela")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("pasarela");
+
+                    b.Property<Guid>("PerfilPrestadorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("perfil_prestador_id");
+
+                    b.Property<short>("PlanId")
+                        .HasColumnType("smallint")
+                        .HasColumnName("plan_id");
+
+                    b.Property<string>("ReferenciaPasarela")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("referencia_pasarela");
+
+                    b.Property<DateTime?>("ResueltoEn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("resuelto_en");
+
+                    b.Property<Guid>("SuscripcionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("suscripcion_id");
+
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("tipo");
+
+                    b.Property<string>("UrlParaPagar")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("url_para_pagar");
+
+                    b.HasKey("Id")
+                        .HasName("p_k_intentos_de_pago");
+
+                    b.HasIndex("ClaveIdempotencia")
+                        .IsUnique()
+                        .HasDatabaseName("ux_intento_pago_clave");
+
+                    b.HasIndex("PlanId")
+                        .HasDatabaseName("i_x_intentos_de_pago_plan_id");
+
+                    b.HasIndex("SuscripcionId")
+                        .HasDatabaseName("i_x_intentos_de_pago_suscripcion_id");
+
+                    b.HasIndex("PerfilPrestadorId", "CreadoEn")
+                        .HasDatabaseName("i_x_intentos_de_pago_perfil_prestador_id_creado_en");
+
+                    b.ToTable("intentos_de_pago", t =>
+                        {
+                            t.HasCheckConstraint("ck_intento_pago_cupon", "(codigo_cupon IS NULL AND monto_descuento = 0) OR (codigo_cupon IS NOT NULL AND monto_descuento > 0)");
+
+                            t.HasCheckConstraint("ck_intento_pago_montos", "monto_bruto >= 0 AND monto_descuento >= 0 AND monto_descuento <= monto_bruto AND monto = monto_bruto - monto_descuento");
+                        });
+                });
+
             modelBuilder.Entity("Zass.Dominio.Suscripciones.Pago", b =>
                 {
                     b.Property<Guid>("Id")
@@ -6323,6 +6529,10 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("estado");
+
+                    b.Property<Guid?>("IntentoDePagoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("intento_de_pago_id");
 
                     b.Property<string>("Moneda")
                         .IsRequired()
@@ -6351,7 +6561,8 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasColumnName("periodo_hasta");
 
                     b.Property<string>("ReferenciaPasarela")
-                        .HasColumnType("text")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
                         .HasColumnName("referencia_pasarela");
 
                     b.Property<Guid>("SuscripcionId")
@@ -6360,6 +6571,11 @@ namespace Zass.Infraestructura.Datos.Migraciones
 
                     b.HasKey("Id")
                         .HasName("p_k_pagos");
+
+                    b.HasIndex("IntentoDePagoId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_pago_intento")
+                        .HasFilter("intento_de_pago_id IS NOT NULL");
 
                     b.HasIndex("SuscripcionId", "CreadoEn")
                         .HasDatabaseName("i_x_pagos_suscripcion_id_creado_en");
@@ -6994,6 +7210,34 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.Navigation("Resena");
                 });
 
+            modelBuilder.Entity("Zass.Dominio.Suscripciones.CanjeDeCupon", b =>
+                {
+                    b.HasOne("Zass.Dominio.Suscripciones.Cupon", "Cupon")
+                        .WithMany()
+                        .HasForeignKey("CodigoCupon")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("f_k_canjes_de_cupon_cupones_codigo_cupon");
+
+                    b.HasOne("Zass.Dominio.Suscripciones.Pago", "Pago")
+                        .WithMany()
+                        .HasForeignKey("PagoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("f_k_canjes_de_cupon_pagos_pago_id");
+
+                    b.HasOne("Zass.Dominio.Identidad.PerfilPrestador", null)
+                        .WithMany()
+                        .HasForeignKey("PerfilPrestadorId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("f_k_canjes_de_cupon_perfiles_prestador_perfil_prestador_id");
+
+                    b.Navigation("Cupon");
+
+                    b.Navigation("Pago");
+                });
+
             modelBuilder.Entity("Zass.Dominio.Suscripciones.CupoFundador", b =>
                 {
                     b.HasOne("Zass.Dominio.Identidad.PerfilPrestador", "PerfilPrestador")
@@ -7003,6 +7247,27 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasConstraintName("f_k_cupos_fundador_perfiles_prestador_perfil_prestador_id");
 
                     b.Navigation("PerfilPrestador");
+                });
+
+            modelBuilder.Entity("Zass.Dominio.Suscripciones.IntentoDePago", b =>
+                {
+                    b.HasOne("Zass.Dominio.Suscripciones.Plan", "Plan")
+                        .WithMany()
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("f_k_intentos_de_pago_planes_plan_id");
+
+                    b.HasOne("Zass.Dominio.Suscripciones.Suscripcion", "Suscripcion")
+                        .WithMany()
+                        .HasForeignKey("SuscripcionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("f_k_intentos_de_pago_suscripciones_suscripcion_id");
+
+                    b.Navigation("Plan");
+
+                    b.Navigation("Suscripcion");
                 });
 
             modelBuilder.Entity("Zass.Dominio.Suscripciones.Pago", b =>
