@@ -245,7 +245,7 @@ public class IntentoDePago
 }
 
 /// <summary>
-/// TBL-34. Un codigo de descuento. Decision de Pablo del 12-nov-2026: 20 % sobre el
+/// TBL-34. Un codigo de descuento. Decision de Pablo del 13-nov-2026: 30 % sobre el
 /// primer mes PAGADO.
 ///
 /// El detalle que hay que tener presente para no equivocarse: el primer mes de vida de
@@ -260,7 +260,8 @@ public class Cupon
 
     public string? Descripcion { get; set; }
 
-    /// <summary>1..100. El 20 de la decision de Pablo vive en la fila, no en el codigo.</summary>
+    /// <summary>1..100. El 30 de la decision de Pablo vive en la FILA, no en el codigo: por eso
+    /// cambiarlo es un UPDATE y no un despliegue.</summary>
     public short PorcentajeDescuento { get; set; }
 
     /// <summary>Despues de esta fecha no se canjea. Un cupon sin vencimiento es para siempre.</summary>
@@ -275,7 +276,7 @@ public class Cupon
     /// <summary>
     /// Lo que descuenta sobre un monto. Division entera: el descuento se trunca, nunca
     /// se redondea hacia arriba, para que el cobro no pueda salir mayor que el precio.
-    /// Con 20 % sobre 5990 da 1198 exacto.
+    /// Con 30 % sobre 5990 da 1797 exacto, y sobre 7990 da 2397.
     /// </summary>
     public int DescuentoSobre(int monto) =>
         monto <= 0 ? 0 : monto * PorcentajeDescuento / 100;

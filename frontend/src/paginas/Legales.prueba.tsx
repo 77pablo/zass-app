@@ -8,7 +8,7 @@ import { AvisoDeBorrador } from './AvisoDeBorrador'
 import { DatoLegal } from './DatoLegal'
 import { Privacidad } from './Privacidad'
 import { Terminos } from './Terminos'
-import { BORRADOR_LEGAL, CORREO_PRIVACIDAD, estaPendiente, RESPONSABLE } from './legal'
+import { BORRADOR_LEGAL, estaPendiente, RESPONSABLE } from './legal'
 
 afterEach(() => { document.head.innerHTML = ''; document.title = '' })
 
@@ -130,10 +130,22 @@ describe('AvisoDeBorrador', () => {
 })
 
 describe('DatoLegal', () => {
+  /*
+   * Esta prueba vigila el MECANISMO, no qué dato sigue vacío.
+   *
+   * Antes afirmaba `estaPendiente(CORREO_PRIVACIDAD) === true`, o sea codificaba que ese
+   * hueco seguía sin llenar: se puso roja el día que se llenó (14-nov-2026), y se habría
+   * puesto roja otra vez cuando Pablo llene la razón social. Un rojo que aparece porque
+   * alguien AVANZÓ no dice nada de nada, y enseña a ignorar los rojos.
+   *
+   * Lo que sí hay que vigilar está abajo, con literales: que un dato entre corchetes se
+   * reconozca como pendiente y uno real no.
+   */
   it('resalta lo pendiente y deja limpio lo lleno', () => {
-    expect(estaPendiente(RESPONSABLE)).toBe(true)
-    expect(estaPendiente(CORREO_PRIVACIDAD)).toBe(true)
+    expect(estaPendiente('[por completar]')).toBe(true)
+    expect(estaPendiente('[Razón social y RUT por completar]')).toBe(true)
     expect(estaPendiente('Ejemplo SpA, 76.123.456-7')).toBe(false)
+    expect(estaPendiente('somoszaschile@gmail.com')).toBe(false)
 
     const { container, rerender } = render(<DatoLegal valor="[por completar]" />)
     expect(container.querySelector('.legal-pendiente')).toHaveTextContent('[por completar]')

@@ -12,7 +12,7 @@ export const BORRADOR_LEGAL = true
 export const RESPONSABLE = '[Razón social y RUT por completar]'
 
 /** Casilla a la que se escribe para ejercer los derechos de la Ley 21.719. */
-export const CORREO_PRIVACIDAD = '[correo de privacidad por completar]'
+export const CORREO_PRIVACIDAD = 'somoszaschile@gmail.com'
 
 /**
  * Cuanto tiempo se guardan los registros de seguridad (IP y fecha de acciones como entrar o cambiar la
@@ -29,4 +29,6 @@ export function estaPendiente(valor: string): boolean {
 }
 
 /** Los proveedores de infraestructura que tratan datos por encargo (alojamiento, base de datos, correo). */
-export const PROVEEDORES = '[lista de proveedores por completar]'
+export const PROVEEDORES =
+  'Render (alojamiento de la API, Estados Unidos), Neon (base de datos PostgreSQL, Estados '
+  + 'Unidos), Cloudflare (sitio y red de entrega, global) y Resend (envío de correos, Brasil)'

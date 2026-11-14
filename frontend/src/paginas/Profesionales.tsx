@@ -78,7 +78,20 @@ export function Profesionales() {
             <div className="principio">
               <Icono nombre="persona" />
               <h3>Buscar es gratis</h3>
-              <p>Quien te busca no paga nunca. La mensualidad la pagas tú, por estar visible.</p>
+              <p>
+                Quien te busca no paga nunca: eso es lo que hace que te busquen. La mensualidad
+                la pagas tú, por estar visible.
+              </p>
+            </div>
+            <div className="principio">
+              <Icono nombre="flecha" />
+              <h3>Tu primer mes es gratis</h3>
+              <p>
+                Publicas tu ficha y apareces el mismo día, sin pagar nada el primer mes.
+                Después son $7.990 al mes, y los primeros 50 mantienen $5.990 congelados
+                mientras sigan suscritos.
+              </p>
+              <p><Link to="/planes">Ver los planes y cuántos cupos quedan</Link></p>
             </div>
           </div>
         </div>
