@@ -91,7 +91,17 @@ export function Profesionales() {
                 Después son $7.990 al mes, y los primeros 50 mantienen $5.990 congelados
                 mientras sigan suscritos.
               </p>
-              <p><Link to="/planes">Ver los planes y cuántos cupos quedan</Link></p>
+              {/*
+                * Es una llamada a la accion suelta, no un enlace dentro de una frase: WCAG
+                * 2.5.8 no la exceptua y como texto plano medía 20 px de alto. Va como boton
+                * chico, que son 44. Lo mide `pruebas-navegador/mirar-sitio.mjs`; jsdom no
+                * puede, porque no calcula tamaños.
+                */}
+              <p>
+                <Link className="boton boton--chico" to="/planes">
+                  Ver los planes y cuántos cupos quedan
+                </Link>
+              </p>
             </div>
           </div>
         </div>
