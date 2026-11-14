@@ -52,6 +52,7 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     perfil_prestador_id = table.Column<Guid>(type: "uuid", nullable: false),
                     plan_id = table.Column<short>(type: "smallint", nullable: false),
                     meses = table.Column<short>(type: "smallint", nullable: false),
+                    tipo = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
                     monto_bruto = table.Column<int>(type: "integer", nullable: false),
                     monto_descuento = table.Column<int>(type: "integer", nullable: false),
                     monto = table.Column<int>(type: "integer", nullable: false),

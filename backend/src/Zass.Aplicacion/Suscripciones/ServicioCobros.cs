@@ -312,6 +312,89 @@ public sealed class ServicioCobros : IServicioCobros
         return Resultado.Ok(ADto(intento, codigo, nueva: false));
     }
 
+    // -------------------------------------------- Inscripcion del fundador (RN-S7-01)
+
+    public async Task<Resultado<IntentoDePagoDto>> IniciarInscripcionFundadorAsync(
+        Guid perfilPrestadorId, string claveIdempotencia, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(claveIdempotencia))
+            return Resultado.Falla<IntentoDePagoDto>(
+                Fallas.Validacion, "Falta la clave de idempotencia de la solicitud.");
+
+        // CC-04, igual que el cobro: el doble clic devuelve el MISMO intento y no toma un
+        // segundo cupo.
+        if (await _repo.IntentoPorClaveAsync(claveIdempotencia, ct) is { } yaExiste)
+            return await RetomarAsync(yaExiste, ct);
+
+        // Se reusa el calculo por dos cosas que si importan —que el perfil exista y que el
+        // plan fundador este ABIERTO (RN-S7-06)—, y por ninguna mas: el monto de una
+        // inscripcion es cero y no se consulta.
+        var calculo = await CalcularAsync(
+            perfilPrestadorId, ServicioSuscripciones.PlanFundador, null, ct);
+        if (!calculo.Exito || calculo.Valor is null)
+            return Resultado.Falla<IntentoDePagoDto>(calculo.Codigo!, calculo.Mensaje!);
+        var plan = calculo.Valor.Plan;
+
+        var suscripcion = await _repo.UltimaDePrestadorAsync(perfilPrestadorId, ct);
+        if (suscripcion is null)
+            return Resultado.Falla<IntentoDePagoDto>(
+                Fallas.Conflicto,
+                "Publica tu perfil antes de tomar tu cupo: la suscripción nace al publicarlo.");
+
+        var intento = await _trabajo.EnTransaccionAsync(async t =>
+        {
+            if (await _repo.IntentoPorClaveAsync(claveIdempotencia, t) is { } carrera)
+                return carrera;
+
+            // El cupo se reserva al EMPEZAR, por el mismo motivo que en el cobro: si se
+            // reservara al confirmar, dos personas podrian inscribirse por el cupo 50.
+            var cupo = await _suscripciones.ReservarCupoFundadorAsync(perfilPrestadorId, ct: t);
+            if (!cupo.Exito) return null;
+
+            var nuevo = new IntentoDePago
+            {
+                SuscripcionId = suscripcion.Id,
+                PerfilPrestadorId = perfilPrestadorId,
+                PlanId = plan.Id,
+                Tipo = TipoDeIntento.Inscripcion,
+                // Cero meses y cero pesos: no compra nada, autoriza el cobro de despues.
+                Meses = 0,
+                MontoBruto = 0,
+                MontoDescuento = 0,
+                Monto = 0,
+                Moneda = "CLP",
+                CodigoCupon = null,
+                Estado = EstadoIntentoPago.Pendiente,
+                ClaveIdempotencia = claveIdempotencia,
+                Pasarela = _pasarela.Nombre,
+                CreadoEn = _reloj.Ahora,
+            };
+            _repo.AgregarIntento(nuevo);
+
+            _auditor.Registrar(Auditar.Entrada(
+                "inscripcion_fundador_iniciada", "intentos_de_pago", nuevo.Id, _reloj.Ahora,
+                contexto: new { cupo = cupo.Valor, pasarela = _pasarela.Nombre }));
+
+            await _trabajo.GuardarAsync(t);
+            return nuevo;
+        }, ct);
+
+        // Null solo sale de la reserva fallida: alguien se llevo el ultimo cupo entre la
+        // comprobacion y la reserva.
+        if (intento is null)
+        {
+            var estado = await _suscripciones.EstadoDelPlanFundadorAsync(ct);
+            return Resultado.Falla<IntentoDePagoDto>(
+                Fallas.Conflicto,
+                (estado.Valor?.Mensaje ?? "El plan fundador está cerrado.")
+                + " Puedes suscribirte al plan mensual.");
+        }
+
+        if (intento.ReferenciaPasarela is not null) return await RetomarAsync(intento, ct);
+
+        return await PedirElCobroAsync(intento, plan, nueva: true, ct);
+    }
+
     private static IntentoDePagoDto ADto(IntentoDePago i, string codigoPlan, bool nueva) =>
         new(i.Id, codigoPlan, i.MontoBruto, i.MontoDescuento, i.Monto, i.CodigoCupon,
             i.Estado.ToString(), i.UrlParaPagar, i.ReferenciaPasarela, nueva);
@@ -361,6 +444,13 @@ public sealed class ServicioCobros : IServicioCobros
             if (!r.Aprobado)
             {
                 intento.MarcarFallido(_reloj.Ahora, r.MotivoFallo);
+
+                // Una inscripcion rechazada suelta el cupo al tiro en vez de dejarlo
+                // bloqueado los 25 minutos de la reserva: el cupo 50 es escaso y quien no
+                // pudo inscribir su medio de pago no lo esta usando.
+                if (intento.Tipo == TipoDeIntento.Inscripcion)
+                    await _suscripciones.LiberarCupoFundadorAsync(intento.PerfilPrestadorId, t);
+
                 _auditor.Registrar(Auditar.Entrada(
                     "cobro_rechazado", "intentos_pago", intento.Id, _reloj.Ahora,
                     contexto: new { motivo = r.MotivoFallo }));
@@ -390,6 +480,30 @@ public sealed class ServicioCobros : IServicioCobros
 
             intento.MarcarPagado(_reloj.Ahora);
             if (r.ReferenciaPasarela is not null) intento.ReferenciaPasarela = r.ReferenciaPasarela;
+
+            // RN-S7-01: una INSCRIPCION no extiende un mes pagado ni crea fila de pago,
+            // porque no se cobro nada. Lo que hace es dejar el cupo definitivo y arrancar
+            // el mes gratis.
+            if (intento.Tipo == TipoDeIntento.Inscripcion)
+            {
+                await _suscripciones.ConfirmarCupoFundadorAsync(intento.PerfilPrestadorId, t);
+
+                var cambio = await _suscripciones.PasarAFundadorConMesGratisAsync(
+                    intento.SuscripcionId, t);
+                if (!cambio.Exito)
+                    return Resultado.Falla<ConfirmacionDto>(cambio.Codigo!, cambio.Mensaje!);
+
+                _auditor.Registrar(Auditar.Entrada(
+                    "inscripcion_fundador_confirmada", "intentos_de_pago", intento.Id,
+                    _reloj.Ahora, contexto: new { vigenteHasta = cambio.Valor }));
+
+                await _trabajo.GuardarAsync(t);
+
+                return Resultado.Ok(new ConfirmacionDto(
+                    intento.Id, Aprobado: true, intento.Estado.ToString(), cambio.Valor,
+                    "Tu cupo de fundador quedó confirmado y tu mes gratis empezó a correr.",
+                    Nueva: true));
+            }
 
             // El llamador que faltaba. Toda la regla de vigencia sigue viviendo alli y no
             // aqui: quien paga el dia 25 de un mes de 30 no pierde los 5 que le quedaban.

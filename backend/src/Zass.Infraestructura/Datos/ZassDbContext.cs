@@ -773,6 +773,9 @@ public class ZassDbContext : DbContext
         {
             e.HasKey(x => x.Id);
             e.Property(x => x.Estado).HasConversion<string>().HasMaxLength(20);
+            // Como texto y no como numero: una fila de pagos se lee a mano mas veces de
+            // las que uno cree, y «Inscripcion» se entiende y un 1 no.
+            e.Property(x => x.Tipo).HasConversion<string>().HasMaxLength(20);
             e.Property(x => x.Moneda).HasMaxLength(3);
             e.Property(x => x.Pasarela).HasMaxLength(30).IsRequired();
             e.Property(x => x.ClaveIdempotencia).HasMaxLength(120).IsRequired();

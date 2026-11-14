@@ -115,6 +115,21 @@ public interface IServicioSuscripciones
 
     /// <summary>Libera el cupo fundador si el prestador cancela antes de pagar o pierde el beneficio.</summary>
     Task<Resultado> LiberarCupoFundadorAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+
+    /// <summary>
+    /// RN-S7-03 y RN-S7-07. Pasa la suscripcion que YA EXISTE al plan fundador con el mes
+    /// gratis corriendo, y devuelve hasta cuando queda vigente.
+    ///
+    /// La vigencia queda en la fecha MAS LEJANA entre la que ya tenia y el mes gratis: ni
+    /// se le quita tiempo que ya estaba prometido, ni se le regalan treinta dias encima de
+    /// los que le quedaban. Y nunca crea una segunda suscripcion, porque quien llega aqui
+    /// ya tiene una: publicar el perfil arranca la prueba (API-22).
+    ///
+    /// Vive en este modulo y no en el del cobro porque la vigencia es regla de S7, no del
+    /// camino de pago.
+    /// </summary>
+    Task<Resultado<DateTime>> PasarAFundadorConMesGratisAsync(
+        Guid suscripcionId, CancellationToken ct = default);
 }
 
 /// <summary>

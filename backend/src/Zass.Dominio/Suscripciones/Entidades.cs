@@ -176,6 +176,12 @@ public class IntentoDePago
     /// <summary>Cuantos meses compra este intento. Hoy siempre 1.</summary>
     public short Meses { get; set; } = 1;
 
+    /// <summary>
+    /// Cobro o inscripcion. Una inscripcion va con los tres montos en cero y
+    /// <see cref="Meses"/> en cero: no compra ningun mes, autoriza el medio de pago.
+    /// </summary>
+    public TipoDeIntento Tipo { get; set; } = TipoDeIntento.Cobro;
+
     /// <summary>Precio de lista del plan, antes del cupon.</summary>
     public int MontoBruto { get; set; }
 

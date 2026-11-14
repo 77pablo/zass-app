@@ -36,6 +36,14 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
     /// </summary>
     public static readonly TimeSpan DuracionReservaPorDefecto = TimeSpan.FromMinutes(25);
 
+    /// <summary>
+    /// RN-S7-03. El mes gratis del fundador, en dias.
+    ///
+    /// Vive aqui y NO en <c>dias_prueba</c> del plan, que es 0 explicito en los dos planes
+    /// de pago: el mes gratis es del camino del fundador, no una propiedad del plan.
+    /// </summary>
+    public const int DiasDeMesGratis = 30;
+
     /// <summary>Tope de una reserva: evita que un llamado erroneo deje un cupo bloqueado dias.</summary>
     private static readonly TimeSpan DuracionReservaMaxima = TimeSpan.FromHours(24);
 
@@ -397,6 +405,35 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
             "cupo_fundador_liberado", "perfiles_prestador", perfilPrestadorId, _reloj.Ahora));
         await _trabajo.GuardarAsync(ct);
         return Resultado.Ok();
+    }
+
+    public async Task<Resultado<DateTime>> PasarAFundadorConMesGratisAsync(
+        Guid suscripcionId, CancellationToken ct = default)
+    {
+        var s = await _repo.PorIdAsync(suscripcionId, ct);
+        if (s is null)
+            return Resultado.Falla<DateTime>(Fallas.NoEncontrado, "Esa suscripcion no existe.");
+
+        var plan = await _repo.PlanPorCodigoAsync(PlanFundador, ct);
+        if (plan is null || !plan.Activo)
+            return Resultado.Falla<DateTime>(
+                Fallas.ReglaDeNegocio, "El plan fundador no esta disponible.");
+
+        var mesGratis = _reloj.Ahora.AddDays(DiasDeMesGratis);
+
+        s.PlanId = plan.Id;
+        s.Estado = EstadoSuscripcion.Prueba;
+        s.CanceladaEn = null;
+
+        // RN-S7-07. La fecha mas lejana de las dos: a quien le quedaban 45 dias no se le
+        // quitan 15 para dejarlo en 30, y a quien le quedaban 3 no se le suman 30 encima.
+        s.VigenteHasta = s.VigenteHasta > mesGratis ? s.VigenteHasta : mesGratis;
+
+        _auditor.Registrar(Auditar.Entrada(
+            "suscripcion_a_fundador", "suscripciones", s.Id, _reloj.Ahora,
+            contexto: new { vigenteHasta = s.VigenteHasta, diasDeMesGratis = DiasDeMesGratis }));
+
+        return Resultado.Ok(s.VigenteHasta);
     }
     public async Task<IReadOnlyList<SuscripcionPorVencer>> PorVencerAsync(
         int dentroDeDias, CancellationToken ct = default)

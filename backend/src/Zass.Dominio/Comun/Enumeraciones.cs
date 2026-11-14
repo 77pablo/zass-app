@@ -91,6 +91,16 @@ public enum EstadoPago { Pendiente, Pagado, Fallido, Reembolsado }
 /// </summary>
 public enum EstadoIntentoPago { Pendiente, Pagado, Fallido, Anulado }
 
+/// <summary>
+/// Que se esta haciendo con la pasarela.
+///
+/// <c>Cobro</c> es plata: se cobra un mes y se extiende la suscripcion.
+/// <c>Inscripcion</c> autoriza el medio de pago con monto CERO —lo que hace Oneclick de
+/// Transbank— y es lo que confirma el cupo fundador (RN-S7-01) y arranca el mes gratis
+/// (RN-S7-03). Una inscripcion no crea fila de pago: no se cobro nada.
+/// </summary>
+public enum TipoDeIntento { Cobro, Inscripcion }
+
 public static class Roles
 {
     public const string Buscador = "buscador";

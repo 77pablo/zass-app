@@ -13,7 +13,7 @@ using Zass.Infraestructura.Datos;
 namespace Zass.Infraestructura.Datos.Migraciones
 {
     [DbContext(typeof(ZassDbContext))]
-    [Migration("20261113205944_CobroIntentosYCupones")]
+    [Migration("20261114012145_CobroIntentosYCupones")]
     partial class CobroIntentosYCupones
     {
         /// <inheritdoc />
@@ -6480,6 +6480,12 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.Property<Guid>("SuscripcionId")
                         .HasColumnType("uuid")
                         .HasColumnName("suscripcion_id");
+
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("tipo");
 
                     b.Property<string>("UrlParaPagar")
                         .HasMaxLength(500)

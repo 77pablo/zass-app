@@ -44,6 +44,20 @@ public interface IServicioCobros
         IniciarCobroCmd cmd, CancellationToken ct = default);
 
     /// <summary>
+    /// RN-S7-01. Empieza la INSCRIPCION del medio de pago del plan fundador: un intento de
+    /// monto CERO que no cobra nada y que, al confirmarse, deja el cupo definitivo y arranca
+    /// el mes gratis.
+    ///
+    /// Es un camino aparte de <see cref="IniciarAsync"/> y no un plan mas barato: aqui no
+    /// hay cupon, no hay meses comprados y no nace fila de pago. Lo que se autoriza es el
+    /// cobro de DESPUES, que es exactamente lo que hace Oneclick de Transbank.
+    ///
+    /// Idempotente por la misma clave que el cobro (CC-04): el doble clic no toma dos cupos.
+    /// </summary>
+    Task<Resultado<IntentoDePagoDto>> IniciarInscripcionFundadorAsync(
+        Guid perfilPrestadorId, string claveIdempotencia, CancellationToken ct = default);
+
+    /// <summary>
     /// El aviso de la pasarela, en crudo. Lo traduce el adaptador; aqui se decide.
     ///
     /// Idempotente: el segundo aviso del mismo cobro encuentra el intento ya pagado y

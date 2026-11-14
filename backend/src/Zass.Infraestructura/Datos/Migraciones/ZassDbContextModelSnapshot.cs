@@ -6478,6 +6478,12 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasColumnType("uuid")
                         .HasColumnName("suscripcion_id");
 
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("tipo");
+
                     b.Property<string>("UrlParaPagar")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
