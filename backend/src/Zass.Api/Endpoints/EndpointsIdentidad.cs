@@ -130,7 +130,7 @@ public static class EndpointsIdentidad
                     await servicio.ReenviarVerificacionAsync(cmd.Correo, Ip(http))))
             .ConValidacion<ReenviarVerificacionCmd>()
             .RequireRateLimiting(Tasa.Autenticacion)
-            .WithName("API-13b");
+            .WithName("API-71");
 
         // API-14 - Envia enlace. Responde igual exista o no la cuenta.
         grupo.MapPost("/contrasena/recuperar", async (

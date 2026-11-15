@@ -1959,10 +1959,6 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-11",
             "API-12",
             "API-13",
-            // Reenviar el enlace de verificacion. Hermano de API-13 y de API-14: mismo grupo de
-            // tasa, misma respuesta indistinguible exista o no la cuenta. Falta anadirlo a
-            // api-rest.md con su numero definitivo (el documento vive en OneDrive).
-            "API-13b",
             "API-14",
             "API-15",
             "API-16",
@@ -2018,6 +2014,10 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-68",
             "API-69",
             "API-70",
+            // Reenviar el enlace de verificacion (CS-01). Numerado 71 y NO «13b» a proposito: la
+            // terminacion `b` significa «el mismo recurso, el metodo que faltaba», y esto es otro
+            // recurso y otra operacion. Documentado en api-rest.md seccion 11.
+            "API-71",
 
             "API-resenas-publicas",
             "CS-02b",
