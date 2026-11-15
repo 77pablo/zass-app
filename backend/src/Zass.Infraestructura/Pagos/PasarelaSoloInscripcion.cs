@@ -108,6 +108,6 @@ public sealed class PasarelaSoloInscripcion : IPasarelaDePagos
             + "sin pasarela real. No se cobro: el intento queda sin resolver a proposito.",
             solicitud.Monto, solicitud.Moneda, solicitud.IntentoDePagoId);
 
-        return Task.FromResult(Resultado.Falla<CobroResuelto>(Fallas.ReglaDeNegocio, NoCobra));
+        return _interna.CobrarAsync(solicitud, ct);   // MUTACION: el modo solo inscripcion SI cobra
     }
 }
