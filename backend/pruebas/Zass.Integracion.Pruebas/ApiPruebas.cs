@@ -2084,6 +2084,10 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-68",
             "API-69",
             "API-70",
+            // Reenviar el enlace de verificacion (CS-01). Numerado 71 y NO «13b» a proposito: la
+            // terminacion `b` significa «el mismo recurso, el metodo que faltaba», y esto es otro
+            // recurso y otra operacion. Documentado en api-rest.md seccion 11.
+            "API-71",
 
             "API-resenas-publicas",
             "CS-02b",

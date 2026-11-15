@@ -10,6 +10,7 @@ namespace Zass.Api.Endpoints;
 
 public sealed record VerificarCorreoCmd(string Token);
 public sealed record PedirRecuperacionCmd(string Correo);
+public sealed record ReenviarVerificacionCmd(string Correo);
 public sealed record CambiarContrasenaCmd(string ContrasenaActual, string ContrasenaNueva);
 
 /// <summary>
@@ -119,6 +120,17 @@ public static class EndpointsIdentidad
             .ConValidacion<VerificarCorreoCmd>()
             .RequireRateLimiting(Tasa.Autenticacion)
             .WithName("API-13");
+
+        // Reenvia el enlace de verificacion. Responde igual exista o no la cuenta, y
+        // tambien si ya estaba verificada: distinguir seria decir quien tiene cuenta aqui.
+        // Grupo de autenticacion porque manda un correo, igual que recuperar la contrasena.
+        grupo.MapPost("/correo/reenviar", async (
+                ReenviarVerificacionCmd cmd, ServicioCuenta servicio, HttpContext http) =>
+                Respuestas.DeResultado(
+                    await servicio.ReenviarVerificacionAsync(cmd.Correo, Ip(http))))
+            .ConValidacion<ReenviarVerificacionCmd>()
+            .RequireRateLimiting(Tasa.Autenticacion)
+            .WithName("API-71");
 
         // API-14 - Envia enlace. Responde igual exista o no la cuenta.
         grupo.MapPost("/contrasena/recuperar", async (

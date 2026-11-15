@@ -98,6 +98,127 @@ public class CuentaPruebas
 
     // ----------------------------------------------------------- CS-02
 
+    // ------------------------------------------- CS-01 bis: reenviar el enlace
+
+    /// <summary>
+    /// Lo mismo exista o no la cuenta, y este o no verificada. Decir «ya estaba verificado»
+    /// seria decir «esa persona tiene cuenta aqui», que es lo que no puede pasar.
+    /// </summary>
+    [Fact]
+    public async Task Reenviar_responde_igual_exista_la_cuenta_o_no_y_este_verificada_o_no()
+    {
+        var (_, token) = await RegistrarAsync(correo: "pablo@correo.cl");
+        await RegistrarAsync(correo: "ya@correo.cl", rol: "buscador");
+
+        var sinVerificar = await _cuenta.ReenviarVerificacionAsync("pablo@correo.cl");
+        await _cuenta.VerificarCorreoAsync(token);
+        var yaVerificada = await _cuenta.ReenviarVerificacionAsync("pablo@correo.cl");
+        var noExiste = await _cuenta.ReenviarVerificacionAsync("nadie@correo.cl");
+
+        Assert.True(sinVerificar.Exito);
+        Assert.True(yaVerificada.Exito);
+        Assert.True(noExiste.Exito);
+        Assert.Equal(sinVerificar.Mensaje, yaVerificada.Mensaje);
+        Assert.Equal(sinVerificar.Mensaje, noExiste.Mensaje);
+    }
+
+    /// <summary>El enlace nuevo sirve, y lo que se guarda es el hash y no el token.</summary>
+    [Fact]
+    public async Task Reenviar_manda_un_enlace_NUEVO_que_de_verdad_verifica()
+    {
+        var (id, viejo) = await RegistrarAsync();
+        _cola.Encoladas.Clear();
+        _reloj.Avanzar(TimeSpan.FromMinutes(5));
+
+        await _cuenta.ReenviarVerificacionAsync("pablo@correo.cl");
+
+        var aviso = Assert.Single(_cola.Encoladas);
+        Assert.Equal(TipoNotificacion.CorreoVerificacion, aviso.Tipo);
+
+        var nuevo = _secretos.Emitidos.Last();
+        Assert.NotEqual(viejo, nuevo);
+        Assert.Contains(nuevo, aviso.Cuerpo);
+        Assert.Equal(_secretos.HashToken(nuevo), _base.Usuarios.Single(u => u.Id == id).TokenVerificacion);
+
+        var r = await _cuenta.VerificarCorreoAsync(nuevo);
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.True(_base.Usuarios.Single(u => u.Id == id).CorreoVerificado);
+    }
+
+    /// <summary>
+    /// El enlace viejo deja de servir. Si siguieran valiendo los dos, cada reenvio dejaria una
+    /// puerta mas abierta, y una de ellas en un correo que quiza leyo alguien mas.
+    /// </summary>
+    [Fact]
+    public async Task El_enlace_viejo_deja_de_servir_cuando_se_manda_uno_nuevo()
+    {
+        var (_, viejo) = await RegistrarAsync();
+        _reloj.Avanzar(TimeSpan.FromMinutes(5));
+
+        await _cuenta.ReenviarVerificacionAsync("pablo@correo.cl");
+        var conElViejo = await _cuenta.VerificarCorreoAsync(viejo);
+
+        Assert.False(conElViejo.Exito);
+    }
+
+    /// <summary>
+    /// La espera entre reenvios. El limite de peticiones protege por IP y aqui no alcanza: el
+    /// daño no lo recibe quien llama, lo recibe el dueño del correo. Sin esto, alguien que
+    /// conoce un correo puede llenarle la bandeja desde varias IP.
+    /// </summary>
+    [Fact]
+    public async Task Dos_reenvios_seguidos_mandan_UN_solo_correo()
+    {
+        await RegistrarAsync();
+        _cola.Encoladas.Clear();
+        _reloj.Avanzar(TimeSpan.FromMinutes(5));
+
+        var primero = await _cuenta.ReenviarVerificacionAsync("pablo@correo.cl");
+        var segundo = await _cuenta.ReenviarVerificacionAsync("pablo@correo.cl");
+
+        Assert.Single(_cola.Encoladas);
+        // Y la respuesta es la misma: a quien insiste no se le cuenta que se le freno.
+        Assert.Equal(primero.Mensaje, segundo.Mensaje);
+    }
+
+    [Fact]
+    public async Task Pasada_la_espera_si_se_puede_pedir_otro()
+    {
+        await RegistrarAsync();
+        _cola.Encoladas.Clear();
+        _reloj.Avanzar(TimeSpan.FromMinutes(5));
+
+        await _cuenta.ReenviarVerificacionAsync("pablo@correo.cl");
+        _reloj.Avanzar(ServicioCuenta.EsperaEntreReenvios + TimeSpan.FromSeconds(1));
+        await _cuenta.ReenviarVerificacionAsync("pablo@correo.cl");
+
+        Assert.Equal(2, _cola.Encoladas.Count);
+    }
+
+    [Fact]
+    public async Task Reenviar_a_una_cuenta_que_no_existe_no_encola_ningun_correo()
+    {
+        _cola.Encoladas.Clear();
+
+        await _cuenta.ReenviarVerificacionAsync("nadie@correo.cl");
+
+        Assert.Empty(_cola.Encoladas);
+    }
+
+    /// <summary>Y a una cuenta ya verificada tampoco: no hay nada que verificar.</summary>
+    [Fact]
+    public async Task Reenviar_a_una_cuenta_ya_verificada_no_encola_ningun_correo()
+    {
+        var (_, token) = await RegistrarAsync();
+        await _cuenta.VerificarCorreoAsync(token);
+        _cola.Encoladas.Clear();
+        _reloj.Avanzar(TimeSpan.FromMinutes(5));
+
+        await _cuenta.ReenviarVerificacionAsync("pablo@correo.cl");
+
+        Assert.Empty(_cola.Encoladas);
+    }
+
     [Fact]
     public async Task Pedir_recuperacion_responde_igual_exista_o_no_la_cuenta()
     {
