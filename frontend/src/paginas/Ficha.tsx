@@ -240,6 +240,9 @@ export function Ficha() {
                   {ficha.nombrePublico.split(' ')[0]}. Te enviamos un enlace cuando creaste tu
                   cuenta; revisa tu bandeja y la carpeta de correo no deseado.
                 </p>
+                <Link className="boton boton--chico" to="/verificar-correo">
+                  <Icono nombre="mensaje" />Pedir otro enlace
+                </Link>
                 <p className="letra-chica">
                   Lo pedimos para que nadie junte los contactos de los prestadores con correos
                   inventados.

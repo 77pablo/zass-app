@@ -563,6 +563,8 @@ describe('el sitio de varias paginas', () => {
 
     await screen.findByRole('heading', { level: 1, name: 'Marcela Soto' })
     expect(screen.getByText(/verifica tu correo/i)).toBeInTheDocument()
+    // Y tiene por donde salir: el enlace caduca a las 24 h y antes no habia forma de pedir otro.
+    expect(screen.getByRole('link', { name: /Pedir otro enlace/ })).toHaveAttribute('href', '/verificar-correo')
     expect(screen.queryByRole('link', { name: /WhatsApp/ })).not.toBeInTheDocument()
     // El error facil: a quien YA tiene cuenta no se le puede pedir que se cree una.
     expect(screen.queryByRole('link', { name: /Crear mi cuenta gratis/ })).not.toBeInTheDocument()
