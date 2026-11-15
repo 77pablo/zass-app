@@ -1,0 +1,158 @@
+name: Migrar la base de produccion
+
+# Aplica las migraciones de EF Core a Neon, a mano y solo a mano.
+#
+# Por que existe: en el PC de Pablo no se puede. El entorno local tiene Postgres 16.4 y, sobre
+# todo, Smart App Control de Windows bloquea los ensamblados recien compilados, asi que
+# `dotnet ef` falla con «Could not load assembly 'Zass.Infraestructura'» de forma
+# intermitente. Aqui corre en una maquina limpia, queda registrado quien lo lanzo y cuando, y
+# el registro se puede leer despues. Es el mismo motivo por el que el flujo de copias vive
+# aqui y no en el PC.
+#
+# Lo que NO hace: dispararse solo. No tiene `schedule` ni `push` a proposito. Una migracion de
+# produccion es una decision, no un efecto secundario de un merge.
+#
+# Antes de aplicar nada **vuelca y cifra la base**. Una migracion aditiva es poco probable que
+# rompa algo, pero «poco probable» no es una estrategia de recuperacion, y hoy restaurar desde
+# el PC de Pablo NO se puede (su `pg_restore` es 16.4 y el volcado es 18).
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmo:
+        description: 'Escribe MIGRAR en mayusculas para confirmar'
+        required: true
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  migrar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Comprobar la confirmacion
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.confirmo }}" != "MIGRAR" ]; then
+            echo "DETENIDO: hay que escribir MIGRAR para confirmar. Se escribio: '${{ inputs.confirmo }}'" >&2
+            exit 1
+          fi
+          echo "Confirmado por ${{ github.actor }}."
+
+      - uses: actions/checkout@v4
+
+      # Sin `cache: true`: ese cache exige un packages.lock.json y este repositorio no tiene
+      # ninguno, asi que pedirlo haria fallar el flujo entero por una optimizacion. Esta tarea
+      # se corre un puñado de veces, no en cada commit: no vale la pena.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # ---------------------------------------------------------------- la copia, primero
+      - name: Volcar y cifrar la base ANTES de tocarla
+        env:
+          NEON_URL_COPIAS: ${{ secrets.NEON_URL_COPIAS }}
+          FRASE_COPIAS: ${{ secrets.FRASE_COPIAS }}
+        run: |
+          set -euo pipefail
+          test -n "$NEON_URL_COPIAS" || { echo "Falta el secreto NEON_URL_COPIAS" >&2; exit 1; }
+          test -n "$FRASE_COPIAS" || { echo "Falta el secreto FRASE_COPIAS" >&2; exit 1; }
+          # Cliente 18 como el servidor, igual que en el flujo de copias.
+          docker run --rm -e NEON_URL_COPIAS postgres:18 \
+            sh -c 'pg_dump --format=custom --no-owner --no-privileges "$NEON_URL_COPIAS"' \
+            > antes.dump
+          test -s antes.dump
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$FRASE_COPIAS" \
+              --symmetric --cipher-algo AES256 \
+              -o "antes-de-migrar-$(date -u +%Y%m%dT%H%M%SZ).dump.gpg" antes.dump
+          rm antes.dump
+          ls -lh *.dump.gpg
+
+      - name: Guardar la copia fuera del servidor de la base
+        uses: actions/upload-artifact@v4
+        with:
+          name: copia-antes-de-migrar
+          path: '*.dump.gpg'
+          retention-days: 30
+          if-no-files-found: error
+
+      # ---------------------------------------------------------------- la cadena de conexion
+      # El secreto esta en formato URL (postgres://...) porque es lo que quiere `pg_dump`.
+      # Npgsql NO lee ese formato, asi que se traduce aqui. No se imprime nunca: se escribe
+      # directo en el entorno del paso siguiente con `::add-mask::` por delante.
+      - name: Traducir la URL de Neon al formato de Npgsql
+        env:
+          NEON_URL_COPIAS: ${{ secrets.NEON_URL_COPIAS }}
+        run: |
+          set -euo pipefail
+          cadena=$(python3 - <<'PY'
+          import os, urllib.parse as u
+          p = u.urlparse(os.environ["NEON_URL_COPIAS"])
+          base = p.path.lstrip("/").split("?")[0]
+          partes = [
+              f"Host={p.hostname}",
+              f"Port={p.port or 5432}",
+              f"Database={base}",
+              f"Username={u.unquote(p.username or '')}",
+              f"Password={u.unquote(p.password or '')}",
+              "SSL Mode=Require",
+              "Trust Server Certificate=true",
+          ]
+          print(";".join(partes))
+          PY
+          )
+          test -n "$cadena"
+          echo "::add-mask::$cadena"
+          echo "ZASS_CADENA_CONEXION=$cadena" >> "$GITHUB_ENV"
+
+      # ---------------------------------------------------------------- antes y despues
+      - name: Que migraciones tiene la base AHORA
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          dotnet tool restore
+          dotnet ef migrations list \
+            --project src/Zass.Infraestructura --startup-project src/Zass.Infraestructura \
+            | tee antes.txt
+
+      - name: Aplicar las migraciones
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          dotnet ef database update \
+            --project src/Zass.Infraestructura --startup-project src/Zass.Infraestructura
+
+      - name: Que migraciones tiene la base DESPUES
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          dotnet ef migrations list \
+            --project src/Zass.Infraestructura --startup-project src/Zass.Infraestructura \
+            | tee despues.txt
+          echo "--- lo que cambio ---"
+          diff antes.txt despues.txt || true
+
+      # ---------------------------------------------------------------- comprobar en el catalogo
+      # Un «Done» de EF no dice que el objeto quedara como se escribio. Se le pregunta a
+      # PostgreSQL, que es la leccion mas repetida de este proyecto.
+      - name: Comprobar en el catalogo, no en el «Done»
+        env:
+          NEON_URL_COPIAS: ${{ secrets.NEON_URL_COPIAS }}
+        run: |
+          set -euo pipefail
+          consulta="
+          SELECT 'cupos_fundador = ' || count(*)::text FROM cupos_fundador
+          UNION ALL SELECT 'tablas del cobro = ' || count(*)::text FROM information_schema.tables
+            WHERE table_schema='public' AND table_name IN ('intentos_de_pago','cupones','canjes_de_cupon')
+          UNION ALL SELECT 'indices nuevos = ' || count(*)::text FROM pg_indexes
+            WHERE indexname IN ('ix_cita_bloque_horario','ix_suscripcion_perfil_inicia')
+          UNION ALL SELECT 'R-1 (doble reserva) sigue = ' || count(*)::text FROM pg_indexes
+            WHERE indexname = 'ux_cita_bloque_activo'
+          UNION ALL SELECT 'quien_falto existe = ' || count(*)::text FROM information_schema.columns
+            WHERE table_name='citas' AND column_name='quien_falto';"
+          docker run --rm -e NEON_URL_COPIAS -e CONSULTA="$consulta" postgres:18 \
+            sh -c 'psql -At "$NEON_URL_COPIAS" -c "$CONSULTA"'
+          echo
+          echo "Se esperan: 50 cupos, 3 tablas, 2 indices nuevos, R-1 = 1, quien_falto = 1."
