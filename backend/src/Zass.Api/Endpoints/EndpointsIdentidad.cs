@@ -371,9 +371,14 @@ public static class EndpointsIdentidad
                     // pide «cuenta» cuesta un correo inventado: la lista de telefonos y
                     // WhatsApp de todos los prestadores queda a un script de distancia, que es
                     // exactamente lo que este muro existe para evitar. Verificar el correo es
-                    // el mismo listo que ya se exige para dejar y para reportar una resena
-                    // (CU-16, RN-S5-04), asi que no es una regla nueva: es la misma, aplicada
-                    // donde faltaba.
+                    // el mismo listo que ya se exige para dejar una resena (CU-16, precondicion
+                    // P1) y para publicar perfil o agendar (RN-S1-02), asi que no es una regla
+                    // nueva: es la misma, aplicada donde faltaba. Queda como RN-S1-09.
+                    //
+                    // La primera version de este comentario citaba RN-S5-04, que es otra cosa
+                    // («el comentario se escapa al renderizar»): lo cazo la revision del
+                    // documento. Una cita equivocada es peor que ninguna, porque el proximo que
+                    // lea la regla citada no va a encontrar lo que el comentario promete.
                     //
                     // La consulta extra solo ocurre con sesion; a quien pasa de largo sin
                     // cuenta —la mayoria de las visitas— no le cuesta nada.
