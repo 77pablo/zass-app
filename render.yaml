@@ -23,7 +23,17 @@ services:
       # --- Configuración no secreta pero que depende de tu cuenta ---
       - key: Zass__ProxiesDeConfianza
         sync: false         # rangos de Cloudflare + red del balanceador de Render (ver guía)
+      # CINCO, medido el 15-nov-2026 leyendo la tabla de auditoria de produccion, no
+      # deducido. Con 3 la IP que se guardaba era la de Cloudflare: todas las filas del 8 al
+      # 11-nov traen rangos 172.64.0.0/13 y 172.70.x. El 12-nov, con este valor en 5, las
+      # filas pasan a traer direcciones que NO son de Cloudflare (una chilena, 200.91.9.226).
+      #
+      # La cadena tiene mas saltos de los que parece porque hay DOS Cloudflare distintos: el
+      # nuestro (Pages) y el que Render tiene delante de su propio origen. Si este archivo
+      # dice 3 y alguien recrea el servicio desde el, el defecto vuelve — y es de los que no
+      # se notan: el sitio funciona igual, solo que el limite de peticiones se cuenta por
+      # salida de Cloudflare y las sesiones guardan una IP que no es de nadie.
       - key: Zass__SaltosDeProxy
-        value: "3"
+        value: "5"
       - key: Zass__ExigirHttps
         value: "true"

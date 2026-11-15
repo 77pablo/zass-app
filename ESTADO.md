@@ -1,6 +1,8 @@
 # ZASS! — estado del desarrollo
 
-**Última sesión:** 14 de noviembre de 2026 (noche) — ver **«Sesión del 14-nov-2026 (noche)»** justo debajo. **El sitio público está CERRADO** (mantenimiento), a propósito.
+**Última sesión:** 15 de noviembre de 2026 (madrugada) — **producción al día**: Neon migrada, desplegada y comprobada desde fuera. Ver **«Sesión del 15-nov-2026»** justo debajo.
+
+**Sesión anterior:** 14 de noviembre de 2026 (noche) — ver **«Sesión del 14-nov-2026 (noche)»** justo debajo. **El sitio público está CERRADO** (mantenimiento), a propósito.
 
 **Sesión anterior:** 14 de noviembre de 2026 (tarde), cuando se fusionó todo a `main`.
 
@@ -24,6 +26,104 @@ Este archivo existe para retomar sin reconstruir contexto. Dice **qué está hec
 comprobado**, **qué no**, y **el siguiente paso exacto**.
 
 ---
+
+## Sesión del 15-nov-2026 (madrugada) — PRODUCCIÓN AL DÍA, y el defecto de la IP resuelto
+
+El despliegue está hecho **y comprobado desde fuera**. Esto es lo que cambió en producción y lo
+que se midió al hacerlo; nada de esto es recordado.
+
+### 1. Neon migrada, con los cinco números leídos del catálogo
+
+Las **cuatro** migraciones pendientes aplicadas (`CuposFundadorA50`, `NoAsistioQuienFalto`,
+`CobroIntentosYCupones`, `IndicesDeClavesForaneas`), desde el flujo nuevo
+**`migrar-neon.yml`** (Actions → «Migrar la base de produccion», solo `workflow_dispatch`, exige
+escribir `MIGRAR`, y **vuelca y cifra la base antes de tocarla**).
+
+Carrera **43666752477**. Lo que contestó el catálogo:
+
+```
+cupos_fundador = 50
+tablas del cobro = 3
+indices nuevos = 2
+R-1 (doble reserva) sigue = 1
+quien_falto existe = 1
+```
+
+**Por qué el flujo existe y no se hace desde el PC:** `dotnet ef` falla ahí con
+`Could not load assembly 'Zass.Infraestructura'` — Smart App Control, y es **intermitente**
+(funcionó a las 20:44 y falló a las 23:10 con el mismo comando).
+
+### 2. Render: la variable que faltaba, y el modo con que se abre
+
+`Zass__Pasarela=simulada` agregada (son **12** variables), `ASPNETCORE_ENVIRONMENT` se queda en
+`Production`, y desplegado el commit `771a20f` (`live`).
+
+Eso funciona por el PR #47: **en Producción la pasarela simulada puede INSCRIBIR y no puede
+COBRAR nunca**. Se descartaron las dos salidas obvias y conviene que quede escrito por qué:
+dejar la simulada entera hace que el **día 31** el cobro recurrente «apruebe» pagos que no
+existen; declarar el entorno como `Staging` es lo mismo con una mentira encima. La variable
+**sin poner** sigue fallando, que era el caso que de verdad preocupaba.
+
+**NO verificado:** que el modo solo inscripción esté resuelto en producción. Se resuelve la
+primera vez que alguien lo necesita, y para provocarlo hay que mandarle un aviso de pago a
+API-70. Se confirmará cuando corra el trabajo diario, o mirando los registros de Render en
+busca de «Pasarela en modo SOLO INSCRIPCION».
+
+### 3. Comprobado desde fuera, después de desplegar
+
+| Qué | Resultado |
+|---|---|
+| `zass.cl` | **503** y la página de mantenimiento: sigue cerrado, como debe |
+| `/api/salud` y `/api/salud/lista` | 200 — y el registro de Render muestra la sonda ejecutando `ST_Distance(ST_SetSRID(...))` **contra Neon**: PostGIS vivo |
+| `/api/buscar` con coordenadas | 200 |
+| `/api/planes` | **`cuposFundadorDisponibles = 50`** y fundador a **$5.990** |
+
+El guion `humo-produccion.mjs` se detiene en cuanto ve el 503, por diseño. Las pantallas se
+verifican el día que se abra.
+
+### 4. El defecto de la IP del visitante: RESUELTO, con datos
+
+`Zass__SaltosDeProxy` está en **5** en Render (alguien lo subió el 12-nov). La tabla
+`auditoria` de producción muestra el corte limpio:
+
+| Día | Qué IP se guardó |
+|---|---|
+| 8, 10 y 11-nov | `172.64.222.77`, `172.70.140.226`, `172.70.144.24`… **todas de Cloudflare** |
+| **12-nov en adelante** | `216.241.31.98`, **`200.91.9.226`** (rango chileno): **ninguna de Cloudflare** |
+
+La hipótesis del 11-nov era la correcta —**el límite de saltos se quedaba corto**, y no que la
+Function perdiera `X-Forwarded-For`— y el arreglo que proponían los documentos (cabecera propia
++ `ForwardedForHeaderName`) **era innecesario**. `render.yaml` decía `3` y se alineó a `5` con
+el porqué escrito al lado: si alguien recrea el servicio desde ese archivo, el defecto vuelve, y
+es de los que no se notan.
+
+### 5. Las credenciales locales de Neon estaban caducadas
+
+Los dos archivos de `zass-secretos` fallaban la autenticación mientras el secreto de GitHub
+funcionaba: **la rotación de Neon se hizo y las copias locales se quedaron atrás**. Repuesto
+`neon-npgsql.txt` desde el valor de Render y comprobado (`Postgres 18.7`); el anterior quedó
+como `neon-npgsql.caducado-20261115.txt`. **Ojo: si también se rotaron Cloudflare y Resend, sus
+archivos pueden estar igual de viejos.**
+
+Y hay una llave nueva: **`zass-secretos\render-apikey.txt`**, que permite leer variables,
+ponerlas y lanzar despliegues sin entrar al panel.
+
+### 6. Estado de producción, para no engañarse
+
+**3 usuarios y 0 prestadores publicados.** Son cuentas de prueba: la búsqueda en producción está
+vacía. Los datos de demostración (JQ-6) hacen falta **antes** de abrir.
+
+### Lo que sigue abierto
+
+1. **Flow**: elegir ya está hecho (decisión de Pablo), falta **abrir la cuenta de comercio**. No
+   depende de nosotros y es lo único que mueve la fecha.
+2. **La empresa**: persona natural o SpA, con su papá abogado. La pasarela lo pide antes que nada.
+3. **23 de diciembre**: si Flow no está aprobado cuando venza el primer mes gratis de los
+   fundadores, **hay que avisarles antes**. El sistema no regala meses ni finge cobros, pero
+   tampoco cobra.
+4. Los textos legales, los datos de demostración, y abrir el sitio (`MANTENIMIENTO=0` en
+   Cloudflare Pages **y volver a desplegar**, que una variable nueva no se aplica a un
+   despliegue que ya existe).
 
 ## Sesión del 14-nov-2026 (noche) — EL SITIO ESTÁ CERRADO, y el cupo fundador no funcionaba
 
