@@ -229,6 +229,22 @@ export function Ficha() {
             <h2>Hablar con {ficha.nombrePublico.split(' ')[0]}</h2>
             {!alDia ? (
               <SinContactoPorAhora nombre={ficha.nombrePublico} />
+            ) : ficha.contactoRequiereCorreoVerificado ? (
+              /*
+               * Caso distinto del de abajo: esta persona YA tiene cuenta. Pedirle que se cree
+               * una seria absurdo, y es el error facil de cometer aqui.
+               */
+              <div className="contacto-cuenta">
+                <p>
+                  Te falta un paso: verifica tu correo y vas a poder hablar con{' '}
+                  {ficha.nombrePublico.split(' ')[0]}. Te enviamos un enlace cuando creaste tu
+                  cuenta; revisa tu bandeja y la carpeta de correo no deseado.
+                </p>
+                <p className="letra-chica">
+                  Lo pedimos para que nadie junte los contactos de los prestadores con correos
+                  inventados.
+                </p>
+              </div>
             ) : ficha.contactoRequiereCuenta ? (
               <div className="contacto-cuenta">
                 <p>

@@ -351,17 +351,49 @@ public static class EndpointsIdentidad
         // bastaria, porque el dato seguiria en la respuesta para quien abra las herramientas del navegador, y
         // seria la lista de contactos de todos los prestadores a un script de distancia.
         grupo.MapGet("/prestadores/{slug}", async (
-                string slug, IServicioBusqueda busqueda, HttpContext http) =>
+                string slug, IServicioBusqueda busqueda, IServicioIdentidad identidad,
+                HttpContext http) =>
             {
                 var ficha = await busqueda.FichaPublicaAsync(slug);
                 if (ficha is null) return Results.NotFound();
 
+                var sinContacto = new ContactoPublicoDto(null, null, null, null);
+
                 if (http.User.Identity?.IsAuthenticated != true)
-                    ficha = ficha with
-                    {
-                        Contacto = new ContactoPublicoDto(null, null, null, null),
-                        ContactoRequiereCuenta = true,
-                    };
+                {
+                    ficha = ficha with { Contacto = sinContacto, ContactoRequiereCuenta = true };
+                }
+                else
+                {
+                    // Tener sesion no basta: el correo tiene que estar verificado.
+                    //
+                    // Registrarse es gratis y toma treinta segundos, asi que un muro que solo
+                    // pide «cuenta» cuesta un correo inventado: la lista de telefonos y
+                    // WhatsApp de todos los prestadores queda a un script de distancia, que es
+                    // exactamente lo que este muro existe para evitar. Verificar el correo es
+                    // el mismo listo que ya se exige para dejar una resena (CU-16, precondicion
+                    // P1) y para publicar perfil o agendar (RN-S1-02), asi que no es una regla
+                    // nueva: es la misma, aplicada donde faltaba. Queda como RN-S1-09.
+                    //
+                    // La primera version de este comentario citaba RN-S5-04, que es otra cosa
+                    // («el comentario se escapa al renderizar»): lo cazo la revision del
+                    // documento. Una cita equivocada es peor que ninguna, porque el proximo que
+                    // lea la regla citada no va a encontrar lo que el comentario promete.
+                    //
+                    // La consulta extra solo ocurre con sesion; a quien pasa de largo sin
+                    // cuenta —la mayoria de las visitas— no le cuesta nada.
+                    var usuarioId = http.User.UsuarioId();
+                    var usuario = usuarioId is null
+                        ? null
+                        : await identidad.ObtenerUsuarioAsync(usuarioId.Value);
+
+                    if (usuario is null || !usuario.CorreoVerificado)
+                        ficha = ficha with
+                        {
+                            Contacto = sinContacto,
+                            ContactoRequiereCorreoVerificado = true,
+                        };
+                }
 
                 // La respuesta depende de la sesion: que ningun cache compartido guarde la version con contacto.
                 http.Response.Headers.CacheControl = "private, no-store";

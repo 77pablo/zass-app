@@ -1,4 +1,4 @@
-﻿using Zass.Aplicacion.Credenciales;
+using Zass.Aplicacion.Credenciales;
 using Zass.Aplicacion.Catalogo;
 using Zass.Dominio.Comun;
 
@@ -232,7 +232,15 @@ public sealed record FichaPublicaDto(
     /// fichas es publico; contactar exige cuenta gratis. Lo pone el endpoint, que es quien conoce la sesion: el
     /// servicio de busqueda no sabe quien pregunta.
     /// </summary>
-    bool ContactoRequiereCuenta = false);
+    bool ContactoRequiereCuenta = false,
+
+    /// <summary>
+    /// Hay sesion, pero la cuenta todavia no ha verificado su correo, asi que el contacto
+    /// tampoco viaja. Es un caso distinto de <paramref name="ContactoRequiereCuenta"/> y la
+    /// pantalla tiene que poder decir otra cosa: a quien ya se registro no se le puede pedir
+    /// que se registre otra vez.
+    /// </summary>
+    bool ContactoRequiereCorreoVerificado = false);
 
 /// <summary>Una zona que cubre. La principal es la que se muestra primero (RN-S3-08).</summary>
 public sealed record ZonaPublicaDto(
