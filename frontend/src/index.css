@@ -997,3 +997,17 @@ option { background: var(--panel-2); color: var(--texto); }
   /* lo que queda lejos de la pantalla no se calcula hasta que se acerca */
   .seccion { content-visibility: auto; contain-intrinsic-size: auto 640px; }
 }
+
+/* Mis tarjetas */
+.lista-tarjetas { list-style: none; padding: 0; margin: 24px 0 0; display: grid; gap: 20px; max-width: 640px; }
+.tarjeta-nfc { display: grid; gap: 14px; justify-items: start; padding: 22px; border: 1px solid var(--linea); border-radius: 16px; background: var(--panel); }
+.tarjeta-nfc-enlace { font-family: var(--mono); font-size: 1.15rem; font-weight: 700; color: var(--amarillo); overflow-wrap: anywhere; }
+.tarjeta-nfc-qr { display: grid; gap: 8px; justify-items: start; }
+/* El QR va siempre sobre blanco, también en tema oscuro: invertido lo leen mal muchos teléfonos. */
+.codigo-qr { width: 200px; max-width: 100%; height: auto; border-radius: 8px; }
+.tarjeta-nfc-cifras { width: 100%; }
+.tarjeta-nfc-cifras table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+.tarjeta-nfc-cifras caption { text-align: left; font-weight: 800; margin-bottom: 6px; }
+.tarjeta-nfc-cifras th, .tarjeta-nfc-cifras td { padding: 6px 10px 6px 0; text-align: left; border-bottom: 1px solid var(--linea); }
+.tarjeta-nfc-cifras th[scope='row'] { font-weight: 600; color: var(--suave); }
+.tarjeta-nfc-cifras p { margin-top: 8px; }

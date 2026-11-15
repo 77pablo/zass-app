@@ -772,7 +772,7 @@ public interface IRepositorioAgenda
     void AgregarCambio(CambioCita cambio);
 }
 
-/// <summary>MOD-12 · TBL-25/26. Solo lo que CS-18 necesita; API-55 a API-59 agregaran lo suyo.</summary>
+/// <summary>MOD-12 · TBL-25/26. CS-18 y API-56 a API-58; API-55 y API-59 agregaran lo suyo.</summary>
 public interface IRepositorioTarjetas
 {
     /// <summary>La tarjeta con su perfil, o nulo. Comparacion exacta: el servicio ya normalizo.</summary>
@@ -780,4 +780,24 @@ public interface IRepositorioTarjetas
 
     /// <summary>Sin identidad del visitante (R-20): la entidad no tiene donde guardarla.</summary>
     void AgregarEscaneo(EscaneoTarjeta escaneo);
+
+    /// <summary>API-56. Las del perfil, sin seguimiento, la mas reciente primero.</summary>
+    Task<IReadOnlyList<Tarjeta>> DePrestadorAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+
+    /// <summary>
+    /// API-57 y API-58. RASTREADA y por id, SIN filtrar por dueno: esa comprobacion vive en el
+    /// servicio, donde la prueba unitaria la ve. Nulo si no existe.
+    /// </summary>
+    Task<Tarjeta?> PorIdAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>
+    /// API-58. Una sola consulta agrupada por medio. Un escaneo cuenta en un periodo si
+    /// <c>ocurrido_en &gt;= desde</c>: el borde exacto entra.
+    /// </summary>
+    Task<EscaneosContados> EscaneosPorMedioAsync(
+        Guid tarjetaId, DateTime desde7, DateTime desde30, CancellationToken ct = default);
 }
+
+/// <summary>API-58. Lo que el repositorio cuenta, ya agrupado: el servicio no recorre escaneos.</summary>
+public sealed record EscaneosContados(
+    int Nfc7, int Qr7, int Nfc30, int Qr30, int NfcTotal, int QrTotal);
