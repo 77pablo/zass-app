@@ -32,6 +32,45 @@ comprobado**, **qué no**, y **el siguiente paso exacto**.
 El despliegue está hecho **y comprobado desde fuera**. Esto es lo que cambió en producción y lo
 que se midió al hacerlo; nada de esto es recordado.
 
+### Dónde retomar (cierre de la sesión del 15-nov, madrugada)
+
+**Producción está desplegada, migrada y comprobada.** Lo que queda abierto:
+
+| PR | Qué es | Estado |
+|---|---|---|
+| **#44** | JQ-3, recordatorios de cita a 24 h y 2 h (Joaquín) | **Revisado y aprobado por escrito** en el hilo del PR: las cuatro trampas del proyecto están cubiertas. CI verde. **Falta que Pablo lo fusione** (es N3) |
+| **#50** | Auditoría de índices al día: lo aplicado tachado, el candidato 3.c y un falso positivo | Abierto, solo documentación. Ojo: **el cuerpo del PR perdió dos palabras** al crearlo (un `cita_id` entre comillas que el shell se comió); el archivo está bien, el cuerpo conviene corregirlo |
+
+**Lo que pide decisión y nadie puede hacer por Pablo:**
+
+1. **Flow**: abrir la cuenta de comercio. Es lo único que mueve la fecha del lanzamiento.
+2. **La empresa** (persona natural o SpA), con su papá abogado. La pasarela lo pide antes que nada.
+3. **23 de diciembre**: si Flow no está aprobado cuando venza el primer mes gratis de los
+   fundadores, hay que avisarles **antes**. El sistema no regala meses ni finge cobros, pero
+   tampoco cobra.
+4. **Abrir el sitio**: `MANTENIMIENTO=0` en Cloudflare Pages **y volver a desplegar** — una
+   variable nueva no se aplica a un despliegue que ya existe.
+5. **Los textos legales** y **los datos de demostración** (JQ-6): producción tiene 0 prestadores
+   publicados, así que la búsqueda está vacía.
+
+**Lo que quedó sin verificar, y cómo verificarlo:** que el modo solo inscripción esté resuelto en
+producción. Se resuelve la primera vez que alguien lo necesita; se confirma mirando los registros
+de Render en busca de «Pasarela en modo SOLO INSCRIPCION», o cuando corra el trabajo diario.
+
+**Lo siguiente de nuestro carril, por si nadie dice otra cosa:** el índice 3.c
+(`notificaciones.cita_id`), que ya está medido en `AUDITORIA-INDICES.md` y solo espera que se
+decida aplicarlo — es N3 y lleva migración, así que va con las demás.
+
+**Herramientas nuevas de esta sesión:** `zass-secretos\render-apikey.txt` permite leer y poner
+variables de Render y lanzar despliegues sin entrar al panel; y el flujo
+**«Migrar la base de produccion»** aplica migraciones a Neon desde Actions (en el PC no se puede:
+Smart App Control bloquea los ensamblados de forma intermitente).
+
+**Y un aviso de logística que costó tiempo tres veces hoy:** otra sesión trabaja en la misma
+carpeta `zass-app-1` y cambia la rama activa por debajo. Un commit mío aterrizó en una rama ajena
+y hubo que rescatarlo. Mientras eso siga así, **comprobar `git branch --show-current` antes de
+cada commit**, y que quien pueda use su propio worktree.
+
 ### 1. Neon migrada, con los cinco números leídos del catálogo
 
 Las **cuatro** migraciones pendientes aplicadas (`CuposFundadorA50`, `NoAsistioQuienFalto`,
