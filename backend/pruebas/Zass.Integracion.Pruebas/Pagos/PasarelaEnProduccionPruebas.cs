@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.Internal;
 using Zass.Aplicacion.Puertos;
+using Zass.Dominio.Comun;
 using Zass.Infraestructura.Configuracion;
 using Zass.Infraestructura.Pagos;
 
@@ -64,23 +65,114 @@ public class PasarelaEnProduccionPruebas
         Assert.ThrowsAny<Exception>(() => contenedor.GetRequiredService<IPasarelaDePagos>());
     }
 
+    /// <summary>
+    /// Esto cambio el 14-nov-2026, y conviene saber por que.
+    ///
+    /// <para>
+    /// Antes, pedir la simulada en Produccion a proposito tampoco se podia, y eso dejaba el
+    /// lanzamiento sin salida: el cupo fundador inscribe un medio de pago con tres montos en
+    /// cero —no mueve un peso— y sin pasarela resuelta ese camino devuelve 500. Las dos
+    /// salidas obvias eran peores: dejar la simulada entera abre el agujero de que el dia 31
+    /// el cobro recurrente «apruebe» pagos que no existen, y declarar Staging es lo mismo con
+    /// una mentira encima.
+    /// </para>
+    ///
+    /// <para>
+    /// Ahora, puesta **a proposito**, se resuelve en modo solo inscripcion: autoriza y no
+    /// cobra. El invariante entero sigue en pie y lo fijan las tres pruebas de abajo.
+    /// </para>
+    /// </summary>
     [Fact]
-    public void En_Produccion_pedir_la_simulada_a_proposito_tampoco_se_puede()
+    public void En_Produccion_pedir_la_simulada_a_proposito_da_el_modo_solo_inscripcion()
     {
         var contenedor = Contenedor("Production", pasarela: "simulada");
 
-        Assert.ThrowsAny<Exception>(() => contenedor.GetRequiredService<IPasarelaDePagos>());
+        var pasarela = contenedor.GetRequiredService<IPasarelaDePagos>();
+
+        // El nombre dice lo que es, y queda escrito en cada intento de pago: mirando la tabla
+        // se sabe que ese medio se inscribio sin pasarela real detras.
+        Assert.Equal(PasarelaSoloInscripcion.NombreDeLaPasarela, pasarela.Nombre);
+        Assert.NotEqual(PasarelaSimulada.NombreDeLaPasarela, pasarela.Nombre);
     }
 
     [Fact]
-    public void El_nombre_va_en_el_mensaje_para_que_quien_despliega_sepa_que_poner()
+    public async Task El_modo_solo_inscripcion_SI_inscribe_porque_no_mueve_dinero()
+    {
+        var pasarela = Contenedor("Production", pasarela: "simulada")
+            .GetRequiredService<IPasarelaDePagos>();
+
+        var r = await pasarela.IniciarInscripcionAsync(
+            new SolicitudDeInscripcion(Guid.NewGuid(), "ZASS! Fundador - inscripcion"));
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.NotNull(r.Valor);
+    }
+
+    /// <summary>
+    /// Un cobro con alguien delante: falla con regla de negocio, no con una excepcion, para
+    /// que la pantalla pueda contarlo con calma.
+    /// </summary>
+    [Fact]
+    public async Task El_modo_solo_inscripcion_NO_inicia_un_cobro()
+    {
+        var pasarela = Contenedor("Production", pasarela: "simulada")
+            .GetRequiredService<IPasarelaDePagos>();
+
+        var r = await pasarela.IniciarCobroAsync(
+            new SolicitudDeCobro(Guid.NewGuid(), Monto: 5990, "CLP", "un mes"));
+
+        Assert.False(r.Exito);
+        Assert.Equal(Fallas.ReglaDeNegocio, r.Codigo);
+        Assert.Contains("no tiene pasarela de pagos real", r.Mensaje);
+    }
+
+    /// <summary>
+    /// **La prueba que de verdad importa.** El cobro del dia del vencimiento corre sin nadie
+    /// mirando: es ahi donde una pasarela que finge «aprobado» regalaria meses en silencio.
+    /// Tiene que fallar, y el intento quedarse sin resolver a proposito.
+    /// </summary>
+    [Fact]
+    public async Task El_modo_solo_inscripcion_NO_cobra_el_dia_del_vencimiento()
+    {
+        var pasarela = Contenedor("Production", pasarela: "simulada")
+            .GetRequiredService<IPasarelaDePagos>();
+
+        var r = await pasarela.CobrarAsync(
+            new SolicitudDeCobro(Guid.NewGuid(), Monto: 5990, "CLP", "el mes siguiente")
+            { MedioInscrito = "sim-medio-inscrito" });
+
+        Assert.False(r.Exito);
+        Assert.Equal(Fallas.ReglaDeNegocio, r.Codigo);
+        Assert.Contains("no tiene pasarela de pagos real", r.Mensaje);
+    }
+
+    /// <summary>
+    /// Mayusculas y espacios no cambian nada: se compara normalizado, igual que el switch. Lo
+    /// que cambia respecto de antes es el desenlace — se resuelve en modo solo inscripcion —,
+    /// y esta prueba lo fija para que escribir «  SIMULADA  » no sea otra cosa que «simulada».
+    /// </summary>
+    [Fact]
+    public void Mayusculas_y_espacios_no_cuelan_otra_pasarela()
     {
         var contenedor = Contenedor("Production", pasarela: "  SIMULADA  ");
+
+        var pasarela = contenedor.GetRequiredService<IPasarelaDePagos>();
+
+        Assert.Equal(PasarelaSoloInscripcion.NombreDeLaPasarela, pasarela.Nombre);
+    }
+
+    /// <summary>
+    /// El mensaje de la variable sin poner tiene que decir QUE poner: quien despliega lo lee
+    /// en el registro de Render y no tiene el codigo delante.
+    /// </summary>
+    [Fact]
+    public void El_mensaje_dice_que_poner_cuando_la_variable_falta()
+    {
+        var contenedor = Contenedor("Production", pasarela: null);
 
         var error = Assert.ThrowsAny<Exception>(
             () => contenedor.GetRequiredService<IPasarelaDePagos>());
 
-        // Mayusculas y espacios tampoco la cuelan: se compara normalizado, igual que el switch.
         Assert.Contains(RegistroDeServicios.ClavePasarela, error.Message);
         Assert.Contains(PasarelaSimulada.NombreDeLaPasarela, error.Message);
     }

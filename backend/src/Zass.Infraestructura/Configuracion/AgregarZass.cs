@@ -208,14 +208,33 @@ public static class RegistroDeServicios
             var elegida = nombre.Trim().ToLowerInvariant();
 
             var entorno = sp.GetRequiredService<IHostEnvironment>();
+
             if (entorno.IsProduction() && elegida == PasarelaSimulada.NombreDeLaPasarela)
-                throw new OptionsValidationException(
-                    OpcionesZass.Seccion, typeof(OpcionesZass),
-                    new[]
-                    {
-                        $"{ClavePasarela} resuelve a '{PasarelaSimulada.NombreDeLaPasarela}' y el "
-                        + "entorno es Produccion. La pasarela simulada no cobra: configura una real.",
-                    });
+            {
+                // La variable SIN PONER sigue fallando, que es el caso que de verdad importa:
+                // un despliegue que la olvide no puede arrancar cobrando de mentira.
+                var puestaAProposito = sp.GetRequiredService<IConfiguration>()[ClavePasarela];
+                if (string.IsNullOrWhiteSpace(puestaAProposito))
+                    throw new OptionsValidationException(
+                        OpcionesZass.Seccion, typeof(OpcionesZass),
+                        new[]
+                        {
+                            $"{ClavePasarela} no esta configurada y el entorno es Produccion. "
+                            + $"La pasarela por omision ('{PasarelaSimulada.NombreDeLaPasarela}') no "
+                            + "cobra: configura una real, o pon ese nombre a proposito para abrir "
+                            + "en modo solo inscripcion.",
+                        });
+
+                // Puesta a proposito: se puede INSCRIBIR, nunca COBRAR. El invariante que
+                // importa —una pasarela falsa jamas finge un cobro— se mantiene entero, y el
+                // camino del cupo fundador (que no mueve un peso: tres montos en cero) funciona
+                // mientras la pasarela real no este aprobada. Ver PasarelaSoloInscripcion.
+                return new PasarelaSoloInscripcion(
+                    new PasarelaSimulada(
+                        sp.GetRequiredService<IOptions<OpcionesZass>>(),
+                        sp.GetRequiredService<ILogger<PasarelaSimulada>>()),
+                    sp.GetRequiredService<ILogger<PasarelaSoloInscripcion>>());
+            }
 
             return elegida switch
             {
