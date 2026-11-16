@@ -4,7 +4,7 @@
  * El navegador sigue hablando con UN solo origen (zass.cl), asi que las cookies de sesion (httpOnly, Secure,
  * SameSite=Lax) viajan sin tocar CORS, igual que en desarrollo con el proxy de Vite.
  *
- * Necesita la variable de entorno API_ORIGEN (por ejemplo https://api.zass.cl). Sin ella responde 503 y
+ * Necesita la variable de entorno API_ORIGEN (por ejemplo https://zass-api.onrender.com). Sin ella responde 503 y
  * no intenta nada: mejor un error claro que reenviar a un sitio equivocado.
  *
  * IMPORTANTE: la API calcula el limite de peticiones por IP. Detras de este proxy todas las peticiones llegan
