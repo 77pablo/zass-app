@@ -626,7 +626,7 @@ public class ApiAgendaPruebas : IAsyncLifetime
             Guid.NewGuid().ToString(), "cancelar", new { motivo = (string?)null }, $"c-{Guid.NewGuid():N}");
 
         Assert.Equal(HttpStatusCode.NotFound, deOtro.StatusCode);
-        Assert.Equal(await inexistente.Content.ReadAsStringAsync(), await deOtro.Content.ReadAsStringAsync());
+        Assert.Equal(await CuerpoComparable.De(inexistente), await CuerpoComparable.De(deOtro));
     }
 
     /// <summary>

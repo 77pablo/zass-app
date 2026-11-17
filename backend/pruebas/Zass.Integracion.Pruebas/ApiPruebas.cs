@@ -237,8 +237,8 @@ public partial class ApiPruebas : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Unauthorized, malaClave.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, sinCuenta.StatusCode);
         Assert.Equal(
-            await sinCuenta.Content.ReadAsStringAsync(),
-            await malaClave.Content.ReadAsStringAsync());
+            await CuerpoComparable.De(sinCuenta),
+            await CuerpoComparable.De(malaClave));
     }
 
     [Fact]
@@ -1339,7 +1339,7 @@ public partial class ApiPruebas : IAsyncLifetime
         Assert.Equal(HttpStatusCode.NotFound, sinPublicar.StatusCode);
         Assert.Equal(noExiste.StatusCode, sinPublicar.StatusCode);
         Assert.Equal(
-            await noExiste.Content.ReadAsStringAsync(), await sinPublicar.Content.ReadAsStringAsync());
+            await CuerpoComparable.De(noExiste), await CuerpoComparable.De(sinPublicar));
     }
 
     [Fact]
@@ -1648,7 +1648,7 @@ public partial class ApiPruebas : IAsyncLifetime
 
             Assert.Equal(HttpStatusCode.NotFound, ajena.StatusCode);
             Assert.Equal(inexistente.StatusCode, ajena.StatusCode);
-            Assert.Equal(await inexistente.Content.ReadAsStringAsync(), await ajena.Content.ReadAsStringAsync());
+            Assert.Equal(await CuerpoComparable.De(inexistente), await CuerpoComparable.De(ajena));
         }
         finally { _cliente = primero; }
 
