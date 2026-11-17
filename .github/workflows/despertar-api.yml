@@ -6,7 +6,7 @@ name: Despertar API
 
 on:
   schedule:
-    - cron: "*/10 * * * *"   # cada 10 min (hora UTC); GitHub puede atrasarlo
+    - cron: "*/15 * 22-24 11 *"   # SOLO ventana de lanzamiento: 22 nov 00:00 a 24 nov 23:59 UTC (21 nov 21:00 a 24 nov 20:59, hora de Chile)
   workflow_dispatch: {}      # a mano desde la pestaña Actions
 
 permissions:
