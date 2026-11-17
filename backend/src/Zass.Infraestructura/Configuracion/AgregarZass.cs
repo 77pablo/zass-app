@@ -39,8 +39,9 @@ public sealed class OpcionesZass
 
     /// <summary>
     /// Clave de cifrado de direcciones (RN-S1-06), en Base64 y de 32 bytes. En
-    /// produccion vive en N-10 Key Vault; en desarrollo, en User Secrets. Nunca en el
-    /// repositorio.
+    /// produccion vive en las variables de entorno de Render; en desarrollo, en
+    /// User Secrets. Nunca en el repositorio.
+    /// *Diseño original: N-10 Key Vault con identidad administrada (DT-05 cayó).*
     /// </summary>
     [Required(ErrorMessage = "Falta la clave de cifrado de direcciones.")]
     public string ClaveDireccionesBase64 { get; set; } = "";
@@ -99,8 +100,9 @@ public static class RegistroDeServicios
 
         // Las opciones se leen al RESOLVER, no al registrar. Leerlas aqui mismo
         // congelaria la configuracion que existia en este instante, y se perderia
-        // cualquier fuente agregada despues: Key Vault en produccion, y los ajustes de
-        // las pruebas, que se inyectan luego de que Program.cs llama a este metodo.
+        // cualquier fuente agregada despues: las variables de entorno de Render en
+        // produccion, y los ajustes de las pruebas, que se inyectan luego de que
+        // Program.cs llama a este metodo.
         servicios.AddDbContext<ZassDbContext>((sp, o) =>
             o.UseNpgsql(sp.GetRequiredService<IOptions<OpcionesZass>>().Value.CadenaConexion));
 
