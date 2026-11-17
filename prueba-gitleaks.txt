@@ -1,0 +1,4 @@
+# Archivo de prueba para verificar que gitleaks detecta secretos
+# NO FUSIONAR - solo para validar el flujo
+
+AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
