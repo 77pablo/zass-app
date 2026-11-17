@@ -23,7 +23,11 @@ constructor.Services
     .AgregarProxiesDeConfianza()                      // X-Forwarded-*: solo desde redes listadas
     .AgregarAutenticacion(exigirHttps)                // cookie de 15 min + CSRF
     .AddValidatorsFromAssemblyContaining<ValidadorVerificarCorreo>()
-    .AddProblemDetails(IdDePeticion.Configurar)       // RFC 7807 en todos los errores, con idPeticion
+    .AddProblemDetails(o =>                           // RFC 7807 en todos los errores:
+    {
+        IdDePeticion.Configurar(o);                   //   con idPeticion
+        TextosEnCastellano.Configurar(o);             //   y sin titulos de fabrica en ingles
+    })
     .AddEndpointsApiExplorer()
     .AddSwaggerGen();
 
@@ -57,6 +61,13 @@ constructor.Services.Configure<Microsoft.AspNetCore.Routing.RouteHandlerOptions>
     opciones => opciones.ThrowOnBadRequest = false);
 
 var app = constructor.Build();
+
+// En Render la cultura es la invariante y FluentValidation responderia en ingles. Si la maquina
+// ni siquiera tiene datos de idioma (modo de globalizacion invariante), la API arranca igual y
+// lo dice: un texto en ingles no puede costar la API entera.
+if (!TextosEnCastellano.FijarIdiomaDeValidacion())
+    app.Logger.LogWarning(
+        "Sin datos de idioma (globalizacion invariante): los mensajes de validacion saldran en ingles.");
 
 // Se valida DESPUES de Build y con app.Configuration: ahi ya estan todas las fuentes
 // (variables de entorno, Key Vault, y los ajustes que inyectan las pruebas). Falla antes de
