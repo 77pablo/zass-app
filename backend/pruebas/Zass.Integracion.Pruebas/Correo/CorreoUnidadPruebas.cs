@@ -177,10 +177,11 @@ public class CorreoUnidadPruebas
     [Fact]
     public void Un_tipo_sin_plantilla_no_se_renderiza()
     {
-        // PerfilPublicado estuvo aqui, y despues CitaConfirmada: las dos tienen plantilla (la
-        // segunda desde JQ-1). Recordatorio24h sigue abierto a conciencia: nadie lo encola todavia.
-        Assert.Null(Plantillas.Renderizar(TipoNotificacion.Recordatorio24h, "Ana", "https://zass.cl", CargaDeAviso.Purgada));
-        Assert.False(Plantillas.TienePlantilla(TipoNotificacion.Recordatorio24h));
+        // PerfilPublicado estuvo aqui, despues CitaConfirmada (JQ-1) y despues Recordatorio24h
+        // (JQ-3): las tres tienen plantilla. CredencialResuelta sigue abierto a conciencia:
+        // nadie lo encola todavia.
+        Assert.Null(Plantillas.Renderizar(TipoNotificacion.CredencialResuelta, "Ana", "https://zass.cl", CargaDeAviso.Purgada));
+        Assert.False(Plantillas.TienePlantilla(TipoNotificacion.CredencialResuelta));
     }
 
     // ------------------------------------------------------------ CU-03: la ficha publicada
@@ -351,6 +352,8 @@ public class CorreoUnidadPruebas
             TipoNotificacion.CitaSolicitada, TipoNotificacion.CitaConfirmada,
             TipoNotificacion.CitaRechazada, TipoNotificacion.CitaCancelada,
             TipoNotificacion.CitaReprogramada,
+            // El planificador (A-09), desde JQ-3.
+            TipoNotificacion.Recordatorio24h, TipoNotificacion.Recordatorio2h,
         };
         // Ya no queda ninguno pendiente a conciencia: PerfilPublicado era el ultimo y tiene
         // plantilla desde el 13-nov-2026. Si manana se encola un tipo nuevo sin plantilla, esta
@@ -360,6 +363,58 @@ public class CorreoUnidadPruebas
         var huecos = encolados.Except(pendientes).Where(t => !Plantillas.TienePlantilla(t)).ToArray();
 
         Assert.Empty(huecos);
+    }
+
+    // ------------------------------------------------------------ recordatorios (JQ-3)
+
+    [Theory]
+    [InlineData(TipoNotificacion.Recordatorio24h)]
+    [InlineData(TipoNotificacion.Recordatorio2h)]
+    public void Los_recordatorios_tienen_plantilla_y_no_guardan_ningun_secreto(TipoNotificacion tipo)
+    {
+        Assert.True(Plantillas.TienePlantilla(tipo));
+        Assert.False(Plantillas.LlevaToken(tipo));
+    }
+
+    /// <summary>Los cuatro textos aprobados, escritos a mano: asunto, titulo y la frase que importa.</summary>
+    [Theory]
+    [InlineData(TipoNotificacion.Recordatorio24h, "buscador", "Recordatorio: tienes una hora en ZASS!",
+        "Se acerca tu hora", "Te recordamos que tienes una hora agendada dentro de las próximas 24 horas.")]
+    [InlineData(TipoNotificacion.Recordatorio24h, "prestador", "Recordatorio: tienes una hora agendada en ZASS!",
+        "Tienes una hora en las próximas 24 horas", "tienes una hora agendada con un cliente dentro de las próximas 24 horas.")]
+    [InlineData(TipoNotificacion.Recordatorio2h, "buscador", "Tu hora en ZASS! es pronto",
+        "Tu hora es pronto", "Tu hora es dentro de las próximas 2 horas. Revisa el detalle en «Mis citas».")]
+    [InlineData(TipoNotificacion.Recordatorio2h, "prestador", "Tienes una hora pronto en ZASS!",
+        "Tu próxima hora es pronto", "Tienes una hora con un cliente dentro de las próximas 2 horas.")]
+    public void Cada_recordatorio_dice_lo_aprobado_segun_a_quien_va(
+        TipoNotificacion tipo, string rol, string asunto, string titulo, string frase)
+    {
+        var r = Plantillas.Renderizar(tipo, "Ana", "https://zass.cl", $"{{\"rol\":\"{rol}\"}}")!;
+
+        Assert.Equal(asunto, r.Asunto);
+        Assert.Contains(frase, r.Texto);
+        Assert.Contains(titulo, System.Net.WebUtility.HtmlDecode(r.Html));   // el HTML escapa las tildes
+        Assert.Contains("https://zass.cl/mis-citas", r.Texto);
+        Assert.Contains("href=\"https://zass.cl/mis-citas\"", r.Html);
+    }
+
+    /// <summary>
+    /// La regla de JQ-1 vale aqui: ni fecha, ni hora, ni la direccion (que «Mis citas» no
+    /// muestra), y el nombre solo en el cuerpo y escapado. Sin rol, el texto es el del buscador.
+    /// </summary>
+    [Theory]
+    [InlineData(TipoNotificacion.Recordatorio24h, "Recordatorio: tienes una hora en ZASS!")]
+    [InlineData(TipoNotificacion.Recordatorio2h, "Tu hora en ZASS! es pronto")]
+    public void Un_recordatorio_sin_rol_va_al_buscador_y_no_dice_mas_de_la_cuenta(TipoNotificacion tipo, string asunto)
+    {
+        foreach (var carga in new[] { "", "{}", CargaDeAviso.Purgada, "{\"rol\":\"otro\"}" })
+            Assert.Equal(asunto, Plantillas.Renderizar(tipo, "Ana", "https://zass.cl", carga)!.Asunto);
+
+        var r = Plantillas.Renderizar(tipo, "Luis <b>Pérez</b>", "https://zass.cl", "{}")!;
+        Assert.DoesNotContain("Luis", r.Asunto);
+        Assert.DoesNotContain("<b>Pérez</b>", r.Html);
+        Assert.DoesNotContain("dirección", r.Texto);
+        Assert.DoesNotMatch(@"\d{1,2}:\d{2}", r.Texto);   // ninguna hora del reloj
     }
 
     // ------------------------------------------------------------ avisos de cita (JQ-1)

@@ -220,10 +220,10 @@ public sealed record ReprogramarCitaCmd(
     string? Motivo);
 
 /// <summary>Lo que hizo una pasada del planificador sobre las citas. Solo números.</summary>
-public sealed record ResumenDeCitas(int Expiradas, int PorAsistir, int Asumidas)
+public sealed record ResumenDeCitas(int Expiradas, int PorAsistir, int Asumidas, int Recordatorios = 0)
 {
     public override string ToString() =>
-        $"{Expiradas} expiradas, {PorAsistir} por asistir, {Asumidas} asumidas";
+        $"{Expiradas} expiradas, {PorAsistir} por asistir, {Asumidas} asumidas, {Recordatorios} recordatorios";
 }
 
 public sealed record MotivoHttpCmd(string? Motivo);

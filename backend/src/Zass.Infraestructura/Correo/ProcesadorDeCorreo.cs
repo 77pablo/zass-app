@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using NpgsqlTypes;
+using Zass.Aplicacion.Agenda;
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
 using Zass.Infraestructura.Configuracion;
@@ -197,6 +198,24 @@ public sealed class ProcesadorDeCorreo
         if (n > 0) _log.LogInformation("Se purgó la carga de {N} aviso(s) fallidos o anulados.", n);
     }
 
+    private async Task AnularAsync(Notificacion aviso, DateTime ahora, CancellationToken ct)
+    {
+        aviso.Estado = EstadoEnvio.Anulada;
+        aviso.Cuerpo = CargaDeAviso.Purgada;
+        aviso.ProgramadaPara = ahora;
+        await _ctx.SaveChangesAsync(ct);
+    }
+
+    private async Task<bool> RecordatorioVigenteAsync(Notificacion aviso, DateTime ahora, CancellationToken ct)
+    {
+        if (aviso.CitaId is not { } citaId) return false;
+        var cita = await _ctx.Citas.AsNoTracking().Where(c => c.Id == citaId)
+            .Select(c => new { c.Estado, c.CreadaEn, Inicio = c.BloqueHorario!.InicioEn })
+            .SingleOrDefaultAsync(ct);
+        return cita is not null
+            && RecordatoriosDeCita.Corresponde(aviso.Tipo, cita.Estado, cita.Inicio, cita.CreadaEn, ahora);
+    }
+
     private async Task ProcesarUnoAsync(Guid id, string urlPublica, CancellationToken ct)
     {
         var aviso = await _ctx.Notificaciones.Include(n => n.Destinatario)
@@ -222,11 +241,18 @@ public sealed class ProcesadorDeCorreo
         if (usuario is null || usuario.Estado == EstadoCuenta.Eliminada || usuario.AnonimizadoEn is not null
             || (aviso.Tipo == TipoNotificacion.CorreoVerificacion && usuario.CorreoVerificado))
         {
-            aviso.Estado = EstadoEnvio.Anulada;
-            aviso.Cuerpo = CargaDeAviso.Purgada;
-            aviso.ProgramadaPara = ahora;
-            await _ctx.SaveChangesAsync(ct);
+            await AnularAsync(aviso, ahora, ct);
             _log.LogInformation("Aviso {Id} ({Tipo}) anulado: ya no corresponde enviarlo.", aviso.Id, aviso.Tipo);
+            return;
+        }
+
+        // JQ-3: cancelar y reprogramar ya anulan los recordatorios en cola, pero uno que estaba
+        // tomado, o uno que llega tarde a la ventana, se escaparia. Se mira la cita de nuevo.
+        if (RecordatoriosDeCita.Tipos.Contains(aviso.Tipo) && !await RecordatorioVigenteAsync(aviso, ahora, ct))
+        {
+            await AnularAsync(aviso, ahora, ct);
+            _log.LogInformation("Recordatorio {Id} ({Tipo}) anulado: la cita cambió o pasó su ventana.",
+                aviso.Id, aviso.Tipo);
             return;
         }
 

@@ -50,6 +50,16 @@ public interface ICifradoDeDatos
 public interface INotificaciones
 {
     void Encolar(Notificacion aviso);
+
+    /// <summary>JQ-3. Si ya hay un aviso con esa clave, en el estado que sea: una clave no se reusa.</summary>
+    Task<bool> ExisteAsync(string claveIdempotencia, CancellationToken ct = default);
+
+    /// <summary>
+    /// JQ-3. Anula los recordatorios de la cita que aun esperan en la cola. Corre dentro de la
+    /// transaccion abierta (mismo contexto), asi que si el caso de uso se deshace, esto tambien.
+    /// El que ya estaba tomado para enviar lo para el procesador, que vuelve a mirar la cita.
+    /// </summary>
+    Task<int> AnularRecordatoriosAsync(Guid citaId, CancellationToken ct = default);
 }
 
 /// <summary>TBL-28. Solo insercion. Nunca contrasenas, tokens ni direcciones.</summary>
@@ -742,6 +752,12 @@ public interface IRepositorioAgenda
 
     /// <summary>T11. Pendientes de asistencia cuya hora terminó antes de <paramref name="limite"/>.</summary>
     Task<IReadOnlyList<Guid>> CitasSinAsistenciaAsync(DateTime limite, int maximo, CancellationToken ct = default);
+
+    /// <summary>
+    /// JQ-3. Confirmadas en la ventana de algun recordatorio, agendadas con la anticipacion que
+    /// ese recordatorio pide y que aun no lo tienen. Solo los ids.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> CitasPorRecordarAsync(DateTime ahora, int maximo, CancellationToken ct = default);
 
     /// <summary>
     /// La cita RASTREADA, con su bloque, para poder cambiarle el estado. Separada de
