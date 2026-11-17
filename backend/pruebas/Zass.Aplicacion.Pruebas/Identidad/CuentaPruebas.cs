@@ -288,7 +288,7 @@ public class CuentaPruebas
 
         await _cuenta.RestablecerContrasenaAsync(token, "clave-nueva-larga");
 
-        Assert.Empty(_base.Sesiones.Where(s => s.EstaVigente(_reloj.Ahora)));
+        Assert.DoesNotContain(_base.Sesiones, s => s.EstaVigente(_reloj.Ahora));
     }
 
     [Fact]
@@ -374,7 +374,7 @@ public class CuentaPruebas
 
         await _cuenta.EliminarAsync(id);
 
-        Assert.Empty(_base.Sesiones.Where(s => s.EstaVigente(_reloj.Ahora)));
+        Assert.DoesNotContain(_base.Sesiones, s => s.EstaVigente(_reloj.Ahora));
     }
 
     [Fact]
