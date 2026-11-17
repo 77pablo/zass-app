@@ -111,8 +111,7 @@ export function Ficha() {
         <Icono nombre="flecha" />Seguir buscando
       </Link>
 
-      <div className="ficha-rejilla">
-        <article>
+      <article className="ficha-rejilla">
           <header className="persona">
             <Monograma nombre={ficha.nombrePublico} tamano="g" />
             <div>
@@ -130,6 +129,103 @@ export function Ficha() {
               </div>
             </div>
           </header>
+
+          {/*
+            El contacto va justo despues de quien es: en una columna (telefono) se lee la persona y
+            enseguida como hablarle, antes del detalle. Decision de Pablo, 17-nov-2026. En el DOM va en
+            el mismo orden que en pantalla, asi que el lector de pantalla y el tabulador recorren lo
+            mismo que se ve. En escritorio la rejilla lo pone a la derecha (ver .ficha-rejilla en index.css).
+          */}
+          <aside className="lateral" aria-label="Contacto">
+            <div className="lateral-caja">
+              <h2>Hablar con {ficha.nombrePublico.split(' ')[0]}</h2>
+              {!alDia ? (
+                <SinContactoPorAhora nombre={ficha.nombrePublico} />
+              ) : ficha.contactoRequiereCorreoVerificado ? (
+                /*
+                 * Caso distinto del de abajo: esta persona YA tiene cuenta. Pedirle que se cree
+                 * una seria absurdo, y es el error facil de cometer aqui.
+                 */
+                <div className="contacto-cuenta">
+                  <p>
+                    Te falta un paso: verifica tu correo y vas a poder hablar con{' '}
+                    {ficha.nombrePublico.split(' ')[0]}. Te enviamos un enlace cuando creaste tu
+                    cuenta; revisa tu bandeja y la carpeta de correo no deseado.
+                  </p>
+                  <Link className="boton boton--chico" to="/verificar-correo">
+                    <Icono nombre="mensaje" />Pedir otro enlace
+                  </Link>
+                  <p className="letra-chica">
+                    Lo pedimos para que nadie junte los contactos de los prestadores con correos
+                    inventados.
+                  </p>
+                </div>
+              ) : ficha.contactoRequiereCuenta ? (
+                <div className="contacto-cuenta">
+                  <p>
+                    Para hablar con {ficha.nombrePublico.split(' ')[0]} crea tu cuenta gratis.
+                    Toma un minuto y a quien busca nunca se le cobra.
+                  </p>
+                  <Link className="boton boton--amarillo boton--lleno" to="/crear-cuenta" state={{ despues: `/prestadores/${slug}` }}>
+                    <Icono nombre="mensaje" />Crear mi cuenta gratis
+                  </Link>
+                  <p className="letra-chica">
+                    ¿Ya tienes cuenta? <Link to="/entrar" state={{ despues: `/prestadores/${slug}` }}>Entrar</Link>
+                  </p>
+                </div>
+              ) : hayContacto ? (
+                <ul className="contacto">
+                  {wasap && (
+                    <li>
+                      <a className="boton boton--amarillo boton--lleno" href={`https://wa.me/${wasap}`} rel="noreferrer noopener" target="_blank">
+                        <Icono nombre="mensaje" />Escribir por WhatsApp
+                      </a>
+                    </li>
+                  )}
+                  {c.telefono && (
+                    <li>
+                      <a className="boton boton--lleno" href={`tel:${c.telefono.replace(/[^\d+]/g, '')}`}>
+                        <Icono nombre="telefono" />Llamar · {c.telefono}
+                      </a>
+                    </li>
+                  )}
+                  {c.correo && (
+                    <li>
+                      <a className="boton boton--lleno" href={`mailto:${c.correo}`}>
+                        <Icono nombre="correo" />Escribir un correo
+                      </a>
+                    </li>
+                  )}
+                  {sitio && (
+                    <li>
+                      <a className="boton boton--lleno" href={sitio} rel="noreferrer noopener" target="_blank">
+                        <Icono nombre="mundo" />Ver su sitio web
+                      </a>
+                    </li>
+                  )}
+                </ul>
+              ) : (
+                <p className="bloque-vacio">
+                  Esta persona todavía no publicó cómo contactarla.
+                  {/*
+                    Sin servicios publicados el calendario dice «todavia no publico sus servicios»:
+                    mandar ahi seria mandar a una puerta cerrada, asi que la frase solo sale cuando
+                    de verdad hay algo que reservar. Sin «mas arriba» ni «mas abajo»: en el telefono
+                    el contacto va ANTES del calendario y en escritorio al lado, asi que ninguna
+                    direccion es cierta en los dos.
+                  */}
+                  {ficha.servicios.length > 0 && ' Puedes pedirle una hora desde su calendario.'}
+                </p>
+              )}
+              {alDia && (
+                <p className="letra-chica">
+                  Contactar no te cuesta nada: hablas directo con quien te atiende.
+                </p>
+              )}
+            </div>
+          </aside>
+
+          <div className="ficha-cuerpo">
 
           <section className="bloque">
             <h2>Sobre {ficha.nombrePublico.split(' ')[0]}</h2>
@@ -159,17 +255,11 @@ export function Ficha() {
             )}
           </section>
 
-          {alDia ? (
-            <AgendarHora
-              slug={ficha.slug}
-              nombre={ficha.nombrePublico}
-              servicios={ficha.servicios}
-              elegidoInicial={{ servicio: busqueda.get('servicio'), bloque: busqueda.get('bloque') }}
-            />
-          ) : (
-            <SinHorasPorAhora nombre={ficha.nombrePublico} />
-          )}
-
+          {/*
+            Las credenciales van ANTES de agendar, no despues: son la prueba de confianza, y se
+            miran para decidir si reservar. Debajo del calendario llegaban cuando ya habia que
+            elegir una hora, es decir, demasiado tarde para servir de algo.
+          */}
           {ficha.credenciales.length > 0 && (
             <section className="bloque">
               <h2>Credenciales</h2>
@@ -185,7 +275,27 @@ export function Ficha() {
                   </li>
                 ))}
               </ul>
+              {/*
+                Una etiqueta de confianza sin explicar es una garantia inventada: quien lee
+                «Verificada» tiene que poder saber quien verifico y que se miro. Texto propuesto,
+                pendiente de que Pablo lo apruebe (regla 12).
+              */}
+              <p className="credenciales-nota">
+                «Verificada» quiere decir que en ZASS! revisamos el documento. «Declarada por el
+                usuario» quiere decir que la escribió esta persona y todavía no la hemos revisado.
+              </p>
             </section>
+          )}
+
+          {alDia ? (
+            <AgendarHora
+              slug={ficha.slug}
+              nombre={ficha.nombrePublico}
+              servicios={ficha.servicios}
+              elegidoInicial={{ servicio: busqueda.get('servicio'), bloque: busqueda.get('bloque') }}
+            />
+          ) : (
+            <SinHorasPorAhora nombre={ficha.nombrePublico} />
           )}
 
           <section className="bloque">
@@ -206,105 +316,35 @@ export function Ficha() {
           <section className="bloque">
             <h2>Lo que dicen de {ficha.nombrePublico.split(' ')[0]}</h2>
             {ficha.totalResenas > 0 ? (
-              <p className="nota">
-                {ficha.promedioCalificacion !== null && (
-                  <span className="nota-promedio">
-                    {ficha.promedioCalificacion.toFixed(1).replace('.', ',')}
+              <>
+                <p className="nota">
+                  {ficha.promedioCalificacion !== null && (
+                    <span className="nota-promedio">
+                      {ficha.promedioCalificacion.toFixed(1).replace('.', ',')}
+                    </span>
+                  )}
+                  <span className="nota-detalle">
+                    {ficha.promedioCalificacion !== null
+                      ? `de 5, según ${ficha.totalResenas} ${ficha.totalResenas === 1 ? 'reseña' : 'reseñas'}`
+                      : `${ficha.totalResenas} ${ficha.totalResenas === 1 ? 'reseña' : 'reseñas'}. El promedio se muestra desde la tercera.`}
                   </span>
-                )}
-                <span className="nota-detalle">
-                  {ficha.promedioCalificacion !== null
-                    ? `de 5, según ${ficha.totalResenas} ${ficha.totalResenas === 1 ? 'reseña' : 'reseñas'}`
-                    : `${ficha.totalResenas} ${ficha.totalResenas === 1 ? 'reseña' : 'reseñas'}. El promedio se muestra desde la tercera.`}
-                </span>
-              </p>
+                </p>
+                {/*
+                  Un promedio sin las reseñas detras es un numero que hay que creer. Quien compara
+                  dos personas necesita leer lo que dicen de ellas, no solo cuanto puntuaron.
+                */}
+                <p className="nota-enlace">
+                  <Link className="enlace" to={`/prestadores/${slug}/resenas`}>
+                    {ficha.totalResenas === 1 ? 'Leer la reseña' : `Leer las ${ficha.totalResenas} reseñas`}
+                  </Link>
+                </p>
+              </>
             ) : (
               <p className="bloque-texto bloque-vacio">Todavía no tiene reseñas.</p>
             )}
           </section>
-        </article>
-
-        <aside className="lateral" aria-label="Contacto">
-          <div className="lateral-caja">
-            <h2>Hablar con {ficha.nombrePublico.split(' ')[0]}</h2>
-            {!alDia ? (
-              <SinContactoPorAhora nombre={ficha.nombrePublico} />
-            ) : ficha.contactoRequiereCorreoVerificado ? (
-              /*
-               * Caso distinto del de abajo: esta persona YA tiene cuenta. Pedirle que se cree
-               * una seria absurdo, y es el error facil de cometer aqui.
-               */
-              <div className="contacto-cuenta">
-                <p>
-                  Te falta un paso: verifica tu correo y vas a poder hablar con{' '}
-                  {ficha.nombrePublico.split(' ')[0]}. Te enviamos un enlace cuando creaste tu
-                  cuenta; revisa tu bandeja y la carpeta de correo no deseado.
-                </p>
-                <Link className="boton boton--chico" to="/verificar-correo">
-                  <Icono nombre="mensaje" />Pedir otro enlace
-                </Link>
-                <p className="letra-chica">
-                  Lo pedimos para que nadie junte los contactos de los prestadores con correos
-                  inventados.
-                </p>
-              </div>
-            ) : ficha.contactoRequiereCuenta ? (
-              <div className="contacto-cuenta">
-                <p>
-                  Para hablar con {ficha.nombrePublico.split(' ')[0]} crea tu cuenta gratis.
-                  Toma un minuto y a quien busca nunca se le cobra.
-                </p>
-                <Link className="boton boton--amarillo boton--lleno" to="/crear-cuenta" state={{ despues: `/prestadores/${slug}` }}>
-                  <Icono nombre="mensaje" />Crear mi cuenta gratis
-                </Link>
-                <p className="letra-chica">
-                  ¿Ya tienes cuenta? <Link to="/entrar" state={{ despues: `/prestadores/${slug}` }}>Entrar</Link>
-                </p>
-              </div>
-            ) : hayContacto ? (
-              <ul className="contacto">
-                {wasap && (
-                  <li>
-                    <a className="boton boton--amarillo boton--lleno" href={`https://wa.me/${wasap}`} rel="noreferrer noopener" target="_blank">
-                      <Icono nombre="mensaje" />Escribir por WhatsApp
-                    </a>
-                  </li>
-                )}
-                {c.telefono && (
-                  <li>
-                    <a className="boton boton--lleno" href={`tel:${c.telefono.replace(/[^\d+]/g, '')}`}>
-                      <Icono nombre="telefono" />Llamar · {c.telefono}
-                    </a>
-                  </li>
-                )}
-                {c.correo && (
-                  <li>
-                    <a className="boton boton--lleno" href={`mailto:${c.correo}`}>
-                      <Icono nombre="correo" />Escribir un correo
-                    </a>
-                  </li>
-                )}
-                {sitio && (
-                  <li>
-                    <a className="boton boton--lleno" href={sitio} rel="noreferrer noopener" target="_blank">
-                      <Icono nombre="mundo" />Ver su sitio web
-                    </a>
-                  </li>
-                )}
-              </ul>
-            ) : (
-              <p className="bloque-vacio">
-                Esta persona todavía no publicó cómo contactarla.
-              </p>
-            )}
-            {alDia && (
-              <p className="letra-chica">
-                Contactar no te cuesta nada: hablas directo con quien te atiende.
-              </p>
-            )}
           </div>
-        </aside>
-      </div>
+        </article>
     </div>
   )
 }
