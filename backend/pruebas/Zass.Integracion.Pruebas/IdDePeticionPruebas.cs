@@ -99,6 +99,8 @@ public class IdDePeticionPruebas
 
         var linea = Assert.Single(t.Registros.Lineas, l => l.Mensaje == "linea de la prueba");
         Assert.Equal(id, linea.IdPeticion);
+        // Y como lo escribe la consola de Render, que es donde se va a buscar.
+        Assert.Contains($"{IdDePeticion.ClaveDelRegistro}:{id}", linea.AmbitosComoTexto);
     }
 
     [Fact]
@@ -122,6 +124,7 @@ public class IdDePeticionPruebas
         // Y la linea que escribe el manejador (la que se busca en Render) tambien lo lleva.
         var error = Assert.Single(t.Registros.Lineas, l => l.Excepcion is InvalidOperationException);
         Assert.Equal(id, error.IdPeticion);
+        Assert.Contains($"{IdDePeticion.ClaveDelRegistro}:{id}", error.AmbitosComoTexto);
     }
 
     /// <summary>
@@ -189,7 +192,13 @@ public class IdDePeticionPruebas
 
     // ------------------------------------------------------------- un registro que se puede leer
 
-    /// <summary>Guarda cada linea con los ambitos activos al escribirla, como hace la consola.</summary>
+    /// <summary>
+    /// Guarda cada linea con los ambitos activos al escribirla, de las DOS formas en que se leen:
+    /// como pares clave/valor (lo que lee un formateador JSON) y como texto, que es lo que escribe
+    /// la consola simple de Render: «=> » mas el ToString() de cada ambito. Se mira el texto porque
+    /// fue ahi donde el identificador no aparecia: un diccionario se imprimia como el nombre de su
+    /// tipo, y una prueba que solo leia los pares pasaba en verde igual.
+    /// </summary>
     private sealed class RegistrosCapturados : ILoggerProvider, ISupportExternalScope
     {
         private IExternalScopeProvider _ambitos = new LoggerExternalScopeProvider();
@@ -199,7 +208,7 @@ public class IdDePeticionPruebas
         public ILogger CreateLogger(string categoria) => new Registrador(this);
         public void Dispose() { }
 
-        public sealed record Linea(string Mensaje, Exception? Excepcion, string? IdPeticion);
+        public sealed record Linea(string Mensaje, Exception? Excepcion, string? IdPeticion, string AmbitosComoTexto);
 
         private sealed class Registrador(RegistrosCapturados destino) : ILogger
         {
@@ -212,13 +221,15 @@ public class IdDePeticionPruebas
                 Exception? excepcion, Func<TEstado, Exception?, string> formato)
             {
                 string? id = null;
+                var texto = new System.Text.StringBuilder();
                 destino._ambitos.ForEachScope((ambito, _) =>
                 {
+                    texto.Append(" => ").Append(ambito);
                     if (ambito is IEnumerable<KeyValuePair<string, object>> pares)
                         foreach (var (clave, valor) in pares)
                             if (clave == IdDePeticion.ClaveDelRegistro) id = valor?.ToString();
                 }, (object?)null);
-                destino.Lineas.Enqueue(new Linea(formato(estado, excepcion), excepcion, id));
+                destino.Lineas.Enqueue(new Linea(formato(estado, excepcion), excepcion, id, texto.ToString()));
             }
         }
     }

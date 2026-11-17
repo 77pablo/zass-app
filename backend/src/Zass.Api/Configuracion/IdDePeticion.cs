@@ -46,7 +46,12 @@ public static class IdDePeticion
 
             var registro = contexto.RequestServices
                 .GetRequiredService<ILoggerFactory>().CreateLogger("Zass.Peticion");
-            using (registro.BeginScope(new Dictionary<string, object> { [ClaveDelRegistro] = id }))
+            // Una PLANTILLA y no un diccionario: la consola simple escribe el ambito con su
+            // ToString(), y un Dictionary imprime el nombre de su tipo
+            // («System.Collections.Generic.Dictionary`2[...]»), no el identificador. Visto en una
+            // linea de registro real el 17-nov-2026. La plantilla imprime «IdPeticion:abc...» y
+            // ademas expone el par IdPeticion=abc... a quien lea los ambitos como clave y valor.
+            using (registro.BeginScope(ClaveDelRegistro + ":{" + ClaveDelRegistro + "}", id))
                 await siguiente();
         });
 
