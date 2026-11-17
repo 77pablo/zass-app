@@ -266,7 +266,7 @@ export function PaginaBuscar() {
           El promedio se muestra desde la tercera reseña, así que este filtro solo cuenta a quienes ya tienen tres.
         </p>
         <p className="letra-chica" id="nota-credencial">
-          Verificamos títulos y certificaciones una por una, así que todavía somos pocos los que tenemos el sello.
+          Verificamos títulos y certificaciones uno por uno, así que al principio verás pocos con el sello.
         </p>
 
         {/* Sin ubicacion no se muestra: preguntar «hasta que distancia» a quien no ha dicho desde
