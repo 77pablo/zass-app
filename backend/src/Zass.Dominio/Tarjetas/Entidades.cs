@@ -60,10 +60,14 @@ public class Tarjeta
         return DestinoTarjeta.Ficha;
     }
 
-    public void Desactivar()
+    /// <summary>
+    /// RN-S6-05. <paramref name="ahora"/> lo pasa el caso de uso con su reloj; sin el, la hora
+    /// del sistema.
+    /// </summary>
+    public void Desactivar(DateTime? ahora = null)
     {
         Estado = EstadoTarjeta.Desactivada;
-        DesactivadaEn = DateTime.UtcNow;
+        DesactivadaEn = ahora ?? DateTime.UtcNow;
         HashCodigoActivacion = null;
     }
 }
