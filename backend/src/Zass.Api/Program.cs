@@ -61,8 +61,7 @@ var app = constructor.Build();
 // Se valida DESPUES de Build y con app.Configuration: ahi ya estan todas las fuentes
 // (variables de entorno de Render, y los ajustes que inyectan las pruebas). Falla antes de
 // *Diseño original: Key Vault con identidad administrada. Desplegado: variables de entorno
-// de Render, porque no hay Key Vault ni identidad administrada (DT-05 cayó, ver
-// decisiones-tecnologicas.md).
+// de Render, porque no documentado.
 // abrir ningun puerto. Todo lo que no sea Development se trata como produccion.
 ValidacionDeArranque.Exigir(app.Configuration, esProductivo: !app.Environment.IsDevelopment());
 

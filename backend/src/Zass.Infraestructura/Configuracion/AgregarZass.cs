@@ -41,7 +41,7 @@ public sealed class OpcionesZass
     /// Clave de cifrado de direcciones (RN-S1-06), en Base64 y de 32 bytes. En
     /// produccion vive en las variables de entorno de Render; en desarrollo, en
     /// User Secrets. Nunca en el repositorio.
-    /// *Diseño original: N-10 Key Vault con identidad administrada (DT-05 cayó).*
+    /// *Diseño original: N-10 Key Vault con identidad administrada, porque no documentado.*
     /// </summary>
     [Required(ErrorMessage = "Falta la clave de cifrado de direcciones.")]
     public string ClaveDireccionesBase64 { get; set; } = "";
