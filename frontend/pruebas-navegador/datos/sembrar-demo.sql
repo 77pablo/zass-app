@@ -66,7 +66,7 @@ SELECT * FROM (VALUES
     'Arriendos y administración de propiedades en Santa Rosa y el oriente de la ciudad. Me encargo de que tu propiedad esté siempre arrendada y bien cuidada.',
     1, 'normal', 'oficina'),
   ( 4, 'ignacio-millar', 'Ignacio Millar',
-    'Arriendo departamentos y casas en el sur de Temuco. Recién empiezo en ZASS!.',
+    'Arriendo departamentos y casas en el sur de Temuco. Recién empiezo en ZASS!',
     1, 'normal', 'tarde'),
   ( 5, 'veronica-lienlaf', 'Verónica Lienlaf',
     'Corredora en Padre Las Casas desde 2016. Vendo y arriendo casas en la comuna y en el sur de Temuco, y te acompaño en el papeleo con el banco hasta la entrega de llaves.',
