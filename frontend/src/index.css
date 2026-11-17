@@ -467,17 +467,23 @@ main:focus { outline: none; }
 .ficha-pagina { padding-block: 40px 120px; }
 .volver { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-weight: 800; font-size: 0.9375rem; color: var(--amarillo); text-underline-offset: 4px; }
 .volver .icono { transform: rotate(180deg); }
-.ficha-rejilla { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 64px; align-items: start; margin-top: 12px; }
 /*
-  En una columna el <aside> del contacto caia al final: en un telefono el boton de WhatsApp
-  aparecia despues de la presentacion, los servicios, el calendario entero, las credenciales, las
-  comunas y las reseñas. Se sube con `order`, NO reordenando el HTML: el orden del DOM (persona,
-  luego contacto) es el correcto para un lector de pantalla y para el foco del teclado, y `order`
-  no lo toca. A dos columnas no hace falta: el aside ya esta arriba a la derecha.
+  La ficha publica: el encabezado (quien es), el contacto y el cuerpo, EN ESE ORDEN en el HTML.
+  En una columna (telefono) se ven asi: la persona y enseguida como hablarle, antes del detalle.
+  Antes el contacto caia al final, despues del calendario entero (decision de Pablo, 17-nov-2026).
+  En escritorio la rejilla pone el encabezado y el cuerpo a la izquierda y el contacto a la
+  derecha, ocupando las dos filas para que siga siendo sticky. No se usa `order` ni
+  `display: contents`: el primero desordena lo que se ve respecto de lo que se recorre con el
+  teclado, y el segundo le quita al <article> su semantica en Safari y en Chrome antiguos.
 */
+.ficha-rejilla { display: grid; grid-template-columns: minmax(0, 1fr) 360px; column-gap: 64px; align-items: start; margin-top: 12px; }
+.ficha-rejilla > .persona { grid-column: 1; grid-row: 1; }
+.ficha-rejilla > .lateral { grid-column: 2; grid-row: 1 / span 2; }
+.ficha-rejilla > .ficha-cuerpo { grid-column: 1; grid-row: 2; margin-top: 36px; }
 @media (max-width: 960px) {
-  .ficha-rejilla { grid-template-columns: minmax(0, 1fr); gap: 8px; }
-  .ficha-rejilla > .lateral { order: -1; margin-bottom: 28px; }
+  .ficha-rejilla { grid-template-columns: minmax(0, 1fr); }
+  .ficha-rejilla > .persona, .ficha-rejilla > .lateral, .ficha-rejilla > .ficha-cuerpo { grid-column: 1; grid-row: auto; }
+  .ficha-rejilla > .lateral { margin-top: 28px; }
 }
 
 .persona { display: flex; gap: 24px; align-items: center; }

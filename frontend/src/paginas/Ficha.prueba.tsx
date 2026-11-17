@@ -79,25 +79,28 @@ describe('el orden en que la ficha cuenta las cosas', () => {
 
     // Candado con literales: la secuencia entera, no solo «credenciales antes que agendar».
     // Si alguien vuelve a bajar las credenciales, o cuela un bloque entre medio, esto cae.
+    // El contacto va justo despues de quien es (decision de Pablo, 17-nov-2026).
     expect(titulos).toEqual([
+      'Hablar con Marcela',
       'Sobre Marcela',
       'Qué ofrece',
       'Credenciales',
       'Agendar una hora con Marcela',
       'Dónde atiende',
       'Lo que dicen de Marcela',
-      'Hablar con Marcela',
     ])
   })
 
-  it('el contacto sigue DESPUES de la persona en el DOM: el `order` es solo visual', async () => {
+  it('el contacto va entre la persona y su presentacion, en el DOM y no solo en pantalla', async () => {
     pintar()
     const h1 = await screen.findByRole('heading', { level: 1, name: 'Marcela Soto' })
     const contacto = screen.getByRole('complementary', { name: 'Contacto' })
+    const sobre = screen.getByRole('heading', { level: 2, name: 'Sobre Marcela' })
 
-    // Lo que lee un lector de pantalla y lo que recorre el tabulador: primero quien es,
-    // despues como hablarle. En movil la caja se SUBE con CSS, sin tocar esto.
+    // Lo que lee un lector de pantalla y lo que recorre el tabulador es lo mismo que se ve en un
+    // telefono: quien es, como hablarle, y despues el detalle.
     expect(h1.compareDocumentPosition(contacto) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(contacto.compareDocumentPosition(sobre) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 })
 
