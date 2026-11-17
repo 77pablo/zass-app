@@ -37,6 +37,16 @@ export async function cerrarSesion(): Promise<void> {
   olvidarCsrf()
 }
 
+/**
+ * API-17 (CS-04). Elimina la cuenta: pide la contraseña, cancela las horas futuras (avisando a
+ * la otra persona) y la suscripción, y anonimiza. Responde 204 y cierra la sesión del lado del
+ * servidor; el token CSRF de esa sesión ya no sirve, así que se olvida.
+ */
+export async function eliminarMiCuenta(contrasena: string): Promise<void> {
+  await enviar('/api/mi/cuenta', { contrasena }, 'DELETE')
+  olvidarCsrf()
+}
+
 /** API-13. Sirve para saber si la sesion sigue viva al cargar la pagina. */
 export function miCuenta<T>(): Promise<T> {
   return obtener<T>('/api/mi/cuenta')

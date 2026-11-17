@@ -324,6 +324,49 @@ public class SuscripcionesPruebas
         Assert.False(await _servicio.EstaVigenteAsync(p.Id));
     }
 
+    // CS-04: el prestador elimino su cuenta. Sin reembolso (decision de Pablo, 17-nov-2026).
+
+    [Fact]
+    public async Task Eliminar_la_cuenta_cancela_la_suscripcion_vigente_y_no_renueva()
+    {
+        var p = UnPrestador();
+        var s = ConSuscripcion(p.Id, EstadoSuscripcion.Activa, Ahora.AddDays(20));
+        s.RenovacionAutomatica = true;
+
+        var r = await _servicio.CancelarDePrestadorAsync(p.Id);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(EstadoSuscripcion.Cancelada, s.Estado);
+        // Lo que impide que el cobro recurrente le cobre a una cuenta que ya no existe.
+        Assert.False(s.RenovacionAutomatica);
+        Assert.False(await _servicio.EstaVigenteAsync(p.Id));
+    }
+
+    [Fact]
+    public async Task Eliminar_la_cuenta_sin_suscripcion_vigente_no_es_un_error_y_no_toca_las_viejas()
+    {
+        var p = UnPrestador();
+        var vencida = ConSuscripcion(p.Id, EstadoSuscripcion.Vencida, Ahora.AddDays(-5));
+
+        var r = await _servicio.CancelarDePrestadorAsync(p.Id);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(EstadoSuscripcion.Vencida, vencida.Estado);
+    }
+
+    [Fact]
+    public async Task Eliminar_la_cuenta_no_toca_la_suscripcion_de_otro_prestador()
+    {
+        var p = UnPrestador();
+        var otro = UnPrestador();
+        ConSuscripcion(p.Id, EstadoSuscripcion.Activa, Ahora.AddDays(20));
+        var ajena = ConSuscripcion(otro.Id, EstadoSuscripcion.Activa, Ahora.AddDays(20));
+
+        await _servicio.CancelarDePrestadorAsync(p.Id);
+
+        Assert.Equal(EstadoSuscripcion.Activa, ajena.Estado);
+    }
+
     [Fact]
     public async Task La_consulta_del_prestador_dice_los_dias_que_le_quedan()
     {

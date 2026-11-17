@@ -233,6 +233,13 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
         return Resultado.Ok();
     }
 
+    public async Task<Resultado> CancelarDePrestadorAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        var vigente = await _repo.VigenteDePrestadorAsync(perfilPrestadorId, _reloj.Ahora, ct);
+        return vigente is null ? Resultado.Ok() : await CancelarAsync(vigente.Id, ct);
+    }
+
     public async Task<int> VencerExpiradasAsync(CancellationToken ct = default)
     {
         var ahora = _reloj.Ahora;
