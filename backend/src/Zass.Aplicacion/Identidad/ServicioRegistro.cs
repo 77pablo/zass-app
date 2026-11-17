@@ -137,7 +137,7 @@ public sealed class ServicioRegistro
         if (usuario is null || usuario.Estado is EstadoCuenta.Suspendida or EstadoCuenta.Eliminada)
             return Resultado.Falla(Fallas.NoAutorizado, "La sesión no es válida. Vuelve a iniciar sesión.");
 
-        if (usuario.Roles.Any(r => r.Rol.Codigo == "prestador")) return Resultado.Ok();
+        if (usuario.TieneRol("prestador")) return Resultado.Ok();
 
         var rol = await _usuarios.RolPorCodigoAsync("prestador", ct);
         if (rol is null || rol.EsInterno || !RolesPublicos.Contains(rol.Codigo))

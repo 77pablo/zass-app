@@ -195,4 +195,40 @@ public class RegistroPruebas
         Assert.Equal("registro_cuenta", entrada.Accion);
         Assert.DoesNotContain("secreto-de-pablo", entrada.Contexto ?? "");
     }
+    [Fact]
+    public async Task ActivarPrestador_es_idempotente_si_la_cuenta_ya_tiene_el_rol_prestador()
+    {
+        var reg = await _servicio.RegistrarAsync(Cmd(rol: "buscador"));
+        var id = reg.Valor!.UsuarioId;
+
+        var primerIntento = await _servicio.ActivarPrestadorAsync(id);
+        Assert.True(primerIntento.Exito, primerIntento.Mensaje);
+
+        var segundoIntento = await _servicio.ActivarPrestadorAsync(id);
+        Assert.True(segundoIntento.Exito, segundoIntento.Mensaje);
+
+        var usuario = _base.Usuarios.Single(u => u.Id == id);
+        Assert.True(usuario.TieneRol("prestador"));
+        Assert.Equal(2, usuario.Roles.Count); // buscador + prestador, sin duplicar
+    }
+
+    [Fact]
+    public async Task ActivarPrestador_no_lanza_nre_si_un_rol_no_tiene_su_entidad_cargada()
+    {
+        var reg = await _servicio.RegistrarAsync(Cmd(rol: "buscador"));
+        var id = reg.Valor!.UsuarioId;
+
+        // Simulamos un UsuarioRol que no cargo la navegacion Rol (Rol == null)
+        var usuario = _base.Usuarios.Single(u => u.Id == id);
+        usuario.Roles.Add(new Zass.Dominio.Identidad.UsuarioRol
+        {
+            UsuarioId = id,
+            RolId = 99,
+            Rol = null!
+        });
+
+        // Con r.Rol.Codigo esto lanza NullReferenceException; con TieneRol se evalua de forma segura
+        var r = await _servicio.ActivarPrestadorAsync(id);
+        Assert.True(r.Exito, r.Mensaje);
+    }
 }
