@@ -31,9 +31,6 @@ constructor.Services
     .AddEndpointsApiExplorer()
     .AddSwaggerGen();
 
-// En Render la cultura es la invariante y FluentValidation responderia en ingles.
-TextosEnCastellano.FijarIdiomaDeValidacion();
-
 // El registro de la consola muestra los ambitos: asi cada linea lleva el IdPeticion de la
 // peticion que la escribio (ver IdDePeticion). En una sola linea, para que buscar el
 // identificador en los registros de Render devuelva el mensaje entero y no solo el ambito.
@@ -64,6 +61,13 @@ constructor.Services.Configure<Microsoft.AspNetCore.Routing.RouteHandlerOptions>
     opciones => opciones.ThrowOnBadRequest = false);
 
 var app = constructor.Build();
+
+// En Render la cultura es la invariante y FluentValidation responderia en ingles. Si la maquina
+// ni siquiera tiene datos de idioma (modo de globalizacion invariante), la API arranca igual y
+// lo dice: un texto en ingles no puede costar la API entera.
+if (!TextosEnCastellano.FijarIdiomaDeValidacion())
+    app.Logger.LogWarning(
+        "Sin datos de idioma (globalizacion invariante): los mensajes de validacion saldran en ingles.");
 
 // Se valida DESPUES de Build y con app.Configuration: ahi ya estan todas las fuentes
 // (variables de entorno, Key Vault, y los ajustes que inyectan las pruebas). Falla antes de
