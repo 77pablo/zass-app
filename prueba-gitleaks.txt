@@ -1,4 +1,3 @@
-# Archivo de prueba para verificar que gitleaks detecta secretos
-# NO FUSIONAR - solo para validar el flujo
-
-AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+# Secreto falso de prueba - password realistica
+ZASS_DB_PASSWORD=SuperClaveSecreta123!
+NEON_API_KEY=neon_api_key_7f8e9d0c1b2a3f4e5d6c7b8a9
