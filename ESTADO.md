@@ -101,6 +101,13 @@ Es la prueba de que **en producción el usuario veía inglés**. Después de des
 - `34e7e1b`: `seguridad.md`, la regla 6 (registro) pasa a **Parcial**. El redactor de registros que describía **no existe**: se movió el documento, no el código. Visto en Chromium.
 - **Pendiente, y es de Pablo y del abogado:** la sección 8 dice «Datos en **Brazil South**», pero lo real es **Neon en EE.UU. Este y Render en Oregón, EE.UU.** La política de privacidad tiene que declarar esa transferencia. La T1 de la segunda IA corrige el documento técnico, no el texto legal.
 
+### La app: decidido el camino, y va DESPUÉS de la web
+Pablo, 17-nov: primero la web, y **después del lanzamiento web** la app en App Store y Play
+Store, con **Capacitor** (el mismo React). El plan completo, con los riesgos medidos, está en
+**`PLAN-APP.md`**. Lo que no puede esperar a la app: **no existe una pantalla para borrar la
+cuenta** (API-17 está en la API, pero ninguna pantalla la llama). El derecho de supresión de la
+Ley 21.719 vale para la web, así que va antes del lanzamiento web.
+
 ### Lo que sigue siendo de Pablo
 1. ~~«Despliega»~~: hecho el 17-nov, `d57550d`.
 2. **Flow**, **la empresa**, **el 23 de diciembre**, **abrir el sitio** y **los textos legales**, igual que el 15-nov (abajo).
