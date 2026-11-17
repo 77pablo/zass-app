@@ -162,6 +162,29 @@ completo. Si necesitas una migración, **dilo en el PR y espera**.
 Cuántas veces vieron su ficha, cuántos escaneos tuvo su tarjeta y cuántos contactos recibió. Va
 **después** de JQ-4 y JQ-5, porque vive de lo que esas dos registran.
 
+### JQ-10 — Rescate: la comuna que desaparece cuando hay distancia · N2 · chica (agregada el 17-nov)
+
+**Ya está hecho y con pruebas, pero nunca llegó a `main`.** Lo dejó un agente el 13-nov y quedó en
+una rama que nadie fusionó. Pablo decidió el 17-nov que va a tu carril, porque es búsqueda.
+
+**El defecto:** en la tarjeta de un prestador (`frontend/src/marco/TarjetaPersona.tsx`), cuando
+la persona compartió su ubicación se muestra «a 3 km» y **se esconde la comuna**. En `main`:
+```tsx
+{p.zona && !p.distancia && <span className="dato"><Icono nombre="pin" />{p.zona}</span>}
+```
+«a 3 km» dice cuánto, no dónde, y en Chile la comuna es el dato con el que se decide.
+
+**El arreglo:** commit **`b0e7b8d`** («Mostrar la comuna tambien cuando hay distancia»), en la
+rama `web/busqueda-accesibilidad`:
+- `TarjetaPersona.tsx`: +4 / −1. La comuna se ve siempre, y el pin solo en la primera etiqueta.
+- `TarjetaPersona.prueba.tsx`: +48, un archivo nuevo.
+
+**Qué hacer:**
+1. Rama desde `main` y `git cherry-pick b0e7b8d`. **Solo ese commit**: el otro de esa rama
+   (`e2c8ffc`, «WIP RESCATE», el título al compartir) lo termina la sesión principal.
+2. `npm run prueba`, y la mutación de siempre: vuelve a poner `!p.distancia` y la prueba nueva tiene que caer.
+3. Mírala en un navegador con distancia **y** sin distancia, en celular: que no se repita el pin.
+
 ---
 
 ## 4. Cómo se cierra cada tanda
