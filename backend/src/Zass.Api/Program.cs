@@ -23,9 +23,16 @@ constructor.Services
     .AgregarProxiesDeConfianza()                      // X-Forwarded-*: solo desde redes listadas
     .AgregarAutenticacion(exigirHttps)                // cookie de 15 min + CSRF
     .AddValidatorsFromAssemblyContaining<ValidadorVerificarCorreo>()
-    .AddProblemDetails(IdDePeticion.Configurar)       // RFC 7807 en todos los errores, con idPeticion
+    .AddProblemDetails(o =>                           // RFC 7807 en todos los errores:
+    {
+        IdDePeticion.Configurar(o);                   //   con idPeticion
+        TextosEnCastellano.Configurar(o);             //   y sin titulos de fabrica en ingles
+    })
     .AddEndpointsApiExplorer()
     .AddSwaggerGen();
+
+// En Render la cultura es la invariante y FluentValidation responderia en ingles.
+TextosEnCastellano.FijarIdiomaDeValidacion();
 
 // El registro de la consola muestra los ambitos: asi cada linea lleva el IdPeticion de la
 // peticion que la escribio (ver IdDePeticion). En una sola linea, para que buscar el
