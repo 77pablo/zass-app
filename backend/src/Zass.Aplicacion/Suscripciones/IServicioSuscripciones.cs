@@ -89,6 +89,15 @@ public interface IServicioSuscripciones
     /// </summary>
     Task<int> LimiteDeServiciosAsync(Guid perfilPrestadorId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Cuantas tarjetas permite el plan de ese prestador. Lo consumira API-55: el tope
+    /// es del plan, y el plan es cosa de este modulo.
+    ///
+    /// Mismo criterio que <see cref="LimiteDeServiciosAsync"/>: sin suscripcion vigente
+    /// manda el plan inicial, y sin plan inicial el tope es cero.
+    /// </summary>
+    Task<int> LimiteDeTarjetasAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+
     /// <summary>Cuantos de los 50 cupos del plan fundador quedan disponibles hoy.</summary>
     Task<int> CuposFundadorDisponiblesAsync(CancellationToken ct = default);
 
