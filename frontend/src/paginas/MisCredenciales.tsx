@@ -26,7 +26,8 @@ function estadoEnPalabras(c: MiCredencial): { texto: string; sello: boolean } {
 }
 
 function mensajeDe(e: unknown, porDefecto: string): string {
-  return e instanceof ErrorApi ? e.mensaje : porDefecto
+  // Usa paraMostrar para incluir el código de petición en errores inesperados (DECISIÓN T4).
+  return e instanceof ErrorApi ? e.paraMostrar : porDefecto
 }
 
 /**

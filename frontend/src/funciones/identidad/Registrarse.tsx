@@ -55,7 +55,8 @@ export function Registrarse({
         // El backend valida de nuevo y puede ver algo que aqui no se vio.
         setCampos(e.campos)
         // El aviso general solo se muestra si el error no cabe en un campo.
-        if (Object.keys(e.campos).length === 0) setAviso(e.mensaje)
+        // Usa paraMostrar para incluir el código de petición en errores inesperados (DECISIÓN T4).
+        if (Object.keys(e.campos).length === 0) setAviso(e.paraMostrar)
       } else {
         setAviso('Algo salió mal. Intenta de nuevo.')
       }
