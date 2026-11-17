@@ -170,7 +170,7 @@ public class TextosEnCastellanoPruebas : IAsyncLifetime
     [Fact]
     public async Task Los_nombres_de_campo_se_muestran_en_castellano()
     {
-        // Contrasena → contraseña
+        // Contrasena → contraseña (con tilde)
         var contrasenaCorta = await ComoEnRender(c =>
             c.PostAsJsonAsync("/api/auth/registro", new
             {
@@ -179,41 +179,22 @@ public class TextosEnCastellanoPruebas : IAsyncLifetime
                 nombre = "Test",
                 rol = "buscador"
             }));
+        var textosContrasena = await LoQueVeElUsuario(contrasenaCorta);
+        Assert.True(textosContrasena.Any(t => t.Contains("contraseña", StringComparison.OrdinalIgnoreCase)),
+            "El mensaje de contrasena corta no muestra 'contraseña' con tilde. Textos: " + string.Join(", ", textosContrasena));
         await SinPalabrasEnIngles(contrasenaCorta, "contraseña corta");
 
-        // ContrasenaNueva → contraseña nueva
+        // ContrasenaNueva → contraseña nueva (con tilde y espacio)
         var contrasenaNuevaCorta = await ComoEnRender(c =>
             c.PostAsJsonAsync("/api/auth/contrasena/restablecer", new
             {
                 token = "token-valido",
                 contrasenaNueva = "x"
             }));
+        var textosContrasenaNueva = await LoQueVeElUsuario(contrasenaNuevaCorta);
+        Assert.True(textosContrasenaNueva.Any(t => t.Contains("contraseña nueva", StringComparison.OrdinalIgnoreCase)),
+            "El mensaje de contrasena nueva corta no muestra 'contraseña nueva'. Textos: " + string.Join(", ", textosContrasenaNueva));
         await SinPalabrasEnIngles(contrasenaNuevaCorta, "contraseña nueva corta");
-
-        // TelefonoPublico → teléfono público
-        // (requiere sesion, asi que solo verificamos que la ruta existe y el validador se ejecuta)
-        var telefonoInvalido = await ComoEnRender(c =>
-        {
-            var req = new HttpRequestMessage(HttpMethod.Post, "/api/mi/perfil/prestador")
-            {
-                Content = JsonContent.Create(new { nombrePublico = "Test", telefonoPublico = "12345" })
-            };
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "fake");
-            return c.SendAsync(req);
-        });
-        // Esta prueba puede fallar si no hay sesion, pero al menos verifica el camino.
-
-        // CodigoPlan → código plan
-        var codigoPlanFalta = await ComoEnRender(c =>
-        {
-            var req = new HttpRequestMessage(HttpMethod.Post, "/api/mi/cobros/cotizar")
-            {
-                Content = JsonContent.Create(new { codigoCupon = "DESC" })
-            };
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "fake");
-            return c.SendAsync(req);
-        });
-        // Puede fallar por sesion, pero el validador deberia correr primero.
     }
 
     private static async Task SinPalabrasEnIngles(HttpResponseMessage r, string contexto)

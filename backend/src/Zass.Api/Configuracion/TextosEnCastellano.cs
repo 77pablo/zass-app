@@ -104,14 +104,10 @@ public static class TextosEnCastellano
     /// </summary>
     public static void ConfigurarResolvedor()
     {
-        ValidatorOptions.Global.DisplayNameResolver = (tipo, _, _) =>
+        ValidatorOptions.Global.DisplayNameResolver = (tipo, memberInfo, _) =>
         {
-            // Si el tipo no es una propiedad de validador, devolver null para que FluentValidation
-            // use el nombre por defecto.
-            if (tipo.DeclaringType is null)
-                return null;
-
-            var nombre = tipo.Name;
+            // memberInfo es el que tiene el nombre de la propiedad.
+            var nombre = memberInfo?.Name;
             if (string.IsNullOrEmpty(nombre))
                 return null;
 
