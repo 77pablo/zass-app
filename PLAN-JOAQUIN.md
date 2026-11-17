@@ -157,6 +157,23 @@ Qué tiene que quedar:
 Es **N3** por seguridad e infraestructura: describe el PR entero para que Pablo lo revise
 completo. Si necesitas una migración, **dilo en el PR y espera**.
 
+**Agregado el 17-nov: el botón «Enviar a revisión» ya está empezado, y va CON esta tanda.**
+Un agente lo dejó a medias el 13-nov en la rama `web/panel-prestador` (commit `2ab306c`):
+`enviarCredencialARevision` (API-27) en `funciones/perfil/servicio.ts` y el botón, con su error
+junto a la credencial, en `MisCredenciales.tsx`, más 116 líneas de pruebas sin terminar.
+**Pablo decidió el 17-nov que no se publica sola: espera a JQ-9.** El motivo, medido:
+
+- En producción `Zass:Verificacion:PermitirSinDocumentos` **no está definida**, así que vale
+  `false`. En `appsettings.Development.json` vale `true`, y por eso en local funciona.
+- Con la bandera apagada, API-27 responde **422** a toda credencial sin documento (RN-S2-01).
+  Publicado hoy, el botón respondería siempre «todavía no podemos revisarla».
+- Con JQ-9, la persona sube el documento y **entonces** el botón sirve, sin tocar la bandera.
+
+Al hacerlo: `git cherry-pick 2ab306c` sobre tu rama de JQ-9. El texto del 422 que escribió el
+agente («subir archivos aún no está disponible») **deja de ser cierto** con JQ-9: cámbialo por
+uno que mande a subir el documento. Y la nota del pie («Subir documentos todavía no está
+disponible») también. Los textos nuevos los aprueba Pablo.
+
 ### Si acabas todo eso — JQ-8, métricas del prestador · N2
 
 Cuántas veces vieron su ficha, cuántos escaneos tuvo su tarjeta y cuántos contactos recibió. Va
