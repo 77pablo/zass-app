@@ -1,0 +1,131 @@
+name: Probar la restauracion de la copia
+
+# Una copia que nunca se restauro no es una copia: es un archivo. Este flujo toma la ULTIMA
+# copia diaria («Copia de la base de datos»), la descifra, la restaura en un Postgres 18 con
+# PostGIS desechable del propio runner y comprueba que lo restaurado sirve.
+#
+# Por que aqui y no en el PC de Pablo: alli `pg_restore` es 16.4 y el volcado es 18, asi que
+# no se puede (hallazgo del 11-nov). Aqui la version coincide con Neon.
+#
+# Lo que NO hace: tocar Neon. Solo lee el artefacto de la copia y restaura en un contenedor que
+# muere con el runner.
+
+on:
+  schedule:
+    - cron: "47 7 * * 1"   # los lunes, despues de la copia de las 06:17 UTC
+  workflow_dispatch: {}
+  # Cuando alguien cambia ESTE flujo, se prueba en su PR antes de fusionar.
+  pull_request:
+    paths:
+      - .github/workflows/probar-restauracion.yml
+      - .github/scripts/esquema-esperado.py
+
+permissions:
+  contents: read
+  actions: read   # para bajar el artefacto de otra corrida
+
+jobs:
+  restaurar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      # La misma mayor que Neon (18) y la misma PostGIS (3.6), medidas el 17-nov-2026.
+      postgres:
+        image: postgis/postgis:18-3.6
+        env:
+          POSTGRES_PASSWORD: restaurar
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: restaurar
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # hace falta la historia: el snapshot de la migracion que trae la copia
+
+      - name: Bajar la ultima copia diaria
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          corrida=$(gh run list --workflow copia-base-de-datos.yml --status success --limit 1 \
+            --json databaseId,createdAt -q '.[0] | "\(.databaseId) \(.createdAt)"')
+          test -n "$corrida" || { echo "No hay ninguna copia exitosa que probar" >&2; exit 1; }
+          echo "Copia de la corrida: $corrida"
+          gh run download "${corrida%% *}" --name copia-zass --dir copia
+          ls -lh copia
+
+      - name: Descifrar
+        env:
+          FRASE_COPIAS: ${{ secrets.FRASE_COPIAS }}
+        run: |
+          set -euo pipefail
+          test -n "$FRASE_COPIAS" || { echo "Falta el secreto FRASE_COPIAS" >&2; exit 1; }
+          archivo=$(ls copia/*.dump.gpg | sort | tail -1)
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$FRASE_COPIAS" \
+              --decrypt -o zass.dump "$archivo"
+          test -s zass.dump
+
+      - name: Restaurar en una base vacia
+        run: |
+          set -euo pipefail
+          docker run --rm --network host -e PGHOST -e PGUSER -e PGPASSWORD \
+            -v "$PWD/zass.dump:/zass.dump:ro" postgis/postgis:18-3.6 sh -c '
+              createdb -T template0 restaurada &&
+              pg_restore --no-owner --no-privileges --exit-on-error -d restaurada /zass.dump'
+          echo "pg_restore termino sin errores."
+
+      # ------------------------------------------------------------ que lo restaurado SIRVA
+      # Que pg_restore termine no prueba nada: una base vacia tambien «restaura». Se mira la
+      # estructura contra el modelo y los datos contra lo que se sabe que hay.
+      - name: La estructura es la del modelo de esa copia
+        run: |
+          set -euo pipefail
+          psql_r() { docker run --rm --network host -e PGHOST -e PGUSER -e PGPASSWORD \
+            -v "$PWD:/w:ro" postgis/postgis:18-3.6 psql -X -At -v ON_ERROR_STOP=1 -d restaurada "$@"; }
+
+          ultima=$(psql_r -c 'SELECT "MigrationId" FROM "__EFMigrationsHistory" ORDER BY 1 DESC LIMIT 1')
+          test -n "$ultima" || { echo "FALLO: la copia no trae historial de migraciones" >&2; exit 1; }
+          echo "La copia llega hasta la migracion: $ultima"
+
+          # El snapshot correcto es el del commit que AGREGO esa migracion: el de main puede
+          # traer migraciones posteriores a la copia y daria faltantes falsos.
+          ruta=backend/src/Zass.Infraestructura/Datos/Migraciones
+          commit=$(git log --diff-filter=A --format=%H -- "$ruta/$ultima.cs" | tail -1)
+          test -n "$commit" || { echo "FALLO: $ultima no existe en el repositorio" >&2; exit 1; }
+          git show "$commit:$ruta/ZassDbContextModelSnapshot.cs" > snapshot-de-la-copia.cs
+
+          python3 -I .github/scripts/esquema-esperado.py snapshot-de-la-copia.cs > faltantes.sql
+          faltan=$(psql_r -f /w/faltantes.sql)
+          if [ -n "$faltan" ]; then
+            echo "FALLO: el modelo de esa migracion espera esto y la copia no lo trae:" >&2
+            echo "$faltan" >&2
+            exit 1
+          fi
+          echo "La copia trae todas las tablas, indices y claves de su modelo."
+
+      - name: Los datos estan y PostGIS funciona
+        run: |
+          set -euo pipefail
+          psql_r() { docker run --rm --network host -e PGHOST -e PGUSER -e PGPASSWORD \
+            postgis/postgis:18-3.6 psql -X -At -v ON_ERROR_STOP=1 -d restaurada "$@"; }
+          falla=0
+          comprobar() {  # nombre, consulta, valor esperado
+            obtenido=$(psql_r -c "$2")
+            if [ "$obtenido" = "$3" ]; then echo "ok    $1 = $obtenido"
+            else echo "FALLO $1: se esperaba $3 y hay $obtenido" >&2; falla=1; fi
+          }
+          # Sembrados por migracion: no cambian con el uso.
+          comprobar "planes"               "SELECT count(*) FROM planes"         3
+          comprobar "cupos fundador"       "SELECT count(*) FROM cupos_fundador" 50
+          comprobar "R-1 (doble reserva)"  "SELECT count(*) FROM pg_indexes WHERE indexname = 'ux_cita_bloque_activo'" 1
+          # Hay gente: produccion tenia 3 usuarios el 15-nov y no se borran.
+          comprobar "hay usuarios"         "SELECT (count(*) > 0)::text FROM usuarios" true
+          # PostGIS vivo: la extension y una distancia real (Temuco - Santiago, ~ 600 km).
+          comprobar "postgis cargado"      "SELECT count(*) FROM pg_extension WHERE extname = 'postgis'" 1
+          comprobar "distancia geografica" "SELECT (ST_Distance('SRID=4326;POINT(-72.59 -38.74)'::geography, 'SRID=4326;POINT(-70.65 -33.45)'::geography) BETWEEN 550000 AND 650000)::text" true
+          exit $falla
