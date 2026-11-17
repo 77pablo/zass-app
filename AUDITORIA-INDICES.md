@@ -4,7 +4,7 @@ Medido el 14-nov-2026 contra PostgreSQL **16.4** real (`127.0.0.1:5433`, base `z
 `pg_indexes`, `pg_constraint`, `pg_index`, `pg_stat_user_indexes` e `information_schema`. No se leyó
 el modelo de EF para decidir nada: el catálogo manda.
 
-**Índices 1 y 3 ya aplicados en Neon (15-nov).** Índice 2 en migración `IDX_Bloques_DisponibilidadEstadoInicio` (17-nov), sin aplicar en Neon. Índice 6 en migración `IndiceNotificacionCita` (17-nov), sin aplicar en Neon. Índices 4 y 5 no se aplican (ver abajo).
+**Índices 1 y 3 ya aplicados en Neon (15-nov).** Índice 2 en migración `IDX_Bloques_DisponibilidadEstadoInicio` (17-nov), sin aplicar en Neon. Índice 6 (3.c) en migración `IndiceNotificacionCita` (#59), **aplicado en Neon** (corrida `44090594566`). Índices 4 y 5 no se aplican (ver abajo).
 El SQL de abajo es una propuesta para que Pablo decida, una migración a la vez.
 
 Fotografía del clúster: 34 tablas del producto, **41 claves foráneas**, **106 índices** (≈2 MB en total).
@@ -16,7 +16,7 @@ Fotografía del clúster: 34 tablas del producto, **41 claves foráneas**, **106
 > Índice 2 (`ix_bloque_disponibilidad_estado_inicio`) en migración `IDX_Bloques_DisponibilidadEstadoInicio`, **sin aplicar en Neon**.
 > Índice 5 (`i_x_servicios_rubro_id`): no se quita, exige trucos (quitar FK y reconfigurar índice único); coste, no riesgo.
 > Índice 4 no se hace: producción tiene 0 prestadores y la auditoría dice volver a medir con datos reales.
-> Lo que sigue abierto es la sección 3, donde **3.c (índice 6) ya está en migración `IndiceNotificacionCita`**.
+> En la sección 3, **3.c (índice 6) ya está aplicado en Neon** (#59, corrida `44090594566`).
 
 ## Lo que más duele, en orden
 
