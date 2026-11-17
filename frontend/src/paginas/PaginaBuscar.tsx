@@ -215,17 +215,24 @@ export function PaginaBuscar() {
               {pidiendo && o.valor === 'Cercania' ? 'Buscando tu ubicación…' : o.texto}
             </button>
           ))}
+        </div>
 
+        {/* Los filtros van en SU grupo. Estaban dentro de «Ordenar por», y un lector de pantalla
+            anunciaba «Solo verificados», la comuna y «Quitar mi ubicación» como formas de ordenar.
+            Comparte el estilo de la fila de distancia (`radio-barra`), que es justo lo que hace falta:
+            otra fila de chips 12 px mas abajo. Una clase propia la pondra quien lleva index.css. */}
+        <div className="orden-barra radio-barra" role="group" aria-label="Filtrar los resultados">
           <button
             type="button" className="chip" aria-pressed={soloVerificados}
             onClick={() => cambiar({ verificados: soloVerificados ? null : '1' })}
+            aria-describedby="nota-credencial"
           >
             <Icono nombre="sello" />Solo verificados
           </button>
           <button
             type="button" className="chip" aria-pressed={cuatroEstrellas}
             onClick={() => cambiar({ cal: cuatroEstrellas ? null : '4' })}
-            title="Cuenta solo a quienes ya tienen 3 reseñas"
+            aria-describedby="nota-promedio"
           >
             <Icono nombre="estrella" />4 estrellas o más
           </button>
@@ -251,6 +258,16 @@ export function PaginaBuscar() {
             </button>
           )}
         </div>
+
+        {/* Lo que estos dos filtros hacen, en texto visible y no en un `title`: con el dedo no hay
+            `hover`, asi que en un telefono esa explicacion no existia. Van tambien como
+            `aria-describedby` de su propio boton, para que el lector de pantalla las lea ahi. */}
+        <p className="letra-chica" id="nota-promedio">
+          El promedio se muestra desde la tercera reseña, así que este filtro solo cuenta a quienes ya tienen tres.
+        </p>
+        <p className="letra-chica" id="nota-credencial">
+          Verificamos títulos y certificaciones una por una, así que todavía somos pocos los que tenemos el sello.
+        </p>
 
         {/* Sin ubicacion no se muestra: preguntar «hasta que distancia» a quien no ha dicho desde
             donde no se puede responder, y un control que no hace nada es peor que no tenerlo. */}
@@ -283,7 +300,11 @@ export function PaginaBuscar() {
           </p>
         )}
 
-        <div aria-live="polite">
+        {/* Este bloque NO es una region viva. Lo era entero, y cada cambio de filtro hacia que el
+            lector de pantalla leyera de nuevo resultados, avisos y la lista completa. Lo unico que hay
+            que anunciar es el recuento, y `aria-live` esta ahi; los avisos y errores ya traen su
+            propio `role` de estado o de alerta. */}
+        <div>
           {cargando && <p className="cargando-linea" role="status"><span className="pulso" aria-hidden="true" />Buscando…</p>}
           {actual?.error && <p className="aviso-linea" role="alert">{actual.error}</p>}
           {actual?.aviso && <p className="aviso-linea" role="status">{actual.aviso}</p>}
@@ -314,11 +335,13 @@ export function PaginaBuscar() {
 
           {actual && actual.resultados.length > 0 && (
             <>
-              <p className="resultados-cuenta">
+              {/* El `h2` que faltaba entre el `h1` de la pagina y el `h3` de cada tarjeta: con el salto,
+                  quien navega por encabezados pasaba de la pagina a una persona sin nada en medio. */}
+              <h2 className="resultados-cuenta" aria-live="polite">
                 <strong>{titulo}</strong> · {personas(actual.total)}
                 {' · '}{ORDENES.find((o) => o.valor === actual.ordenAplicado)?.texto.toLowerCase()}
-              </p>
-              <ul className="tarjetas-rejilla">
+              </h2>
+              <ul className="tarjetas-rejilla" aria-label="Resultados de la búsqueda">
                 {actual.resultados.map((r) => (
                   <li key={r.perfilId}>
                     <TarjetaPersona p={{
