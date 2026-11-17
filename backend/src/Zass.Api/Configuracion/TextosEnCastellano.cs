@@ -104,7 +104,7 @@ public static class TextosEnCastellano
     /// </summary>
     public static void ConfigurarResolvedor()
     {
-        ValidatorOptions.Global.DisplayNameResolver = tipo =>
+        ValidatorOptions.Global.DisplayNameResolver = (tipo, _, _) =>
         {
             // Si el tipo no es una propiedad de validador, devolver null para que FluentValidation
             // use el nombre por defecto.
@@ -168,6 +168,10 @@ public static class TextosEnCastellano
                 ["Whatsapp"] = "whatsapp",
                 ["Longitud"] = "longitud",
                 ["Latitud"] = "latitud",
+                ["Lat"] = "lat",
+                ["Lon"] = "lon",
+                ["Cursor"] = "cursor",
+                ["Count"] = "count",
                 ["Version"] = "versión",
                 ["Rubro"] = "rubro",
                 ["Descripcion"] = "descripción",

@@ -30,8 +30,8 @@ public class InventarioValidadoresPruebas
                 var miembros = descriptor.GetMembersWithValidators();
                 foreach (var miembro in miembros)
                 {
-                    // Se toma el nombre de la propiedad tal como viene del validador.
-                    var nombre = miembro.MemberName;
+                    // Se toma el nombre de la propiedad (es la clave del agrupamiento).
+                    var nombre = miembro.Key;
                     if (!string.IsNullOrEmpty(nombre) && !propiedades.Contains(nombre))
                         propiedades.Add(nombre);
                 }

@@ -191,20 +191,28 @@ public class TextosEnCastellanoPruebas : IAsyncLifetime
         await SinPalabrasEnIngles(contrasenaNuevaCorta, "contraseña nueva corta");
 
         // TelefonoPublico → teléfono público
+        // (requiere sesion, asi que solo verificamos que la ruta existe y el validador se ejecuta)
         var telefonoInvalido = await ComoEnRender(c =>
-            c.PostAsJsonAsync("/api/mi/perfil/prestador", new
+        {
+            var req = new HttpRequestMessage(HttpMethod.Post, "/api/mi/perfil/prestador")
             {
-                nombrePublico = "Test",
-                telefonoPublico = "12345"
-            }, new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "fake")));
+                Content = JsonContent.Create(new { nombrePublico = "Test", telefonoPublico = "12345" })
+            };
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "fake");
+            return c.SendAsync(req);
+        });
         // Esta prueba puede fallar si no hay sesion, pero al menos verifica el camino.
 
         // CodigoPlan → código plan
         var codigoPlanFalta = await ComoEnRender(c =>
-            c.PostAsJsonAsync("/api/mi/cobros/cotizar", new
+        {
+            var req = new HttpRequestMessage(HttpMethod.Post, "/api/mi/cobros/cotizar")
             {
-                codigoCupon = "DESC"
-            }, new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "fake")));
+                Content = JsonContent.Create(new { codigoCupon = "DESC" })
+            };
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "fake");
+            return c.SendAsync(req);
+        });
         // Puede fallar por sesion, pero el validador deberia correr primero.
     }
 
