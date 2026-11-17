@@ -268,7 +268,7 @@ public class CobroAutomaticoPruebas
 
         // Lo que de verdad importa: UNA sola salida a la pasarela y UN solo intento.
         Assert.Equal(1, _pasarela.CobrosRecurrentes);
-        Assert.Single(_base.IntentosDePago.Where(i => i.Tipo == TipoDeIntento.Cobro));
+        Assert.Single(_base.IntentosDePago, i => i.Tipo == TipoDeIntento.Cobro);
     }
 
     /// <summary>
@@ -383,7 +383,7 @@ public class CobroAutomaticoPruebas
         Assert.Equal(1, resumen.SinMedioDePago);
         Assert.Equal(0, resumen.Cobradas);
         Assert.Equal(0, _pasarela.CobrosRecurrentes);
-        Assert.Empty(_base.IntentosDePago.Where(i => i.Tipo == TipoDeIntento.Cobro));
+        Assert.DoesNotContain(_base.IntentosDePago, i => i.Tipo == TipoDeIntento.Cobro);
         Assert.Empty(_base.Pagos);
     }
 

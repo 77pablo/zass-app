@@ -300,7 +300,7 @@ public class InscripcionFundadorPruebas
 
         await _cobros.ConfirmarAsync(UnAviso());
 
-        Assert.Single(_base.Suscripciones.Where(s => s.PerfilPrestadorId == perfil.Id));
+        Assert.Single(_base.Suscripciones, s => s.PerfilPrestadorId == perfil.Id);
     }
 
     [Fact]
