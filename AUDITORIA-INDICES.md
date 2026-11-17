@@ -295,7 +295,7 @@ no depende del tráfico.
 | ~~3~~ | ~~`CREATE INDEX ix_suscripciones_perfil_prestador_id …`~~ | **YA APLICADO** el 15-nov como `ix_suscripcion_perfil_inicia` |
 | 4 | `CREATE INDEX ix_citas_expira_en_solicitadas ON citas (expira_en) WHERE estado = 'Solicitada' AND expira_en IS NOT NULL;` | A-09 sin ordenación en memoria. **Volver a medir con datos reales.** |
 | 5 | `DROP INDEX i_x_servicios_rubro_id;` | Redundante por prefijo exacto |
-| **6** | `CREATE INDEX ix_notificacion_cita_tipo ON notificaciones (cita_id, tipo);` | **El siguiente de la lista** (3.c): los dos caminos que trajo JQ-3, y el que duele es la cancelación |
+| **6** | `CREATE INDEX ix_notificacion_cita_tipo ON notificaciones (cita_id, tipo) WHERE cita_id IS NOT NULL;` | 3.c: los dos caminos que trajo JQ-3, y el que duele es la cancelación. **En la migración `IndiceNotificacionCita` (17-nov), sin aplicar en Neon.** Se eligió el parcial: medido el 17-nov, `cita_id = $1` usa *Index Scan* y el `NOT EXISTS` (`cita_id` + `tipo`) *Index Only Scan* |
 
 Todo esto es una sola migración si Pablo quiere, pero es **N3** y la decide él.
 

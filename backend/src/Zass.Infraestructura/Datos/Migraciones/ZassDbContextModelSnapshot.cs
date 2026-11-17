@@ -5150,6 +5150,10 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.HasIndex("Estado", "ProgramadaPara")
                         .HasDatabaseName("i_x_notificaciones_estado_programada_para");
 
+                    b.HasIndex(new[] { "CitaId", "Tipo" }, "ix_notificacion_cita_tipo")
+                        .HasDatabaseName("ix_notificacion_cita_tipo")
+                        .HasFilter("cita_id IS NOT NULL");
+
                     b.ToTable("notificaciones");
                 });
 
