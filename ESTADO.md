@@ -1,6 +1,6 @@
 # ZASS! — estado del desarrollo
 
-**Última sesión:** 17 de noviembre de 2026: **13 PR fusionados y `main` en verde, pero SIN DESPLEGAR**. Hay un índice nuevo en Neon y una segunda IA trabajando con un plan escrito. Ver **«Sesión del 17-nov-2026»** justo debajo.
+**Última sesión:** 17 de noviembre de 2026: **17 PR fusionados y `d57550d` DESPLEGADO y comprobado en producción**. Hay un índice nuevo en Neon y una segunda IA trabajando con un plan escrito. Ver **«Sesión del 17-nov-2026»** justo debajo.
 
 **Sesión anterior:** 15 de noviembre de 2026 (madrugada), cuando quedó **producción al día**: Neon migrada, desplegada y comprobada desde fuera.
 
@@ -33,14 +33,29 @@ comprobado**, **qué no**, y **el siguiente paso exacto**.
 
 ### Dónde retomar
 
-**`main` está en `031de25`, en verde** (backend y frontend, corrida `44111440075`). **Producción NO**:
-Render sigue en **`771a20f`, del 15-nov**, y **no despliega solo** (`autoDeploy=no`).
+**Producción está en `d57550d`**, desplegado el 17-nov a las 18:15 UTC con el «despliega» de Pablo
+(despliegue `dep-dbu9iud9fdbs73e3r710`, `live`). Es el mismo commit que `main`, que quedó en verde
+(corrida `44144050527`). Render **no despliega solo** (`autoDeploy=no`): cada despliegue se lanza a mano.
+
+**Comprobado en producción después del despliegue:**
+
+| Petición | Antes (771a20f) | Después (d57550d) |
+|---|---|---|
+| `GET /api/esta-ruta-no-existe` | `"title":"Not Found"` | `"title":"No encontrado"` |
+| `POST /api/auth/contrasena/recuperar` `{"correo":""}` | `'Correo' must not be empty.` | `'Correo' no debería estar vacío.` |
+| Cabecera `X-Id-Peticion` | no estaba | en toda respuesta, y el mismo `idPeticion` en el cuerpo del error |
+
+- **El id en el registro de Render funciona:** se buscó el id `51c2e0d210c7fb5c` de una petición que consulta la base y aparecieron sus dos líneas. Un 404 de ruta o un error de validación **no escriben ninguna línea**, así que su id no aparece. Es lo esperado, no un fallo.
+- **0 líneas «Sin datos de idioma»**: la imagen tiene ICU, y la validación sale en castellano.
+- **0 líneas `fail:`** desde el despliegue. EF sigue escondiendo los valores (`purgada='?'`).
+- **Para mirar más adelante:** en la ficha pública aparece `warn: Microsoft.EntityFrameworkCore.Query[20504]`, el aviso de EF sobre cargar varias colecciones en una sola consulta. Ya estaba antes de hoy. Es rendimiento, no un error.
+
+Vuelta atrás si hiciera falta: reactivar `dep-dbshemei0phs73d5b8r0` (771a20f).
 
 | Qué | Estado |
 |---|---|
-| **Desplegar `031de25` en Render** | **Pendiente: necesita el «despliega» de Pablo.** El clasificador de permisos lo bloqueó. Sube **todo** lo fusionado desde el 15-nov, no solo lo último (lista abajo). Vuelta atrás: `dep-dbshemei0phs73d5b8r0` (771a20f). La base ya está al día: la única migración del periodo es la de abajo |
-| Verificar después del despliegue | Volver a medir los tres casos de la tabla «Medido en producción». En los registros de Render, buscar «Sin datos de idioma»: si aparece, la API corre en modo de globalización invariante y la validación saldrá en inglés |
-| Segunda IA | Ejecuta `C:\Users\pdani\zass-tareas\PLAN-IA-2.md` (T1-T7). Su informe va en `zass-tareas\INFORME-IA-2.md`. **Esas tareas son suyas: no las toques.** Pregunta cada decisión a Pablo |
+| Segunda IA | Ejecuta `C:\Users\pdani\zass-tareas\PLAN-IA-2.md` (T1-T11). Su informe va en `zass-tareas\INFORME-IA-2.md`. **Esas tareas son suyas: no las toques.** Pregunta cada decisión a Pablo. #68 (T6) está aprobado salvo un `commit-message.txt` de más que tiene que quitar |
+| Fusionados después de abrir esta sección | #65 (este ESTADO, JQ-10 y la nota de JQ-9), #66 (portada), #67 (búsqueda accesible), #69 (ficha en el celular), con los textos aprobados por Pablo |
 
 ### Lo que entró en `main` el 17-nov
 
@@ -86,8 +101,15 @@ Es la prueba de que **en producción el usuario veía inglés**. Después de des
 - `34e7e1b`: `seguridad.md`, la regla 6 (registro) pasa a **Parcial**. El redactor de registros que describía **no existe**: se movió el documento, no el código. Visto en Chromium.
 - **Pendiente, y es de Pablo y del abogado:** la sección 8 dice «Datos en **Brazil South**», pero lo real es **Neon en EE.UU. Este y Render en Oregón, EE.UU.** La política de privacidad tiene que declarar esa transferencia. La T1 de la segunda IA corrige el documento técnico, no el texto legal.
 
+### La app: decidido el camino, y va DESPUÉS de la web
+Pablo, 17-nov: primero la web, y **después del lanzamiento web** la app en App Store y Play
+Store, con **Capacitor** (el mismo React). El plan completo, con los riesgos medidos, está en
+**`PLAN-APP.md`**. Lo que no puede esperar a la app: **no existe una pantalla para borrar la
+cuenta** (API-17 está en la API, pero ninguna pantalla la llama). El derecho de supresión de la
+Ley 21.719 vale para la web, así que va antes del lanzamiento web.
+
 ### Lo que sigue siendo de Pablo
-1. **«Despliega»**, para que suba `031de25`.
+1. ~~«Despliega»~~: hecho el 17-nov, `d57550d`.
 2. **Flow**, **la empresa**, **el 23 de diciembre**, **abrir el sitio** y **los textos legales**, igual que el 15-nov (abajo).
 3. La **transferencia internacional** (EE.UU.) en la política de privacidad.
 4. Responder las preguntas que le haga la segunda IA.
