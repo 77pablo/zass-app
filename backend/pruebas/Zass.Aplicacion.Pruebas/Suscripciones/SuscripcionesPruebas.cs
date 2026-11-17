@@ -419,6 +419,61 @@ public class SuscripcionesPruebas
         Assert.Equal(10, await _servicio.LimiteDeServiciosAsync(p.Id));
     }
 
+    // ------------------------------------------------- El tope que consumira API-55
+    //
+    // Los planes sembrados y el valor por omision dicen 1. Aqui se usan topes distintos
+    // de 1 y de MaxServicios para que una constante o el campo equivocado no pasen.
+
+    private Plan PlanInicialDelFixture() => _base.Planes.Single(x => x.Codigo == "prueba");
+
+    [Fact]
+    public async Task Sin_suscripcion_el_tope_de_tarjetas_es_el_del_plan_inicial()
+    {
+        PlanInicialDelFixture().MaxTarjetas = 2;
+        var p = UnPrestador();
+
+        Assert.Equal(2, await _servicio.LimiteDeTarjetasAsync(p.Id));
+    }
+
+    [Fact]
+    public async Task Con_suscripcion_vigente_el_tope_de_tarjetas_es_el_de_su_plan()
+    {
+        PlanInicialDelFixture().MaxTarjetas = 2;
+        _base.Planes.Add(new Plan
+        {
+            Id = 7, Codigo = "pro", Nombre = "Pro", MaxServicios = 40, MaxTarjetas = 4, Activo = true,
+        });
+        var p = UnPrestador();
+        var s = ConSuscripcion(p.Id, EstadoSuscripcion.Activa, Ahora.AddDays(20));
+        s.PlanId = 7;
+
+        Assert.Equal(4, await _servicio.LimiteDeTarjetasAsync(p.Id));
+    }
+
+    [Fact]
+    public async Task Vencida_el_tope_de_tarjetas_vuelve_al_del_plan_inicial()
+    {
+        PlanInicialDelFixture().MaxTarjetas = 2;
+        _base.Planes.Add(new Plan
+        {
+            Id = 7, Codigo = "pro", Nombre = "Pro", MaxServicios = 40, MaxTarjetas = 4, Activo = true,
+        });
+        var p = UnPrestador();
+        var s = ConSuscripcion(p.Id, EstadoSuscripcion.Activa, Ahora.AddDays(-1));
+        s.PlanId = 7;
+
+        Assert.Equal(2, await _servicio.LimiteDeTarjetasAsync(p.Id));
+    }
+
+    [Fact]
+    public async Task Sin_plan_inicial_el_tope_de_tarjetas_es_cero()
+    {
+        PlanInicialDelFixture().Activo = false;
+        var p = UnPrestador();
+
+        Assert.Equal(0, await _servicio.LimiteDeTarjetasAsync(p.Id));
+    }
+
     // ------------------------------------------------- El trabajo diario (A-09)
 
     [Fact]
