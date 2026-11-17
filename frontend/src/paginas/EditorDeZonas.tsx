@@ -65,8 +65,7 @@ export function EditorDeZonas({
       await guardarCobertura(elegidas.map((zonaId) => ({ zonaId, esPrincipal: zonaId === principal })))
       alGuardar()
     } catch (err) {
-      // Usa paraMostrar para incluir el código de petición en errores inesperados (DECISIÓN T4).
-      setAviso(err instanceof ErrorApi ? err.paraMostrar : 'No pudimos guardar tus comunas.')
+      setAviso(err instanceof ErrorApi ? err.mensaje : 'No pudimos guardar tus comunas.')
     } finally {
       setGuardando(false)
     }
