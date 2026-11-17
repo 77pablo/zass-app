@@ -1,0 +1,9 @@
+[N3] Acciones de GitHub a su version actual (fin de Node 20)
+
+Actualizadas versiones de actions en los workflows:
+- checkout → @v7
+- setup-dotnet → @v6
+- setup-node → @v7
+- upload-artifact → @v7
+
+Hecho por FreeLLMAPI (gpt-oss-120b) via opencode
