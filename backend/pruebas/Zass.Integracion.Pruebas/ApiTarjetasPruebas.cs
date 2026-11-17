@@ -253,11 +253,17 @@ public class ApiTarjetasPruebas : IAsyncLifetime
             columnas.Order().ToArray());
     }
 
-    /// <summary>Todo lo que viaja en la respuesta, en un texto comparable.</summary>
+    /// <summary>
+    /// Todo lo que viaja en la respuesta, en un texto comparable. Fuera quedan la fecha y el
+    /// identificador de peticion, que cambian en cada una sin decir nada de la tarjeta: este se
+    /// exige presente, para que excluirlo no oculte que falta.
+    /// </summary>
     private static async Task<string> Huella(HttpResponseMessage r)
     {
+        Assert.Matches("^[0-9a-f]{16}$",
+            Assert.Single(r.Headers.GetValues(Zass.Api.Configuracion.IdDePeticion.Cabecera)));
         var cabeceras = r.Headers.Concat(r.Content.Headers)
-            .Where(h => h.Key != "Date")
+            .Where(h => h.Key != "Date" && h.Key != Zass.Api.Configuracion.IdDePeticion.Cabecera)
             .OrderBy(h => h.Key, StringComparer.OrdinalIgnoreCase)
             .Select(h => $"{h.Key}: {string.Join(",", h.Value)}");
         var cuerpo = Convert.ToBase64String(await r.Content.ReadAsByteArrayAsync());
