@@ -282,7 +282,7 @@ export function Ficha() {
               */}
               <p className="credenciales-nota">
                 «Verificada» quiere decir que en ZASS! revisamos el documento. «Declarada por el
-                usuario» quiere decir que la escribió la persona y todavía no la hemos revisado.
+                usuario» quiere decir que la escribió esta persona y todavía no la hemos revisado.
               </p>
             </section>
           )}
