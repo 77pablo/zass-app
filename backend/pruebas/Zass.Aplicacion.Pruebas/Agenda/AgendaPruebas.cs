@@ -193,8 +193,7 @@ public class AgendaPruebas
         // La regla vieja se desactiva y sus bloques libres se van; la nueva los vuelve a
         // generar. El total no crece.
         Assert.Equal(cuantos, _base.Bloques.Count);
-        Assert.Single(_base.Bloques.Select(b => b.InicioEn).Distinct()
-            .Where(i => i == _base.Bloques.Min(x => x.InicioEn)));
+        Assert.Single(_base.Bloques.Select(b => b.InicioEn).Distinct(), i => i == _base.Bloques.Min(x => x.InicioEn));
     }
 
     /// <summary>

@@ -456,7 +456,7 @@ public class AgendaIntegracionPruebas : IAsyncLifetime
         // Las dos responden bien, y con la misma cita: una la creó y la otra la encontró.
         Assert.All(resultados, r => Assert.True(r.Exito, r.Mensaje));
         Assert.Single(resultados.Select(r => r.Valor!.Id).Distinct());
-        Assert.Single(resultados.Where(r => r.Valor!.Nueva));
+        Assert.Single(resultados, r => r.Valor!.Nueva);
 
         using var ctx = ContextoDePrueba.Crear();
         Assert.Equal(1, await ctx.Citas.CountAsync(c => c.ClaveIdempotencia == clave));

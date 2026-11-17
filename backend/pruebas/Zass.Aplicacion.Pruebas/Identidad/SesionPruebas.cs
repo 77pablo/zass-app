@@ -170,7 +170,7 @@ public class SesionPruebas
 
         var vieja = _base.Sesiones.Single(s => s.HashToken == _secretos.HashToken(primero.TokenRefresco));
         Assert.NotNull(vieja.RevocadaEn);
-        Assert.Single(_base.Sesiones.Where(s => s.EstaVigente(_reloj.Ahora)));
+        Assert.Single(_base.Sesiones, s => s.EstaVigente(_reloj.Ahora));
     }
 
     [Fact]
@@ -233,7 +233,7 @@ public class SesionPruebas
         var r = await _servicio.RevocarTodasAsync(usuario.Id);
 
         Assert.True(r.Exito, r.Mensaje);
-        Assert.Empty(_base.Sesiones.Where(s => s.EstaVigente(_reloj.Ahora)));
+        Assert.DoesNotContain(_base.Sesiones, s => s.EstaVigente(_reloj.Ahora));
         Assert.Equal(2, _base.Sesiones.Count);
     }
 
