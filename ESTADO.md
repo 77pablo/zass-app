@@ -1,6 +1,8 @@
 # ZASS! — estado del desarrollo
 
-**Última sesión:** 15 de noviembre de 2026 (madrugada) — **producción al día**: Neon migrada, desplegada y comprobada desde fuera. Ver **«Sesión del 15-nov-2026»** justo debajo.
+**Última sesión:** 17 de noviembre de 2026: **13 PR fusionados y `main` en verde, pero SIN DESPLEGAR**. Hay un índice nuevo en Neon y una segunda IA trabajando con un plan escrito. Ver **«Sesión del 17-nov-2026»** justo debajo.
+
+**Sesión anterior:** 15 de noviembre de 2026 (madrugada), cuando quedó **producción al día**: Neon migrada, desplegada y comprobada desde fuera.
 
 **Sesión anterior:** 14 de noviembre de 2026 (noche) — ver **«Sesión del 14-nov-2026 (noche)»** justo debajo. **El sitio público está CERRADO** (mantenimiento), a propósito.
 
@@ -24,6 +26,71 @@ repositorio en GitHub).
 
 Este archivo existe para retomar sin reconstruir contexto. Dice **qué está hecho y
 comprobado**, **qué no**, y **el siguiente paso exacto**.
+
+---
+
+## Sesión del 17-nov-2026 — 13 PR en `main`, el índice 3.c en Neon, y tres pruebas que mentían
+
+### Dónde retomar
+
+**`main` está en `031de25`, en verde** (backend y frontend, corrida `44111440075`). **Producción NO**:
+Render sigue en **`771a20f`, del 15-nov**, y **no despliega solo** (`autoDeploy=no`).
+
+| Qué | Estado |
+|---|---|
+| **Desplegar `031de25` en Render** | **Pendiente: necesita el «despliega» de Pablo.** El clasificador de permisos lo bloqueó. Sube **todo** lo fusionado desde el 15-nov, no solo lo último (lista abajo). Vuelta atrás: `dep-dbshemei0phs73d5b8r0` (771a20f). La base ya está al día: la única migración del periodo es la de abajo |
+| Verificar después del despliegue | Volver a medir los tres casos de la tabla «Medido en producción». En los registros de Render, buscar «Sin datos de idioma»: si aparece, la API corre en modo de globalización invariante y la validación saldrá en inglés |
+| Segunda IA | Ejecuta `C:\Users\pdani\zass-tareas\PLAN-IA-2.md` (T1-T7). Su informe va en `zass-tareas\INFORME-IA-2.md`. **Esas tareas son suyas: no las toques.** Pregunta cada decisión a Pablo |
+
+### Lo que entró en `main` el 17-nov
+
+| PR | Qué | Nota |
+|---|---|---|
+| #44 | JQ-3, recordatorios de cita a 24 h y 2 h (Joaquín) | Revisado el 15-nov |
+| #50, #52 | Auditoría de índices y traspaso del 15-nov | Documentación |
+| #51 | JQ-4 A, Mis tarjetas: API-56, API-57, API-58 y pantalla (Joaquín) | Revisado: el dueño se comprueba en el servicio, ajena = inexistente (404), el QR sin `innerHTML`. **Para B2:** desactivar una tarjeta *Emitida* responde 204 y no hace nada |
+| #53 | Prueba que cae si se quita una cabecera de `_headers` | |
+| #54 | Despertador de la API solo del 22 al 24-nov | |
+| #55 | `TieneRol` en `ActivarPrestadorAsync` (CS8602) | |
+| #56, #57 | `API_ORIGEN` real (`zass-api.onrender.com`; `api.zass.cl` no existe) y `/planes` en el sitemap | |
+| #58 | JQ-4 B1, `LimiteDeTarjetasAsync` lee `Plan.MaxTarjetas` (Joaquín) | Revisado |
+| **#59** | **Índice 3.c**, parcial `notificaciones (cita_id, tipo) WHERE cita_id IS NOT NULL` | **Aplicado en Neon** (corrida `44090594566`, con copia previa). Comprobado en el catálogo: existe, R-1 sigue, *Index Only Scan* |
+| **#60** | `migrar-neon.yml`: la comprobación final sale del ModelSnapshot y **falla** si falta algo | La anterior estaba fija a los objetos del 15-nov y **no fallaba nunca** |
+| **#61** | Probar la restauración de la copia, los lunes | **La primera restauración real de ZASS: funcionó** (copia del 16-nov) |
+| **#62** | Identificador de petición: `X-Id-Peticion`, `idPeticion` en todo error y en el 429, y el id en cada línea del registro | Visto en la consola real: `=> IdPeticion:3b5f157aace8dec1` |
+| **#64** | Ningún texto en inglés llega al usuario (reemplaza a #63) | FluentValidation en `es` y los títulos de fábrica traducidos |
+
+### Medido en producción ANTES del despliegue (17-nov, 771a20f)
+
+| Petición | Respuesta |
+|---|---|
+| `GET /api/salud` | 200, **sin** `X-Id-Peticion` |
+| `GET /api/esta-ruta-no-existe` | 404 `"title":"Not Found"` |
+| `POST /api/auth/contrasena/recuperar` `{"correo":""}` | 400 `'Correo' must not be empty.` / `'Correo' is not a valid email address.` |
+
+Es la prueba de que **en producción el usuario veía inglés**. Después de desplegar debe verse «No encontrado», «'Correo' no debería estar vacío.» y la cabecera.
+
+### Cerrado con datos
+- **El modo «solo inscripción» está resuelto en producción.** El registro de Render del 17-nov, 12:46 UTC, dice: «Pasarela en modo SOLO INSCRIPCION (simulada por debajo)…». Era lo que el 15-nov había quedado sin verificar.
+- **La copia diaria se restaura**: #61, en `postgis/postgis:18-3.6`, la misma versión que Neon (Postgres 18.7, PostGIS 3.6.4).
+
+### Lo que encontró la revisión, y conviene no olvidar
+1. **El servidor de pruebas atiende con la cultura del SISTEMA.** Fijar la cultura invariante en la prueba no llega al servidor: hace falta `Server.PreserveExecutionContext = true` y fijarla en el mismo flujo async de la petición. Sin eso, las pruebas de validación pasaban en castellano (Windows) y en Render salía inglés.
+2. **La consola simple escribe el ámbito con `ToString()`.** Un `Dictionary` imprime el nombre de su tipo: el id **no habría aparecido nunca** en Render. Se usa una plantilla (`"IdPeticion:{IdPeticion}"`).
+3. **`new CultureInfo("es")` tumbaba la API al arrancar** en modo de globalización invariante (las imágenes alpine y chiseled), y `predefinedOnly: false` **no** lo salva (medido). Ahora arranca, avisa en el registro y deja la validación en inglés.
+4. **Smart App Control**: un worktree nuevo quedó bloqueado de forma persistente, y `dotnet test` salió con **exit 0 habiendo corrido cero pruebas**. Mirar siempre «Pruebas totales».
+5. **GitHub cierra un PR apilado** si su rama base se borra al fusionar el de abajo. No lo reapunta.
+6. **Una prueba que falla sin mutación hace parecer «atrapadas» todas las mutaciones.** Siempre línea base primero.
+
+### Documentación (`zass-documentacion`)
+- `34e7e1b`: `seguridad.md`, la regla 6 (registro) pasa a **Parcial**. El redactor de registros que describía **no existe**: se movió el documento, no el código. Visto en Chromium.
+- **Pendiente, y es de Pablo y del abogado:** la sección 8 dice «Datos en **Brazil South**», pero lo real es **Neon en EE.UU. Este y Render en Oregón, EE.UU.** La política de privacidad tiene que declarar esa transferencia. La T1 de la segunda IA corrige el documento técnico, no el texto legal.
+
+### Lo que sigue siendo de Pablo
+1. **«Despliega»**, para que suba `031de25`.
+2. **Flow**, **la empresa**, **el 23 de diciembre**, **abrir el sitio** y **los textos legales**, igual que el 15-nov (abajo).
+3. La **transferencia internacional** (EE.UU.) en la política de privacidad.
+4. Responder las preguntas que le haga la segunda IA.
 
 ---
 
