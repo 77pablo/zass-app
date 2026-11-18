@@ -30,9 +30,6 @@ jobs:
           SALIDA=$(docker run --rm -e NEON_URL_COPIAS postgres:18 \
             sh -c 'psql -X -A -t -v ON_ERROR_STOP=1 "$NEON_URL_COPIAS" -c "SELECT ultima_corrida_en, corridas, left(ultimo_resumen, 80) FROM trabajos_de_fondo WHERE nombre = '"'"'suscripciones-diario'"'"';"')
 
-          # Guardar la salida para el resumen y para la logica
-          echo "SALIDA_PSQL=$SALIDA" >> "$GITHUB_ENV"
-
           # Si no hay fila, SALIDA viene vacia
           if [ -z "$SALIDA" ]; then
             echo "::error::No existe el trabajo 'suscripciones-diario' en la tabla trabajos_de_fondo"
@@ -56,9 +53,10 @@ jobs:
           # Convertir a epoch (segundos desde 1970) para comparar
           AHORA_EPOCH=$(date -u +%s)
           ULTIMA_EPOCH=$(date -u -d "$ULTIMA_CORRIDA" +%s 2>/dev/null || date -u -d "$ULTIMA_CORRIDA UTC" +%s)
-          DIFERENCIA_HORAS=$(( (AHORA_EPOCH - ULTIMA_EPOCH) / 3600 ))
+          DIFERENCIA_SEG=$(( AHORA_EPOCH - ULTIMA_EPOCH ))
+          DIFERENCIA_HORAS=$(( DIFERENCIA_SEG / 3600 ))
 
-          if [ "$DIFERENCIA_HORAS" -gt 26 ]; then
+          if [ "$DIFERENCIA_SEG" -gt 93600 ]; then
             echo "::error::La ultima corrida fue hace $DIFERENCIA_HORAS horas (mas de 26): $ULTIMA_CORRIDA"
             echo "ERROR: La ultima corrida fue hace $DIFERENCIA_HORAS horas (mas de 26): $ULTIMA_CORRIDA" >> "$GITHUB_STEP_SUMMARY"
             exit 1
