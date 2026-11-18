@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { olvidarSugerencias } from '../api/useSugerencias'
 import { BarraDeBusqueda } from './BarraDeBusqueda'
 import { busquedasRecientes, recordarBusqueda } from './busquedasRecientes'
@@ -83,5 +83,40 @@ describe('el buscador recuerda lo que buscaste', () => {
 
     expect(busquedasRecientes()).toEqual([])
     expect(screen.queryByText('Buscaste antes')).not.toBeInTheDocument()
+  })
+})
+
+// En el celular, con 5 recientes la lista tiene 9 opciones y bajaba por detras de la barra inferior
+// (revision del PR #98: «Borrar búsquedas recientes» quedaba tapado). Al enfocar, el buscador sube.
+describe('en el celular el buscador sube al enfocarlo, para que la lista quepa', () => {
+  function pantalla(angosta: boolean) {
+    vi.stubGlobal('matchMedia', vi.fn((q: string) => ({ matches: angosta && q === '(max-width: 880px)', media: q })))
+    const subir = vi.fn()
+    Element.prototype.scrollIntoView = subir
+    return subir
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    // jsdom no lo trae: se deja como estaba.
+    delete (Element.prototype as Partial<Element>).scrollIntoView
+  })
+
+  it('en una pantalla angosta, enfocar el campo lleva el buscador arriba', async () => {
+    const subir = pantalla(true)
+    const u = userEvent.setup()
+    await u.click(pintar())
+
+    expect(subir).toHaveBeenCalledWith({ block: 'start' })
+    expect(subir.mock.contexts[0]).toHaveClass('barra')
+  })
+
+  it('en escritorio no mueve la pagina', async () => {
+    const subir = pantalla(false)
+    const u = userEvent.setup()
+    await u.click(pintar())
+
+    expect(screen.getAllByRole('option').length).toBeGreaterThan(0)
+    expect(subir).not.toHaveBeenCalled()
   })
 })

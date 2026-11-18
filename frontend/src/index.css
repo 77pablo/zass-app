@@ -308,6 +308,12 @@ main:focus { outline: none; }
 .barra-opcion-texto small { color: var(--suave); font-size: 0.8125rem; font-weight: 600; }
 .barra-opcion--todos { margin-top: 4px; border-top: 1px solid var(--linea); border-radius: 0 0 16px 16px; color: var(--pizarra); font-weight: 800; }
 .barra-estado { padding: 12px 14px; color: var(--suave); font-weight: 600; }
+/* Celular: al enfocar, el buscador sube bajo la cabecera (BarraDeBusqueda) y la lista llega solo hasta
+   encima de la barra inferior, con scroll propio: 88 de cabecera + 72 del campo + 10 + 78 de la barra. */
+@media (max-width: 880px) {
+  .barra { scroll-margin-top: 88px; }
+  .barra-lista { max-height: calc(100dvh - 248px - env(safe-area-inset-bottom)); overscroll-behavior: contain; }
+}
 
 @media (max-width: 560px) {
   .barra-forma { padding-left: 16px; }

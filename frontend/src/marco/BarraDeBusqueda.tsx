@@ -117,6 +117,14 @@ export function BarraDeBusqueda({
     }
   }
 
+  // En el celular la lista necesita alto: al enfocar, el buscador sube hasta quedar bajo la cabecera,
+  // y asi la lista (que en index.css llega solo hasta encima de la barra inferior) se ve entera.
+  function subirEnElCelular() {
+    if (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 880px)').matches) {
+      contenedor.current?.scrollIntoView?.({ block: 'start' })
+    }
+  }
+
   function alEnviarFormulario(e: FormEvent) {
     e.preventDefault()
     enviar(limpio)
@@ -141,7 +149,7 @@ export function BarraDeBusqueda({
           maxLength={80} value={texto}
           placeholder={`Prueba con «${EJEMPLOS[ejemplo]}»`}
           onChange={(e) => { setTexto(e.target.value); setAbierto(true); setActivo(-1) }}
-          onFocus={() => setAbierto(true)} onKeyDown={alTeclear}
+          onFocus={() => { setAbierto(true); subirEnElCelular() }} onKeyDown={alTeclear}
         />
         {texto !== '' && (
           <button type="button" className="barra-limpiar" aria-label="Borrar lo escrito"
