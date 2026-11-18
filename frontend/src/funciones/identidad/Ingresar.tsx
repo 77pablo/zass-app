@@ -55,7 +55,7 @@ export function Ingresar({ alEntrar }: { alEntrar: (sesion: Sesion) => void }) {
       />
 
       <button className="boton" type="submit" disabled={enviando}>
-        {enviando ? 'Entrando...' : 'Entrar'}
+        {enviando ? 'Entrando…' : 'Entrar'}
       </button>
     </form>
   )

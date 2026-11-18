@@ -12,7 +12,7 @@ const ENLACES = [
 
 export function Logo() {
   return (
-    <Link to="/" className="logo" aria-label="ZASS!, ir al inicio">
+    <Link to="/" className="logo" aria-label="ZASS!, ir al inicio" translate="no">
       ZAS<em>S!</em>
     </Link>
   )
