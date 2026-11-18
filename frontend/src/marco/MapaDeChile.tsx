@@ -23,21 +23,11 @@ export function MapaDeChile({
   return (
     <figure className="mapa">
       <svg viewBox={`0 0 ${ANCHO} ${ALTO}`} role="group" aria-label="Mapa de Chile con las comunas que ya tienen gente">
-        <defs>
-          {/* Un foco ovalado que se desvanece hacia los bordes: antes era un rectangulo y se veia como una franja. */}
-          <radialGradient id="mapa-barrido" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#f6c81e" stopOpacity="0.32" />
-            <stop offset="55%" stopColor="#f6c81e" stopOpacity="0.1" />
-            <stop offset="100%" stopColor="#f6c81e" stopOpacity="0" />
-          </radialGradient>
-        </defs>
-
-        {/* El resto del pais, apagado: todas las comunas, para que se lea la forma de Chile */}
+        {/* El resto del pais, apagado: todas las comunas, para que se lea la forma de Chile.
+            (Antes habia un barrido de radar con degradado: la guia v3 quita los degradados y lo «tecnologico».) */}
         <g aria-hidden="true">
           {quietos.map((p) => <circle key={p.id} cx={p.x} cy={p.y} r="1.9" className="mapa-punto" />)}
         </g>
-
-        <ellipse cx={ANCHO / 2} cy="-70" rx={ANCHO * 0.62} ry="70" fill="url(#mapa-barrido)" className="mapa-barrido" aria-hidden="true" />
 
         {vivos.map((p) => {
           const radio = 5 + Math.sqrt(p.n) * 2

@@ -15,8 +15,11 @@ const RAIZ = resolve(import.meta.dirname, '..', '..')
 const publico = (nombre) => resolve(RAIZ, 'public', nombre)
 const texto = (ruta) => readFileSync(ruta, 'utf8')
 
+// Los iconos todavia son los de la marca anterior: se cambian aparte (DISENO-INTERFAZ-GUIA-V3.md).
 const AMARILLO = '#F6C81E'
 const TINTA = '#1A1A1A'
+/** El fondo del sitio con la guia v3: la pantalla de arranque tiene que coincidir. */
+const BLANCO = '#FFFFFF'
 
 const RUTA_MANIFIESTO = '/manifest.webmanifest'
 const manifiesto = JSON.parse(texto(publico('manifest.webmanifest')))
@@ -48,12 +51,12 @@ describe('manifiesto web (PWA instalable)', () => {
     expect(manifiesto.lang).toBe('es-CL')
   })
 
-  // El sitio es oscuro. Si la pantalla de arranque fuera crema, al abrir desde el icono se veria
-  // un fogonazo claro antes de la aplicacion: por eso las dos van en tinta, y el crema de la marca
-  // se queda fuera del manifiesto (se usa en superficies claras del sitio, no aqui).
-  it('usa los colores de la marca y no inventa otros', () => {
-    expect(manifiesto.theme_color.toUpperCase()).toBe(TINTA)
-    expect(manifiesto.background_color.toUpperCase()).toBe(TINTA)
+  // Desde la guia v3 (17-nov-2026) el sitio es claro: fondo blanco. La pantalla de arranque va del
+  // MISMO color que el sitio, para que al abrir desde el icono no haya un fogonazo de otro color
+  // antes de la aplicacion. (Antes el sitio era oscuro y las dos iban en tinta, por la misma razon.)
+  it('arranca del mismo color que el sitio, sin fogonazo', () => {
+    expect(manifiesto.theme_color.toUpperCase()).toBe(BLANCO)
+    expect(manifiesto.background_color.toUpperCase()).toBe(BLANCO)
   })
 
   it('declara 192, 512 y el maskable, y los archivos miden lo que dicen', () => {
