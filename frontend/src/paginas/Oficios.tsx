@@ -37,12 +37,15 @@ export function Oficios() {
           <ul className="oficios">
             {catalogo.datos.rubros.map((r) => {
               const n = personasEnRubro(comunidad.datos, r.id)
+              // Solo con la comunidad ya cargada se sabe que esta vacio. Buscarlo no daria a nadie:
+              // la fila invita, en cambio, a quien lo ejerce.
+              const vacio = comunidad.datos !== null && n === 0
               return (
                 <li key={r.id}>
-                  <Link className="oficio" to={`/buscar?q=${encodeURIComponent(r.nombre)}`}>
+                  <Link className="oficio" to={vacio ? '/profesionales' : `/buscar?q=${encodeURIComponent(r.nombre)}`}>
                     <h2>{capitalizar(r.nombre)}</h2>
                     <span className="oficio-lado">
-                      {comunidad.datos && (n === 0 ? 'Aún nadie' : personas(n))}
+                      {comunidad.datos && (vacio ? 'Sé el primero en ofrecerlo' : personas(n))}
                       <Icono nombre="flecha" />
                     </span>
                   </Link>
