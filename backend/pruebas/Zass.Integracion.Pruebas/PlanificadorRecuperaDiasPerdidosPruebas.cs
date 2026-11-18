@@ -64,7 +64,7 @@ public class PlanificadorRecuperaDiasPerdidosPruebas : IAsyncLifetime
     /// Crea una suscripción a punto de vencer (dentro de la ventana de 7 días)
     /// con medio de pago inscrito.
     /// </summary>
-    private async Task<Suscripcion> UnaSuscripcionPorVencerAsync()
+    private async Task<Suscripcion> UnaSuscripcionPorVencerAsync(DateTime? vigenteHasta = null)
     {
         using var ctx = ContextoDePrueba.Crear();
 
@@ -87,7 +87,7 @@ public class PlanificadorRecuperaDiasPerdidosPruebas : IAsyncLifetime
             PlanId = 2,                                   // mensual (no requiere cupo fundador)
             Estado = EstadoSuscripcion.Activa,            // Activa, no Prueba (la prueba es solo para el plan gratis)
             IniciaEn = BaseUtc.AddDays(-23),              // 26-oct-2026
-            VigenteHasta = VigenteHasta,                  // 25-nov-2026 (en 7 días desde BaseUtc)
+            VigenteHasta = vigenteHasta ?? VigenteHasta,  // permite pasar VigenteHasta personalizado
             ReferenciaPasarela = "medio-inscrito-de-prueba",
         };
 
@@ -233,6 +233,118 @@ public class PlanificadorRecuperaDiasPerdidosPruebas : IAsyncLifetime
         var fila = await ctx2.TrabajosDeFondo.SingleAsync(t => t.Nombre == nombreTrabajo);
         Assert.Equal(0, fila.Corridas); // El fallo no cuenta
         Assert.Equal("error (NpgsqlException)", fila.UltimoResumen);
+    }
+
+    /// <summary>
+    /// PRUEBA A: Si la ventana de 7 días se abrió mientras la API dormía,
+    /// la primera corrida al despertar debe cobrar una vez.
+    ///
+    /// Escenario:
+    /// - VigenteHasta = BaseUtc + 9 días (la ventana de 7 días se abre en BaseUtc + 2)
+    /// - Día 0 (BaseUtc): Primera corrida — aún FUERA de la ventana (0 intentos)
+    /// - Días 1, 2, 3: API duerme (sin corridas)
+    /// - Día 4 (BaseUtc + 4): Segunda corrida — DENTRO de la ventana, debe cobrar 1 vez
+    /// - Día 5 (BaseUtc + 5): Tercera corrida — misma suscripción, debe ser idempotente
+    ///
+    /// Esperado:
+    /// - Día 0: 0 intentos con la clave
+    /// - Día 4: exactamente 1 intento; resumen.YaIntentadas == 0 y (Cobradas + Rechazadas) == 1
+    /// - Día 5: sigue 1 intento; resumen.YaIntentadas == 1
+    /// </summary>
+    [Fact]
+    public async Task Si_la_ventana_se_abrio_mientras_la_API_dormia_la_primera_corrida_cobra_una_vez()
+    {
+        // VigenteHasta = BaseUtc + 9 días
+        // La ventana de 7 días se abre en BaseUtc + 2 (9 - 7 = 2)
+        var vigenteHasta = BaseUtc.AddDays(9);
+        var suscripcion = await UnaSuscripcionPorVencerAsync(vigenteHasta);
+        var claveEsperada = ServicioCobros.ClaveDeCobroAutomatico(suscripcion.Id, suscripcion.VigenteHasta);
+
+        // DÍA 0: Primera corrida (fuera de la ventana de 7 días)
+        var resumen0 = await CorrerTrabajoDiarioAsync(BaseUtc);
+
+        // Verificar: 0 intentos en BD
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var intentosDia0 = await ctx.IntentosDePago
+                .Where(i => i.ClaveIdempotencia == claveEsperada)
+                .CountAsync();
+            Assert.Equal(0, intentosDia0); // Aún fuera de la ventana
+        }
+        Assert.Equal(0, resumen0.Cobradas + resumen0.Rechazadas);
+        Assert.Equal(0, resumen0.YaIntentadas);
+
+        // DÍA 4: Segunda corrida (después de 3 días de sueño, DENTRO de la ventana)
+        var resumen4 = await CorrerTrabajoDiarioAsync(BaseUtc.AddDays(4));
+
+        // Verificar: EXACTAMENTE 1 intento en BD
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var intentosDia4 = await ctx.IntentosDePago
+                .Where(i => i.ClaveIdempotencia == claveEsperada)
+                .CountAsync();
+            Assert.Equal(1, intentosDia4);
+        }
+
+        // Resumen: YaIntentadas == 0 (era la primera vez), Cobradas + Rechazadas == 1
+        Assert.Equal(0, resumen4.YaIntentadas);
+        Assert.Equal(1, resumen4.Cobradas + resumen4.Rechazadas);
+
+        // DÍA 5: Tercera corrida (mismo día, debe ser idempotente)
+        var resumen5 = await CorrerTrabajoDiarioAsync(BaseUtc.AddDays(5));
+
+        // Verificar: sigue habiendo 1 intento
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var intentosDia5 = await ctx.IntentosDePago
+                .Where(i => i.ClaveIdempotencia == claveEsperada)
+                .CountAsync();
+            Assert.Equal(1, intentosDia5);
+        }
+
+        // Resumen: YaIntentadas == 1 (ya se intentó en la corrida anterior)
+        Assert.Equal(1, resumen5.YaIntentadas);
+    }
+
+    /// <summary>
+    /// PRUEBA B: Si la API durmió más allá del vencimiento (VigenteHasta),
+    /// la suscripción igual se debe cobrar.
+    ///
+    /// Escenario:
+    /// - VigenteHasta = BaseUtc + 3 días
+    /// - NO hay corridas antes
+    /// - Primera corrida en BaseUtc + 4 días (1 día DESPUÉS del vencimiento)
+    ///
+    /// Esperado con el código ACTUAL: 0 intentos (PorVencerAsync solo mira ahora..ahora+7 días)
+    /// Defecto conocido: si la API duerme más allá de VigenteHasta, la suscripción vence
+    /// sin intentar cobro (ServicioSuscripciones.cs PorVencerAsync).
+    ///
+    /// Esta prueba se marca con Skip hasta que Pablo decida si se cobra tarde o no.
+    /// </summary>
+    [Fact(Skip = "defecto: si la API duerme mas alla de VigenteHasta, la suscripcion vence sin intentar cobro (ServicioSuscripciones.cs PorVencerAsync). Decision de Pablo.")]
+    public async Task Si_la_API_durmio_mas_alla_del_vencimiento_la_suscripcion_igual_se_cobra()
+    {
+        // VigenteHasta = BaseUtc + 3 días (ventana de 7 días = BaseUtc - 4 hasta BaseUtc + 3)
+        // Primera corrida en BaseUtc + 4 (1 día DESPUÉS del vencimiento)
+        var vigenteHasta = BaseUtc.AddDays(3);
+        var suscripcion = await UnaSuscripcionPorVencerAsync(vigenteHasta);
+        var claveEsperada = ServicioCobros.ClaveDeCobroAutomatico(suscripcion.Id, suscripcion.VigenteHasta);
+
+        // Primera (y única) corrida: BaseUtc + 4 (ya pasó VigenteHasta)
+        var resumen = await CorrerTrabajoDiarioAsync(BaseUtc.AddDays(4));
+
+        // Verificar: debería haber 1 intento (pero con código actual da 0)
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var intentos = await ctx.IntentosDePago
+                .Where(i => i.ClaveIdempotencia == claveEsperada)
+                .CountAsync();
+            Assert.Equal(1, intentos);
+        }
+
+        // Resumen: debería haber 1 cobro/rechazo
+        Assert.Equal(1, resumen.Cobradas + resumen.Rechazadas);
+        Assert.Equal(0, resumen.YaIntentadas);
     }
 }
 
