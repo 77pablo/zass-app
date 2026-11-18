@@ -1,8 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="ZASS!">
   <!-- Version `maskable`: el sistema recorta este cuadrado con la forma que quiera (circulo, gota,
-       cuadrado redondeado). Por eso el amarillo va a sangre, sin esquinas redondeadas, y la Z se
-       dibuja mas chica para caber entera dentro de la zona segura (el circulo central del 80%). -->
-  <rect width="512" height="512" fill="#F6C81E"/>
-  <text x="256" y="346" font-family="Montserrat,Arial,sans-serif" font-size="250"
-        font-weight="800" fill="#1A1A1A" text-anchor="middle">Z</text>
+       cuadrado redondeado). Por eso el celeste va a sangre, sin esquinas redondeadas, y el dibujo se
+       achica al 72 % para caber entero en la zona segura (el circulo central del 80 %): el punto mas
+       lejano del sello queda a 148 px del centro, y el limite es 204. Mismo dibujo que icono-zass.svg. -->
+  <rect width="512" height="512" fill="#00A6FF"/>
+  <g transform="translate(256 256) scale(0.72) translate(-256 -256) translate(-40 -44)">
+    <path d="M120 128H352V184L200 328H352V384H120V328L272 184H120Z" fill="#111827"/>
+    <circle cx="372" cy="372" r="92" fill="#FFB800" stroke="#00A6FF" stroke-width="16"/>
+    <rect x="358" y="314" width="28" height="70" rx="14" fill="#111827"/>
+    <circle cx="372" cy="414" r="15" fill="#111827"/>
+  </g>
 </svg>
