@@ -735,6 +735,58 @@ public class ResenasConcurrenciaPruebas : IAsyncLifetime
         Assert.Equal(1, await verificar.Resenas.CountAsync(r => r.AutorId == autor.Id));
     }
 
+    /// <summary>
+    /// JQ-5: la ficha registra el contacto al tocar WhatsApp, llamar o correo, y dos toques casi a
+    /// la vez (o dos pestañas) llegan como dos peticiones simultáneas. La pausa antes de guardar
+    /// ensancha el hueco entre «no hay contacto abierto» y el INSERT: sin el cerrojo del prestador,
+    /// las dos leen la tabla vacía y quedan dos filas; con él, la segunda espera y encuentra la primera.
+    /// </summary>
+    [Fact]
+    public async Task Dos_registros_de_contacto_a_la_vez_dejan_una_sola_fila()
+    {
+        var (perfil, _) = await UnPrestador();
+        Usuario autor;
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            autor = AyudasResenas.NuevoUsuario(ctx);
+            await ctx.SaveChangesAsync();
+            _usuarios.Add(autor.Id);
+        }
+
+        static async Task<Resultado<Guid>> Registrar(Guid autorId, Guid perfilId, CanalContacto canal)
+        {
+            using var ctx = ContextoDePrueba.Crear();
+            var lenta = new UnidadQueTardaAntesDeGuardar(new UnidadDeTrabajoEfCore(ctx));
+            return await AyudasResenas.Servicio(ctx, new RelojUtc(), lenta)
+                .RegistrarContactoAsync(autorId, perfilId, OrigenContacto.Ficha, canal);
+        }
+
+        var resultados = await Task.WhenAll(
+            Task.Run(() => Registrar(autor.Id, perfil.Id, CanalContacto.Whatsapp)),
+            Task.Run(() => Registrar(autor.Id, perfil.Id, CanalContacto.Telefono)));
+
+        Assert.All(resultados, r => Assert.True(r.Exito, r.Mensaje));
+        Assert.Single(resultados.Select(r => r.Valor).Distinct());
+        using var verificar = ContextoDePrueba.Crear();
+        Assert.Equal(1, await verificar.Contactos.CountAsync(c => c.BuscadorId == autor.Id));
+    }
+
+    /// <summary>Guarda de verdad, pero después de una pausa: deja abierta la ventana de la carrera.</summary>
+    private sealed class UnidadQueTardaAntesDeGuardar : IUnidadDeTrabajo
+    {
+        private readonly IUnidadDeTrabajo _real;
+        public UnidadQueTardaAntesDeGuardar(IUnidadDeTrabajo real) => _real = real;
+        public async Task<int> GuardarAsync(CancellationToken ct = default)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(300), ct);
+            return await _real.GuardarAsync(ct);
+        }
+
+        public Task<T> EnTransaccionAsync<T>(
+            Func<CancellationToken, Task<T>> cuerpo, CancellationToken ct = default) =>
+            _real.EnTransaccionAsync(cuerpo, ct);
+    }
+
     [Fact]
     public async Task Un_rechazo_deja_registrado_el_intento_y_ninguna_reseña_con_transaccion_real()
     {

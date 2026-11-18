@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { ErrorApi } from '../api/cliente'
 import { fichaPublica, type FichaPublica } from '../funciones/busqueda/servicio'
+import { registrarContacto, type CanalContacto } from '../funciones/resenas/servicio'
 import { Icono } from '../marco/Icono'
 import { Monograma } from '../marco/Monograma'
 import { capitalizar, duracion, etiquetaDeTipo, pesos, reputacion } from '../marco/texto'
@@ -36,6 +37,9 @@ export function Ficha() {
   const [intento, setIntento] = useState(0)
   // El contacto depende de la sesion: al entrar o salir hay que pedir la ficha otra vez, o se quedaria el de antes.
   const { estado: estadoSesion } = useSesion()
+  // API-46 una sola vez por ficha y visita: el servidor ya devuelve el contacto abierto, pero
+  // cada toque de mas gastaria peticiones del limite sin cambiar nada.
+  const registrado = useRef<string | null>(null)
 
   useEffect(() => {
     let vigente = true
@@ -104,6 +108,18 @@ export function Ficha() {
   // RN-S6-10: la ficha se ve entera, pero sin contactar ni agendar. El servidor ya mando el
   // contacto vacio; aqui solo se DICE, para que no parezca una ficha a medio cargar.
   const alDia = ficha.suscripcionVigente
+
+  /**
+   * JQ-5: tocar WhatsApp, llamar o correo deja constancia del contacto (API-46), que es lo que
+   * arranca los 7 dias para poder reseñar. Va en segundo plano y sin `preventDefault`: el enlace
+   * abre igual, y si el registro falla (cuenta sin rol de buscador, limite de peticiones) no se
+   * le dice nada a quien solo queria escribir. El sitio web no cuenta: no es hablar con nadie.
+   */
+  function alContactar(canal: CanalContacto) {
+    if (ficha === null || registrado.current === ficha.id) return
+    registrado.current = ficha.id
+    void registrarContacto(ficha.id, 'Ficha', canal, { keepalive: true }).catch(() => {})
+  }
 
   return (
     <div className="contenedor ficha-pagina">
@@ -265,21 +281,21 @@ export function Ficha() {
               <ul className="contacto">
                 {wasap && (
                   <li>
-                    <a className="boton boton--amarillo boton--lleno" href={`https://wa.me/${wasap}`} rel="noreferrer noopener" target="_blank">
+                    <a className="boton boton--amarillo boton--lleno" href={`https://wa.me/${wasap}`} rel="noreferrer noopener" target="_blank" onClick={() => alContactar('Whatsapp')}>
                       <Icono nombre="mensaje" />Escribir por WhatsApp
                     </a>
                   </li>
                 )}
                 {c.telefono && (
                   <li>
-                    <a className="boton boton--lleno" href={`tel:${c.telefono.replace(/[^\d+]/g, '')}`}>
+                    <a className="boton boton--lleno" href={`tel:${c.telefono.replace(/[^\d+]/g, '')}`} onClick={() => alContactar('Telefono')}>
                       <Icono nombre="telefono" />Llamar · {c.telefono}
                     </a>
                   </li>
                 )}
                 {c.correo && (
                   <li>
-                    <a className="boton boton--lleno" href={`mailto:${c.correo}`}>
+                    <a className="boton boton--lleno" href={`mailto:${c.correo}`} onClick={() => alContactar('Correo')}>
                       <Icono nombre="correo" />Escribir un correo
                     </a>
                   </li>
