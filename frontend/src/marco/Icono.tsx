@@ -21,6 +21,8 @@ const TRAZOS = {
   mensaje: 'M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-5 4v-4H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z',
   persona: 'M12 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM5 20c0-3.5 3-5.5 7-5.5s7 2 7 5.5',
   llave: 'M14 10a4 4 0 1 1 3.5 4L12 19.5H9V16.5L7.5 15 10 12.5A4 4 0 0 1 14 10z',
+  casa: 'M4 10.5L12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1v-8.5z',
+  calendario: 'M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM4 10.5h16M8.5 3.5v4M15.5 3.5v4',
 } as const
 
 export type NombreDeIcono = keyof typeof TRAZOS

@@ -31,7 +31,8 @@ export function Ingresar({ alEntrar }: { alEntrar: (sesion: Sesion) => void }) {
     } catch (e) {
       // Se muestra el mensaje de la API tal cual: ya viene pensado para no
       // distinguir "contrasena mala" de "esa cuenta no existe".
-      setAviso(e instanceof ErrorApi ? e.mensaje : 'Algo salió mal. Intenta de nuevo.')
+      // Usa paraMostrar para incluir el código de petición en errores inesperados (DECISIÓN T4).
+      setAviso(e instanceof ErrorApi ? e.paraMostrar : 'Algo salió mal. Intenta de nuevo.')
     } finally {
       setEnviando(false)
     }

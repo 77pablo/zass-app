@@ -115,7 +115,7 @@ public class CredencialesPruebas
         var r = await _servicio.CrearAsync(Cmd(entidadId: 1, entidadNombre: "Otra universidad"));
 
         Assert.False(r.Exito);
-        Assert.Empty(_base.Entidades.Where(e => e.Nombre == "Otra universidad"));
+        Assert.DoesNotContain(_base.Entidades, e => e.Nombre == "Otra universidad");
     }
 
     [Theory]

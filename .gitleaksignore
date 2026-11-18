@@ -1,0 +1,19 @@
+# Falsos positivos - claves de prueba en archivos de pruebas unitarias
+# No son secretos reales: son valores ficticios para tests de integración
+
+# AgendaIntegracionPruebas.cs - clave de prueba para tests de agenda
+74e684f89c9151f4e37a31f9558c96e07b972462:backend/pruebas/Zass.Integracion.Pruebas/AgendaIntegracionPruebas.cs:generic-api-key:908
+
+# ApiSuscripcionesPruebas.cs - idempotency key de prueba
+045a67a832e45829f3b56d9a369e6a238a447fba:backend/pruebas/Zass.Integracion.Pruebas/ApiSuscripcionesPruebas.cs:generic-api-key:119
+
+# ProcesadorDeCorreoPruebas.cs - clave secreta de prueba para tests de correo
+14c4262539257bb9cc97afbd6c8dd399735e44c0:backend/pruebas/Zass.Integracion.Pruebas/Correo/ProcesadorDeCorreoPruebas.cs:generic-api-key:31
+
+# CorreoUnidadPruebas.cs - clave secreta de prueba para tests de correo
+14c4262539257bb9cc97afbd6c8dd399735e44c0:backend/pruebas/Zass.Integracion.Pruebas/Correo/CorreoUnidadPruebas.cs:generic-api-key:14
+
+# ProduccionPruebas.cs - password de prueba para tests de producción (3 ocurrencias)
+c91c7811e95378c044c6ece94cf7fea72bc28d0a:backend/pruebas/Zass.Integracion.Pruebas/ProduccionPruebas.cs:generic-api-key:366
+c91c7811e95378c044c6ece94cf7fea72bc28d0a:backend/pruebas/Zass.Integracion.Pruebas/ProduccionPruebas.cs:generic-api-key:468
+c91c7811e95378c044c6ece94cf7fea72bc28d0a:backend/pruebas/Zass.Integracion.Pruebas/ProduccionPruebas.cs:generic-api-key:517

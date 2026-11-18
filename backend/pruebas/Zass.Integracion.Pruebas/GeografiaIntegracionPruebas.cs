@@ -364,7 +364,7 @@ public class GeografiaIntegracionPruebas : IDisposable
 
         Assert.True(r.Exito, r.Mensaje);
         var cobertura = await _repo.CoberturaDePrestadorAsync(perfil.Id);
-        Assert.Single(cobertura.Where(c => c.EsPrincipal));
+        Assert.Single(cobertura, c => c.EsPrincipal);
         Assert.Equal(11, cobertura.Single(c => c.EsPrincipal).ZonaId);
     }
 
