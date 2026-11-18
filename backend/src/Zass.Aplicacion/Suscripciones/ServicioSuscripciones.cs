@@ -459,7 +459,7 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
         int dentroDeDias, CancellationToken ct = default)
     {
         var ahora = _reloj.Ahora;
-        var hasta = ahora.AddDays(dentroDeDias);
+        var hasta = ahora.AddDays(dentroDeDias - 6);
         var cercanas = await _repo.VigentesQueVencenAntesDeAsync(ahora, hasta, ct);
 
         return cercanas
