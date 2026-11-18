@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="es-CL">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#FFFFFF">
+<!-- TEXTOS PROPUESTOS, pendientes de aprobacion de Pablo (CONTRIBUIR.md, regla 12). -->
+<title>Sin conexión · ZASS!</title>
+<!-- Sin JavaScript a proposito: la CSP del sitio no permite scripts en linea. «Reintentar» es un
+     enlace vacio, que vuelve a pedir la MISMA direccion en la que estabas. Estilos de la guia v3. -->
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; min-height: 100dvh; display: grid; place-items: center;
+    padding: 24px 24px calc(24px + env(safe-area-inset-bottom));
+    background: #ffffff; color: #111827; line-height: 1.6;
+    font-family: Montserrat, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { width: 100%; max-width: 26rem; text-align: center; }
+  .marca { margin: 0 0 28px; font-size: 2.25rem; font-weight: 800; letter-spacing: -0.04em; color: #111827; }
+  .marca span { background: #ffb800; border-radius: 7px; padding: 0 0.14em; margin-left: 2px; }
+  .senal { display: grid; place-items: center; width: 88px; height: 88px; margin: 0 auto 24px; border-radius: 50%; background: #e5f6ff; }
+  .senal svg { width: 44px; height: 44px; stroke: #111827; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  h1 { margin: 0 0 10px; font-size: 1.75rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; }
+  p { margin: 0 0 28px; color: #4b5563; font-weight: 500; }
+  a {
+    display: inline-flex; align-items: center; justify-content: center; min-height: 52px; padding: 0 32px;
+    border-radius: 999px; background: #ffb800; color: #111827; font-weight: 800; text-decoration: none;
+  }
+  a:focus-visible { outline: 3px solid #111827; outline-offset: 3px; }
+  a:active { transform: scale(0.97); }
+</style>
+</head>
+<body>
+<main>
+  <p class="marca" aria-label="ZASS!">ZAS<span>S!</span></p>
+  <div class="senal" aria-hidden="true">
+    <svg viewBox="0 0 24 24"><path d="M2 8.5a15 15 0 0 1 20 0M5.5 12a10 10 0 0 1 13 0M9 15.5a5 5 0 0 1 6 0M12 19h.01M3 3l18 18"/></svg>
+  </div>
+  <h1>Sin conexión</h1>
+  <p>No pudimos conectarnos a internet. Revisa tu señal o tu wifi y vuelve a intentarlo.</p>
+  <a href="">Reintentar</a>
+</main>
+</body>
+</html>
