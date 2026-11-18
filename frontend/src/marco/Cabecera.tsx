@@ -1,7 +1,7 @@
-import { useState } from 'react'
-import { Link, NavLink, useLocation } from 'react-router-dom'
+import { Link, NavLink } from 'react-router-dom'
 import { useSesion } from '../sesion/contexto'
 import { Icono } from './Icono'
+import { useMenuMovil } from './menuMovil'
 
 const ENLACES = [
   { a: '/buscar', texto: 'Buscar' },
@@ -20,13 +20,8 @@ export function Logo() {
 
 export function Cabecera() {
   const { estado, usuario, salir } = useSesion()
-  const { pathname } = useLocation()
-
-  // El menu guarda la RUTA en la que se abrio, y esta abierto solo mientras sigas en ella.
-  // Asi se cierra al navegar sin un efecto que ponga estado: el efecto llegaria un
-  // fotograma tarde y el menu se veria abierto sobre la pagina nueva.
-  const [abiertoEn, setAbiertoEn] = useState<string | null>(null)
-  const abierto = abiertoEn === pathname
+  // Compartido con la pestaña «Mas» de la barra inferior (menuMovil.tsx).
+  const { abierto, alternar } = useMenuMovil()
 
   const esPrestador = usuario?.roles.includes('prestador') ?? false
 
@@ -65,7 +60,7 @@ export function Cabecera() {
 
         <button
           type="button" className="menu-boton" aria-expanded={abierto} aria-controls="menu-movil"
-          onClick={() => setAbiertoEn(abierto ? null : pathname)}
+          onClick={alternar}
         >
           <Icono nombre={abierto ? 'cerrar' : 'menu'} />
           <span>{abierto ? 'Cerrar' : 'Menú'}</span>

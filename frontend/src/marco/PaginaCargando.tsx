@@ -1,3 +1,5 @@
+import { ListaEsqueleto } from './Esqueleto'
+
 /*
  * La pantalla mientras se carga, CON su título.
  *
@@ -9,6 +11,9 @@
  *
  * El título es el mismo que la pantalla ya le da a la pestaña con `useTitulo`, para que al
  * terminar de cargar no cambie de nombre delante de quien lo está leyendo.
+ *
+ * Desde la guía v3 (18-nov-2026) lo que se VE es un esqueleto con forma de lista, no la frase.
+ * La frase sigue ahí para el lector de pantalla, en el `role="status"`.
  */
 export function PaginaCargando({ titulo, aviso = 'Cargando…' }: {
   /** El mismo que usa `useTitulo` en esa pantalla. */
@@ -19,7 +24,8 @@ export function PaginaCargando({ titulo, aviso = 'Cargando…' }: {
   return (
     <div className="contenedor ficha-pagina">
       <h1 className="pagina-titulo">{titulo}</h1>
-      <p className="cargando-linea" role="status">{aviso}</p>
+      <p className="solo-lector" role="status">{aviso}</p>
+      <ListaEsqueleto />
     </div>
   )
 }

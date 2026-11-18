@@ -1,6 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="ZASS!">
-  <!-- Icono de la aplicacion: el mismo mark de favicon.svg, a 512. Amarillo #F6C81E, Z en tinta #1A1A1A. -->
-  <rect width="512" height="512" rx="112" fill="#F6C81E"/>
-  <text x="256" y="368" font-family="Montserrat,Arial,sans-serif" font-size="320"
-        font-weight="800" fill="#1A1A1A" text-anchor="middle">Z</text>
+  <!-- Icono de la aplicacion, guia v3 (18-nov-2026): fondo celeste #00A6FF (identidad), Z en pizarra
+       #111827 (6,7:1 sobre celeste) y el «!» de la marca en un sello ambar #FFB800 con el signo en
+       pizarra (10,2:1). La Z y el «!» son FORMAS, no texto: se ven iguales aunque el telefono no
+       tenga Montserrat. Un anillo celeste separa el sello de la Z. -->
+  <rect width="512" height="512" rx="112" fill="#00A6FF"/>
+  <!-- El conjunto (Z + sello) se centra: su caja va de 120 a 472, asi que se corre 40 y 44 px. -->
+  <g transform="translate(-40 -44)">
+    <path d="M120 128H352V184L200 328H352V384H120V328L272 184H120Z" fill="#111827"/>
+    <circle cx="372" cy="372" r="92" fill="#FFB800" stroke="#00A6FF" stroke-width="16"/>
+    <rect x="358" y="314" width="28" height="70" rx="14" fill="#111827"/>
+    <circle cx="372" cy="414" r="15" fill="#111827"/>
+  </g>
 </svg>

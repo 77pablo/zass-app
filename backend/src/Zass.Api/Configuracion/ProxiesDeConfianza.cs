@@ -112,7 +112,8 @@ public static class ProxiesDeConfianza
 
     /// <summary>
     /// Registra las opciones del middleware. Se leen al RESOLVER y no al registrar, igual que
-    /// las demás opciones: la configuración de las pruebas y de Key Vault llega después.
+    /// las demás opciones: la configuración de las pruebas y las variables de entorno de
+    /// Render llegan después.
     /// </summary>
     public static IServiceCollection AgregarProxiesDeConfianza(this IServiceCollection servicios) =>
         servicios.AddSingleton<IConfigureOptions<ForwardedHeadersOptions>>(sp =>

@@ -228,7 +228,7 @@ public class ZassDbContext : DbContext
             // y eso NO es un detalle: este cluster se creo con locale C, donde lower()
             // solo plega ASCII. Un indice sobre lower(nombre) aceptaba
             // "TASACION COMERCIAL" al lado de "Tasacion comercial", y lo hacia depender
-            // del locale del servidor, que en Azure sera otro. Lo encontro una prueba
+            // del locale del servidor, que en Render sera otro. Lo encontro una prueba
             // de integracion que esperaba el rechazo y no lo obtuvo.
             e.HasIndex(x => new { x.RubroId, x.NombreNormalizado })
                 .IsUnique()
