@@ -259,6 +259,28 @@ public sealed class ServicioCuenta
     // ------------------------------------------------------------------ CS-04
 
     /// <summary>
+    /// CS-04, el primer paso: que quien pide borrar la cuenta sea su dueño, y no alguien frente a
+    /// una sesión olvidada abierta. Decisión de Pablo, 17-nov-2026. No cambia nada: solo
+    /// responde. Va aparte de <see cref="EliminarAsync"/> porque la baja toca otros módulos
+    /// (las citas, la suscripción), y la contraseña se comprueba ANTES de tocar ninguno.
+    ///
+    /// Es <see cref="Fallas.ReglaDeNegocio"/> (422) y no <see cref="Fallas.NoAutorizado"/> (401):
+    /// la sesión es válida, lo que falla es la confirmación. Un 401 haría que el cliente intente
+    /// renovar la sesión, como si hubiera vencido.
+    /// </summary>
+    public async Task<Resultado> VerificarContrasenaAsync(
+        Guid usuarioId, string contrasena, CancellationToken ct = default)
+    {
+        var usuario = await _usuarios.PorIdAsync(usuarioId, ct);
+        if (usuario is null)
+            return Resultado.Falla(Fallas.NoEncontrado, "Esa cuenta no existe.");
+
+        return _hash.Verifica(contrasena, usuario.HashContrasena)
+            ? Resultado.Ok()
+            : Resultado.Falla(Fallas.ReglaDeNegocio, "La contraseña no es correcta.");
+    }
+
+    /// <summary>
     /// CS-04 - Eliminar cuenta. API-17. RN-S1-07: la fila sobrevive anonimizada porque
     /// las resenas que esta persona escribio son parte del historial de otro, que tiene
     /// derecho a conservarlo.

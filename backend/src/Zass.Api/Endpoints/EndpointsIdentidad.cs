@@ -1,9 +1,12 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Mvc;
 using Zass.Api.Configuracion;
+using Zass.Aplicacion.Agenda;
 using Zass.Aplicacion.Busqueda;
 using Zass.Aplicacion.Identidad;
+using Zass.Aplicacion.Puertos;
 using Zass.Aplicacion.Suscripciones;
 
 namespace Zass.Api.Endpoints;
@@ -12,6 +15,9 @@ public sealed record VerificarCorreoCmd(string Token);
 public sealed record PedirRecuperacionCmd(string Correo);
 public sealed record ReenviarVerificacionCmd(string Correo);
 public sealed record CambiarContrasenaCmd(string ContrasenaActual, string ContrasenaNueva);
+
+/// <summary>API-17. La contraseña, para confirmar que es el dueño quien pide la baja (CS-04).</summary>
+public sealed record EliminarCuentaCmd(string Contrasena);
 
 /// <summary>
 /// API-08 a API-23. Los identificadores del documento van en el nombre de cada ruta
@@ -184,18 +190,26 @@ public static class EndpointsIdentidad
             .WithName("API-16");
 
         // API-17 - Elimina la cuenta y anonimiza (RN-S1-07). Grupo S.
+        // Pide la contraseña, cancela las citas futuras (avisando a la otra parte) y la
+        // suscripción vigente, y después anonimiza: ver BajaDeCuenta. El cuerpo va con
+        // [FromBody] porque en un DELETE la API mínima no lo infiere sola.
         grupo.MapDelete("/cuenta", async (
-                ServicioCuenta servicio, HttpContext http, ClaimsPrincipal quien) =>
+                [FromBody] EliminarCuentaCmd cmd,
+                ServicioCuenta cuenta, ServicioPerfiles perfiles, IServicioAgenda agenda,
+                IServicioSuscripciones suscripciones, IRelojSistema reloj,
+                HttpContext http, ClaimsPrincipal quien) =>
             {
                 var usuarioId = quien.UsuarioId();
                 if (usuarioId is null) return Results.Unauthorized();
 
-                var r = await servicio.EliminarAsync(usuarioId.Value, Ip(http));
+                var baja = new BajaDeCuenta(cuenta, perfiles, agenda, suscripciones, reloj);
+                var r = await baja.EjecutarAsync(usuarioId.Value, cmd.Contrasena, Ip(http));
                 if (!r.Exito) return Respuestas.Problema(r);
 
                 await CerrarCookiesAsync(http);
                 return Results.NoContent();
             })
+            .ConValidacion<EliminarCuentaCmd>()
             .RequireRateLimiting(Tasa.Sensible)
             .WithName("API-17");
 

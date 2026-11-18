@@ -38,6 +38,7 @@ export function Cabecera() {
       ) : (
         <NavLink to="/ofrecer-servicios" className="nav-enlace">Ofrecer mis servicios</NavLink>
       )}
+      <NavLink to="/mi-cuenta" className="nav-enlace">Mi cuenta</NavLink>
       <button type="button" className="nav-enlace nav-boton" onClick={() => void salir()}>
         Salir
       </button>
@@ -102,6 +103,11 @@ export function Cabecera() {
           {estado === 'dentro' && !esPrestador && (
             <NavLink to="/ofrecer-servicios" className="menu-enlace">
               Ofrecer mis servicios<Icono nombre="flecha" />
+            </NavLink>
+          )}
+          {estado === 'dentro' && (
+            <NavLink to="/mi-cuenta" className="menu-enlace">
+              Mi cuenta<Icono nombre="flecha" />
             </NavLink>
           )}
           {estado === 'dentro' && (

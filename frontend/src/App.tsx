@@ -6,6 +6,7 @@ import { DejarResena } from './paginas/DejarResena'
 import { Entrar } from './paginas/Entrar'
 import { Ficha } from './paginas/Ficha'
 import { MiAgenda } from './paginas/MiAgenda'
+import { MiCuenta } from './paginas/MiCuenta'
 import { MiFicha } from './paginas/MiFicha'
 import { MisCitas } from './paginas/MisCitas'
 import { MisResenas } from './paginas/MisResenas'
@@ -56,6 +57,8 @@ export function App() {
         {/* CS-16: sin esta ruta, la ventana de 72 h para editar una reseña no se puede alcanzar. */}
         <Route path="mis-resenas" element={<MisResenas />} />
         <Route path="mis-tarjetas" element={<MisTarjetas />} />
+        {/* CS-04: eliminar la cuenta. La API existia; la pantalla no (Ley 21.719, derecho de supresion). */}
+        <Route path="mi-cuenta" element={<MiCuenta />} />
         <Route path="ofrecer-servicios" element={<OfrecerServicios />} />
         <Route path="verificar-correo" element={<VerificarCorreo />} />
         <Route path="recuperar-contrasena" element={<RecuperarContrasena />} />
