@@ -36,7 +36,7 @@ describe('Oficios: el oficio sin nadie', () => {
   it('invita a ofrecerlo y lleva a la pagina para profesionales', async () => {
     pintar(async () => json(COMUNIDAD))
 
-    const invitacion = await screen.findByRole('link', { name: /Arquitectura.*Sé el primero en ofrecerlo/ })
+    const invitacion = await screen.findByRole('link', { name: /Arquitectura.*Sé el primero\s*en ofrecerlo/ })
     expect(invitacion).toHaveAttribute('href', '/profesionales')
     expect(screen.queryByText('Aún nadie')).not.toBeInTheDocument()
   })

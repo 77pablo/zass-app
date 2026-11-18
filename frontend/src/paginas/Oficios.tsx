@@ -45,7 +45,9 @@ export function Oficios() {
                   <Link className="oficio" to={vacio ? '/profesionales' : `/buscar?q=${encodeURIComponent(r.nombre)}`}>
                     <h2>{capitalizar(r.nombre)}</h2>
                     <span className="oficio-lado">
-                      {comunidad.datos && (vacio ? 'Sé el primero en ofrecerlo' : personas(n))}
+                      {/* En dos lineas: en una sola, a 390 px se montaba encima de un oficio de una
+                          palabra larga («Arquitectura»), que no puede cortarse. */}
+                      {comunidad.datos && (vacio ? <span>Sé el primero<br /> en ofrecerlo</span> : personas(n))}
                       <Icono nombre="flecha" />
                     </span>
                   </Link>
