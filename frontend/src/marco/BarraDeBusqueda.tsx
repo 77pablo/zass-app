@@ -118,7 +118,7 @@ export function BarraDeBusqueda({
   }
 
   // En el celular la lista necesita alto: al enfocar, el buscador sube hasta quedar bajo la cabecera,
-  // y asi la lista (que en index.css llega solo hasta encima de la barra inferior) se ve entera.
+  // y asi la lista cabe encima de la barra inferior (index.css; con scroll propio si la pantalla es baja).
   function subirEnElCelular() {
     if (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 880px)').matches) {
       contenedor.current?.scrollIntoView?.({ block: 'start' })
