@@ -1,6 +1,8 @@
 import { useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
+import { BarraInferior } from './BarraInferior'
 import { Cabecera } from './Cabecera'
+import { ProveedorDeMenuMovil } from './menuMovil'
 import { Pie } from './Pie'
 
 /**
@@ -16,13 +18,14 @@ export function Marco() {
   }, [pathname, hash])
 
   return (
-    <>
+    <ProveedorDeMenuMovil>
       <a className="saltar" href="#contenido">Saltar al contenido</a>
       <Cabecera />
       <main id="contenido" tabIndex={-1}>
         <Outlet />
       </main>
       <Pie />
-    </>
+      <BarraInferior />
+    </ProveedorDeMenuMovil>
   )
 }
