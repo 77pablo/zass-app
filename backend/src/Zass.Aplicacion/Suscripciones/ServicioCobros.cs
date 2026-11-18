@@ -469,6 +469,8 @@ public sealed class ServicioCobros : IServicioCobros
     /// </summary>
     public static int DiasAntesDeVencer => ServicioSuscripciones.DiasDeAviso.Max();
 
+    private const string PrefijoCobroAutomatico = "cobro-automatico:";
+
     /// <summary>
     /// CC-04. La clave del cobro automatico, determinista: la suscripcion y el periodo
     /// que se esta cobrando.
@@ -489,7 +491,7 @@ public sealed class ServicioCobros : IServicioCobros
     /// </para>
     /// </summary>
     public static string ClaveDeCobroAutomatico(Guid suscripcionId, DateTime vigenteHasta) =>
-        $"cobro-automatico:{suscripcionId:D}:{vigenteHasta:yyyy-MM-dd}";
+        $"{PrefijoCobroAutomatico}{suscripcionId:D}:{vigenteHasta:yyyy-MM-dd}";
 
     public async Task<ResumenDeCobros> CobrarVencimientosAsync(CancellationToken ct = default)
     {
@@ -807,12 +809,12 @@ public sealed class ServicioCobros : IServicioCobros
             // aqui: quien paga el dia 25 de un mes de 30 no pierde los 5 que le quedaban.
             //
             // La decision de si extender desde el vencimiento original sale del INTENTO:
-            // si es un cobro automatico (ClaveIdempotencia empieza con "cobro-automatico:"),
+            // si es un cobro automatico (ClaveIdempotencia empieza con el prefijo),
             // se extiende desde el VigenteHasta de la suscripcion TAL COMO ESTA.
             // VencerExpiradasAsync solo cambia Estado, no VigenteHasta.
             // Si no es cobro automatico (pago manual), se queda la logica de siempre
             // (desde hoy si ya vencio).
-            var esCobroAutomatico = intento.ClaveIdempotencia?.StartsWith("cobro-automatico:") == true;
+            var esCobroAutomatico = intento.ClaveIdempotencia?.StartsWith(PrefijoCobroAutomatico) == true;
 
             var pagado = await _suscripciones.RegistrarPeriodoPagadoAsync(
                 intento.SuscripcionId, intento.Meses, intento.Monto,
