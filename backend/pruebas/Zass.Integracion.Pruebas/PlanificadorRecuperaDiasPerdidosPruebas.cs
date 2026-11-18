@@ -471,6 +471,109 @@ public class PlanificadorRecuperaDiasPerdidosPruebas : IAsyncLifetime
             Assert.Contains("diasDeAtraso", auditoria.Contexto);
         }
     }
+
+    /// <summary>
+    /// PRUEBA E: Un cobro tardío confirmado por aviso de la pasarela extiende desde el vencimiento original.
+    ///
+    /// Escenario:
+    /// - VigenteHasta = BaseUtc.AddDays(-3) (venció hace 3 días, dentro de la ventana de 7 días)
+    /// - Pasarela cuyo CobrarAsync FALLA (simula que la pasarela no responde, intento queda Pendiente)
+    /// - Luego se llama ConfirmarAsync con un AvisoDePasarela aprobado para ese intento
+    /// - Esperado: VigenteHasta nuevo == VigenteHasta original + 1 mes
+    ///
+    /// Esta prueba verifica el camino del aviso asincrónico (como Flow): el cobro automático
+    /// inicia el intento, la pasarela no responde al instante, y luego envía un aviso aprobado.
+    /// Antes del arreglo, este camino extendía desde HOY (porque ConfirmarAsync pasaba
+    /// vigenciaOriginal = null). Con el arreglo, debe extender desde el vencimiento original
+    /// porque el intento tiene ClaveIdempotencia que empieza con "cobro-automatico:".
+    /// </summary>
+    [Fact]
+    public async Task Un_cobro_tardio_confirmado_por_aviso_de_la_pasarela_extiende_desde_el_vencimiento_original()
+    {
+        // VigenteHasta = BaseUtc - 3 días (dentro de la ventana de 7 días)
+        var vigenteHastaOriginal = BaseUtc.AddDays(-3);
+        var suscripcion = await UnaSuscripcionPorVencerAsync(vigenteHastaOriginal);
+        var claveEsperada = ServicioCobros.ClaveDeCobroAutomatico(suscripcion.Id, suscripcion.VigenteHasta);
+
+        // CORRIDA 1: El trabajo diario corre con la pasarela que FALLA en CobrarAsync
+        // El intento se crea y queda Pendiente (ParaRevisar)
+        var reloj = new RelojFijo(BaseUtc);
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var servicioCobros = new ServicioCobros(
+                new RepositorioSuscripcionesEfCore(ctx),
+                new ServicioSuscripciones(
+                    new RepositorioSuscripcionesEfCore(ctx),
+                    new UnidadDeTrabajoEfCore(ctx),
+                    reloj,
+                    new AuditorEfCore(ctx),
+                    new ColaNotificacionesEfCore(ctx)),
+                new PasarelaPendienteLuegoAprobada(),
+                new UnidadDeTrabajoEfCore(ctx),
+                reloj,
+                new AuditorEfCore(ctx));
+
+            var resumen = await servicioCobros.CobrarVencimientosAsync();
+
+            // Verificar: 1 intento creado, pero en ParaRevisar (CobrarAsync falló)
+            Assert.Equal(1, resumen.ParaRevisar);
+            Assert.Equal(0, resumen.Cobradas);
+        }
+
+        // Verificar: el intento quedó Pendiente en BD
+        Guid intentoId;
+        using (var ctx2 = ContextoDePrueba.Crear())
+        {
+            var intento = await ctx2.IntentosDePago
+                .FirstOrDefaultAsync(i => i.ClaveIdempotencia == claveEsperada);
+            Assert.NotNull(intento);
+            Assert.Equal(EstadoIntentoPago.Pendiente, intento.Estado);
+            intentoId = intento.Id;
+        }
+
+        // CORRIDA 2: Llega el aviso de la pasarela (simulado) -> ConfirmarAsync
+        // La pasarela devuelve APROBADO en LeerConfirmacionAsync
+        var aviso = new AvisoDePasarela(new Dictionary<string, string>
+        {
+            ["intento"] = intentoId.ToString(),
+            ["referencia"] = "ref-aviso-aprobado",
+            ["monto"] = "7990",
+            ["estado"] = "aprobado"
+        });
+
+        using (var ctx3 = ContextoDePrueba.Crear())
+        {
+            var servicioCobros = new ServicioCobros(
+                new RepositorioSuscripcionesEfCore(ctx3),
+                new ServicioSuscripciones(
+                    new RepositorioSuscripcionesEfCore(ctx3),
+                    new UnidadDeTrabajoEfCore(ctx3),
+                    reloj,
+                    new AuditorEfCore(ctx3),
+                    new ColaNotificacionesEfCore(ctx3)),
+                new PasarelaPendienteLuegoAprobada(),
+                new UnidadDeTrabajoEfCore(ctx3),
+                reloj,
+                new AuditorEfCore(ctx3));
+
+            var confirmacion = await servicioCobros.ConfirmarAsync(aviso);
+
+            // Verificar: el aviso se procesó correctamente
+            Assert.True(confirmacion.Exito, confirmacion.Mensaje);
+            Assert.True(confirmacion.Valor!.Aprobado);
+        }
+
+        // Verificar: la suscripción se extendió desde el vencimiento original
+        using (var ctx4 = ContextoDePrueba.Crear())
+        {
+            var suscripcionActualizada = await ctx4.Suscripciones.FindAsync(suscripcion.Id);
+            Assert.NotNull(suscripcionActualizada);
+
+            // El nuevo VigenteHasta debe ser el original + 1 mes (NO BaseUtc + 1 mes)
+            var vigenteHastaEsperado = vigenteHastaOriginal.AddMonths(1);
+            Assert.Equal(vigenteHastaEsperado, suscripcionActualizada.VigenteHasta);
+        }
+    }
 }
 
 /// <summary>
@@ -523,4 +626,40 @@ internal sealed class PasarelaAprobadora : IPasarelaDePagos
 
     public Task<Resultado<CobroResuelto>> LeerConfirmacionAsync(AvisoDePasarela aviso, CancellationToken ct = default)
         => Task.FromResult(Resultado.Ok(new CobroResuelto(Guid.Empty, null, true, null, "aprobada por prueba")));
+}
+
+/// <summary>
+/// Pasarela falsa que en CobrarAsync FALLA (simula que la pasarela no responde),
+/// dejando el intento Pendiente. Luego en LeerConfirmacionAsync APRUEBA
+/// (simula el aviso asincrónico de la pasarela real, ej. Flow).
+/// </summary>
+internal sealed class PasarelaPendienteLuegoAprobada : IPasarelaDePagos
+{
+    public string Nombre => "pendiente-luego-aprobada";
+
+    public Task<Resultado<CobroIniciado>> IniciarCobroAsync(SolicitudDeCobro solicitud, CancellationToken ct = default)
+        => Task.FromResult(Resultado.Ok(new CobroIniciado("ref-pendiente", "https://pagar.pendiente")));
+
+    public Task<Resultado<CobroIniciado>> IniciarInscripcionAsync(SolicitudDeInscripcion solicitud, CancellationToken ct = default)
+        => Task.FromResult(Resultado.Ok(new CobroIniciado("ref-pendiente", "https://inscribir.pendiente")));
+
+    // CobrarAsync falla -> el intento queda Pendiente, no se resuelve
+    public Task<Resultado<CobroResuelto>> CobrarAsync(SolicitudDeCobro solicitud, CancellationToken ct = default)
+        => Task.FromResult(Resultado.Falla<CobroResuelto>(
+            Fallas.ReglaDeNegocio, "La pasarela no respondió (simulado)"));
+
+    // LeerConfirmacionAsync aprueba -> simula el aviso asincrónico
+    public Task<Resultado<CobroResuelto>> LeerConfirmacionAsync(AvisoDePasarela aviso, CancellationToken ct = default)
+    {
+        if (!Guid.TryParse(aviso.Campo("intento"), out var intentoId))
+            return Task.FromResult(Resultado.Falla<CobroResuelto>(
+                Fallas.Validacion, "La confirmación no trae un intento válido."));
+
+        return Task.FromResult(Resultado.Ok(new CobroResuelto(
+            IntentoDePagoId: intentoId,
+            ReferenciaPasarela: aviso.Campo("referencia"),
+            Aprobado: true,
+            MontoConfirmado: int.TryParse(aviso.Campo("monto"), out var m) ? m : null,
+            MotivoFallo: null)));
+    }
 }

@@ -669,7 +669,7 @@ public sealed class ServicioCobros : IServicioCobros
 
             // El mismo camino que el aviso de la pasarela. El rechazo deja el intento
             // Fallido y la suscripcion EXACTAMENTE como estaba (RN-S7-10).
-            var resuelto = await ResolverAsync(cobro.Valor, ct, esCobroTardio, s.VigenteHasta, intento.Id);
+            var resuelto = await ResolverAsync(cobro.Valor, ct);
             if (!resuelto.Exito || resuelto.Valor is null)
                 contadores.ParaRevisar++;
             else if (resuelto.Valor.Aprobado)
@@ -692,7 +692,7 @@ public sealed class ServicioCobros : IServicioCobros
                 leido.Codigo ?? Fallas.Validacion,
                 leido.Mensaje ?? "No se pudo leer la confirmación de la pasarela.");
 
-        return await ResolverAsync(leido.Valor, ct, esCobroTardio: false, vigenciaOriginal: null, intentoDePagoId: null);
+        return await ResolverAsync(leido.Valor, ct);
     }
 
     /// <summary>
@@ -708,12 +708,8 @@ public sealed class ServicioCobros : IServicioCobros
     /// segunda se enteraria tarde de cada arreglo de la primera.
     /// </para>
     /// </summary>
-    /// <param name="esCobroTardio">Si es true, la suscripcion ya habia vencido (cobro tardio RN-S7-16)</param>
-    /// <param name="vigenciaOriginal">El VigenteHasta original de la suscripcion (para cobro tardio)</param>
-    /// <param name="intentoDePagoId">El ID del intento (para cobro automatico, para auditoria)</param>
     private Task<Resultado<ConfirmacionDto>> ResolverAsync(
-        CobroResuelto r, CancellationToken ct,
-        bool esCobroTardio = false, DateTime? vigenciaOriginal = null, Guid? intentoDePagoId = null)
+        CobroResuelto r, CancellationToken ct)
     {
         return _trabajo.EnTransaccionAsync(async t =>
         {
@@ -809,9 +805,18 @@ public sealed class ServicioCobros : IServicioCobros
 
             // El llamador que faltaba. Toda la regla de vigencia sigue viviendo alli y no
             // aqui: quien paga el dia 25 de un mes de 30 no pierde los 5 que le quedaban.
+            //
+            // La decision de si extender desde el vencimiento original sale del INTENTO:
+            // si es un cobro automatico (ClaveIdempotencia empieza con "cobro-automatico:"),
+            // se extiende desde el VigenteHasta de la suscripcion TAL COMO ESTA.
+            // VencerExpiradasAsync solo cambia Estado, no VigenteHasta.
+            // Si no es cobro automatico (pago manual), se queda la logica de siempre
+            // (desde hoy si ya vencio).
+            var esCobroAutomatico = intento.ClaveIdempotencia?.StartsWith("cobro-automatico:") == true;
+
             var pagado = await _suscripciones.RegistrarPeriodoPagadoAsync(
                 intento.SuscripcionId, intento.Meses, intento.Monto,
-                intento.ReferenciaPasarela, intento.Id, vigenciaOriginal, t);
+                intento.ReferenciaPasarela, intento.Id, esCobroAutomatico, t);
             if (!pagado.Exito)
                 return Resultado.Falla<ConfirmacionDto>(pagado.Codigo!, pagado.Mensaje!);
 

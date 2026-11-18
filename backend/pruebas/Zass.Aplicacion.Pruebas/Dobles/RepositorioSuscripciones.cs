@@ -83,6 +83,17 @@ public sealed class RepositorioSuscripcionesEnMemoria : IRepositorioSuscripcione
         return Task.FromResult(r);
     }
 
+    public Task<IReadOnlyList<Suscripcion>> ActivasVencidasDesdeAsync(
+        DateTime desde, DateTime ahora, CancellationToken ct = default)
+    {
+        IReadOnlyList<Suscripcion> r = _base.Suscripciones
+            .Where(s => s.Estado is EstadoSuscripcion.Prueba or EstadoSuscripcion.Activa
+                        && s.VigenteHasta >= desde
+                        && s.VigenteHasta <= ahora)
+            .ToList();
+        return Task.FromResult(r);
+    }
+
     public Task<IReadOnlyList<Suscripcion>> VigentesQueVencenAntesDeAsync(
         DateTime ahora, DateTime hasta, CancellationToken ct = default)
     {

@@ -121,7 +121,7 @@ public class TrabajoDiarioCobraPruebas
 
         public Task<Resultado<Guid>> RegistrarPeriodoPagadoAsync(
             Guid suscripcionId, int meses = 1, int montoPagado = 0, string? referencia = null,
-            Guid? intentoDePagoId = null, DateTime? vigenciaOriginal = null, CancellationToken ct = default) =>
+            Guid? intentoDePagoId = null, bool esCobroAutomatico = false, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
         public Task<Resultado> CancelarAsync(Guid suscripcionId, CancellationToken ct = default) =>
