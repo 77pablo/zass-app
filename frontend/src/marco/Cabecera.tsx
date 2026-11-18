@@ -38,6 +38,7 @@ export function Cabecera() {
         <>
           <NavLink to="/mi-ficha" className="nav-enlace">Mi ficha</NavLink>
           <NavLink to="/mi-agenda" className="nav-enlace">Mi agenda</NavLink>
+          <NavLink to="/mis-tarjetas" className="nav-enlace">Mis tarjetas</NavLink>
         </>
       ) : (
         <NavLink to="/ofrecer-servicios" className="nav-enlace">Ofrecer mis servicios</NavLink>
@@ -96,6 +97,11 @@ export function Cabecera() {
           {estado === 'dentro' && esPrestador && (
             <NavLink to="/mi-agenda" className="menu-enlace">
               Mi agenda<Icono nombre="flecha" />
+            </NavLink>
+          )}
+          {estado === 'dentro' && esPrestador && (
+            <NavLink to="/mis-tarjetas" className="menu-enlace">
+              Mis tarjetas<Icono nombre="flecha" />
             </NavLink>
           )}
           {estado === 'dentro' && !esPrestador && (

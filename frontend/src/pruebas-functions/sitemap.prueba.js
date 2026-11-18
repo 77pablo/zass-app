@@ -58,7 +58,7 @@ describe('/sitemap.xml', () => {
     expect(xml).toContain('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
     const urls = locs(xml)
     expect(urls).toContain('https://zass.cl/')
-    for (const ruta of ['/buscar', '/comunas', '/oficios', '/profesionales', '/terminos', '/privacidad'])
+    for (const ruta of ['/buscar', '/comunas', '/oficios', '/profesionales', '/planes', '/terminos', '/privacidad'])
       expect(urls).toContain(`https://zass.cl${ruta}`)
     expect(urls).toContain('https://zass.cl/prestadores/marcela-soto')
     expect(urls).toContain('https://zass.cl/prestadores/ana-perez')
@@ -67,7 +67,7 @@ describe('/sitemap.xml', () => {
 
   it('no lista paginas privadas', async () => {
     const xml = await (await pedir()).text()
-    for (const privada of ['/mi-ficha', '/interno', '/entrar', '/crear-cuenta', '/restablecer-contrasena', '/verificar-correo', '/recuperar-contrasena', '/api'])
+    for (const privada of ['/mi-ficha', '/interno', '/entrar', '/crear-cuenta', '/restablecer-contrasena', '/verificar-correo', '/recuperar-contrasena', '/api', '/planes/listo'])
       expect(xml).not.toContain(privada)
   })
 
@@ -193,7 +193,7 @@ describe('robots.txt', () => {
     expect(robots).toMatch(/^Sitemap: https:\/\/zass\.cl\/sitemap\.xml$/m)
   })
 
-  const RUTAS_DEL_PANEL = ['/mi-ficha', '/mi-agenda', '/mis-citas', '/mis-resenas']
+  const RUTAS_DEL_PANEL = ['/mi-ficha', '/mi-agenda', '/mis-citas', '/mis-resenas', '/mis-tarjetas']
 
   it.each([...RUTAS_DEL_PANEL, '/interno', '/entrar', '/crear-cuenta', '/restablecer-contrasena', '/verificar-correo'])(
     'no deja indexar %s', (ruta) => {

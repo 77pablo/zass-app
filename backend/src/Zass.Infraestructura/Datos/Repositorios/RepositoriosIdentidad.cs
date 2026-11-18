@@ -138,6 +138,19 @@ public sealed class ColaNotificacionesEfCore : INotificaciones
     public ColaNotificacionesEfCore(ZassDbContext ctx) => _ctx = ctx;
 
     public void Encolar(Notificacion aviso) => _ctx.Notificaciones.Add(aviso);
+
+    public Task<bool> ExisteAsync(string claveIdempotencia, CancellationToken ct = default) =>
+        _ctx.Notificaciones.AnyAsync(n => n.ClaveIdempotencia == claveIdempotencia, ct);
+
+    /// <summary>
+    /// ExecuteUpdate va directo a la base, pero por la conexion y la transaccion de este mismo
+    /// contexto: si quien llama la deshace, la anulacion se deshace con ella.
+    /// </summary>
+    public Task<int> AnularRecordatoriosAsync(Guid citaId, CancellationToken ct = default) =>
+        _ctx.Notificaciones
+            .Where(n => n.CitaId == citaId && n.Estado == EstadoEnvio.Programada
+                && (n.Tipo == TipoNotificacion.Recordatorio24h || n.Tipo == TipoNotificacion.Recordatorio2h))
+            .ExecuteUpdateAsync(s => s.SetProperty(n => n.Estado, EstadoEnvio.Anulada), ct);
 }
 
 /// <summary>TBL-28. Solo insercion.</summary>

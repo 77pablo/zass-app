@@ -1,3 +1,4 @@
+﻿using Zass.Aplicacion.Agenda;
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Agenda;
 using Zass.Dominio.Comun;
@@ -228,6 +229,16 @@ public sealed class RepositorioAgendaEnMemoria : IRepositorioAgenda
         Task.FromResult(Ids(_base.Citas.Where(
             c => c.Estado == EstadoCita.PendienteAsistencia
                  && _base.Bloques.Any(b => b.Id == c.BloqueHorarioId && b.FinEn <= limite)), maximo));
+
+    /// <summary>
+    /// JQ-3. Sin la cola a la vista: devuelve las que caen en alguna ventana y el servicio
+    /// descarta por clave. El filtro «ya lo tiene» de verdad se prueba contra PostgreSQL.
+    /// </summary>
+    public Task<IReadOnlyList<Guid>> CitasPorRecordarAsync(DateTime ahora, int maximo, CancellationToken ct = default) =>
+        Task.FromResult(Ids(_base.Citas.Where(c =>
+            _base.Bloques.FirstOrDefault(b => b.Id == c.BloqueHorarioId) is { } b
+            && RecordatoriosDeCita.Tipos.Any(t =>
+                RecordatoriosDeCita.Corresponde(t, c.Estado, b.InicioEn, c.CreadaEn, ahora))), maximo));
 
     public Task<Cita?> CitaParaCambioAsync(Guid id, CancellationToken ct = default) =>
         CitaPorIdAsync(id, ct);

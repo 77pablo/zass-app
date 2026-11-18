@@ -1,4 +1,6 @@
+﻿using System.Net;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Npgsql;
 using Zass.Aplicacion.Agenda;
 using Zass.Aplicacion.Catalogo;
@@ -9,9 +11,12 @@ using Zass.Dominio.Catalogo;
 using Zass.Dominio.Comun;
 using Zass.Dominio.Identidad;
 using Zass.Dominio.Suscripciones;
+using Zass.Infraestructura.Configuracion;
+using Zass.Infraestructura.Correo;
 using Zass.Infraestructura.Datos;
 using Zass.Infraestructura.Datos.Repositorios;
 using Zass.Infraestructura.Seguridad;
+using Zass.Integracion.Pruebas.Correo;
 
 namespace Zass.Integracion.Pruebas;
 
@@ -34,6 +39,8 @@ public class AgendaIntegracionPruebas : IAsyncLifetime
     private Guid _perfil;
     private Guid _servicioAutomatico;
     private int _servicioCatalogo;
+    private string _correoPrestador = "";
+    private string _correoBuscador = "";
 
     /// <summary>Un «proceso» con su propio contexto y conexión, como una réplica de la API.</summary>
     private (ServicioAgenda Agenda, ZassDbContext Ctx) UnaReplica()
@@ -113,6 +120,8 @@ public class AgendaIntegracionPruebas : IAsyncLifetime
         await ctx.SaveChangesAsync();
 
         _usuarioPrestador = prestador.Id;
+        _correoPrestador = prestador.Correo;
+        _correoBuscador = buscador.Correo;
         _usuarioBuscador = buscador.Id;
         _perfil = perfil.Id;
         _servicioAutomatico = ofrecido.Id;
@@ -447,7 +456,7 @@ public class AgendaIntegracionPruebas : IAsyncLifetime
         // Las dos responden bien, y con la misma cita: una la creó y la otra la encontró.
         Assert.All(resultados, r => Assert.True(r.Exito, r.Mensaje));
         Assert.Single(resultados.Select(r => r.Valor!.Id).Distinct());
-        Assert.Single(resultados.Where(r => r.Valor!.Nueva));
+        Assert.Single(resultados, r => r.Valor!.Nueva);
 
         using var ctx = ContextoDePrueba.Crear();
         Assert.Equal(1, await ctx.Citas.CountAsync(c => c.ClaveIdempotencia == clave));
@@ -890,5 +899,252 @@ public class AgendaIntegracionPruebas : IAsyncLifetime
         Assert.All(calendario.Valor.Bloques, b => Assert.InRange(
             TimeOnly.FromDateTime(HoraDeChile.ALocal(b.InicioEn)),
             new TimeOnly(9, 0), new TimeOnly(10, 30)));
+    }
+
+    // ========================================================= JQ-3 recordatorios contra la base
+
+    private static readonly OpcionesCorreo CorreoDePrueba = new()
+    {
+        Proveedor = ProveedorDeCorreo.Brevo, ApiKey = "clave-de-prueba-jq3",
+        Remitente = "no-responder@zass.cl", MaximoIntentos = 5, EsperaBaseSegundos = 60,
+        EsperaMaximaSegundos = 3600, TamanoDeLote = 500, PurgaDeFallidasHoras = 24, ReservaSegundos = 120,
+    };
+
+    /// <summary>El reloj real llevado a un momento: «faltan 23 h para la cita» sin esperarlas.</summary>
+    private RelojAdelantado RelojEn(DateTime momento) => new(_reloj, momento - _reloj.Ahora);
+
+    private async Task<Guid> UnaCitaConfirmadaAsync(DateTime inicio)
+    {
+        var bloque = await UnBloqueLibreAsync(inicio);
+        var r = await UnaReplica().Agenda.AgendarAsync(new AgendarCmd(
+            _usuarioBuscador, bloque, $"rc-{Guid.NewGuid():N}", null));
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(nameof(EstadoCita.Confirmada), r.Valor!.Estado);
+        return r.Valor.Id;
+    }
+
+    private static async Task<List<string>> RecordatoriosEnLaBaseAsync(Guid citaId)
+    {
+        using var ctx = ContextoDePrueba.Crear();
+        return await ctx.Database.SqlQueryRaw<string>(
+                """
+                SELECT tipo || '|' || clave_idempotencia || '|' || destinatario_id || '|' || estado
+                       || '|' || cuerpo AS "Value"
+                FROM notificaciones
+                WHERE cita_id = {0} AND tipo IN ('Recordatorio24h', 'Recordatorio2h')
+                ORDER BY clave_idempotencia
+                """, citaId)
+            .ToListAsync();
+    }
+
+    private static async Task<List<string>> EstadosDeRecordatoriosAsync(Guid citaId) =>
+        (await RecordatoriosEnLaBaseAsync(citaId)).Select(f => f.Split('|')[3]).ToList();
+
+    /// <summary>Una pasada del despacho de correo con un proveedor falso, a la hora que se le diga.</summary>
+    private static async Task<ManejadorFalso> DespacharAsync(DateTime ahora)
+    {
+        var m = ManejadorFalso.Responde(HttpStatusCode.Created);
+        using var ctx = ContextoDePrueba.Crear();
+        var enviador = new EnviadorBrevo(new HttpClient(m), Options.Create(CorreoDePrueba),
+            new RegistroEnMemoria<EnviadorBrevo>());
+        var procesador = new ProcesadorDeCorreo(ctx, enviador, new RelojFalso { Ahora = ahora },
+            Options.Create(CorreoDePrueba), Options.Create(new OpcionesZass { UrlPublica = "https://zass.test" }),
+            new RegistroEnMemoria<ProcesadorDeCorreo>());
+        await procesador.ProcesarLoteAsync();
+        return m;
+    }
+
+    private static int CorreosA(ManejadorFalso m, string correo, string asunto) =>
+        m.Peticiones.Count(p => p.Cuerpo.Contains(correo) && p.Cuerpo.Contains(asunto));
+
+    /// <summary>
+    /// El caso que pidió el plan con todas sus letras: dos corridas el mismo día no mandan dos
+    /// veces el mismo recordatorio. Dos réplicas distintas (dos contextos), las filas leídas por
+    /// SQL, y el correo contado en lo que de verdad salió hacia el proveedor.
+    /// </summary>
+    [Fact]
+    public async Task Dos_pasadas_reales_dejan_un_recordatorio_por_parte_y_un_solo_correo()
+    {
+        var inicio = _reloj.Ahora.AddDays(3);
+        var cita = await UnaCitaConfirmadaAsync(inicio);
+        var futuro = RelojEn(inicio - TimeSpan.FromHours(23));
+
+        var primera = await AgendaConReloj(futuro).AvanzarPorElTiempoAsync();
+        var segunda = await AgendaConReloj(futuro).AvanzarPorElTiempoAsync();
+
+        Assert.True(primera.Recordatorios >= 2, primera.ToString());
+        Assert.Equal(0, segunda.Recordatorios);
+        Assert.Equal(new[]
+        {
+            $"Recordatorio24h|recordatorio-24h:{cita}:buscador|{_usuarioBuscador}|Programada|{{\"rol\":\"buscador\"}}",
+            $"Recordatorio24h|recordatorio-24h:{cita}:prestador|{_usuarioPrestador}|Programada|{{\"rol\":\"prestador\"}}",
+        }, await RecordatoriosEnLaBaseAsync(cita));
+
+        // El filtro del SQL, no solo la clave: la cita ya no vuelve en la consulta.
+        using (var ctx = ContextoDePrueba.Crear())
+            Assert.DoesNotContain(cita, await new RepositorioAgendaEfCore(ctx).CitasPorRecordarAsync(futuro.Ahora, 10_000));
+
+        var envio1 = await DespacharAsync(futuro.Ahora);
+        var envio2 = await DespacharAsync(futuro.Ahora.AddMinutes(15));
+        Assert.Equal(1, CorreosA(envio1, _correoBuscador, "Recordatorio: tienes una hora en ZASS!"));
+        Assert.Equal(1, CorreosA(envio1, _correoPrestador, "Recordatorio: tienes una hora agendada en ZASS!"));
+        Assert.Equal(0, CorreosA(envio2, _correoBuscador, "Recordatorio"));
+        Assert.Equal(new[] { "Enviada", "Enviada" }, await EstadosDeRecordatoriosAsync(cita));
+    }
+
+    /// <summary>
+    /// El filtro grueso exige tambien la anticipacion: una cita agendada a ultima hora no se relee
+    /// cada 15 min ni ocupa cupo de las 200. El de 2 h si la toma, que le corresponde.
+    /// </summary>
+    [Fact]
+    public async Task La_consulta_no_relee_una_cita_agendada_con_menos_de_24_horas()
+    {
+        var inicio = _reloj.Ahora.AddHours(20);
+        var cita = await UnaCitaConfirmadaAsync(inicio);
+
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var repo = new RepositorioAgendaEfCore(ctx);
+            Assert.DoesNotContain(cita, await repo.CitasPorRecordarAsync(_reloj.Ahora, 10_000));
+            Assert.DoesNotContain(cita, await repo.CitasPorRecordarAsync(inicio - TimeSpan.FromHours(13), 10_000));
+            Assert.Contains(cita, await repo.CitasPorRecordarAsync(inicio - TimeSpan.FromHours(1.5), 10_000));
+        }
+
+        await AgendaConReloj(_reloj).AvanzarPorElTiempoAsync();
+        Assert.Empty(await RecordatoriosEnLaBaseAsync(cita));
+        await AgendaConReloj(RelojEn(inicio - TimeSpan.FromHours(1.5))).AvanzarPorElTiempoAsync();
+        Assert.All(await RecordatoriosEnLaBaseAsync(cita), f => Assert.StartsWith("Recordatorio2h|", f));
+        Assert.Equal(2, (await RecordatoriosEnLaBaseAsync(cita)).Count);
+    }
+
+    /// <summary>
+    /// Con menos de 2 h de anticipacion ninguno, y tampoco en la consulta. Por los caminos de hoy
+    /// no se llega (agendar y reprogramar exigen 2 h): se fuerza el dato para probar la red.
+    /// </summary>
+    [Fact]
+    public async Task Una_cita_creada_con_menos_de_2_horas_no_entra_en_la_consulta()
+    {
+        var inicio = _reloj.Ahora.AddDays(1);
+        var cita = await UnaCitaConfirmadaAsync(inicio);
+        using (var forzar = ContextoDePrueba.Crear())
+            await forzar.Citas.Where(c => c.Id == cita)
+                .ExecuteUpdateAsync(s => s.SetProperty(c => c.CreadaEn, inicio.AddMinutes(-90)));
+
+        using var ctx = ContextoDePrueba.Crear();
+        var repo = new RepositorioAgendaEfCore(ctx);
+        Assert.DoesNotContain(cita, await repo.CitasPorRecordarAsync(inicio - TimeSpan.FromHours(20), 10_000));
+        Assert.DoesNotContain(cita, await repo.CitasPorRecordarAsync(inicio - TimeSpan.FromHours(1), 10_000));
+    }
+
+    [Fact]
+    public async Task Cancelar_anula_en_la_base_los_recordatorios_que_esperaban()
+    {
+        var inicio = _reloj.Ahora.AddDays(3);
+        var cita = await UnaCitaConfirmadaAsync(inicio);
+        var futuro = RelojEn(inicio - TimeSpan.FromHours(23));
+        await AgendaConReloj(futuro).AvanzarPorElTiempoAsync();
+
+        var r = await AgendaConReloj(futuro).CancelarAsync(new CancelarCitaCmd(
+            cita, new AutorDeCambio(_usuarioBuscador, null), $"rcc-{Guid.NewGuid():N}", null));
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(new[] { "Anulada", "Anulada" }, await EstadosDeRecordatoriosAsync(cita));
+        var envio = await DespacharAsync(futuro.Ahora);
+        Assert.Equal(0, CorreosA(envio, _correoBuscador, "Recordatorio"));
+    }
+
+    [Fact]
+    public async Task Reprogramar_anula_los_de_la_vieja_y_la_nueva_recibe_los_suyos()
+    {
+        var inicio = _reloj.Ahora.AddDays(3);
+        var vieja = await UnaCitaConfirmadaAsync(inicio);
+        var inicioNuevo = _reloj.Ahora.AddDays(5);
+        var bloqueNuevo = await UnBloqueLibreAsync(inicioNuevo);
+        var futuro = RelojEn(inicio - TimeSpan.FromHours(23));
+        await AgendaConReloj(futuro).AvanzarPorElTiempoAsync();
+
+        var r = await AgendaConReloj(futuro).ReprogramarAsync(new ReprogramarCitaCmd(
+            vieja, bloqueNuevo, new AutorDeCambio(_usuarioBuscador, null), $"rcr-{Guid.NewGuid():N}", null));
+        Assert.True(r.Exito, r.Mensaje);
+        var nueva = r.Valor!.Id;
+
+        Assert.Equal(new[] { "Anulada", "Anulada" }, await EstadosDeRecordatoriosAsync(vieja));
+        Assert.Empty(await RecordatoriosEnLaBaseAsync(nueva));
+
+        await AgendaConReloj(RelojEn(inicioNuevo - TimeSpan.FromHours(23))).AvanzarPorElTiempoAsync();
+        Assert.Equal(new[]
+        {
+            $"Recordatorio24h|recordatorio-24h:{nueva}:buscador|{_usuarioBuscador}|Programada|{{\"rol\":\"buscador\"}}",
+            $"Recordatorio24h|recordatorio-24h:{nueva}:prestador|{_usuarioPrestador}|Programada|{{\"rol\":\"prestador\"}}",
+        }, await RecordatoriosEnLaBaseAsync(nueva));
+        Assert.Equal(new[] { "Anulada", "Anulada" }, await EstadosDeRecordatoriosAsync(vieja));
+    }
+
+    /// <summary>
+    /// La pregunta de la revision: ExecuteUpdate va directo a la base, ¿sale de la transaccion?
+    /// No: usa la conexion y la transaccion del mismo contexto, y si el caso de uso lanza, la
+    /// anulacion se deshace con todo lo demas.
+    /// </summary>
+    [Fact]
+    public async Task Si_la_transaccion_se_deshace_el_recordatorio_no_queda_anulado()
+    {
+        var inicio = _reloj.Ahora.AddDays(3);
+        var cita = await UnaCitaConfirmadaAsync(inicio);
+        await AgendaConReloj(RelojEn(inicio - TimeSpan.FromHours(23))).AvanzarPorElTiempoAsync();
+
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var trabajo = new UnidadDeTrabajoEfCore(ctx);
+            var cola = new ColaNotificacionesEfCore(ctx);
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                trabajo.EnTransaccionAsync<int>(async t =>
+                {
+                    Assert.Equal(2, await cola.AnularRecordatoriosAsync(cita, t));
+                    // Dentro de la transaccion ya se ve anulado...
+                    Assert.Equal(2, await ctx.Notificaciones.CountAsync(
+                        n => n.CitaId == cita && n.Estado == EstadoEnvio.Anulada, t));
+                    throw new InvalidOperationException("algo falla despues de anular");
+                }));
+            Assert.Equal("algo falla despues de anular", error.Message);
+        }
+
+        // ...y fuera, deshecha, sigue programado.
+        Assert.Equal(new[] { "Programada", "Programada" }, await EstadosDeRecordatoriosAsync(cita));
+    }
+
+    /// <summary>
+    /// La segunda defensa: un recordatorio que siguio en la cola aunque la cita cambio (estaba
+    /// tomado cuando se cancelo, o la cita se toco por otro camino) lo para el despacho.
+    /// </summary>
+    [Fact]
+    public async Task El_despacho_anula_el_recordatorio_de_una_cita_que_ya_no_esta_confirmada()
+    {
+        var inicio = _reloj.Ahora.AddDays(3);
+        var cita = await UnaCitaConfirmadaAsync(inicio);
+        var futuro = RelojEn(inicio - TimeSpan.FromHours(23));
+        await AgendaConReloj(futuro).AvanzarPorElTiempoAsync();
+        using (var ctx = ContextoDePrueba.Crear())
+            await ctx.Citas.Where(c => c.Id == cita)
+                .ExecuteUpdateAsync(s => s.SetProperty(c => c.Estado, EstadoCita.Cancelada));
+
+        var envio = await DespacharAsync(futuro.Ahora);
+
+        Assert.Equal(0, CorreosA(envio, _correoBuscador, "Recordatorio"));
+        Assert.Equal(0, CorreosA(envio, _correoPrestador, "Recordatorio"));
+        Assert.Equal(new[] { "Anulada", "Anulada" }, await EstadosDeRecordatoriosAsync(cita));
+    }
+
+    /// <summary>Una cola atrasada (la API dormida, el proveedor caido) no manda uno fuera de su ventana.</summary>
+    [Fact]
+    public async Task El_despacho_anula_el_recordatorio_que_llega_tarde_a_su_ventana()
+    {
+        var inicio = _reloj.Ahora.AddDays(3);
+        var cita = await UnaCitaConfirmadaAsync(inicio);
+        await AgendaConReloj(RelojEn(inicio - TimeSpan.FromHours(23))).AvanzarPorElTiempoAsync();
+
+        var envio = await DespacharAsync(inicio - TimeSpan.FromHours(11));
+
+        Assert.Equal(0, CorreosA(envio, _correoBuscador, "Recordatorio"));
+        Assert.Equal(new[] { "Anulada", "Anulada" }, await EstadosDeRecordatoriosAsync(cita));
     }
 }

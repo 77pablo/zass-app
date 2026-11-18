@@ -41,12 +41,12 @@ jobs:
           fi
           echo "Confirmado por ${{ github.actor }}."
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Sin `cache: true`: ese cache exige un packages.lock.json y este repositorio no tiene
       # ninguno, asi que pedirlo haria fallar el flujo entero por una optimizacion. Esta tarea
       # se corre un puñado de veces, no en cada commit: no vale la pena.
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
 
@@ -71,7 +71,7 @@ jobs:
           ls -lh *.dump.gpg
 
       - name: Guardar la copia fuera del servidor de la base
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: copia-antes-de-migrar
           path: '*.dump.gpg'
@@ -133,26 +133,36 @@ jobs:
             | tee despues.txt
           echo "--- lo que cambio ---"
           diff antes.txt despues.txt || true
+          # `migrations list` marca «(Pending)» lo que la base no tiene. Despues de aplicar no
+          # puede quedar ninguna: si queda, el update no hizo lo que dijo.
+          if grep -q '(Pending)' despues.txt; then
+            echo "FALLO: quedan migraciones pendientes despues de aplicar:" >&2
+            grep '(Pending)' despues.txt >&2
+            exit 1
+          fi
 
       # ---------------------------------------------------------------- comprobar en el catalogo
       # Un «Done» de EF no dice que el objeto quedara como se escribio. Se le pregunta a
       # PostgreSQL, que es la leccion mas repetida de este proyecto.
+      #
+      # La lista de lo esperado NO se escribe aqui a mano: la anterior estaba fija a los objetos
+      # del 15-nov, no miro el indice del 17-nov y, ademas, imprimia los numeros sin fallar
+      # nunca. Ahora sale del ModelSnapshot que EF reescribe en cada migracion: toda tabla,
+      # indice y clave del modelo (R-1, `ux_cita_bloque_activo`, incluido) se busca en el
+      # catalogo, y si falta uno el flujo FALLA.
       - name: Comprobar en el catalogo, no en el «Done»
         env:
           NEON_URL_COPIAS: ${{ secrets.NEON_URL_COPIAS }}
         run: |
           set -euo pipefail
-          consulta="
-          SELECT 'cupos_fundador = ' || count(*)::text FROM cupos_fundador
-          UNION ALL SELECT 'tablas del cobro = ' || count(*)::text FROM information_schema.tables
-            WHERE table_schema='public' AND table_name IN ('intentos_de_pago','cupones','canjes_de_cupon')
-          UNION ALL SELECT 'indices nuevos = ' || count(*)::text FROM pg_indexes
-            WHERE indexname IN ('ix_cita_bloque_horario','ix_suscripcion_perfil_inicia')
-          UNION ALL SELECT 'R-1 (doble reserva) sigue = ' || count(*)::text FROM pg_indexes
-            WHERE indexname = 'ux_cita_bloque_activo'
-          UNION ALL SELECT 'quien_falto existe = ' || count(*)::text FROM information_schema.columns
-            WHERE table_name='citas' AND column_name='quien_falto';"
-          docker run --rm -e NEON_URL_COPIAS -e CONSULTA="$consulta" postgres:18 \
-            sh -c 'psql -At "$NEON_URL_COPIAS" -c "$CONSULTA"'
-          echo
-          echo "Se esperan: 50 cupos, 3 tablas, 2 indices nuevos, R-1 = 1, quien_falto = 1."
+          python3 -I .github/scripts/esquema-esperado.py \
+            backend/src/Zass.Infraestructura/Datos/Migraciones/ZassDbContextModelSnapshot.cs \
+            > faltantes.sql
+          faltan=$(docker run --rm -e NEON_URL_COPIAS -v "$PWD/faltantes.sql:/faltantes.sql:ro" postgres:18 \
+            sh -c 'psql -X -At -v ON_ERROR_STOP=1 "$NEON_URL_COPIAS" -f /faltantes.sql')
+          if [ -n "$faltan" ]; then
+            echo "FALLO: el modelo espera esto y la base no lo tiene:" >&2
+            echo "$faltan" >&2
+            exit 1
+          fi
+          echo "La base tiene todas las tablas, indices y claves del modelo."

@@ -73,6 +73,50 @@ public class SuscripcionesIntegracionPruebas : IDisposable
         Assert.True(plan.Activo);
     }
 
+    // ------------------------------------------------------- El tope de tarjetas
+
+    /// <summary>
+    /// Plan inventado con un tope que no coincide con ningun sembrado ni con el valor
+    /// por omision: si el servicio devolviera una constante, o el repositorio no trajera
+    /// el plan con la suscripcion, esto no daria 5. La transaccion se deshace al final.
+    /// </summary>
+    [Fact]
+    public async Task El_tope_de_tarjetas_se_lee_del_plan_en_la_base()
+    {
+        _prueba.Ctx.Planes.Add(new Plan
+        {
+            Id = 90, Codigo = "tope-de-tarjetas", Nombre = "Tope de prueba",
+            PrecioMensual = 0, DiasPrueba = 0, MaxServicios = 40, MaxTarjetas = 5, Activo = true,
+        });
+        var perfil = await UnPrestadorAsync();
+        var ahora = _reloj.Ahora;
+        _prueba.Ctx.Suscripciones.Add(new Suscripcion
+        {
+            PerfilPrestadorId = perfil.Id, PlanId = 90,
+            Estado = EstadoSuscripcion.Activa,
+            IniciaEn = ahora, VigenteHasta = ahora.AddDays(30),
+        });
+        await _prueba.Ctx.SaveChangesAsync();
+        _prueba.Ctx.ChangeTracker.Clear();
+
+        Assert.Equal(5, await _servicio.LimiteDeTarjetasAsync(perfil.Id));
+    }
+
+    /// <summary>
+    /// El valor por omision de <see cref="Plan.MaxTarjetas"/> es el de los planes
+    /// sembrados. Si alguien lo vuelve a cambiar sin cambiar la base, esto cae.
+    /// </summary>
+    [Fact]
+    public async Task El_valor_por_omision_de_MaxTarjetas_coincide_con_los_planes_sembrados()
+    {
+        var sembrados = await _prueba.Ctx.Planes
+            .Where(p => p.Codigo == "prueba" || p.Codigo == "mensual" || p.Codigo == "fundador")
+            .ToListAsync();
+
+        Assert.Equal(3, sembrados.Count);
+        Assert.All(sembrados, p => Assert.Equal(new Plan().MaxTarjetas, p.MaxTarjetas));
+    }
+
     // ------------------------------------------------------- Lo que impone la base
 
     /// <summary>

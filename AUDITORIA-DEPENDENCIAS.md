@@ -1,5 +1,109 @@
 # Auditoría de dependencias — 14-nov-2026
 
+## 17-nov-2026: segunda pasada
+
+Segunda auditoría de dependencias (3 días después). Mismas herramientas: `npm audit`, `npm outdated`, `dotnet list package --vulnerable --include-transitive`, `dotnet list package --outdated`. **No se cambia ninguna dependencia**: solo informe.
+
+**Resumen:** **7 vulnerabilidades altas en el frontend** (todas en dependencias de desarrollo: `@vitejs/plugin-react`, `@vitest/coverage-v8`, `fdir`, `picomatch`, `tinyglobby`, `vite`, `vitest`); **0 en producción**. Backend: **ninguna vulnerabilidad** en ningún proyecto (las 2 altas de la pasada anterior se corrigieron subiendo `xunit` a 2.9.3). **.NET 8 llegó a fin de soporte el 10-nov-2026** (fuente: <https://dotnet.microsoft.com/platform/support/policy/dotnet-core>, tabla «Out of support versions», fila .NET 8). Lo demás es atraso de versión.
+
+### 1. Vulnerabilidades frontend (`npm audit --json`)
+
+| Paquete | Severidad | Directa/Transitiva | Producción/Pruebas | Fix disponible (mayor) |
+|---|---|---|---|---|
+| `@vitejs/plugin-react` | **high** | Directa | Desarrollo (build) | `@vitejs/plugin-react` 5.2.0 |
+| `@vitest/coverage-v8` | **high** | Directa | Pruebas | `@vitest/coverage-v8` 3.1.4 |
+| `fdir` | **high** | Transitiva (`picomatch`) | Desarrollo | — (via vitest 3.1.4) |
+| `picomatch` | **high** | Transitiva | Desarrollo | — (via vitest 3.1.4) |
+| `tinyglobby` | **high** | Transitiva (`fdir`, `picomatch`) | Desarrollo | — (via vitest 3.1.4) |
+| `vite` | **high** | Directa | Desarrollo (build) | `vite` 6.2.7 |
+| `vitest` | **high** | Directa | Pruebas | `vitest` 3.1.4 |
+
+**Total:** 7 altas, 0 críticas, 0 moderadas, 0 bajas. **Producción (react, react-dom, react-router-dom, qrcode-generator): 0**.
+
+### 2. Frontend: paquetes desactualizados (`npm outdated`)
+
+| Paquete | Actual | Al día | Salto | Producción/Pruebas |
+|---|---|---|---|---|
+| `@testing-library/user-event` | 14.6.8 | 14.6.12 | parche | Pruebas |
+| `@types/node` | 24.19.2 | 26.6.6 | **mayor** | Desarrollo |
+| `@vitejs/plugin-react` | 6.2.1 | 6.3.0 | menor | Desarrollo |
+| `jsdom` | 31.0.0 | 31.0.1 | parche | Pruebas |
+| `oxlint` | 1.92.0 | 1.94.0 | menor | Desarrollo |
+| `playwright` | 1.65.0 | 1.65.1 | parche | Pruebas |
+| `vite` | 8.3.6 | 8.3.8 | parche | Desarrollo (build) |
+
+**Cambio vs 14-nov:** **aparecen 7 vulnerabilidades altas** (antes 0). El resto igual.
+
+### 3. `qrcode-generator@2.0.4` (entró en PR #51)
+
+- Licencia: **MIT** (`npm view qrcode-generator@2.0.4 license`).
+- Fecha de publicación: **2025-08-07** (`npm view qrcode-generator time --json` → `"2.0.4": "2025-08-07T14:11:54.669Z"`).
+- No tiene vulnerabilidades conocidas.
+
+### 4. Backend: vulnerabilidades (`dotnet list package --vulnerable --include-transitive`, proyecto por proyecto)
+
+| Proyecto | Resultado |
+|---|---|
+| `Zass.Dominio` | Sin vulnerabilidades |
+| `Zass.Aplicacion` | Sin vulnerabilidades |
+| `Zass.Api` | Sin vulnerabilidades |
+| `Zass.Infraestructura` | Sin vulnerabilidades |
+| `Zass.Aplicacion.Pruebas` | Sin vulnerabilidades |
+| `Zass.Arquitectura.Pruebas` | Sin vulnerabilidades |
+| `Zass.Integracion.Pruebas` | Sin vulnerabilidades |
+
+**Cambio vs 14-nov:** **las 2 vulnerabilidades altas en proyectos de pruebas (`System.Net.Http` y `System.Text.RegularExpressions`) ya no aparecen** (se corrigieron subiendo `xunit` a 2.9.3).
+
+### 5. Backend: paquetes desactualizados (`dotnet list package --outdated`, proyecto por proyecto)
+
+#### `Zass.Aplicacion`
+| Paquete | Actual | Más reciente | Tipo |
+|---|---|---|---|
+| `FluentValidation` | 11.11.0 | 12.2.0 | **mayor** |
+| `NetTopologySuite` | 2.5.0 | 2.6.0 | menor |
+
+#### `Zass.Api`
+| Paquete | Actual | Más reciente | Tipo |
+|---|---|---|---|
+| `Swashbuckle.AspNetCore` | 7.2.0 | 11.0.1 | **mayor** |
+
+#### `Zass.Infraestructura`
+| Paquete | Actual | Más reciente | Tipo |
+|---|---|---|---|
+| `FluentValidation.DependencyInjectionExtensions` | 11.11.0 | 12.2.0 | **mayor** |
+| `Microsoft.EntityFrameworkCore.Design` | 8.0.10 | 11.0.0 | **mayor** |
+| `Microsoft.Extensions.Configuration.Binder` | 8.0.2 | 11.0.0 | **mayor** |
+| `Microsoft.Extensions.Hosting.Abstractions` | 8.0.1 | 11.0.0 | **mayor** |
+| `Microsoft.Extensions.Logging.Abstractions` | 8.0.2 | 11.0.0 | **mayor** |
+| `Microsoft.Extensions.Options.ConfigurationExtensions` | 8.0.0 | 11.0.0 | **mayor** |
+| `Microsoft.Extensions.Options.DataAnnotations` | 8.0.0 | 11.0.0 | **mayor** |
+| `Npgsql.EntityFrameworkCore.PostgreSQL` | 8.0.10 | 10.0.3 | **mayor** |
+| `Npgsql.EntityFrameworkCore.PostgreSQL.NetTopologySuite` | 8.0.10 | 10.0.3 | **mayor** |
+
+#### `Zass.Aplicacion.Pruebas` / `Zass.Arquitectura.Pruebas`
+| Paquete | Actual | Más reciente | Tipo |
+|---|---|---|---|
+| `coverlet.collector` | 6.0.0 | 10.1.1 | **mayor** |
+| `Microsoft.NET.Test.Sdk` | 17.8.0 | 18.12.0 | **mayor** |
+| `xunit.runner.visualstudio` | 2.8.2 | 4.0.1 | **mayor** |
+
+#### `Zass.Integracion.Pruebas`
+| Paquete | Actual | Más reciente | Tipo |
+|---|---|---|---|
+| `coverlet.collector` | 6.0.0 | 10.1.1 | **mayor** |
+| `Microsoft.AspNetCore.Mvc.Testing` | 8.0.10 | 11.0.0 | **mayor** |
+| `Microsoft.Extensions.Configuration` | 8.0.0 | 11.0.0 | **mayor** |
+| `Microsoft.NET.Test.Sdk` | 17.8.0 | 18.12.0 | **mayor** |
+| `xunit.runner.visualstudio` | 2.8.2 | 4.0.1 | **mayor** |
+
+### 6. .NET 8 — fin de soporte
+
+- **Fecha fin de soporte:** **10-nov-2026** (segunda martes de noviembre — Patch Tuesday).
+- **Fuente:** <https://dotnet.microsoft.com/platform/support/policy/dotnet-core> (tabla «Out of support versions», fila .NET 8: «End of support: November 10, 2026»).
+- **Estado:** **fuera de soporte** desde el 10-nov-2026. No hay más parches de seguridad del runtime.
+
+---
+
 Primera auditoría de dependencias del proyecto. Se miró el frontend (`npm audit`,
 `npm outdated`) y el backend (`dotnet list package --vulnerable --include-transitive`,
 `dotnet list package --outdated`).

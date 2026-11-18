@@ -1,6 +1,8 @@
 # ZASS! — estado del desarrollo
 
-**Última sesión:** 15 de noviembre de 2026 (madrugada) — **producción al día**: Neon migrada, desplegada y comprobada desde fuera. Ver **«Sesión del 15-nov-2026»** justo debajo.
+**Última sesión:** 17 de noviembre de 2026: **17 PR fusionados y `d57550d` DESPLEGADO y comprobado en producción**. Hay un índice nuevo en Neon y una segunda IA trabajando con un plan escrito. Ver **«Sesión del 17-nov-2026»** justo debajo.
+
+**Sesión anterior:** 15 de noviembre de 2026 (madrugada), cuando quedó **producción al día**: Neon migrada, desplegada y comprobada desde fuera.
 
 **Sesión anterior:** 14 de noviembre de 2026 (noche) — ver **«Sesión del 14-nov-2026 (noche)»** justo debajo. **El sitio público está CERRADO** (mantenimiento), a propósito.
 
@@ -27,10 +29,136 @@ comprobado**, **qué no**, y **el siguiente paso exacto**.
 
 ---
 
+## Sesión del 17-nov-2026 — 13 PR en `main`, el índice 3.c en Neon, y tres pruebas que mentían
+
+### Dónde retomar
+
+**Producción está en `d57550d`**, desplegado el 17-nov a las 18:15 UTC con el «despliega» de Pablo
+(despliegue `dep-dbu9iud9fdbs73e3r710`, `live`). Es el mismo commit que `main`, que quedó en verde
+(corrida `44144050527`). Render **no despliega solo** (`autoDeploy=no`): cada despliegue se lanza a mano.
+
+**Comprobado en producción después del despliegue:**
+
+| Petición | Antes (771a20f) | Después (d57550d) |
+|---|---|---|
+| `GET /api/esta-ruta-no-existe` | `"title":"Not Found"` | `"title":"No encontrado"` |
+| `POST /api/auth/contrasena/recuperar` `{"correo":""}` | `'Correo' must not be empty.` | `'Correo' no debería estar vacío.` |
+| Cabecera `X-Id-Peticion` | no estaba | en toda respuesta, y el mismo `idPeticion` en el cuerpo del error |
+
+- **El id en el registro de Render funciona:** se buscó el id `51c2e0d210c7fb5c` de una petición que consulta la base y aparecieron sus dos líneas. Un 404 de ruta o un error de validación **no escriben ninguna línea**, así que su id no aparece. Es lo esperado, no un fallo.
+- **0 líneas «Sin datos de idioma»**: la imagen tiene ICU, y la validación sale en castellano.
+- **0 líneas `fail:`** desde el despliegue. EF sigue escondiendo los valores (`purgada='?'`).
+- **Para mirar más adelante:** en la ficha pública aparece `warn: Microsoft.EntityFrameworkCore.Query[20504]`, el aviso de EF sobre cargar varias colecciones en una sola consulta. Ya estaba antes de hoy. Es rendimiento, no un error.
+
+Vuelta atrás si hiciera falta: reactivar `dep-dbshemei0phs73d5b8r0` (771a20f).
+
+| Qué | Estado |
+|---|---|
+| Segunda IA | Ejecuta `C:\Users\pdani\zass-tareas\PLAN-IA-2.md` (T1-T11). Su informe va en `zass-tareas\INFORME-IA-2.md`. **Esas tareas son suyas: no las toques.** Pregunta cada decisión a Pablo. #68 (T6) está aprobado salvo un `commit-message.txt` de más que tiene que quitar |
+| Fusionados después de abrir esta sección | #65 (este ESTADO, JQ-10 y la nota de JQ-9), #66 (portada), #67 (búsqueda accesible), #69 (ficha en el celular), con los textos aprobados por Pablo |
+
+### Lo que entró en `main` el 17-nov
+
+| PR | Qué | Nota |
+|---|---|---|
+| #44 | JQ-3, recordatorios de cita a 24 h y 2 h (Joaquín) | Revisado el 15-nov |
+| #50, #52 | Auditoría de índices y traspaso del 15-nov | Documentación |
+| #51 | JQ-4 A, Mis tarjetas: API-56, API-57, API-58 y pantalla (Joaquín) | Revisado: el dueño se comprueba en el servicio, ajena = inexistente (404), el QR sin `innerHTML`. **Para B2:** desactivar una tarjeta *Emitida* responde 204 y no hace nada |
+| #53 | Prueba que cae si se quita una cabecera de `_headers` | |
+| #54 | Despertador de la API solo del 22 al 24-nov | |
+| #55 | `TieneRol` en `ActivarPrestadorAsync` (CS8602) | |
+| #56, #57 | `API_ORIGEN` real (`zass-api.onrender.com`; `api.zass.cl` no existe) y `/planes` en el sitemap | |
+| #58 | JQ-4 B1, `LimiteDeTarjetasAsync` lee `Plan.MaxTarjetas` (Joaquín) | Revisado |
+| **#59** | **Índice 3.c**, parcial `notificaciones (cita_id, tipo) WHERE cita_id IS NOT NULL` | **Aplicado en Neon** (corrida `44090594566`, con copia previa). Comprobado en el catálogo: existe, R-1 sigue, *Index Only Scan* |
+| **#60** | `migrar-neon.yml`: la comprobación final sale del ModelSnapshot y **falla** si falta algo | La anterior estaba fija a los objetos del 15-nov y **no fallaba nunca** |
+| **#61** | Probar la restauración de la copia, los lunes | **La primera restauración real de ZASS: funcionó** (copia del 16-nov) |
+| **#62** | Identificador de petición: `X-Id-Peticion`, `idPeticion` en todo error y en el 429, y el id en cada línea del registro | Visto en la consola real: `=> IdPeticion:3b5f157aace8dec1` |
+| **#64** | Ningún texto en inglés llega al usuario (reemplaza a #63) | FluentValidation en `es` y los títulos de fábrica traducidos |
+
+### Medido en producción ANTES del despliegue (17-nov, 771a20f)
+
+| Petición | Respuesta |
+|---|---|
+| `GET /api/salud` | 200, **sin** `X-Id-Peticion` |
+| `GET /api/esta-ruta-no-existe` | 404 `"title":"Not Found"` |
+| `POST /api/auth/contrasena/recuperar` `{"correo":""}` | 400 `'Correo' must not be empty.` / `'Correo' is not a valid email address.` |
+
+Es la prueba de que **en producción el usuario veía inglés**. Después de desplegar debe verse «No encontrado», «'Correo' no debería estar vacío.» y la cabecera.
+
+### Cerrado con datos
+- **El modo «solo inscripción» está resuelto en producción.** El registro de Render del 17-nov, 12:46 UTC, dice: «Pasarela en modo SOLO INSCRIPCION (simulada por debajo)…». Era lo que el 15-nov había quedado sin verificar.
+- **La copia diaria se restaura**: #61, en `postgis/postgis:18-3.6`, la misma versión que Neon (Postgres 18.7, PostGIS 3.6.4).
+
+### Lo que encontró la revisión, y conviene no olvidar
+1. **El servidor de pruebas atiende con la cultura del SISTEMA.** Fijar la cultura invariante en la prueba no llega al servidor: hace falta `Server.PreserveExecutionContext = true` y fijarla en el mismo flujo async de la petición. Sin eso, las pruebas de validación pasaban en castellano (Windows) y en Render salía inglés.
+2. **La consola simple escribe el ámbito con `ToString()`.** Un `Dictionary` imprime el nombre de su tipo: el id **no habría aparecido nunca** en Render. Se usa una plantilla (`"IdPeticion:{IdPeticion}"`).
+3. **`new CultureInfo("es")` tumbaba la API al arrancar** en modo de globalización invariante (las imágenes alpine y chiseled), y `predefinedOnly: false` **no** lo salva (medido). Ahora arranca, avisa en el registro y deja la validación en inglés.
+4. **Smart App Control**: un worktree nuevo quedó bloqueado de forma persistente, y `dotnet test` salió con **exit 0 habiendo corrido cero pruebas**. Mirar siempre «Pruebas totales».
+5. **GitHub cierra un PR apilado** si su rama base se borra al fusionar el de abajo. No lo reapunta.
+6. **Una prueba que falla sin mutación hace parecer «atrapadas» todas las mutaciones.** Siempre línea base primero.
+
+### Documentación (`zass-documentacion`)
+- `34e7e1b`: `seguridad.md`, la regla 6 (registro) pasa a **Parcial**. El redactor de registros que describía **no existe**: se movió el documento, no el código. Visto en Chromium.
+- **Pendiente, y es de Pablo y del abogado:** la sección 8 dice «Datos en **Brazil South**», pero lo real es **Neon en EE.UU. Este y Render en Oregón, EE.UU.** La política de privacidad tiene que declarar esa transferencia. La T1 de la segunda IA corrige el documento técnico, no el texto legal.
+
+### La app: decidido el camino, y va DESPUÉS de la web
+Pablo, 17-nov: primero la web, y **después del lanzamiento web** la app en App Store y Play
+Store, con **Capacitor** (el mismo React). El plan completo, con los riesgos medidos, está en
+**`PLAN-APP.md`**. Lo que no puede esperar a la app: **no existe una pantalla para borrar la
+cuenta** (API-17 está en la API, pero ninguna pantalla la llama). El derecho de supresión de la
+Ley 21.719 vale para la web, así que va antes del lanzamiento web.
+
+### Lo que sigue siendo de Pablo
+1. ~~«Despliega»~~: hecho el 17-nov, `d57550d`.
+2. **Flow**, **la empresa**, **el 23 de diciembre**, **abrir el sitio** y **los textos legales**, igual que el 15-nov (abajo).
+3. La **transferencia internacional** (EE.UU.) en la política de privacidad.
+4. Responder las preguntas que le haga la segunda IA.
+
+---
+
 ## Sesión del 15-nov-2026 (madrugada) — PRODUCCIÓN AL DÍA, y el defecto de la IP resuelto
 
 El despliegue está hecho **y comprobado desde fuera**. Esto es lo que cambió en producción y lo
 que se midió al hacerlo; nada de esto es recordado.
+
+### Dónde retomar (cierre de la sesión del 15-nov, madrugada)
+
+**Producción está desplegada, migrada y comprobada.** Lo que queda abierto:
+
+| PR | Qué es | Estado |
+|---|---|---|
+| **#44** | JQ-3, recordatorios de cita a 24 h y 2 h (Joaquín) | **Revisado y aprobado por escrito** en el hilo del PR: las cuatro trampas del proyecto están cubiertas. CI verde. **Falta que Pablo lo fusione** (es N3) |
+| **#50** | Auditoría de índices al día: lo aplicado tachado, el candidato 3.c y un falso positivo | Abierto, solo documentación. Ojo: **el cuerpo del PR perdió dos palabras** al crearlo (un `cita_id` entre comillas que el shell se comió); el archivo está bien, el cuerpo conviene corregirlo |
+
+**Lo que pide decisión y nadie puede hacer por Pablo:**
+
+1. **Flow**: abrir la cuenta de comercio. Es lo único que mueve la fecha del lanzamiento.
+2. **La empresa** (persona natural o SpA), con su papá abogado. La pasarela lo pide antes que nada.
+3. **23 de diciembre**: si Flow no está aprobado cuando venza el primer mes gratis de los
+   fundadores, hay que avisarles **antes**. El sistema no regala meses ni finge cobros, pero
+   tampoco cobra.
+4. **Abrir el sitio**: `MANTENIMIENTO=0` en Cloudflare Pages **y volver a desplegar** — una
+   variable nueva no se aplica a un despliegue que ya existe.
+5. **Los textos legales** y **los datos de demostración** (JQ-6): producción tiene 0 prestadores
+   publicados, así que la búsqueda está vacía.
+
+**Lo que quedó sin verificar, y cómo verificarlo:** que el modo solo inscripción esté resuelto en
+producción. Se resuelve la primera vez que alguien lo necesita; se confirma mirando los registros
+de Render en busca de «Pasarela en modo SOLO INSCRIPCION», o cuando corra el trabajo diario.
+
+**Lo siguiente de nuestro carril, por si nadie dice otra cosa:** el índice 3.c
+(`notificaciones.cita_id`), que ya está medido en `AUDITORIA-INDICES.md` y solo espera que se
+decida aplicarlo — es N3 y lleva migración, así que va con las demás.
+
+**Herramientas nuevas de esta sesión:** `zass-secretos\render-apikey.txt` permite leer y poner
+variables de Render y lanzar despliegues sin entrar al panel; y el flujo
+**«Migrar la base de produccion»** aplica migraciones a Neon desde Actions (en el PC no se puede:
+Smart App Control bloquea los ensamblados de forma intermitente).
+
+**Y un aviso de logística que costó tiempo tres veces hoy:** otra sesión trabaja en la misma
+carpeta `zass-app-1` y cambia la rama activa por debajo. Un commit mío aterrizó en una rama ajena
+y hubo que rescatarlo. Mientras eso siga así, **comprobar `git branch --show-current` antes de
+cada commit**, y que quien pueda use su propio worktree.
 
 ### 1. Neon migrada, con los cinco números leídos del catálogo
 

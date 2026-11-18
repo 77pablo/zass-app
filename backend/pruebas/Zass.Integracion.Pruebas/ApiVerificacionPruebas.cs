@@ -366,7 +366,7 @@ public partial class ApiPruebas
         Assert.Equal(HttpStatusCode.NotFound, tomar.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, inexistente.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, resolver.StatusCode);
-        Assert.Equal(await inexistente.Content.ReadAsStringAsync(), await tomar.Content.ReadAsStringAsync());
+        Assert.Equal(await CuerpoComparable.De(inexistente), await CuerpoComparable.De(tomar));
 
         var c = await DeLaBaseAsync(propia);
         Assert.Equal(EstadoCredencial.EnRevision, c.Estado);
@@ -444,7 +444,7 @@ public partial class ApiPruebas
         var inexistente = await PostConCsrfAsync($"/api/mi/credenciales/{Guid.NewGuid()}/enviar");
 
         Assert.Equal(HttpStatusCode.NotFound, deOtra.StatusCode);
-        Assert.Equal(await inexistente.Content.ReadAsStringAsync(), await deOtra.Content.ReadAsStringAsync());
+        Assert.Equal(await CuerpoComparable.De(inexistente), await CuerpoComparable.De(deOtra));
         Assert.Equal(EstadoCredencial.Borrador, (await DeLaBaseAsync(Guid.Parse(ajena))).Estado);
     }
 

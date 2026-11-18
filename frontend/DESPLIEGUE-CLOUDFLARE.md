@@ -24,7 +24,7 @@ Publicar solo el sitio sin API deja una página que dice «No se pudo conectar»
 2. Compilar: `cd frontend && npm run build` → carpeta `dist/`.
 3. **[Pablo]** Iniciar sesión en Cloudflare desde esta terminal: `! npx wrangler login` (abre el navegador).
 4. Crear el proyecto y subir: `npx wrangler pages deploy dist --project-name zass`.
-5. En el proyecto, **Settings → Variables**: `API_ORIGEN = https://api.zass.cl` (o donde esté la API).
+5. En el proyecto, **Settings → Variables**: `API_ORIGEN = https://zass-api.onrender.com` (o donde esté la API).
 6. **[Pablo]** Si `zass.cl` ya está en Cloudflare (nameservers), en el proyecto: **Custom domains → zass.cl**. Si el dominio está en otro registrador, hay que apuntar sus nameservers a Cloudflare o crear un CNAME.
 7. En la API: `Zass:ExigirHttps=true`, cookies con `Secure` (ya), y llenar `Zass:ProxiesDeConfianza` (ver «Cómo llenar `Zass:ProxiesDeConfianza`» más abajo; la guía completa de la API está en `DESPLIEGUE-API.md`).
 

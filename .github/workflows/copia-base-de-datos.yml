@@ -37,7 +37,7 @@ jobs:
               --symmetric --cipher-algo AES256 -o "zass-$(date -u +%Y%m%d).dump.gpg" zass.dump
           rm zass.dump
       - name: Guardar fuera del servidor de la base
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: copia-zass
           path: zass-*.dump.gpg

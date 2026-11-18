@@ -301,8 +301,8 @@ public class AutorizacionIntegracionPruebas : IAsyncLifetime
         Assert.Equal(HttpStatusCode.NotFound, deOtroPrestador.StatusCode);
         // Misma respuesta que una cita que no existe: el 404 no dice de quién es.
         Assert.Equal(
-            await inexistente.Content.ReadAsStringAsync(),
-            await deOtroBuscador.Content.ReadAsStringAsync());
+            await CuerpoComparable.De(inexistente),
+            await CuerpoComparable.De(deOtroBuscador));
 
         // Y nada se movió: ni la cita, ni la hora de destino, ni nació una cita nueva.
         var enLaBase = await LaCitaAsync(cita);

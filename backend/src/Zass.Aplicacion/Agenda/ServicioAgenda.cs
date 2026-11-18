@@ -575,6 +575,10 @@ public sealed class ServicioAgenda : IServicioAgenda
             if (!r.Exito) return Resultado.Falla<CitaDto>(r.Codigo!, r.Mensaje!);
 
             cita.BloqueHorario?.Liberar();
+            // JQ-3: un recordatorio de una hora que ya no existe es peor que ninguno. Va despues
+            // de la ultima salida con Falla: si algo falla de aqui en adelante es por excepcion,
+            // y la transaccion se deshace entera, anulacion incluida.
+            await _avisos.AnularRecordatoriosAsync(cita.Id, t);
 
             // El aviso va a la OTRA parte: quien canceló ya lo sabe.
             if (quien is Papel.Buscador)
@@ -665,6 +669,8 @@ public sealed class ServicioAgenda : IServicioAgenda
             cita.MarcarReprogramada();
             cita.Version++;
             bloqueActual?.Liberar();
+            // JQ-3: los recordatorios de la VIEJA se apagan; la nacida tendra los suyos.
+            await _avisos.AnularRecordatoriosAsync(cita.Id, t);
             _repo.AgregarCambio(new CambioCita
             {
                 CitaId = cita.Id,
@@ -901,7 +907,59 @@ public sealed class ServicioAgenda : IServicioAgenda
                 return (anterior, TipoCambio.Asistencia, "Sin asistencia marcada en 72 horas: se asume realizada");
             });
 
-        return new ResumenDeCitas(expiradas, porAsistir, asumidas);
+        var recordatorios = await RecordarAsync(
+            await _repo.CitasPorRecordarAsync(ahora, MaximoPorPasada, ct), ct);
+
+        return new ResumenDeCitas(expiradas, porAsistir, asumidas, recordatorios);
+    }
+
+    /// <summary>
+    /// JQ-3. Una cita, una transaccion, como las transiciones; aqui no cambia el estado (ni
+    /// Version ni CambioCita): solo se encolan avisos. Devuelve cuantos se encolaron.
+    /// </summary>
+    private async Task<int> RecordarAsync(IReadOnlyList<Guid> ids, CancellationToken ct)
+    {
+        var encolados = 0;
+        foreach (var id in ids)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                encolados += await _trabajo.EnTransaccionAsync(async t =>
+                {
+                    var cita = await _repo.CitaParaCambioAsync(id, t);
+                    if (cita?.BloqueHorario is not { } bloque) return 0;
+                    var ahora = _reloj.Ahora;
+                    var n = 0;
+                    foreach (var tipo in RecordatoriosDeCita.Tipos)
+                    {
+                        if (!RecordatoriosDeCita.Corresponde(tipo, cita.Estado, bloque.InicioEn, cita.CreadaEn, ahora))
+                            continue;
+                        foreach (var (rol, destinatario) in new[]
+                        {
+                            (AvisosDeCita.RolBuscador, cita.BuscadorId),
+                            (AvisosDeCita.RolPrestador, UsuarioDelPrestador(cita)),
+                        })
+                        {
+                            var clave = RecordatoriosDeCita.Clave(tipo, cita.Id, rol);
+                            if (await _avisos.ExisteAsync(clave, t)) continue;
+                            Avisar(cita.Id, destinatario, rol, tipo,
+                                tipo == TipoNotificacion.Recordatorio24h
+                                    ? "Recordatorio de hora (24 h)" : "Recordatorio de hora (2 h)",
+                                clave, ahora);
+                            n++;
+                        }
+                    }
+                    if (n > 0) await _trabajo.GuardarAsync(t);
+                    return n;
+                }, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException && EsConcurrencia(ex))
+            {
+                // La toma la pasada siguiente.
+            }
+        }
+        return encolados;
     }
 
     /// <summary>

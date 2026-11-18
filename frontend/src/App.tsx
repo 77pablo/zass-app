@@ -9,6 +9,7 @@ import { MiAgenda } from './paginas/MiAgenda'
 import { MiFicha } from './paginas/MiFicha'
 import { MisCitas } from './paginas/MisCitas'
 import { MisResenas } from './paginas/MisResenas'
+import { MisTarjetas } from './paginas/MisTarjetas'
 import { NoEncontrada } from './paginas/NoEncontrada'
 import { OfrecerServicios } from './paginas/OfrecerServicios'
 import { Oficios } from './paginas/Oficios'
@@ -54,6 +55,7 @@ export function App() {
         <Route path="mis-citas" element={<MisCitas />} />
         {/* CS-16: sin esta ruta, la ventana de 72 h para editar una reseña no se puede alcanzar. */}
         <Route path="mis-resenas" element={<MisResenas />} />
+        <Route path="mis-tarjetas" element={<MisTarjetas />} />
         <Route path="ofrecer-servicios" element={<OfrecerServicios />} />
         <Route path="verificar-correo" element={<VerificarCorreo />} />
         <Route path="recuperar-contrasena" element={<RecuperarContrasena />} />

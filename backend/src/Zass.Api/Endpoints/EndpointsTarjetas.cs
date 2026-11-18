@@ -1,4 +1,6 @@
+using System.Security.Claims;
 using Zass.Api.Configuracion;
+using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Tarjetas;
 using Zass.Dominio.Comun;
 using Zass.Dominio.Tarjetas;
@@ -44,7 +46,66 @@ public static class EndpointsTarjetas
             .RequireRateLimiting(Tasa.Publico)
             .WithName("API-54");
 
+        MapearMisTarjetas(app);
+
         return app;
+    }
+
+    /// <summary>
+    /// API-56 a API-58 (CU-20, CS-18). Con sesion y CSRF, grupo G. Ninguno mira la
+    /// suscripcion. Ajena e inexistente dan el mismo 404 (lo decide el servicio).
+    /// </summary>
+    private static void MapearMisTarjetas(IEndpointRouteBuilder app)
+    {
+        var grupo = app.MapGroup("/api/mi");
+        grupo.RequireAuthorization();
+        grupo.AddEndpointFilter<FiltroCsrf>();
+
+        // API-56 - Mis tarjetas y su estado.
+        grupo.MapGet("/tarjetas", async (
+                IServicioTarjetas tarjetas, ServicioPerfiles perfiles, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+
+                var mio = await perfiles.MiPerfilPrestadorAsync(usuarioId.Value);
+                if (!mio.Exito) return Respuestas.Problema(mio);
+
+                return Results.Ok(await tarjetas.MisTarjetasAsync(mio.Valor!.Id));
+            })
+            .RequireRateLimiting(Tasa.General)
+            .WithName("API-56");
+
+        // API-57 - Baja inmediata. No requiere tener la tarjeta (RN-S6-05).
+        grupo.MapPost("/tarjetas/{id:guid}/desactivar", async (
+                Guid id, IServicioTarjetas tarjetas, ServicioPerfiles perfiles, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+
+                var mio = await perfiles.MiPerfilPrestadorAsync(usuarioId.Value);
+                if (!mio.Exito) return Respuestas.Problema(mio);
+
+                var r = await tarjetas.DesactivarAsync(mio.Valor!.Id, id);
+                return r.Exito ? Results.NoContent() : Respuestas.Problema(r);
+            })
+            .RequireRateLimiting(Tasa.General)
+            .WithName("API-57");
+
+        // API-58 - Escaneos agregados por medio y periodo, sin conversion (JQ-8).
+        grupo.MapGet("/tarjetas/{id:guid}/estadisticas", async (
+                Guid id, IServicioTarjetas tarjetas, ServicioPerfiles perfiles, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+
+                var mio = await perfiles.MiPerfilPrestadorAsync(usuarioId.Value);
+                if (!mio.Exito) return Respuestas.Problema(mio);
+
+                return Respuestas.DeResultado(await tarjetas.EstadisticasAsync(mio.Valor!.Id, id));
+            })
+            .RequireRateLimiting(Tasa.General)
+            .WithName("API-58");
     }
 
     /// <summary>Location relativa: la resuelve el navegador contra zass.cl, por donde entro.</summary>

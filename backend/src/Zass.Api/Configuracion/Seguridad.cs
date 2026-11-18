@@ -76,6 +76,9 @@ public static class ConfiguracionDeSeguridad
                     detail = "Espera unos minutos antes de volver a intentar.",
                     status = StatusCodes.Status429TooManyRequests,
                     reintentarEn = 900,
+                    // Este cuerpo se escribe a mano, sin pasar por ProblemDetails, asi que
+                    // IdDePeticion.Configurar no lo alcanza: el identificador va aqui.
+                    idPeticion = contexto.HttpContext.TraceIdentifier,
                 },
                 // El tipo de contenido va AQUI y no en Response.ContentType antes de escribir:
                 // WriteAsJsonAsync pone el suyo ("application/json") al escribir y pisaba el

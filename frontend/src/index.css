@@ -467,8 +467,24 @@ main:focus { outline: none; }
 .ficha-pagina { padding-block: 40px 120px; }
 .volver { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-weight: 800; font-size: 0.9375rem; color: var(--amarillo); text-underline-offset: 4px; }
 .volver .icono { transform: rotate(180deg); }
-.ficha-rejilla { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 64px; align-items: start; margin-top: 12px; }
-@media (max-width: 960px) { .ficha-rejilla { grid-template-columns: minmax(0, 1fr); gap: 8px; } }
+/*
+  La ficha publica: el encabezado (quien es), el contacto y el cuerpo, EN ESE ORDEN en el HTML.
+  En una columna (telefono) se ven asi: la persona y enseguida como hablarle, antes del detalle.
+  Antes el contacto caia al final, despues del calendario entero (decision de Pablo, 17-nov-2026).
+  En escritorio la rejilla pone el encabezado y el cuerpo a la izquierda y el contacto a la
+  derecha, ocupando las dos filas para que siga siendo sticky. No se usa `order` ni
+  `display: contents`: el primero desordena lo que se ve respecto de lo que se recorre con el
+  teclado, y el segundo le quita al <article> su semantica en Safari y en Chrome antiguos.
+*/
+.ficha-rejilla { display: grid; grid-template-columns: minmax(0, 1fr) 360px; column-gap: 64px; align-items: start; margin-top: 12px; }
+.ficha-rejilla > .persona { grid-column: 1; grid-row: 1; }
+.ficha-rejilla > .lateral { grid-column: 2; grid-row: 1 / span 2; }
+.ficha-rejilla > .ficha-cuerpo { grid-column: 1; grid-row: 2; margin-top: 36px; }
+@media (max-width: 960px) {
+  .ficha-rejilla { grid-template-columns: minmax(0, 1fr); }
+  .ficha-rejilla > .persona, .ficha-rejilla > .lateral, .ficha-rejilla > .ficha-cuerpo { grid-column: 1; grid-row: auto; }
+  .ficha-rejilla > .lateral { margin-top: 28px; }
+}
 
 .persona { display: flex; gap: 24px; align-items: center; }
 .persona h1 { font-size: clamp(2rem, 5.4vw, 3.5rem); font-weight: 800; letter-spacing: -0.04em; line-height: 1; }
@@ -509,6 +525,8 @@ main:focus { outline: none; }
 .nota { display: flex; align-items: baseline; gap: 14px; margin-top: 16px; flex-wrap: wrap; }
 .nota-promedio { font-family: var(--mono); font-size: 3rem; font-weight: 700; letter-spacing: -0.05em; line-height: 1; color: var(--amarillo); }
 .nota-detalle { font-weight: 700; color: var(--suave); }
+/* El enlace a las reseñas: .enlace ya trae los 44 px de alto, aqui solo se separa del promedio. */
+.nota-enlace { margin-top: 4px; }
 
 .lateral { position: sticky; top: 96px; }
 @media (max-width: 960px) { .lateral { position: static; } }
@@ -580,6 +598,8 @@ main:focus { outline: none; }
 .credenciales strong { font-weight: 700; overflow-wrap: anywhere; }
 .credenciales small { color: var(--suave); font-weight: 600; font-size: 0.875rem; }
 .credenciales .sello, .credenciales .dato { margin-top: 6px; }
+/* Que significan «Verificada» y «Declarada por el usuario». Prosa, no etiqueta: se lee discreta. */
+.credenciales-nota { margin-top: 16px; max-width: 62ch; font-size: 0.875rem; font-weight: 600; color: var(--suave); }
 .credencial-confirmar { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-weight: 700; font-size: 0.9375rem; }
 
 /* ------------------------------------------------------------- Formularios */
@@ -997,3 +1017,17 @@ option { background: var(--panel-2); color: var(--texto); }
   /* lo que queda lejos de la pantalla no se calcula hasta que se acerca */
   .seccion { content-visibility: auto; contain-intrinsic-size: auto 640px; }
 }
+
+/* Mis tarjetas */
+.lista-tarjetas { list-style: none; padding: 0; margin: 24px 0 0; display: grid; gap: 20px; max-width: 640px; }
+.tarjeta-nfc { display: grid; gap: 14px; justify-items: start; padding: 22px; border: 1px solid var(--linea); border-radius: 16px; background: var(--panel); }
+.tarjeta-nfc-enlace { font-family: var(--mono); font-size: 1.15rem; font-weight: 700; color: var(--amarillo); overflow-wrap: anywhere; }
+.tarjeta-nfc-qr { display: grid; gap: 8px; justify-items: start; }
+/* El QR va siempre sobre blanco, también en tema oscuro: invertido lo leen mal muchos teléfonos. */
+.codigo-qr { width: 200px; max-width: 100%; height: auto; border-radius: 8px; }
+.tarjeta-nfc-cifras { width: 100%; }
+.tarjeta-nfc-cifras table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+.tarjeta-nfc-cifras caption { text-align: left; font-weight: 800; margin-bottom: 6px; }
+.tarjeta-nfc-cifras th, .tarjeta-nfc-cifras td { padding: 6px 10px 6px 0; text-align: left; border-bottom: 1px solid var(--linea); }
+.tarjeta-nfc-cifras th[scope='row'] { font-weight: 600; color: var(--suave); }
+.tarjeta-nfc-cifras p { margin-top: 8px; }

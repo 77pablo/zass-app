@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
@@ -47,6 +47,17 @@ public sealed class ColaEnMemoria : INotificaciones
 {
     public List<Notificacion> Encoladas { get; } = new();
     public void Encolar(Notificacion aviso) => Encoladas.Add(aviso);
+
+    public Task<bool> ExisteAsync(string claveIdempotencia, CancellationToken ct = default) =>
+        Task.FromResult(Encoladas.Any(n => n.ClaveIdempotencia == claveIdempotencia));
+
+    public Task<int> AnularRecordatoriosAsync(Guid citaId, CancellationToken ct = default)
+    {
+        var vivos = Encoladas.Where(n => n.CitaId == citaId && n.Estado == EstadoEnvio.Programada
+            && n.Tipo is TipoNotificacion.Recordatorio24h or TipoNotificacion.Recordatorio2h).ToList();
+        foreach (var n in vivos) n.Anular();
+        return Task.FromResult(vivos.Count);
+    }
 }
 
 public sealed class AuditoriaEnMemoria : IAuditor
