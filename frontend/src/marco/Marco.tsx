@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { BarraInferior } from './BarraInferior'
 import { Cabecera } from './Cabecera'
-import { ProveedorDeMenuMovil } from './menuMovil'
+import { ProveedorDeMenuMovil } from './ProveedorDeMenuMovil'
 import { Pie } from './Pie'
 
 /**
