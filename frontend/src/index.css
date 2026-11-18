@@ -1001,3 +1001,43 @@ option { background: var(--blanco); color: var(--pizarra); }
 .tarjeta-nfc-cifras th, .tarjeta-nfc-cifras td { padding: 6px 10px 6px 0; text-align: left; border-bottom: 1px solid var(--linea); }
 .tarjeta-nfc-cifras th[scope='row'] { font-weight: 600; color: var(--suave); }
 .tarjeta-nfc-cifras p { margin-top: 8px; }
+
+/* =============================================================== Barra inferior (celular)
+   Como en una app: lo mas usado abajo, al alcance del pulgar. En escritorio no existe.
+   Fondo blanco solido (el unico vidrio del sitio es la cabecera, guia v3). */
+.barra-inferior { display: none; }
+.pestana {
+  display: grid; justify-items: center; align-content: center; gap: 2px; min-height: 56px; padding: 6px 2px;
+  border: 0; background: none; border-radius: 16px; cursor: pointer; text-decoration: none;
+  color: var(--suave); font-size: 0.75rem; font-weight: 700; line-height: 1.2;
+  -webkit-touch-callout: none; user-select: none;
+}
+.pestana-icono { display: grid; place-items: center; width: 56px; height: 30px; border-radius: 999px; transition: background 0.15s, transform 0.12s; }
+.pestana-icono .icono { width: 22px; height: 22px; }
+.pestana.active, .pestana[aria-expanded='true'] { color: var(--pizarra); font-weight: 800; }
+.pestana.active .pestana-icono, .pestana[aria-expanded='true'] .pestana-icono { background: var(--celeste-suave); }
+.pestana.active .pestana-icono .icono { stroke-width: 2.4; }
+.pestana:active .pestana-icono { transform: scale(0.92); }
+.pestana:focus-visible { outline-offset: -3px; }
+.pestana--hueco { pointer-events: none; }
+
+@media (max-width: 880px) {
+  .barra-inferior {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+    background: var(--blanco); border-top: 1px solid var(--linea-fuerte);
+    box-shadow: 0 -4px 16px rgba(17, 24, 39, 0.06);
+  }
+  /* Que el final de cada pagina (el pie) no quede tapado por la barra. */
+  body { padding-bottom: calc(70px + env(safe-area-inset-bottom)); }
+  /* La pestaña «Mas» reemplaza al boton «Menu» de la cabecera: uno solo, abajo. */
+  .menu-boton { display: none; }
+  /* El menu sube desde abajo, como una hoja, justo encima de la barra. */
+  .menu-movil {
+    position: fixed; left: 12px; right: 12px; bottom: calc(78px + env(safe-area-inset-bottom)); z-index: 70;
+    width: auto; margin: 0; max-height: calc(100dvh - 160px); overflow: auto; overscroll-behavior: contain;
+    animation: sube 0.22s var(--curva);
+  }
+}
+@keyframes sube { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
