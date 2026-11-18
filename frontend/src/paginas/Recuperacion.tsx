@@ -14,7 +14,8 @@ const CONTRASENA_MINIMA = 10
 const CONTRASENA_MAXIMA = 128
 
 function mensajeDe(e: unknown): string {
-  return e instanceof ErrorApi ? e.mensaje : 'Algo salió mal. Intenta de nuevo.'
+  // Usa paraMostrar para incluir el código de petición en errores inesperados (DECISIÓN T4).
+  return e instanceof ErrorApi ? e.paraMostrar : 'Algo salió mal. Intenta de nuevo.'
 }
 
 /** Las tres pantallas comparten el marco: una tarjeta angosta sobre la pagina. */
