@@ -107,6 +107,8 @@ jobs:
         run: dotnet build backend/Zass.sln -c Debug
 
       - name: Pruebas de aplicacion
+        env:
+          TZ: UTC
         run: dotnet test backend/pruebas/Zass.Aplicacion.Pruebas --no-build
 
       - name: Pruebas de arquitectura
