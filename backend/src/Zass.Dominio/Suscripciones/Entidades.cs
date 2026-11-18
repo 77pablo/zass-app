@@ -78,9 +78,14 @@ public class Suscripcion
     }
 
     /// <summary>Extiende el periodo tras un pago confirmado. La llamara la pasarela.</summary>
-    public void RegistrarPeriodoPagado(DateTime ahora, int meses = 1)
+    /// <param name="vigenciaOriginal">
+    /// El VigenteHasta original antes de vencer (para cobro tardio RN-S7-16).
+    /// Si se proporciona, la extension se calcula desde esta fecha en lugar de desde ahora.
+    /// Solo se usa en cobros automaticos tardios; en pagos manuales sigue siendo null.
+    /// </param>
+    public void RegistrarPeriodoPagado(DateTime ahora, int meses = 1, DateTime? vigenciaOriginal = null)
     {
-        var baseFecha = VigenteHasta > ahora ? VigenteHasta : ahora;
+        var baseFecha = vigenciaOriginal ?? (VigenteHasta > ahora ? VigenteHasta : ahora);
         VigenteHasta = baseFecha.AddMonths(meses);
         Estado = EstadoSuscripcion.Activa;
     }

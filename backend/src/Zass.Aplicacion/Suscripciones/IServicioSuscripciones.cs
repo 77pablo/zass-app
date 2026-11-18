@@ -48,9 +48,14 @@ public interface IServicioSuscripciones
     /// unico parcial: si llegara una segunda confirmacion del mismo intento, la base la
     /// rechaza aunque fallara toda comprobacion anterior.
     /// </param>
+    /// <param name="vigenciaOriginal">
+    /// El VigenteHasta original de la suscripcion antes de vencer (para cobro tardio RN-S7-16).
+    /// Si se proporciona, la extension se calcula desde esta fecha en lugar de desde ahora.
+    /// Solo se usa en cobros automaticos tardios; en pagos manuales sigue siendo null.
+    /// </param>
     Task<Resultado<Guid>> RegistrarPeriodoPagadoAsync(
         Guid suscripcionId, int meses = 1, int montoPagado = 0, string? referencia = null,
-        Guid? intentoDePagoId = null, CancellationToken ct = default);
+        Guid? intentoDePagoId = null, DateTime? vigenciaOriginal = null, CancellationToken ct = default);
 
     /// <summary>El prestador deja de pagar por voluntad propia. Sale de la busqueda de inmediato.</summary>
     Task<Resultado> CancelarAsync(Guid suscripcionId, CancellationToken ct = default);

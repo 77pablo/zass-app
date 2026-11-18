@@ -175,7 +175,7 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
 
     public async Task<Resultado<Guid>> RegistrarPeriodoPagadoAsync(
         Guid suscripcionId, int meses = 1, int montoPagado = 0, string? referencia = null,
-        Guid? intentoDePagoId = null, CancellationToken ct = default)
+        Guid? intentoDePagoId = null, DateTime? vigenciaOriginal = null, CancellationToken ct = default)
     {
         var ahora = _reloj.Ahora;
         var s = await _repo.PorIdAsync(suscripcionId, ct);
@@ -186,11 +186,15 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
             return Resultado.Falla<Guid>(
                 Fallas.Validacion, "Un periodo pagado es de un mes o más.");
 
-        var desde = s.VigenteHasta > ahora ? s.VigenteHasta : ahora;
+        // Para cobro tardio (RN-S7-16): si se proporciona vigenciaOriginal, usarla como base
+        // para la extension. En pagos manuales (vigenciaOriginal = null), usar la logica original.
+        var baseParaExtension = vigenciaOriginal ?? (s.VigenteHasta > ahora ? s.VigenteHasta : ahora);
+        var desde = baseParaExtension;
 
         // Lo hace la entidad, no este servicio: quien paga el dia 25 de un mes de 30
         // no puede perder los 5 que le quedaban, y esa regla pertenece al dominio.
-        s.RegistrarPeriodoPagado(ahora, meses);
+        // Para cobro tardio, pasamos la vigenciaOriginal a la entidad para que extienda desde ahi.
+        s.RegistrarPeriodoPagado(ahora, meses, vigenciaOriginal);
 
         var pago = new Pago
         {
@@ -209,7 +213,7 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
 
         _auditor.Registrar(Auditar.Entrada(
             "suscripcion_pagada", "suscripciones", s.Id, ahora,
-            contexto: new { meses, vigenteHasta = s.VigenteHasta }));
+            contexto: new { meses, vigenteHasta = s.VigenteHasta, cobro_tardio = vigenciaOriginal.HasValue }));
 
         await _trabajo.GuardarAsync(ct);
         return Resultado.Ok(pago.Id);
