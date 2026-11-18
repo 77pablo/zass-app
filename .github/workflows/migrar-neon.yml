@@ -41,12 +41,12 @@ jobs:
           fi
           echo "Confirmado por ${{ github.actor }}."
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Sin `cache: true`: ese cache exige un packages.lock.json y este repositorio no tiene
       # ninguno, asi que pedirlo haria fallar el flujo entero por una optimizacion. Esta tarea
       # se corre un puñado de veces, no en cada commit: no vale la pena.
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
 
@@ -71,7 +71,7 @@ jobs:
           ls -lh *.dump.gpg
 
       - name: Guardar la copia fuera del servidor de la base
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: copia-antes-de-migrar
           path: '*.dump.gpg'

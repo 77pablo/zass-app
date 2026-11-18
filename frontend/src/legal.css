@@ -22,24 +22,24 @@
 .legal p, .legal li { margin-top: 12px; color: var(--texto); line-height: 1.7; }
 .legal ul { padding-left: 1.25rem; }
 .legal li { margin-top: 8px; }
-.legal a { color: var(--amarillo); text-underline-offset: 3px; }
-.legal a:hover { color: var(--amarillo-hondo); }
+.legal a { color: var(--pizarra); text-decoration-color: var(--celeste); text-decoration-thickness: 2px; text-underline-offset: 4px; }
+.legal a:hover { text-decoration-color: var(--pizarra); }
 
 /* Un dato que falta llenar se ve distinto a proposito: que nadie lo publique sin darse cuenta. */
 .legal .legal-pendiente {
   padding: 1px 6px;
   border-radius: 6px;
-  background: var(--amarillo-suave);
-  border: 1px dashed var(--amarillo);
+  background: var(--ambar-suave);
+  border: 1px dashed var(--ambar-hondo);
   font-weight: 700;
 }
 
 .legal-borrador {
   margin: 0 0 28px;
   padding: 14px 18px;
-  border: 1px solid var(--amarillo);
+  border: 1px solid var(--ambar);
   border-radius: 12px;
-  background: var(--amarillo-suave);
+  background: var(--ambar-suave);
   color: var(--texto);
   font-size: 0.9375rem;
   line-height: 1.55;

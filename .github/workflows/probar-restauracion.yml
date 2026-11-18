@@ -43,7 +43,7 @@ jobs:
       PGUSER: postgres
       PGPASSWORD: restaurar
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0   # hace falta la historia: el snapshot de la migracion que trae la copia
 

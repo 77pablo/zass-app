@@ -279,7 +279,7 @@ public class CicloDeLaCitaPruebas
         Assert.True(primera.Exito);
         Assert.True(segunda.Exito, segunda.Mensaje);
         Assert.Equal(primera.Valor!.Id, segunda.Valor!.Id);
-        Assert.Single(_base.CambiosCita.Where(c => c.Tipo == TipoCambio.Cancelacion));
+        Assert.Single(_base.CambiosCita, c => c.Tipo == TipoCambio.Cancelacion);
     }
 
     [Fact]
@@ -902,7 +902,7 @@ public class CicloDeLaCitaPruebas
         var segunda = await _servicio.AvanzarPorElTiempoAsync();
 
         Assert.Equal(new ResumenDeCitas(0, 0, 0), segunda);
-        Assert.Single(_base.CambiosCita.Where(c => c.CitaId == cita.Id && c.Tipo == TipoCambio.Asistencia));
+        Assert.Single(_base.CambiosCita, c => c.CitaId == cita.Id && c.Tipo == TipoCambio.Asistencia);
     }
 
     [Fact]
