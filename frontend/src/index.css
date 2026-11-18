@@ -1060,3 +1060,25 @@ option { background: var(--blanco); color: var(--pizarra); }
 .tarjetas-rejilla--esqueleto > li > .tarjeta-persona { animation: none; }
 .lista-esqueleto { display: grid; gap: 14px; margin-top: 32px; }
 .lista-esqueleto-fila { display: grid; gap: 10px; padding: 18px 16px; border: 1px solid var(--linea-fuerte); border-radius: 16px; }
+
+/* =============================================================== Busqueda en el celular
+   Antes, las dos filas de chips y sus notas ocupaban la primera pantalla entera: los resultados
+   empezaban a 964 px (medido el 18-nov a 390 px). Ahora cada fila se desliza de lado, de borde a
+   borde, como en una app; el ultimo chip asoma cortado y eso dice que hay mas (sin degradado). */
+@media (max-width: 600px) {
+  /* position: relative: sin esto, la etiqueta oculta «Comuna» (.solo-lector, absoluta) escapaba del
+     recorte de la fila y estiraba la pagina 39 px a lo ancho (medido el 18-nov). */
+  .buscar-cuerpo .orden-barra {
+    position: relative; flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain;
+    margin-inline: -24px; padding: 4px 24px; scroll-padding-inline: 24px; scrollbar-width: none;
+  }
+  .buscar-cuerpo .orden-barra::-webkit-scrollbar { display: none; }
+  .buscar-cuerpo .orden-barra > * { flex: none; }
+  .buscar-cuerpo .orden-barra + .orden-barra { margin-top: 4px; }
+  /* Las notas que explican «4 estrellas» y «Solo verificados» se ven cuando su filtro esta puesto,
+     que es cuando sirven («veras pocos con el sello»). El lector de pantalla las oye siempre: son el
+     aria-describedby de su boton, y una descripcion se lee aunque este oculta. */
+  .buscar-cuerpo:not(:has([aria-describedby='nota-promedio'][aria-pressed='true'])) #nota-promedio,
+  .buscar-cuerpo:not(:has([aria-describedby='nota-credencial'][aria-pressed='true'])) #nota-credencial { display: none; }
+  .buscar-cuerpo > .letra-chica { margin-top: 10px; font-size: 0.8125rem; }
+}
