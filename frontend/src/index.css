@@ -1041,3 +1041,22 @@ option { background: var(--blanco); color: var(--pizarra); }
   }
 }
 @keyframes sube { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+/* =============================================================== Esqueletos
+   Bloques con la forma de lo que viene (marco/Esqueleto.tsx). Respiran: la opacidad sube y baja,
+   sin degradado (guia v3). Con «reducir movimiento», quietos (regla global). */
+.esqueleto { display: block; flex: none; background: var(--linea); border-radius: 8px; animation: respira 1.6s ease-in-out infinite; }
+.esqueleto--circulo { border-radius: 50%; }
+.esqueleto--pildora { border-radius: 999px; }
+@keyframes respira { 50% { opacity: 0.5; } }
+.esqueleto-columna { display: grid; gap: 8px; }
+.tarjeta-persona--esqueleto { pointer-events: none; box-shadow: none; }
+/* El recuento de arriba: dos lineas en el telefono (como el texto real), una en pantallas anchas. */
+.resultados-cuenta--esqueleto { display: grid; gap: 6px; padding-block: 2px; }
+.resultados-cuenta--esqueleto + .tarjetas-rejilla { margin-top: 16px; }
+@media (min-width: 600px) { .resultados-cuenta--esqueleto .esqueleto:last-child { display: none; } }
+.tarjetas-rejilla--esqueleto > li:nth-child(2) .esqueleto { animation-delay: 0.15s; }
+.tarjetas-rejilla--esqueleto > li:nth-child(3) .esqueleto { animation-delay: 0.3s; }
+.tarjetas-rejilla--esqueleto > li > .tarjeta-persona { animation: none; }
+.lista-esqueleto { display: grid; gap: 14px; margin-top: 32px; }
+.lista-esqueleto-fila { display: grid; gap: 10px; padding: 18px 16px; border: 1px solid var(--linea-fuerte); border-radius: 16px; }

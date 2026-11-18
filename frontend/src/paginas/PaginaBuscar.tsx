@@ -6,6 +6,7 @@ import {
   buscarTexto, type CriteriosDeTexto, type OrdenDeTexto, type PaginaDeTexto, type ResultadoDeTexto,
 } from '../funciones/busqueda/servicio'
 import { BarraDeBusqueda } from '../marco/BarraDeBusqueda'
+import { ResultadosEsqueleto } from '../marco/Esqueleto'
 import { Icono } from '../marco/Icono'
 import { TarjetaPersona } from '../marco/TarjetaPersona'
 import { capitalizar, personas, reputacion } from '../marco/texto'
@@ -305,7 +306,9 @@ export function PaginaBuscar() {
             que anunciar es el recuento, y `aria-live` esta ahi; los avisos y errores ya traen su
             propio `role` de estado o de alerta. */}
         <div>
-          {cargando && <p className="cargando-linea" role="status"><span className="pulso" aria-hidden="true" />Buscando…</p>}
+          {/* Guia v3: mientras busca se VEN tarjetas-esqueleto con la forma de los resultados (no
+              salta nada al llegar); el lector de pantalla sigue oyendo «Buscando…». */}
+          {cargando && <><p className="solo-lector" role="status">Buscando…</p><ResultadosEsqueleto /></>}
           {actual?.error && <p className="aviso-linea" role="alert">{actual.error}</p>}
           {actual?.aviso && <p className="aviso-linea" role="status">{actual.aviso}</p>}
 
