@@ -11,8 +11,13 @@ import { Icono } from '../marco/Icono'
 import { TarjetaPersona } from '../marco/TarjetaPersona'
 import { capitalizar, personas, reputacion } from '../marco/texto'
 import { guardarUbicacion, olvidarUbicacion, ubicacionGuardada } from '../marco/ubicacion'
+import { useMeta } from '../marco/useMeta'
 import { useTitulo } from '../marco/useTitulo'
 import { agruparPorRegion, etiquetaDeZona } from '../marco/zonas'
+
+/** Para buscadores y al compartir el enlace. Solo promete lo que la pagina hace hoy. */
+const DESCRIPCION =
+  'Busca profesionales y oficios en tu comuna o cerca de ti: filtra por verificados y por reseñas, y mira desde cuánto cobran. Buscar en ZASS! es gratis.'
 
 const ORDENES: { valor: OrdenDeTexto; texto: string; icono: 'estrella' | 'pin' | 'mas' }[] = [
   { valor: 'Recomendados', texto: 'Más recomendados', icono: 'estrella' },
@@ -90,6 +95,8 @@ export function PaginaBuscar() {
   const grupos = useMemo(() => agruparPorRegion(zonas ?? []), [zonas])
 
   useTitulo(q !== '' ? capitalizar(q) : zonaElegida ? `Gente en ${etiquetaDeZona(zonaElegida)}` : 'Buscar')
+  // Sin esto /buscar heredaba la descripcion de la portada (la de index.html).
+  useMeta({ descripcion: DESCRIPCION })
 
   // Con la ubicacion puesta y el orden «cerca» se mide desde la persona; sin ella no se manda nada.
   const criterios: CriteriosDeTexto = {
