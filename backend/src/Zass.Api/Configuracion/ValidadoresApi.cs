@@ -27,7 +27,7 @@ public sealed class ValidadorReenviarVerificacion : AbstractValidator<ReenviarVe
 {
     public ValidadorReenviarVerificacion() =>
         RuleFor(x => x.Correo)
-            .NotEmpty()
+            
             .MaximumLength(Limites.CorreoMaximo)
             .EmailAddress();
 }
@@ -112,7 +112,7 @@ public sealed class ValidadorBusqueda : AbstractValidator<BusquedaHttpQuery>
     {
         RuleFor(x => x.Rubro)
             .NotEmpty().WithMessage("Dinos que buscas: falta el rubro.")
-            .MaximumLength(40);
+            .MaximumLength(90);
 
         RuleFor(x => x.Lat)
             .InclusiveBetween(-90, 90).When(x => x.Lat is not null)
