@@ -17,7 +17,7 @@ namespace Zass.Integracion.Pruebas;
 /// </summary>
 public class AuditoriaIdentidadPruebas : IAsyncLifetime
 {
-    private readonly Aplicacion _app = new();
+    private readonly AplicacionParaAuditoria _app = new();
     private HttpClient _cliente = null!;
     private readonly List<string> _correosCreados = new();
 
@@ -93,7 +93,7 @@ public class AuditoriaIdentidadPruebas : IAsyncLifetime
         });
         Assert.Equal(HttpStatusCode.Unauthorized, respuesta.StatusCode);
 
-        // Verifica la auditoria: debe haber una fila con accion "inicio_sesion_fallido" para ESTE usuario
+        // Verifica la auditoria: debe haber UNA fila con accion "inicio_sesion_fallido" para ESTE usuario
         using var ctx = ContextoDePrueba.Crear();
         ctx.ChangeTracker.Clear();
 
@@ -101,17 +101,28 @@ public class AuditoriaIdentidadPruebas : IAsyncLifetime
             .Where(a => a.Accion == "inicio_sesion_fallido" && a.ActorId == usuarioId)
             .ToListAsync();
 
-        Assert.NotEmpty(registros);
-        var registro = registros.First();
+        Assert.Single(registros);
+        var registro = registros.Single();
 
-        // Lo crucial: el correo NO aparece en claro en ninguna columna
+        // 1) La IP de origen no debe estar vacia (la pasa el endpoint via HttpContext)
+        Assert.False(string.IsNullOrWhiteSpace(registro.IpOrigen), "IpOrigen no debe ser nula ni vacia");
+
+        // 2) Lo crucial: el correo NO aparece en claro en NINGUNA columna de texto de la fila
         var correoEnClaro = correo.ToLowerInvariant();
-        var contextoJson = registro.Contexto ?? "{}";
-        
-        // Busca el correo en claro en el contexto (donde estaria el correoHash)
-        Assert.DoesNotContain(correoEnClaro, contextoJson, StringComparison.OrdinalIgnoreCase);
-        
+        var columnasTexto = new[]
+        {
+            registro.Accion,
+            registro.Entidad,
+            registro.Contexto ?? "",
+            registro.IpOrigen ?? ""
+        };
+        foreach (var columna in columnasTexto)
+        {
+            Assert.DoesNotContain(correoEnClaro, columna, StringComparison.OrdinalIgnoreCase);
+        }
+
         // Verifica que haya un correoHash en el contexto (con hash, no en claro)
+        var contextoJson = registro.Contexto ?? "{}";
         Assert.Contains("correoHash", contextoJson, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -119,7 +130,9 @@ public class AuditoriaIdentidadPruebas : IAsyncLifetime
     /// Seguridad.md, seccion 6: "Eliminacion de cuenta" debe quedar registrado en TBL-28
     /// con usuario y momento.
     /// Nota: esta prueba usa el servicio directamente porque el endpoint HTTP de eliminacion
-    /// requiere autenticacion por cookies que es compleja de configurar en este contexto.
+    /// (DELETE /api/mi/cuenta, API-17) requiere autenticacion por cookies (ClaimsPrincipal con
+    /// UsuarioId) y CSRF; configurar eso en WebApplicationFactory para una sola prueba
+    /// de auditoria añade complejidad desproporcionada sin probar nada distinto del servicio.
     /// </summary>
     [Fact]
     public async Task Eliminar_la_cuenta_queda_registrado()
@@ -160,20 +173,19 @@ public class AuditoriaIdentidadPruebas : IAsyncLifetime
         var resultado = await cuenta.EliminarAsync(usuarioId);
         Assert.True(resultado.Exito, resultado.Mensaje);
 
-        // Verifica la auditoria
+        // Verifica la auditoria: UNA fila para ESTE usuario (ActorId == usuarioId)
         ctx.ChangeTracker.Clear();
 
         var registros = await ctx.Auditoria
-            .Where(a => a.Accion == "eliminar_cuenta")
-            .OrderByDescending(a => a.OcurridoEn)
+            .Where(a => a.Accion == "eliminar_cuenta" && a.ActorId == usuarioId)
             .ToListAsync();
 
-        Assert.NotEmpty(registros);
-        var ultimo = registros.First();
+        Assert.Single(registros);
+        var registro = registros.Single();
 
-        Assert.Equal("eliminar_cuenta", ultimo.Accion);
-        Assert.Equal("usuario", ultimo.Entidad);
-        Assert.Equal(usuarioId, ultimo.ActorId);
-        Assert.True(ultimo.OcurridoEn > DateTime.MinValue);
+        Assert.Equal("eliminar_cuenta", registro.Accion);
+        Assert.Equal("usuario", registro.Entidad);
+        Assert.Equal(usuarioId, registro.ActorId);
+        Assert.True(registro.OcurridoEn > DateTime.MinValue);
     }
 }
