@@ -108,7 +108,7 @@ jobs:
 
       - name: Pruebas de aplicacion
         env:
-          TZ: UTC
+          TZ: Pacific/Kiritimati
         run: dotnet test backend/pruebas/Zass.Aplicacion.Pruebas --no-build
 
       - name: Pruebas de arquitectura
