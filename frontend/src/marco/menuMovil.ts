@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from 'react'
+import { createContext, useContext, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 /**
@@ -8,24 +8,22 @@ import { useLocation } from 'react-router-dom'
  * El menu guarda la RUTA en la que se abrio, y esta abierto solo mientras sigas en ella.
  * Asi se cierra al navegar sin un efecto que ponga estado: el efecto llegaria un
  * fotograma tarde y el menu se veria abierto sobre la pagina nueva.
+ *
+ * El proveedor (un componente) vive aparte, en ProveedorDeMenuMovil.tsx: un archivo que mezcla
+ * componentes con hooks pierde la recarga en caliente de Vite.
  */
-interface MenuMovil {
+export interface MenuMovil {
   abierto: boolean
   alternar: () => void
 }
 
-const Contexto = createContext<MenuMovil | null>(null)
+export const ContextoDelMenuMovil = createContext<MenuMovil | null>(null)
 
-function useEstadoDelMenu(): MenuMovil {
+export function useEstadoDelMenu(): MenuMovil {
   const { pathname } = useLocation()
   const [abiertoEn, setAbiertoEn] = useState<string | null>(null)
   const abierto = abiertoEn === pathname
   return { abierto, alternar: () => setAbiertoEn(abierto ? null : pathname) }
-}
-
-export function ProveedorDeMenuMovil({ children }: { children: ReactNode }) {
-  const menu = useEstadoDelMenu()
-  return <Contexto.Provider value={menu}>{children}</Contexto.Provider>
 }
 
 /**
@@ -33,7 +31,7 @@ export function ProveedorDeMenuMovil({ children }: { children: ReactNode }) {
  * un estado propio: la cabecera sigue funcionando sola, como antes.
  */
 export function useMenuMovil(): MenuMovil {
-  const compartido = useContext(Contexto)
+  const compartido = useContext(ContextoDelMenuMovil)
   const propio = useEstadoDelMenu()
   return compartido ?? propio
 }
