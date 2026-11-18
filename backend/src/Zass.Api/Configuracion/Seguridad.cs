@@ -101,9 +101,9 @@ public static class ConfiguracionDeSeguridad
     }
 
     /// <summary>
-    /// Particionado por IP, 15 minutos de ventana. En produccion los contadores van en
-    /// N-06 Redis, porque la API corre en varias replicas y un contador por proceso
-    /// multiplicaria el limite por el numero de replicas.
+    /// Particionado por IP, 15 minutos de ventana. Los contadores estan en memoria
+    /// (no hay Redis — no existe ningun paquete de Redis en el proyecto) y un contador
+    /// por proceso multiplicaria el limite por el numero de replicas.
     ///
     /// La IP es RemoteIpAddress, que UseForwardedHeaders reescribe SOLO si la conexion directa
     /// viene de un proxy de confianza (ProxiesDeConfianza). Aqui no se lee X-Forwarded-For a
