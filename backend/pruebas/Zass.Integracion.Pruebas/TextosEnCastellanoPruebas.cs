@@ -1,8 +1,13 @@
+using System.Collections.Generic;
 using System.Globalization;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using FluentValidation;
+using Zass.Api.Configuracion;
+using Zass.Api.Endpoints;
+using Zass.Aplicacion.Catalogo;
 
 namespace Zass.Integracion.Pruebas;
 
@@ -204,5 +209,28 @@ public class TextosEnCastellanoPruebas : IAsyncLifetime
         var enIngles = textos.Where(t => Ingles.IsMatch(t)).ToList();
         Assert.True(enIngles.Count == 0,
             $"{contexto} muestra ingles:\n  " + string.Join("\n  ", enIngles));
+    }
+
+    /// <summary>
+    /// T5c: el nombre en castellano de ModoAgenda (definido en TextosEnCastellano.cs)
+    /// aparece en el mensaje de validación cuando está vacío.
+    /// </summary>
+    [Fact]
+    public void ModoAgenda_vacio_muestra_nombre_en_castellano()
+    {
+        TextosEnCastellano.ConfigurarResolvedor();
+        TextosEnCastellano.FijarIdiomaDeValidacion();
+
+        var validador = new ValidadorReemplazarServicios();
+        var cmd = new ReemplazarServiciosHttpCmd(
+            new List<ServicioOfrecidoCmd> {
+                new ServicioOfrecidoCmd(1, null, 60, "", 10000)
+            }.AsReadOnly());
+
+        var result = validador.Validate(cmd);
+
+        Assert.False(result.IsValid);
+        var error = Assert.Single(result.Errors, e => e.PropertyName == "Servicios[0].ModoAgenda" && e.ErrorCode == "NotEmptyValidator");
+        Assert.Contains("modo agenda", error.ErrorMessage, StringComparison.OrdinalIgnoreCase);
     }
 }
