@@ -142,6 +142,15 @@ public class ValidadoresApiPruebas
         Assert.Contains(result.Errors, e => e.PropertyName == "Correo");
     }
 
+    // Un correo vacio tambien lo rechaza EmailAddress, asi que la prueba de arriba no vigila el
+    // NotEmpty: quitarlo no hacia caer nada (mutacion M8 del vigilante, 18-nov). Esta mira la regla.
+    [Fact]
+    public void Correo_vacio_lo_rechaza_la_regla_de_obligatorio_en_reenviar_verificacion()
+    {
+        var result = _reenviarVerificacion.Validate(ReenviarVerificacion(correo: ""));
+        Assert.Contains(result.Errors, e => e.PropertyName == "Correo" && e.ErrorCode == "NotEmptyValidator");
+    }
+
     [Fact]
     public void Correo_sin_formato_se_rechaza_en_reenviar_verificacion()
     {

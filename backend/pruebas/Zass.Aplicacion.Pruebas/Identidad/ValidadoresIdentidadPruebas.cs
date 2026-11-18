@@ -235,6 +235,22 @@ public class ValidadoresIdentidadPruebas
         Assert.Contains(result.Errors, e => e.PropertyName == "Token");
     }
 
+    // El token del enlace tiene tope de 200 (Validadores.cs). Sin estas dos, aflojar ese tope
+    // no hacia caer ninguna prueba (mutacion M3 del vigilante, 18-nov).
+    [Fact]
+    public void Token_de_200_caracteres_pasa_en_restablecer()
+    {
+        var result = _restablecer.Validate(Restablecer(token: new string('a', 200)));
+        Assert.DoesNotContain(result.Errors, e => e.PropertyName == "Token");
+    }
+
+    [Fact]
+    public void Token_de_201_caracteres_se_rechaza_en_restablecer()
+    {
+        var result = _restablecer.Validate(Restablecer(token: new string('a', 201)));
+        Assert.Contains(result.Errors, e => e.PropertyName == "Token" && e.ErrorCode == "MaximumLengthValidator");
+    }
+
     [Fact]
     public void ContrasenaNueva_vacia_se_rechaza()
     {
