@@ -1,5 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#F6C81E"/>
-  <text x="32" y="46" font-family="Montserrat,Arial,sans-serif" font-size="40"
-        font-weight="800" fill="#1A1A1A" text-anchor="middle">Z</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- El mismo dibujo que icono-zass.svg (guia v3), para la pestaña del navegador. -->
+  <rect width="512" height="512" rx="112" fill="#00A6FF"/>
+  <!-- El conjunto (Z + sello) se centra: su caja va de 120 a 472, asi que se corre 40 y 44 px. -->
+  <g transform="translate(-40 -44)">
+    <path d="M120 128H352V184L200 328H352V384H120V328L272 184H120Z" fill="#111827"/>
+    <circle cx="372" cy="372" r="92" fill="#FFB800" stroke="#00A6FF" stroke-width="16"/>
+    <rect x="358" y="314" width="28" height="70" rx="14" fill="#111827"/>
+    <circle cx="372" cy="414" r="15" fill="#111827"/>
+  </g>
 </svg>
