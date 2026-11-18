@@ -23,6 +23,8 @@ const TRAZOS = {
   llave: 'M14 10a4 4 0 1 1 3.5 4L12 19.5H9V16.5L7.5 15 10 12.5A4 4 0 0 1 14 10z',
   compartir: 'M12 15V3.5M7.5 8L12 3.5 16.5 8M5 12v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7',
   reloj: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7.5V12l3 2',
+  casa: 'M4 10.5L12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1v-8.5z',
+  calendario: 'M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM4 10.5h16M8.5 3.5v4M15.5 3.5v4',
 } as const
 
 export type NombreDeIcono = keyof typeof TRAZOS
