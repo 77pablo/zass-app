@@ -40,7 +40,7 @@ de variables y de flujos.
 1. Lanza a mano el flujo «Despertar API» desde **Actions** del repositorio (tiene `workflow_dispatch`).
    (fuente: `.github/workflows/despertar-api.yml`, línea 10)
 2. Mira la corrida: pide `/api/salud` y anota el código HTTP y el tiempo. Si dice `200`, se despertó.
-   (fuente: `.github/workflows/despertar-api.yml`, líneas 20–27)
+   (fuente: `.github/workflows/despertar-api.yml`, líneas 20–28)
 3. El despertador **no arregla la causa**: si Render vuelve a dormir el servicio, vuelve a pasar.
    Confirma que el servicio siga vivo en el panel de Render. (fuente: `DESPLIEGUE-API.md`, sección 3.3, punto 4)
 4. Si el servicio en Render cayó o no arranca, hay que **volver a desplegarlo a mano**: Render no
