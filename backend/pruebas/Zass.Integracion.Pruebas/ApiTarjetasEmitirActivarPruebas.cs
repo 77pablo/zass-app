@@ -103,6 +103,7 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
                 var rubro = await ctx.Rubros.FirstAsync(r => r.Activo);
                 // Verificar si ya tiene perfil (de corrida anterior no limpiada)
                 var perfilExistente = await ctx.PerfilesPrestador.SingleOrDefaultAsync(p => p.UsuarioId == usuario.Id);
+                var slugEsperado = sufijo == "prestador" ? _slug : $"apitj-{sufijo}-{_marca}";
                 if (perfilExistente == null)
                 {
                     var perfil = new PerfilPrestador
@@ -110,7 +111,7 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
                         UsuarioId = usuario.Id,
                         RubroId = rubro.Id,
                         NombrePublico = "Tarjetas " + sufijo,
-                        Slug = sufijo == "prestador" ? _slug : $"apitj-{sufijo}-{_marca}",
+                        Slug = slugEsperado,
                         Estado = EstadoPerfil.Publicado,
                         PublicadoEn = DateTime.UtcNow.AddDays(-1),
                     };
@@ -118,9 +119,10 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
                 }
                 else
                 {
-                    // El registro crea el perfil en Borrador; aseguramos que quede Publicado
+                    // El registro crea el perfil en Borrador; aseguramos que quede Publicado y con el slug correcto
                     perfilExistente.Estado = EstadoPerfil.Publicado;
                     perfilExistente.PublicadoEn = DateTime.UtcNow.AddDays(-1);
+                    perfilExistente.Slug = slugEsperado;
                 }
                 await ctx.SaveChangesAsync();
             }
