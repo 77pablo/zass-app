@@ -60,16 +60,20 @@ public sealed class RepositorioTarjetasEfCore : IRepositorioTarjetas
 
     /// <summary>
     /// API-55. SELECT ... FOR UPDATE sobre la fila de la tarjeta.
-    /// Incluye el perfil. Solo devuelve si esta en estado Emitida.
+    /// Solo devuelve si esta en estado Emitida. El perfil se carga aparte para
+    /// evitar que el Include genere una consulta aparte sin el bloqueo.
     /// </summary>
     public async Task<Tarjeta?> TomarParaActivarAsync(string urlEstable, CancellationToken ct = default)
     {
-        // Usar SQL crudo solo para el bloqueo FOR UPDATE sobre la tabla tarjetas,
-        /// luego incluir el perfil via EF Core para que el mapeo funcione correctamente.
-        return await _ctx.Tarjetas
+        var tarjeta = await _ctx.Tarjetas
             .FromSqlInterpolated($"SELECT t.* FROM tarjetas t WHERE t.url_estable = {urlEstable} AND t.estado = 'Emitida' FOR UPDATE")
-            .Include(t => t.PerfilPrestador)
             .FirstOrDefaultAsync(ct);
+        if (tarjeta is not null)
+        {
+            // Cargar el perfil explícitamente dentro de la misma transacción
+            await _ctx.Entry(tarjeta).Reference(t => t.PerfilPrestador).LoadAsync(ct);
+        }
+        return tarjeta;
     }
 
     /// <summary>
