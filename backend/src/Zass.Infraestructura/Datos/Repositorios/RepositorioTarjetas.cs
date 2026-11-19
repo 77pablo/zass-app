@@ -64,8 +64,10 @@ public sealed class RepositorioTarjetasEfCore : IRepositorioTarjetas
     /// </summary>
     public async Task<Tarjeta?> TomarParaActivarAsync(string urlEstable, CancellationToken ct = default)
     {
+        // Usar SQL crudo solo para el bloqueo FOR UPDATE sobre la tabla tarjetas,
+        /// luego incluir el perfil via EF Core para que el mapeo funcione correctamente.
         return await _ctx.Tarjetas
-            .FromSqlInterpolated($"SELECT t.*, p.* FROM tarjetas t LEFT JOIN perfiles_prestador p ON t.perfil_prestador_id = p.id WHERE t.url_estable = {urlEstable} AND t.estado = 'Emitida' FOR UPDATE")
+            .FromSqlInterpolated($"SELECT t.* FROM tarjetas t WHERE t.url_estable = {urlEstable} AND t.estado = 'Emitida' FOR UPDATE")
             .Include(t => t.PerfilPrestador)
             .FirstOrDefaultAsync(ct);
     }
