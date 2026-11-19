@@ -1,4 +1,6 @@
+using System.Security.Cryptography;
 using System.Text.RegularExpressions;
+using Zass.Aplicacion.Comun;
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
 using Zass.Dominio.Tarjetas;
@@ -6,8 +8,7 @@ using Zass.Dominio.Tarjetas;
 namespace Zass.Aplicacion.Tarjetas;
 
 /// <summary>
-/// MOD-12 - S6. CS-18 (API-54) y lo del dueno: listar, dar de baja y ver escaneos (API-56 a
-/// API-58). La emision y la activacion (API-59, API-55) todavia no.
+/// MOD-12 - S6. CS-18 (API-54), API-55 (Activar), API-56 a API-58 (CU-20), API-59 (Emitir).
 /// </summary>
 public sealed class ServicioTarjetas : IServicioTarjetas
 {
@@ -18,17 +19,30 @@ public sealed class ServicioTarjetas : IServicioTarjetas
     private static readonly Regex FormaDeUrlEstable = new(
         "^[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}$", RegexOptions.CultureInvariant);
 
+    /// <summary>Formato del codigo de activacion: 3 grupos de 4 separados por guion.</summary>
+    private static readonly Regex FormaDeCodigo = new(
+        "^[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}$", RegexOptions.CultureInvariant);
+
     private static readonly EscaneoResuelto NoValida = new(DestinoTarjeta.NoValida, null);
 
     private readonly IRepositorioTarjetas _repo;
     private readonly IUnidadDeTrabajo _trabajo;
     private readonly IRelojSistema _reloj;
+    private readonly IAuditor _auditor;
+    private readonly IGeneradorSecretos _secretos;
 
-    public ServicioTarjetas(IRepositorioTarjetas repo, IUnidadDeTrabajo trabajo, IRelojSistema reloj)
+    public ServicioTarjetas(
+        IRepositorioTarjetas repo,
+        IUnidadDeTrabajo trabajo,
+        IRelojSistema reloj,
+        IAuditor auditor,
+        IGeneradorSecretos secretos)
     {
         _repo = repo;
         _trabajo = trabajo;
         _reloj = reloj;
+        _auditor = auditor;
+        _secretos = secretos;
     }
 
     public async Task<EscaneoResuelto> RegistrarEscaneoAsync(
@@ -118,4 +132,112 @@ public sealed class ServicioTarjetas : IServicioTarjetas
     /// <summary>Sin reemplazo todavia (pendiente): para el dueno, una reemplazada es una desactivada.</summary>
     private static string EstadoVisible(EstadoTarjeta estado) =>
         estado == EstadoTarjeta.Reemplazada ? nameof(EstadoTarjeta.Desactivada) : estado.ToString();
+
+    // ------------------------------------------------------------- API-59 (CU-19, CU-20)
+    /// <summary>
+    /// API-59 POST /api/interno/tarjetas. Emite una tarjeta nueva con su codigo de activacion.
+    /// Devuelve el codigo EN CLARO una sola vez (201). Nunca se puede volver a leer.
+    /// Tasa S (Sensible). Requiere rol Administrador.
+    /// </summary>
+    public async Task<Resultado<EmitirTarjetaResultado>> EmitirAsync(CancellationToken ct = default)
+    {
+        var codigo = Tarjeta.GenerarCodigo();
+        var hash = _secretos.HashToken(codigo);
+        var venceEn = _reloj.Ahora.AddDays(30);
+
+        var tarjeta = new Tarjeta
+        {
+            UrlEstable = Tarjeta.GenerarUrlEstable(),
+            HashCodigoActivacion = hash,
+            CodigoVenceEn = venceEn,
+            Estado = EstadoTarjeta.Emitida,
+            EmitidaEn = _reloj.Ahora,
+        };
+
+        _repo.Agregar(tarjeta);
+        await _trabajo.GuardarAsync(ct);
+
+        // Auditoria SIN el codigo en claro
+        _auditor.Registrar(new RegistroAuditoria
+        {
+            Accion = "TarjetaEmitida",
+            Entidad = "Tarjeta",
+            EntidadId = tarjeta.Id,
+            Contexto = $"UrlEstable={tarjeta.UrlEstable}, VenceEn={venceEn:O}",
+            OcurridoEn = _reloj.Ahora,
+        });
+
+        return Resultado.Ok(new EmitirTarjetaResultado(tarjeta.UrlEstable, codigo, venceEn));
+    }
+
+    // ------------------------------------------------------------- API-55 (CU-19)
+    /// <summary>
+    /// API-55 POST /t/{segmento}/activar. Activa la tarjeta con codigo de un solo uso.
+    /// Implementa CC-05: consumo atomico en la misma transaccion con bloqueo de fila.
+    /// Tasa A (Autenticacion). Requiere sesion prestador con perfil publicado.
+    /// </summary>
+    public async Task<Resultado<ActivarTarjetaResultado>> ActivarAsync(
+        string segmento, string codigo, Guid perfilPrestadorId, string? ipOrigen, CancellationToken ct = default)
+    {
+        // Validar formato del codigo antes de ir a la base
+        var codigoNorm = (codigo ?? "").Trim().ToUpperInvariant();
+        if (!FormaDeCodigo.IsMatch(codigoNorm))
+            return Resultado.Falla<ActivarTarjetaResultado>(Fallas.ReglaDeNegocio, "El código tiene 12 caracteres.");
+
+        var urlEstable = (segmento ?? "").Trim().ToUpperInvariant();
+        if (urlEstable.Length != 9 || !FormaDeUrlEstable.IsMatch(urlEstable))
+            return Resultado.Falla<ActivarTarjetaResultado>(Fallas.NoEncontrado, "Tarjeta no válida.");
+
+        // Tomar la fila CON BLOQUEO (CC-05) - solo si esta en estado Emitida
+        var tarjeta = await _repo.TomarParaActivarAsync(urlEstable, ct);
+        if (tarjeta is null)
+        {
+            // Tarjeta no existe, no esta en Emitida, o ya fue tomada por otra transaccion
+            return Resultado.Falla<ActivarTarjetaResultado>(Fallas.NoEncontrado, "Tarjeta no válida.");
+        }
+
+        // Verificar vigencia del codigo (30 dias)
+        if (tarjeta.CodigoVenceEn.HasValue && _reloj.Ahora > tarjeta.CodigoVenceEn.Value)
+        {
+            // Codigo vencido - MISMO mensaje que codigo incorrecto (no revelar cual)
+            return Resultado.Falla<ActivarTarjetaResultado>(Fallas.ReglaDeNegocio, "El código no es válido.");
+        }
+
+        // Verificar hash con tiempo constante
+        var hashRecibido = _secretos.HashToken(codigoNorm);
+        if (!CryptographicOperations.FixedTimeEquals(
+                System.Text.Encoding.UTF8.GetBytes(hashRecibido),
+                System.Text.Encoding.UTF8.GetBytes(tarjeta.HashCodigoActivacion!)))
+        {
+            // Codigo incorrecto - MISMO mensaje
+            return Resultado.Falla<ActivarTarjetaResultado>(Fallas.ReglaDeNegocio, "El código no es válido.");
+        }
+
+        // TODO: Verificar intentos fallidos y bloqueo por IP (4B.5) - pendiente
+
+        // Consumir el codigo y activar la tarjeta EN LA MISMA TRANSACCION
+        tarjeta.PerfilPrestadorId = perfilPrestadorId;
+        tarjeta.Estado = EstadoTarjeta.Activa;
+        tarjeta.ActivadaEn = _reloj.Ahora;
+        tarjeta.HashCodigoActivacion = null; // Consumo atomico - borrar el hash
+
+        await _trabajo.GuardarAsync(ct);
+
+        // Auditoria
+        _auditor.Registrar(new RegistroAuditoria
+        {
+            ActorId = perfilPrestadorId,
+            Accion = "TarjetaActivada",
+            Entidad = "Tarjeta",
+            EntidadId = tarjeta.Id,
+            Contexto = $"UrlEstable={tarjeta.UrlEstable}",
+            IpOrigen = ipOrigen,
+            OcurridoEn = _reloj.Ahora,
+        });
+
+        // Notificacion (A-08) - pendiente en otra tarea
+        // var slug = tarjeta.PerfilPrestador?.Slug; // necesitamos el slug
+
+        return Resultado.Ok(new ActivarTarjetaResultado("Tarjeta activada", $"/prestadores/{tarjeta.PerfilPrestador!.Slug}"));
+    }
 }

@@ -31,6 +31,8 @@ public static class Politicas
 {
     public const string Verificador = "verificador";
     public const string RolVerificador = "verificador";
+    public const string Administrador = "administrador";
+    public const string RolAdministrador = "administrador";
 }
 
 public static class ConfiguracionDeSeguridad
@@ -153,7 +155,10 @@ public static class ConfiguracionDeSeguridad
         // Verificador es lo unico que protege /api/interno: un buscador o un prestador autenticado
         // recibe 403 antes de que el endpoint ejecute nada, ni siquiera para listar la cola.
         servicios.AddAuthorization(opciones =>
-            opciones.AddPolicy(Politicas.Verificador, p => p.RequireRole(Politicas.RolVerificador)));
+            {
+                opciones.AddPolicy(Politicas.Verificador, p => p.RequireRole(Politicas.RolVerificador));
+                opciones.AddPolicy(Politicas.Administrador, p => p.RequireRole(Politicas.RolAdministrador));
+            });
         servicios.AddAntiforgery(opciones =>
         {
             opciones.HeaderName = CabeceraCsrf;

@@ -57,4 +57,19 @@ public sealed class RepositorioTarjetasEfCore : IRepositorioTarjetas
             nfc?.En30 ?? 0, qr?.En30 ?? 0,
             nfc?.Total ?? 0, qr?.Total ?? 0);
     }
+
+    /// <summary>
+    /// API-55. SELECT ... FOR UPDATE sobre la fila de la tarjeta.
+    /// Incluye el perfil. Solo devuelve si esta en estado Emitida.
+    /// </summary>
+    public async Task<Tarjeta?> TomarParaActivarAsync(string urlEstable, CancellationToken ct = default)
+    {
+        return await _ctx.Tarjetas
+            .FromSqlInterpolated($"SELECT t.*, p.* FROM tarjetas t LEFT JOIN perfiles_prestador p ON t.perfil_prestador_id = p.id WHERE t.url_estable = {urlEstable} AND t.estado = 'Emitida' FOR UPDATE")
+            .Include(t => t.PerfilPrestador)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    /// <summary>API-59. Agrega una tarjeta nueva en estado Emitida.</summary>
+    public void Agregar(Tarjeta tarjeta) => _ctx.Tarjetas.Add(tarjeta);
 }
