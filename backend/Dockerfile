@@ -30,11 +30,11 @@ COPY --from=compilar /publicado .
 ENV ASPNETCORE_ENVIRONMENT=Production \
     DOTNET_EnableDiagnostics=0
 
-# Usuario sin privilegios. La imagen oficial de .NET 8 ya trae el usuario «app».
+# Usuario sin privilegios. La imagen oficial de .NET 10 ya trae el usuario «app».
 USER app
 
 # Render inyecta PORT y espera que el servicio escuche ahí. Fuera de Render (docker run sin
-# PORT) se usa 8080. ASPNETCORE_HTTP_PORTS es lo que lee Kestrel en .NET 8; se fija al
+# PORT) se usa 8080. ASPNETCORE_HTTP_PORTS es lo que lee Kestrel en .NET 10; se fija al
 # arrancar porque PORT no existe en el momento de construir la imagen.
 # Solo HTTP: el TLS lo termina Render/Cloudflare. `exec` para que dotnet reciba SIGTERM.
 EXPOSE 8080
