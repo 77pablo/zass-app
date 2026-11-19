@@ -77,6 +77,60 @@ describe('la barra inferior del telefono', () => {
   })
 })
 
+describe('la barra y la hoja «Más» con el teclado', () => {
+  it('la capsula va antes del contenido: con Tab se llega a ella antes que a la pagina y al pie', () => {
+    pintar()
+    const barra = screen.getByRole('navigation', { name: 'Accesos rápidos' })
+    const principal = document.getElementById('contenido')!
+    // En escritorio la capsula esta arriba: el orden del teclado tiene que ser el que se ve.
+    expect(barra.compareDocumentPosition(principal) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('al abrir, el Tab siguiente a «Más» entra en la hoja (no salta a la pagina)', async () => {
+    const u = userEvent.setup()
+    const barra = pintar()
+    await u.click(barra.getByRole('button', { name: 'Más' }))
+    await u.tab()
+    const menu = document.getElementById('menu-movil')!
+    expect(menu).toContainElement(document.activeElement as HTMLElement)
+    expect(document.activeElement).toHaveAccessibleName('Buscar')
+  })
+
+  it('Escape la cierra y devuelve el foco a «Más»', async () => {
+    const u = userEvent.setup()
+    const barra = pintar()
+    const mas = barra.getByRole('button', { name: 'Más' })
+    await u.click(mas)
+    await u.tab()
+    await u.keyboard('{Escape}')
+    expect(document.getElementById('menu-movil')).toBeNull()
+    expect(mas).toHaveAttribute('aria-expanded', 'false')
+    expect(mas).toHaveFocus()
+  })
+
+  it('un toque fuera la cierra; un toque dentro no', async () => {
+    const u = userEvent.setup()
+    const barra = pintar()
+    await u.click(barra.getByRole('button', { name: 'Más' }))
+    const menu = document.getElementById('menu-movil')!
+    await u.pointer({ keys: '[MouseLeft]', target: menu })
+    expect(document.getElementById('menu-movil')).not.toBeNull()
+
+    await u.click(screen.getByRole('heading', { name: 'Portada' }))
+    expect(document.getElementById('menu-movil')).toBeNull()
+  })
+
+  it('cerrada, Escape no hace nada ni roba el foco', async () => {
+    const u = userEvent.setup()
+    pintar()
+    const portada = screen.getByRole('heading', { name: 'Portada' })
+    portada.tabIndex = -1
+    portada.focus()
+    await u.keyboard('{Escape}')
+    expect(portada).toHaveFocus()
+  })
+})
+
 describe('el titulo compacto (estilo iPhone)', () => {
   // jsdom no trae IntersectionObserver: uno de mentira que guarda a quien observa para avisarle.
   let avisar: ((dentro: boolean, arriba: number) => void) | null = null

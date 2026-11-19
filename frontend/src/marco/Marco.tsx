@@ -50,13 +50,17 @@ export function Marco() {
   return (
     <ProveedorDeMenuMovil>
       <a className="saltar" href="#contenido">Saltar al contenido</a>
+      {/* La capsula de pestañas va ANTES del contenido, y la cabecera (que guarda la hoja «Mas»)
+          justo despues de ella: asi el orden del teclado es el que se ve en escritorio (la capsula
+          arriba) y el Tab que sigue a «Mas» entra en la hoja. Las dos son position: fixed, el
+          orden del DOM no mueve nada en pantalla. */}
+      <BarraInferior />
       <Cabecera />
       <TituloCompacto />
       <main id="contenido" tabIndex={-1} ref={principal}>
         <Outlet />
       </main>
       <Pie />
-      <BarraInferior />
     </ProveedorDeMenuMovil>
   )
 }
