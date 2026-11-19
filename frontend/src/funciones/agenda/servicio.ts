@@ -1,4 +1,5 @@
 import { enviar, obtener } from '../../api/cliente'
+import { capitalizar } from '../../marco/texto'
 
 /** Los enums viajan como texto (JsonStringEnumConverter), no como numero. */
 export type EstadoDeCita =
@@ -209,6 +210,16 @@ export function diaDeChile(iso: string): string {
     .format(new Date(iso))
 }
 
+/**
+ * El dia como TITULO de un grupo: «Sábado, 21 de noviembre». En castellano solo va con mayuscula
+ * la primera letra; el «de» y el mes van en minuscula. Antes lo hacia el CSS con
+ * `text-transform: capitalize`, que sube TODAS las palabras («21 De Noviembre»). `diaDeChile`
+ * sigue en minuscula porque tambien va a media frase («desde el sábado, 21 de noviembre»).
+ */
+export function tituloDeDia(iso: string): string {
+  return capitalizar(diaDeChile(iso))
+}
+
 /** `2026-11-09`, el dia del calendario CHILENO: sirve de clave para agrupar bloques por dia. */
 export function claveDeDia(iso: string): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: ZONA, year: 'numeric', month: '2-digit', day: '2-digit' })
@@ -222,7 +233,7 @@ export function porDia(bloques: Bloque[]): { dia: string; titulo: string; bloque
     const k = claveDeDia(b.inicioEn)
     grupos.set(k, [...(grupos.get(k) ?? []), b])
   }
-  return [...grupos].map(([dia, bs]) => ({ dia, titulo: diaDeChile(bs[0].inicioEn), bloques: bs }))
+  return [...grupos].map(([dia, bs]) => ({ dia, titulo: tituloDeDia(bs[0].inicioEn), bloques: bs }))
 }
 
 /** Cuantos ms hay que sumarle a un instante UTC para tener la hora de pared de Chile en ese momento. */
@@ -274,7 +285,7 @@ export function agruparPorDiaChileno<T extends { inicioEn: string }>(
     const k = claveDeDia(it.inicioEn)
     grupos.set(k, [...(grupos.get(k) ?? []), it])
   }
-  const dias = [...grupos].map(([dia, xs]) => ({ dia, titulo: diaDeChile(xs[0].inicioEn), items: xs }))
+  const dias = [...grupos].map(([dia, xs]) => ({ dia, titulo: tituloDeDia(xs[0].inicioEn), items: xs }))
   if (orden === 'asc') return dias
   return dias.reverse().map((d) => ({ ...d, items: [...d.items].reverse() }))
 }
