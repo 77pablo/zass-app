@@ -29,6 +29,9 @@ public sealed class AplicacionConProxy : WebApplicationFactory<Program>
     private readonly Dictionary<string, string?> _ajustes;
     private readonly string _entorno;
 
+    private const string SecretoAvisoValido =
+        "secreto-de-prueba-del-aviso-0123456789ab"; // 40 caracteres
+
     public AplicacionConProxy(
         string? proxies = null, int limitePublico = 10_000, int? saltos = null,
         string? cadena = null, string entorno = "Development",
@@ -40,6 +43,7 @@ public sealed class AplicacionConProxy : WebApplicationFactory<Program>
             ["Zass:CadenaConexion"] = cadena ?? Conexion.Cadena,
             ["Zass:ClaveDireccionesBase64"] =
                 Convert.ToBase64String(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray()),
+            ["Zass:SecretoAvisoPagos"] = SecretoAvisoValido,
             ["Zass:Tasa:A"] = "10000", ["Zass:Tasa:G"] = "10000", ["Zass:Tasa:S"] = "10000",
             ["Zass:Tasa:P"] = limitePublico.ToString(),
             // Contraseñas filtradas: desactivado en pruebas para evitar llamadas a HIBP y usar el adaptador nulo.
@@ -366,6 +370,7 @@ public class ValidacionDeArranquePruebas
 {
     private const string Clave32 = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
     private const string CadenaSegura = "Host=db.ejemplo.neon.tech;Database=zass;Username=zass;Password=SECRETO-XYZ-123;SSL Mode=Require";
+    private const string SecretoAvisoValido = "secreto-de-prueba-del-aviso-0123456789ab"; // 40 caracteres
 
     private static IConfiguration Config(params (string, string?)[] valores) =>
         new ConfigurationBuilder().AddInMemoryCollection(
@@ -377,6 +382,7 @@ public class ValidacionDeArranquePruebas
         {
             ["Zass:CadenaConexion"] = CadenaSegura,
             ["Zass:ClaveDireccionesBase64"] = Clave32,
+            ["Zass:SecretoAvisoPagos"] = SecretoAvisoValido,
         };
         foreach (var (k, v) in cambios) d[k] = v;
         return new ConfigurationBuilder().AddInMemoryCollection(d).Build();
@@ -385,6 +391,21 @@ public class ValidacionDeArranquePruebas
     [Fact]
     public void Una_configuracion_completa_de_produccion_no_da_problemas() =>
         Assert.Empty(ValidacionDeArranque.Validar(Buena(), esProductivo: true));
+
+    [Fact]
+    public void En_produccion_sin_el_secreto_el_arranque_falla()
+    {
+        // Production SIN el secreto y CON todo lo demas -> el arranque falla con el mensaje
+        // "Falta Zass:SecretoAvisoPagos"
+        using var app = new AplicacionConProxy(
+            entorno: "Production",
+            cadena: CadenaSegura,
+            extra: new() { ["Zass:SecretoAvisoPagos"] = "" });
+
+        var error = Assert.ThrowsAny<Exception>(() => app.CreateClient());
+
+        Assert.Contains("Falta Zass:SecretoAvisoPagos", error.Message);
+    }
 
     [Fact]
     public void Falta_la_cadena_de_conexion() =>

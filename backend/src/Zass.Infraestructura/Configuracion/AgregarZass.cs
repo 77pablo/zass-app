@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Security.Cryptography;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -53,6 +54,13 @@ public sealed class OpcionesZass
     public string? UrlPublica { get; set; }
 
     /// <summary>
+    /// Secreto HMAC-SHA256 para firmar y verificar los avisos de pago (API-70). En produccion
+    /// vive en las variables de entorno de Render; en desarrollo, se genera uno aleatorio por
+    /// proceso. Minimo 32 caracteres. Config: Zass:SecretoAvisoPagos, env: Zass__SecretoAvisoPagos.
+    /// </summary>
+    public string? SecretoAvisoPagos { get; set; }
+
+    /// <summary>
     /// Si es true, consulta Have I Been Pwned (rango k-anonimo) antes de aceptar una contrasena
     /// nueva. En produccion debe ser true; en desarrollo y pruebas false para no salir a internet.
     /// Por defecto true (se sobreescribe en appsettings.Development.json).
@@ -82,6 +90,47 @@ public sealed class OpcionesZass
     }
 }
 
+/// <summary>
+/// Valida el secreto de firma de avisos de pago. En produccion exige 32+ caracteres;
+/// en otros entornos genera uno aleatorio y avisa.
+/// </summary>
+public sealed class ValidadorOpcionesPagos : IValidateOptions<OpcionesZass>
+{
+    private readonly IHostEnvironment _entorno;
+    private readonly ILogger<ValidadorOpcionesPagos> _registro;
+
+    public ValidadorOpcionesPagos(IHostEnvironment entorno, ILogger<ValidadorOpcionesPagos> registro)
+    {
+        _entorno = entorno;
+        _registro = registro;
+    }
+
+    public ValidateOptionsResult Validate(string? name, OpcionesZass o)
+    {
+        var fallos = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(o.SecretoAvisoPagos) || o.SecretoAvisoPagos.Length < 32)
+        {
+            if (_entorno.IsProduction())
+            {
+                fallos.Add("Falta Zass:SecretoAvisoPagos (32 caracteres o mas)");
+            }
+            else
+            {
+                // En desarrollo/Staging: generar uno aleatorio por proceso y avisar
+                var bytes = new byte[32];
+                RandomNumberGenerator.Fill(bytes);
+                o.SecretoAvisoPagos = Convert.ToBase64String(bytes);
+                _registro.LogWarning(
+                    "Zass:SecretoAvisoPagos no configurado o muy corto; se genero uno aleatorio para este proceso. "
+                    + "En produccion debe ponerse explicitamente (32+ caracteres).");
+            }
+        }
+
+        return fallos.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(fallos);
+    }
+}
+
 public static class RegistroDeServicios
 {
     /// <summary>
@@ -108,7 +157,7 @@ public static class RegistroDeServicios
         // Las opciones se leen al RESOLVER, no al registrar. Leerlas aqui mismo
         // congelaria la configuracion que existia en este instante, y se perderia
         // cualquier fuente agregada despues: las variables de entorno de Render en
-        // produccion, y los ajustes de las pruebas, que se inyectan luego de que
+        // produccion y los ajustes de las pruebas, que se inyectan luego de que
         // Program.cs llama a este metodo.
         servicios.AddDbContext<ZassDbContext>((sp, o) =>
             o.UseNpgsql(sp.GetRequiredService<IOptions<OpcionesZass>>().Value.CadenaConexion));
@@ -295,6 +344,10 @@ public static class RegistroDeServicios
             .Bind(configuracion.GetSection(OpcionesCorreo.Seccion))
             .ValidateOnStart();
         servicios.AddSingleton<IValidateOptions<OpcionesCorreo>, ValidadorOpcionesCorreo>();
+
+        // --- Validacion del secreto de avisos de pago ---
+        // En produccion exige 32+ caracteres; en desarrollo/Staging genera uno aleatorio.
+        servicios.AddSingleton<IValidateOptions<OpcionesZass>, ValidadorOpcionesPagos>();
         servicios.AddSingleton<IEnviadorDeCorreo>(sp =>
         {
             var o = sp.GetRequiredService<IOptions<OpcionesCorreo>>().Value;
