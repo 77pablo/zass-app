@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -55,6 +56,62 @@ public sealed class Aplicacion : WebApplicationFactory<Program>
         constructor.UseEnvironment(Environments.Development);
         constructor.ConfigureAppConfiguration(
             (_, config) => config.AddInMemoryCollection(_ajustes));
+    }
+}
+
+/// <summary>
+/// Variante de Aplicacion que asegura una IP de origen en el entorno de pruebas.
+/// Necesaria para que las pruebas de auditoria (T32) puedan verificar IpOrigen.
+/// En produccion, UseForwardedHeaders pone la IP real detras del proxy de confianza.
+/// Usa IStartupFilter para insertar el middleware en el punto correcto de la tuberia.
+/// </summary>
+public sealed class AplicacionParaAuditoria : WebApplicationFactory<Program>
+{
+    private readonly Dictionary<string, string?> _ajustes;
+
+    public AplicacionParaAuditoria(
+        int? limiteAutenticacion = null, bool permitirSinDocumentos = true, int? limiteSensible = null,
+        int? limitePublico = null)
+    {
+        _ajustes = new Dictionary<string, string?>
+        {
+            ["Zass:CadenaConexion"] = Conexion.Cadena,
+            ["Zass:ClaveDireccionesBase64"] =
+                Convert.ToBase64String(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray()),
+
+            ["Zass:Tasa:A"] = (limiteAutenticacion ?? 10_000).ToString(),
+            ["Zass:Tasa:G"] = "10000",
+            ["Zass:Tasa:P"] = (limitePublico ?? 10_000).ToString(),
+            ["Zass:Tasa:S"] = (limiteSensible ?? 10_000).ToString(),
+
+            ["Zass:Verificacion:PermitirSinDocumentos"] = permitirSinDocumentos ? "true" : "false",
+            ["Zass:Fondo:Activo"] = "false",
+        };
+    }
+
+    protected override void ConfigureWebHost(IWebHostBuilder constructor)
+    {
+        constructor.UseEnvironment(Environments.Development);
+        constructor.ConfigureAppConfiguration(
+            (_, config) => config.AddInMemoryCollection(_ajustes));
+        constructor.ConfigureServices(s => s.AddTransient<IStartupFilter, FiltroIpDePrueba>());
+    }
+
+    private sealed class FiltroIpDePrueba : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> siguiente) => app =>
+        {
+            app.Use(async (http, sig) =>
+            {
+                if (http.Connection.RemoteIpAddress is null)
+                {
+                    http.Connection.RemoteIpAddress = IPAddress.Parse("127.0.0.1");
+                }
+                await sig();
+            });
+
+            siguiente(app);
+        };
     }
 }
 

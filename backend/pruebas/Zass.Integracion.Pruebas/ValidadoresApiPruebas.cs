@@ -260,7 +260,7 @@ public class ValidadoresApiPruebas
     {
         var result = _reemplazarServicios.Validate(ReemplazarServicios(Servicio(modoAgenda: "")));
         Assert.False(result.IsValid);
-        Assert.Contains(result.Errors, e => e.ErrorMessage.Contains("Modo Agenda"));
+        Assert.Contains(result.Errors, e => e.PropertyName == "Servicios[0].ModoAgenda" && e.ErrorCode == "NotEmptyValidator");
     }
 
     [Fact]
@@ -275,7 +275,7 @@ public class ValidadoresApiPruebas
     {
         var result = _reemplazarServicios.Validate(ReemplazarServicios(Servicio(nombreNuevo: new string('a', 201))));
         Assert.False(result.IsValid);
-        Assert.Contains(result.Errors, e => e.ErrorMessage.Contains("Nombre Nuevo"));
+        Assert.Contains(result.Errors, e => e.PropertyName == "Servicios[0].NombreNuevo" && e.ErrorCode == "MaximumLengthValidator");
     }
 
     [Fact]
@@ -290,7 +290,7 @@ public class ValidadoresApiPruebas
     {
         var result = _reemplazarServicios.Validate(ReemplazarServicios(Servicio(modoAgenda: new string('a', 21))));
         Assert.False(result.IsValid);
-        Assert.Contains(result.Errors, e => e.ErrorMessage.Contains("Modo Agenda"));
+        Assert.Contains(result.Errors, e => e.PropertyName == "Servicios[0].ModoAgenda" && e.ErrorCode == "MaximumLengthValidator");
     }
 
     #endregion
