@@ -808,6 +808,12 @@ public interface IRepositorioTarjetas
     /// </summary>
     Task<Tarjeta?> TomarParaActivarAsync(string urlEstable, CancellationToken ct = default);
 
+    /// <summary>
+    /// Comprueba si existe una tarjeta con esa URL estable (cualquier estado).
+    /// Usado para distinguir "no existe" de "ya activada/vencida" sin revelar cual.
+    /// </summary>
+    Task<bool> ExistePorUrlEstableAsync(string urlEstable, CancellationToken ct = default);
+
     /// <summary>Sin identidad del visitante (R-20): la entidad no tiene donde guardarla.</summary>
     void AgregarEscaneo(EscaneoTarjeta escaneo);
 

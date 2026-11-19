@@ -194,7 +194,16 @@ public sealed class ServicioTarjetas : IServicioTarjetas
         var tarjeta = await _repo.TomarParaActivarAsync(urlEstable, ct);
         if (tarjeta is null)
         {
-            // Tarjeta no existe, no esta en Emitida, o ya fue tomada por otra transaccion
+            // Distinguir "no existe" de "ya no esta en Emitida (ya activada/vencida)"
+            // para no revelar informacion: mismo error que codigo incorrecto.
+            var existe = await _repo.ExistePorUrlEstableAsync(urlEstable, ct);
+            if (existe)
+            {
+                // La tarjeta existe pero ya no esta en Emitida (ya activada, vencida, etc.)
+                // Mismo mensaje que codigo incorrecto (no revelar cual)
+                return Resultado.Falla<ActivarTarjetaResultado>(Fallas.ReglaDeNegocio, "El código no es válido.");
+            }
+            // Tarjeta no existe
             return Resultado.Falla<ActivarTarjetaResultado>(Fallas.NoEncontrado, "Tarjeta no válida.");
         }
 

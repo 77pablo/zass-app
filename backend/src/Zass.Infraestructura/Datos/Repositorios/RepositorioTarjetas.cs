@@ -72,6 +72,15 @@ public sealed class RepositorioTarjetasEfCore : IRepositorioTarjetas
             .FirstOrDefaultAsync(ct);
     }
 
+    /// <summary>
+    /// Comprueba si existe una tarjeta con esa URL estable (cualquier estado).
+    /// Usado para distinguir "no existe" de "ya activada/vencida" sin revelar cual.
+    /// </summary>
+    public async Task<bool> ExistePorUrlEstableAsync(string urlEstable, CancellationToken ct = default)
+    {
+        return await _ctx.Tarjetas.AnyAsync(t => t.UrlEstable == urlEstable, ct);
+    }
+
     /// <summary>API-59. Agrega una tarjeta nueva en estado Emitida.</summary>
     public void Agregar(Tarjeta tarjeta) => _ctx.Tarjetas.Add(tarjeta);
 }
