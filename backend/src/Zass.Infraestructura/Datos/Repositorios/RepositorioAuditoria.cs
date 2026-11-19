@@ -42,4 +42,16 @@ public sealed class RepositorioAuditoriaEfCore : IRepositorioAuditoria
         // Una fila mas para detectar si hay pagina siguiente
         return await consulta.Take(limite + 1).ToListAsync(ct);
     }
+
+    public async Task<int> ContarActivacionesFallidasAsync(
+        Guid tarjetaId, DateTime desde, DateTime hasta, CancellationToken ct = default)
+    {
+        return await _ctx.Auditoria
+            .Where(r => r.Entidad == "Tarjeta"
+                     && r.EntidadId == tarjetaId
+                     && r.Accion == "TarjetaActivacionFallida"
+                     && r.OcurridoEn >= desde
+                     && r.OcurridoEn <= hasta)
+            .CountAsync(ct);
+    }
 }

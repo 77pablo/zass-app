@@ -332,6 +332,7 @@ public static class RegistroDeServicios
         // --- MOD-12 Tarjetas NFC ---
         // Scoped como los demas: comparten el DbContext de la peticion.
         servicios.AddScoped<IRepositorioTarjetas, RepositorioTarjetasEfCore>();
+        servicios.AddScoped<IRepositorioAuditoria, RepositorioAuditoriaEfCore>();
         servicios.AddScoped<IServicioTarjetas, ServicioTarjetas>();
 
         // --- Trabajos de fondo ---
