@@ -69,6 +69,9 @@ if (!TextosEnCastellano.FijarIdiomaDeValidacion())
     app.Logger.LogWarning(
         "Sin datos de idioma (globalizacion invariante): los mensajes de validacion saldran en ingles.");
 
+// Registrar el resolvedor de nombres en castellano para FluentValidation.
+TextosEnCastellano.ConfigurarResolvedor();
+
 // Se valida DESPUES de Build y con app.Configuration: ahi ya estan todas las fuentes
 // (variables de entorno de Render, y los ajustes que inyectan las pruebas). Falla antes de
 // *Diseño original: Key Vault con identidad administrada. Desplegado: variables de entorno

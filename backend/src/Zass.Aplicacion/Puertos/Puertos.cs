@@ -168,6 +168,14 @@ public interface IRepositorioSuscripciones
     Task<IReadOnlyList<Suscripcion>> ExpiradasSinMarcarAsync(
         DateTime ahora, CancellationToken ct = default);
 
+    /// <summary>
+    /// Suscripciones activas que vencieron en la ventana [desde, ahora].
+    /// Se usa para el cobro tardio: si el trabajo diario no corrio y una suscripcion
+    /// vencio mientras tanto (dentro de los ultimos 7 dias), se cobra al despertar.
+    /// </summary>
+    Task<IReadOnlyList<Suscripcion>> ActivasVencidasDesdeAsync(
+        DateTime desde, DateTime ahora, CancellationToken ct = default);
+
     /// <summary>Vigentes que vencen antes de una fecha, para avisar con tiempo.</summary>
     Task<IReadOnlyList<Suscripcion>> VigentesQueVencenAntesDeAsync(
         DateTime ahora, DateTime hasta, CancellationToken ct = default);
