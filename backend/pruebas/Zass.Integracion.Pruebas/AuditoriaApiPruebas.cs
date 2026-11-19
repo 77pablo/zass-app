@@ -106,15 +106,16 @@ public class AuditoriaApiPruebas : IAsyncLifetime
     [Fact]
     public async Task Paginacion_limite_2_sobre_3_registros()
     {
+        var entidadId = Guid.Parse("11111111-1111-1111-1111-111111111111");
         await SembrarAuditoria(
-            new RegistroAuditoria { Accion = "accion1", Entidad = "usuarios", EntidadId = Guid.NewGuid(), ActorId = Guid.NewGuid(), OcurridoEn = DateTime.UtcNow.AddMinutes(-2) },
-            new RegistroAuditoria { Accion = "accion2", Entidad = "usuarios", EntidadId = Guid.NewGuid(), ActorId = Guid.NewGuid(), OcurridoEn = DateTime.UtcNow.AddMinutes(-1) },
-            new RegistroAuditoria { Accion = "accion3", Entidad = "usuarios", EntidadId = Guid.NewGuid(), ActorId = Guid.NewGuid(), OcurridoEn = DateTime.UtcNow });
+            new RegistroAuditoria { Accion = "accion1", Entidad = "usuarios", EntidadId = entidadId, ActorId = Guid.NewGuid(), OcurridoEn = DateTime.UtcNow.AddMinutes(-2) },
+            new RegistroAuditoria { Accion = "accion2", Entidad = "usuarios", EntidadId = entidadId, ActorId = Guid.NewGuid(), OcurridoEn = DateTime.UtcNow.AddMinutes(-1) },
+            new RegistroAuditoria { Accion = "accion3", Entidad = "usuarios", EntidadId = entidadId, ActorId = Guid.NewGuid(), OcurridoEn = DateTime.UtcNow });
 
         await IniciarSesionComoAdministrador();
 
         // Primera pagina: limite=2
-        var respuesta1 = await _cliente.GetAsync("/api/interno/auditoria?entidad=usuarios&entidadId=11111111-1111-1111-1111-111111111111&limite=2");
+        var respuesta1 = await _cliente.GetAsync($"/api/interno/auditoria?entidad=usuarios&entidadId={entidadId}&limite=2");
         Assert.Equal(HttpStatusCode.OK, respuesta1.StatusCode);
         var pagina1 = await respuesta1.Content.ReadFromJsonAsync<JsonAuditoria>();
         Assert.NotNull(pagina1);
@@ -122,7 +123,7 @@ public class AuditoriaApiPruebas : IAsyncLifetime
         Assert.NotNull(pagina1.siguiente);
 
         // Segunda pagina con el cursor
-        var respuesta2 = await _cliente.GetAsync($"/api/interno/auditoria?entidad=usuarios&entidadId=11111111-1111-1111-1111-111111111111&cursor={pagina1.siguiente}");
+        var respuesta2 = await _cliente.GetAsync($"/api/interno/auditoria?entidad=usuarios&entidadId={entidadId}&cursor={pagina1.siguiente}");
         Assert.Equal(HttpStatusCode.OK, respuesta2.StatusCode);
         var pagina2 = await respuesta2.Content.ReadFromJsonAsync<JsonAuditoria>();
         Assert.NotNull(pagina2);
@@ -184,12 +185,13 @@ public class AuditoriaApiPruebas : IAsyncLifetime
     {
         // Sembrar 150 registros
         var ahora = DateTime.UtcNow;
+        var entidadId = Guid.Parse("11111111-1111-1111-1111-111111111111");
         var registros = Enumerable.Range(0, 150)
             .Select(i => new RegistroAuditoria
             {
                 Accion = $"accion{i}",
                 Entidad = "usuarios",
-                EntidadId = Guid.NewGuid(),
+                EntidadId = entidadId,
                 ActorId = Guid.NewGuid(),
                 OcurridoEn = ahora.AddSeconds(i)
             })
@@ -198,7 +200,7 @@ public class AuditoriaApiPruebas : IAsyncLifetime
 
         await IniciarSesionComoAdministrador();
 
-        var respuesta = await _cliente.GetAsync("/api/interno/auditoria?entidad=usuarios&entidadId=11111111-1111-1111-1111-111111111111&limite=1000");
+        var respuesta = await _cliente.GetAsync($"/api/interno/auditoria?entidad=usuarios&entidadId={entidadId}&limite=1000");
 
         Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
         var resultado = await respuesta.Content.ReadFromJsonAsync<JsonAuditoria>();
