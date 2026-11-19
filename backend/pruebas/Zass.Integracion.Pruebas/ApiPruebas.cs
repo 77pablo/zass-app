@@ -33,6 +33,9 @@ public sealed class Aplicacion : WebApplicationFactory<Program>
             ["Zass:ClaveDireccionesBase64"] =
                 Convert.ToBase64String(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray()),
 
+            // Secreto de 32+ caracteres para firmar/verificar avisos de pago en pruebas.
+            ["Zass:SecretoAvisoPagos"] = Convert.ToBase64String(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray()),
+
             // Las pruebas salen todas de 127.0.0.1 y comparten cupo. Salvo la prueba que
             // mide el limite, las demas lo suben para no estorbarse entre si.
             ["Zass:Tasa:A"] = (limiteAutenticacion ?? 10_000).ToString(),
@@ -48,6 +51,9 @@ public sealed class Aplicacion : WebApplicationFactory<Program>
             // la pondria roja sin que nadie entienda por que. Lo que hace se prueba llamandolo
             // directo (CoordinadorDeTrabajos y CorrerDiarioAsync), no esperando su temporizador.
             ["Zass:Fondo:Activo"] = "false",
+
+            // P19 (T49): en pruebas no consultamos HIBP para no salir a internet
+            ["Zass:RevisarContrasenasFiltradas"] = "false",
         };
     }
 
@@ -79,6 +85,9 @@ public sealed class AplicacionParaAuditoria : WebApplicationFactory<Program>
             ["Zass:ClaveDireccionesBase64"] =
                 Convert.ToBase64String(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray()),
 
+            // Secreto de 32+ caracteres para firmar/verificar avisos de pago en pruebas.
+            ["Zass:SecretoAvisoPagos"] = Convert.ToBase64String(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray()),
+
             ["Zass:Tasa:A"] = (limiteAutenticacion ?? 10_000).ToString(),
             ["Zass:Tasa:G"] = "10000",
             ["Zass:Tasa:P"] = (limitePublico ?? 10_000).ToString(),
@@ -86,6 +95,8 @@ public sealed class AplicacionParaAuditoria : WebApplicationFactory<Program>
 
             ["Zass:Verificacion:PermitirSinDocumentos"] = permitirSinDocumentos ? "true" : "false",
             ["Zass:Fondo:Activo"] = "false",
+            // P19 (T49): en pruebas no consultamos HIBP para no salir a internet
+            ["Zass:RevisarContrasenasFiltradas"] = "false",
         };
     }
 
