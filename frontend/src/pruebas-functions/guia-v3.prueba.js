@@ -15,6 +15,8 @@ const SRC = resolve(import.meta.dirname, '..')
 const css = readFileSync(resolve(SRC, 'index.css'), 'utf8')
 const legal = readFileSync(resolve(SRC, 'legal.css'), 'utf8')
 const html = readFileSync(resolve(SRC, '..', 'index.html'), 'utf8')
+const cabecera = readFileSync(resolve(SRC, 'marco', 'Cabecera.tsx'), 'utf8')
+const marco = readFileSync(resolve(SRC, 'marco', 'Marco.tsx'), 'utf8')
 const sinComentarios = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '')
 const sinComentariosHtml = (t) => t.replace(/<!--[\s\S]*?-->/g, '')
 
@@ -83,6 +85,8 @@ describe('estilo iPhone: la paleta', () => {
     ['--suave', '--gris'],
     ['--suave', '--fondo-agrupado'],
     ['--suave', '--relleno'],
+    ['--terciaria', '--blanco'],
+    ['--terciaria', '--fondo-agrupado'],
     ['--pizarra', '--celeste'],
     ['--pizarra', '--ambar'],
     ['--pizarra', '--esmeralda'],
@@ -159,20 +163,20 @@ describe('estilo iPhone: sin lo «tecnologico»', () => {
     expect(html).not.toMatch(/JetBrains/)
   })
 
-  // El vidrio va en las dos barras (arriba y abajo) y en ningun otro lado: sobre una tarjeta o un
-  // texto largo, un material translucido se come la lectura.
-  it('el vidrio solo va en la barra de arriba y en la de abajo', () => {
+  // El vidrio va en las barras (la de escritorio, el titulo compacto del telefono y la de abajo) y
+  // en ningun otro lado: sobre una tarjeta o un texto largo, un material translucido se come la lectura.
+  it('el vidrio solo va en las barras', () => {
     const conVidrio = reglas
       // `[^;\s]` y no `\s*(?!none)`: con este ultimo, el `\s*` cede el espacio y « none» pasaba por vidrio.
       .filter(({ cuerpo }) => /(?<!-webkit-)backdrop-filter:\s*(?!none\b)[^;\s]/.test(cuerpo))
       .map((r) => r.selector)
-    expect(conVidrio).toEqual(['.cabecera-fila', '.barra-inferior'])
+    expect(conVidrio).toEqual(['.cabecera-fila', '.titulo-compacto', '.barra-inferior'])
   })
 
-  it('con «reducir transparencia», las dos barras quedan solidas y sin desenfoque', () => {
+  it('con «reducir transparencia», las tres barras quedan solidas y sin desenfoque', () => {
     const bloque = bloqueMedia('prefers-reduced-transparency: reduce')
     expect(bloque, 'falta @media (prefers-reduced-transparency: reduce)').not.toBeNull()
-    expect(bloque).toMatch(/\.cabecera-fila,\s*\.barra-inferior\s*\{[^}]*background:\s*var\(--blanco\)[^}]*(?<!-webkit-)backdrop-filter:\s*none/)
+    expect(bloque).toMatch(/\.cabecera-fila,\s*\.barra-inferior,\s*\.titulo-compacto\s*\{[^}]*background:\s*var\(--blanco\)[^}]*(?<!-webkit-)backdrop-filter:\s*none/)
   })
 
   it.each([['index.css', css], ['legal.css', legal]])('%s solo usa variables que existen', (_n, hoja) => {
@@ -181,5 +185,84 @@ describe('estilo iPhone: sin lo «tecnologico»', () => {
     const delCodigo = new Set(['--d', '--orden', '--x', '--y', '--mx', '--my'])
     const faltan = [...new Set(usadas)].filter((v) => !(v in tokens) && !delCodigo.has(v))
     expect(faltan).toEqual([])
+  })
+})
+
+// Pablo, 18-nov-2026: «saca la parte superior que dice zass». Cada pantalla abre con su titulo
+// grande; al bajar, el titulo pasa a una barra fina de vidrio; en el telefono no hay barra arriba.
+describe('estilo iPhone: sin la barra de la marca, con el titulo grande', () => {
+  it('la cabecera ya no pinta el logo ni el boton «Menú»', () => {
+    expect(cabecera).not.toMatch(/<Logo\s*\/>/)
+    expect(cabecera).not.toMatch(/menu-boton/)
+    // El sitio conserva su nombre para el lector de pantalla.
+    expect(cabecera).toMatch(/<header className="cabecera" aria-label="ZASS!">/)
+  })
+
+  it('en el telefono la fila de la cabecera no se dibuja', () => {
+    const bloque = bloqueMedia('max-width: 880px')
+    expect(bloque).toMatch(/\.cabecera-fila\s*\{\s*display:\s*none/)
+  })
+
+  it('el titulo compacto existe, es de vidrio y solo aparece con data-visible', () => {
+    const base = reglas.filter((r) => r.selector === '.titulo-compacto')
+    const telefono = base.find((r) => /position:\s*fixed/.test(r.cuerpo))
+    expect(telefono, 'falta la barra fija del titulo compacto').toBeDefined()
+    expect(telefono.cuerpo).toMatch(/opacity:\s*0/)
+    expect(telefono.cuerpo).toMatch(/env\(safe-area-inset-top/)
+    const visible = reglas.find((r) => r.selector === ".titulo-compacto[data-visible='true']")
+    expect(visible?.cuerpo).toMatch(/opacity:\s*1/)
+    expect(marco).toMatch(/<TituloCompacto \/>/)
+  })
+})
+
+describe('estilo iPhone: el movimiento y el tacto', () => {
+  it('respeta «reducir movimiento»: todo quieto, y la hoja solo con un fundido', () => {
+    const bloque = bloqueMedia('prefers-reduced-motion: reduce')
+    expect(bloque, 'falta @media (prefers-reduced-motion: reduce)').not.toBeNull()
+    expect(bloque).toMatch(/animation:\s*none\s*!important/)
+    expect(bloque).toMatch(/transition:\s*none\s*!important/)
+    expect(bloque).toMatch(/\.menu-movil\s*\{\s*animation:\s*fundido\b/)
+    // La transicion entre pantallas (JS) tambien pregunta.
+    expect(marco).toMatch(/matchMedia\('\(prefers-reduced-motion: reduce\)'\)/)
+  })
+
+  it('las animaciones nuevas solo mueven transform y opacity', () => {
+    for (const nombre of ['sube', 'fundido']) {
+      const m = sinComentarios(css).match(new RegExp(`@keyframes ${nombre}\\s*\\{([\\s\\S]*?\\})\\s*\\}`))
+      expect(m, `falta @keyframes ${nombre}`).not.toBeNull()
+      const props = [...m[1].matchAll(/([a-z-]+)\s*:/g)].map((x) => x[1])
+      expect(props.filter((x) => x !== 'opacity' && x !== 'transform')).toEqual([])
+    }
+    const claves = marco.match(/\.animate\(\s*\[([^\]]*)\]/)
+    expect(claves, 'Marco ya no anima la entrada de la pantalla').not.toBeNull()
+    const props = [...claves[1].matchAll(/([a-zA-Z]+)\s*:/g)].map((x) => x[1])
+    expect(props.filter((x) => x !== 'opacity' && x !== 'transform')).toEqual([])
+  })
+
+  // En un telefono no hay «pasar el puntero»: el primer toque deja el :hover pegado.
+  it('todo :hover vive dentro de (hover: hover) and (pointer: fine)', () => {
+    for (const [nombre, hoja] of [['index.css', css], ['legal.css', legal]]) {
+      const fuera = sinComentarios(hoja)
+        .replace(/@media \(hover: hover\) and \(pointer: fine\) \{[^{}]*\{[^{}]*\}\s*\}/g, '')
+      expect(fuera.match(/[^\n]*:hover[^\n]*/g) ?? [], nombre).toEqual([])
+    }
+  })
+
+  it('lo que se toca en las barras mide 44 px o mas', () => {
+    for (const selector of ['.pestana', '.menu-enlace']) {
+      const r = reglas.find((x) => x.selector === selector)
+      const alto = r?.cuerpo.match(/min-height:\s*(\d+)px/)
+      expect(alto, `${selector} sin min-height`).not.toBeNull()
+      expect(Number(alto[1])).toBeGreaterThanOrEqual(44)
+    }
+  })
+
+  it('la hoja no arrastra la pagina y la barra respeta la barra de inicio del iPhone', () => {
+    const bloque = bloqueMedia('max-width: 880px')
+    const t = sinComentarios(css)
+    expect(t).toMatch(/\.menu-movil\s*\{[^}]*overscroll-behavior:\s*contain/)
+    expect(t).toMatch(/--barra-abajo:\s*max\(10px,\s*calc\(env\(safe-area-inset-bottom/)
+    expect(t).toMatch(/\.barra-inferior\s*\{[^}]*bottom:\s*var\(--barra-abajo\)/)
+    expect(bloque).not.toBeNull()
   })
 })

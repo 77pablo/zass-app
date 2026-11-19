@@ -18,10 +18,21 @@ export function Logo() {
   )
 }
 
+/**
+ * Estilo iPhone (Pablo, 18-nov-2026: «saca la parte superior que dice zass»). Ya no hay barra con
+ * la marca arriba: cada pantalla abre con su titulo grande (y la barra fina de TituloCompacto.tsx
+ * al bajar). Lo que vivia en la barra se reparte como en una app:
+ *  - en el telefono, la barra de pestañas de abajo (Inicio · Buscar · Entrar/Mis citas · Mas) y la
+ *    hoja «Mas», que sigue viviendo aqui (id="menu-movil") con los mismos enlaces de siempre;
+ *  - en escritorio, una barra de navegacion de vidrio SIN la marca, con «Inicio» en el lugar del
+ *    logo (el mismo destino: «/»).
+ * El sitio conserva su nombre para el lector de pantalla: el <header> se llama «ZASS!» y el
+ * <title> de cada pagina termina en «· ZASS!» (useTitulo.ts). La marca visible queda en el pie.
+ */
 export function Cabecera() {
   const { estado, usuario, salir } = useSesion()
-  // Compartido con la pestaña «Mas» de la barra inferior (menuMovil.tsx).
-  const { abierto, alternar } = useMenuMovil()
+  // El mismo estado que la pestaña «Mas» de la barra inferior (menuMovil.tsx): ella abre la hoja.
+  const { abierto } = useMenuMovil()
 
   const esPrestador = usuario?.roles.includes('prestador') ?? false
 
@@ -47,24 +58,15 @@ export function Cabecera() {
   ) : null
 
   return (
-    <header className="cabecera">
+    <header className="cabecera" aria-label="ZASS!">
       <div className="contenedor cabecera-fila">
-        <Logo />
-
         <nav className="nav-escritorio" aria-label="Principal">
+          <NavLink to="/" end className="nav-enlace">Inicio</NavLink>
           {ENLACES.map((e) => (
             <NavLink key={e.a} to={e.a} className="nav-enlace">{e.texto}</NavLink>
           ))}
           {accion}
         </nav>
-
-        <button
-          type="button" className="menu-boton" aria-expanded={abierto} aria-controls="menu-movil"
-          onClick={alternar}
-        >
-          <Icono nombre={abierto ? 'cerrar' : 'menu'} />
-          <span>{abierto ? 'Cerrar' : 'Menú'}</span>
-        </button>
       </div>
 
       {abierto && (

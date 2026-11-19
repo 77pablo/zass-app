@@ -13,7 +13,10 @@
   --blanco: #ffffff;
   --fondo-agrupado: #f2f2f7;  /* systemGroupedBackground: el fondo de toda pantalla */
   --pizarra: #111827;
-  --suave: #4b5563;          /* texto de apoyo: 7,6:1 sobre blanco, 6,8:1 sobre --fondo-agrupado */
+  --suave: #4b5563;          /* secondaryLabel: texto de apoyo. 7,6:1 sobre blanco, 6,8:1 sobre --fondo-agrupado */
+  /* tertiaryLabel: notas al pie, recuentos y el ejemplo dentro de un campo. La de Apple (#3C3C43 al
+     30 %) no llega a 4,5:1; esta da 5,4:1 sobre blanco y 4,8:1 sobre --fondo-agrupado. */
+  --terciaria: #646b77;
   --gris: #f3f4f6;           /* paneles y filas al pasar */
   --gris-claro: #f9fafb;
   --relleno: #e9e9ee;        /* rellenos de iOS (botones secundarios, etiquetas, segmentado): --suave da 6,2:1 */
@@ -54,8 +57,12 @@
 
   /* Materiales: el vidrio de las barras. Fondo casi opaco (lo que pasa por debajo se adivina, no se
      lee) y desenfoque fuerte; con «reducir transparencia» o «mas contraste», solido (al final). */
-  --vidrio: rgba(249, 249, 251, 0.82);
+  --vidrio: rgba(249, 249, 251, 0.9);
   --vidrio-filtro: blur(20px) saturate(180%);
+  /* La barra de pestañas flota (iOS 26): un borde claro donde la luz pega en el material y una
+     sombra corta y suave debajo. */
+  --vidrio-borde: rgba(255, 255, 255, 0.7);
+  --sombra-flotante: 0 8px 24px rgba(17, 24, 39, 0.12), 0 0 0 0.5px rgba(17, 24, 39, 0.1);
 
   /* Nombres de antes: los usa legal.css y codigo que aun no se mueve. Apuntan a los nuevos. */
   --fondo: var(--fondo-agrupado);
@@ -67,6 +74,9 @@
   /* Movimiento: curva de resorte sin rebote (amortiguacion 1, como el «default» de Apple) */
   --curva: cubic-bezier(0.2, 0.8, 0.2, 1);
   --resorte: cubic-bezier(0.32, 0.72, 0, 1);
+  /* Lo que el dedo suelta: al apoyar, al instante (0 s); al soltar, se apaga despacio, como la
+     fila de iOS que se ilumina al tocarla. */
+  --soltar: 0.35s ease-out;
   /* La letra del sistema: SF en el iPhone y en el Mac, la del telefono en Android. No se descarga nada. */
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   color-scheme: light;
@@ -97,6 +107,12 @@ img, svg { display: block; }
 h1, h2, h3, p, ul, ol { margin: 0; }
 ul, ol { padding: 0; list-style: none; }
 button, input, select, textarea { font: inherit; color: inherit; }
+/* Que el toque responda al instante (sin la espera del doble toque) y que mantener el dedo sobre un
+   control no seleccione su texto ni abra el menu de copiar. El texto de contenido sigue seleccionable. */
+a, button, summary, [role='button'], label, select { touch-action: manipulation; }
+button, .boton, .chip, .pestana, .nav-enlace, .menu-enlace, .volver {
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
 main:focus { outline: none; }
 ::selection { background: var(--celeste-suave); color: var(--pizarra); }
 
@@ -119,14 +135,19 @@ main:focus { outline: none; }
   stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
 }
 
-.contenedor { width: 100%; max-width: var(--ancho); margin: 0 auto; padding: 0 24px; }
+.contenedor {
+  width: 100%; max-width: var(--ancho); margin: 0 auto;
+  padding: 0 max(24px, env(safe-area-inset-right, 0px)) 0 max(24px, env(safe-area-inset-left, 0px));
+}
 .contenedor--angosto { max-width: 560px; }
 
 /* ------------------------------------------------------------------ Cabecera
-   La barra de navegacion de iOS: de borde a borde, de vidrio, con el contenido pasando por debajo
-   y una linea fina abajo. El vidrio va en la FILA y no en <header>: un backdrop-filter en el padre
-   haria de «contenedor» del menu (position: fixed) y la hoja del celular quedaria pegada arriba.
-   Respeta la muesca del iPhone (safe-area-inset-top, con viewport-fit=cover en index.html). */
+   Ya no hay barra con la marca (Pablo, 18-nov-2026). En ESCRITORIO queda la barra de navegacion
+   de iOS/macOS: de borde a borde, de vidrio, sin logo, con «Inicio» primero y la cuenta a la
+   derecha. En el TELEFONO no se dibuja: la pantalla abre con su titulo grande, la navegacion esta
+   en la barra de pestañas de abajo y lo demas en la hoja «Mas» (que sigue dentro de <header>).
+   El vidrio va en la FILA y no en <header>: un backdrop-filter en el padre haria de «contenedor»
+   de la hoja (position: fixed) y la dejaria pegada arriba. */
 .cabecera { position: sticky; top: 0; z-index: 50; pointer-events: none; }
 .cabecera-fila {
   pointer-events: auto; display: flex; align-items: center; justify-content: space-between;
@@ -146,27 +167,23 @@ main:focus { outline: none; }
   padding: 0 0.14em; border-radius: 7px; margin-left: 2px;
 }
 
-.nav-escritorio { display: flex; align-items: center; gap: 2px; }
+.nav-escritorio { display: flex; flex: 1; align-items: center; gap: 2px; }
+/* La cuenta, a la derecha: «Entrar» fuera de la sesion; dentro, desde «Mis citas» (la primera). */
+.nav-escritorio > .nav-entrar, .nav-escritorio > a[href='/mis-citas'] { margin-left: auto; }
 .nav-enlace {
   display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border: 0;
   background: none; cursor: pointer; font-size: 0.9375rem; font-weight: 600; letter-spacing: -0.015em; text-decoration: none;
   border-radius: 999px; color: var(--suave); transition: background 0.15s, color 0.15s;
 }
-.nav-enlace:hover { background: var(--relleno); color: var(--pizarra); }
+@media (hover: hover) and (pointer: fine) { .nav-enlace:hover { background: var(--relleno); color: var(--pizarra); } }
 .nav-enlace.active { color: var(--pizarra); background: var(--relleno); }
 .nav-entrar {
   display: inline-flex; align-items: center; min-height: 44px; padding: 0 22px; margin-left: 8px;
   background: var(--ambar); color: var(--pizarra); font-size: 0.9375rem; font-weight: 600;
   text-decoration: none; border-radius: 999px; transition: background 0.15s, transform 0.1s ease-out;
 }
-.nav-entrar:hover { background: var(--ambar-hondo); }
+@media (hover: hover) and (pointer: fine) { .nav-entrar:hover { background: var(--ambar-hondo); } }
 .nav-entrar:active { transform: scale(0.97); }
-
-.menu-boton {
-  display: none; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; cursor: pointer;
-  border: 0; border-radius: 999px; background: var(--relleno);
-  color: var(--pizarra); font-weight: 600;
-}
 
 /* El menu es una LISTA AGRUPADA de iOS: una tarjeta blanca con las filas separadas por una linea
    fina que empieza donde empieza el texto, y el «›» a la derecha. En el celular sube como hoja. */
@@ -180,21 +197,56 @@ main:focus { outline: none; }
   position: relative; display: flex; align-items: center; justify-content: space-between; min-height: 48px; padding: 0 16px 0 20px;
   border: 0; background: none; border-radius: 0; font-size: 1.0625rem; font-weight: 400; letter-spacing: -0.022em;
   text-decoration: none; cursor: pointer; text-align: left; width: 100%; color: var(--pizarra);
-  transition: background 0.1s ease-out;
+  transition: background-color var(--soltar);
 }
 .menu-enlace + .menu-enlace::before {
   content: ''; position: absolute; top: 0; left: 20px; right: 0; border-top: 0.5px solid var(--separador);
 }
 .menu-enlace .icono { width: 1.05em; height: 1.05em; color: var(--chevron); stroke-width: 2.4; }
-.menu-enlace:hover, .menu-enlace:active { background: var(--relleno); }
+.menu-enlace:active { background: var(--relleno); transition-duration: 0s; }
+@media (hover: hover) and (pointer: fine) { .menu-enlace:hover { background: var(--relleno); } }
 .menu-enlace.active { font-weight: 600; }
 .menu-enlace--entrar { font-weight: 600; }
 .menu-enlace--entrar .icono { color: var(--pizarra); }
 
 
 @media (max-width: 880px) {
-  .nav-escritorio { display: none; }
-  .menu-boton { display: inline-flex; }
+  .cabecera-fila { display: none; }
+}
+/* La hoja «Mas» solo existe en el telefono (la abre la pestaña de abajo). */
+@media (min-width: 881px) {
+  .menu-movil { display: none; }
+}
+
+/* ------------------------------------------------------------- Titulo compacto
+   El titulo grande de cada pantalla, al pasar por debajo del borde de arriba, reaparece chico y
+   centrado en una barra fina de vidrio (marco/TituloCompacto.tsx). La barra llega con un fundido y
+   el titulo sube 4 px: solo opacity y transform. Debajo, una franja del color del fondo tapa lo que
+   pasaria por detras de la hora y la bateria (solo en la app instalada, con muesca). */
+.titulo-compacto { display: none; }
+@media (max-width: 880px) {
+  body::before {
+    content: ''; position: fixed; inset: 0 0 auto; z-index: 54; height: env(safe-area-inset-top, 0px);
+    background: var(--fondo-agrupado); pointer-events: none;
+  }
+  /* Sin barra arriba, el titulo grande respira: 12 px bajo la muesca (o bajo el borde, en Safari). */
+  main { padding-top: calc(12px + env(safe-area-inset-top, 0px)); }
+  .titulo-compacto {
+    position: fixed; inset: 0 0 auto; z-index: 55; display: flex; align-items: center; justify-content: center;
+    height: calc(44px + env(safe-area-inset-top, 0px)); padding: env(safe-area-inset-top, 0px) 56px 0;
+    background: var(--vidrio); border-bottom: 0.5px solid var(--separador);
+    -webkit-backdrop-filter: var(--vidrio-filtro); backdrop-filter: var(--vidrio-filtro);
+    pointer-events: none; opacity: 0; transition: opacity 0.2s ease-out;
+  }
+  .titulo-compacto-texto {
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    font-size: 1.0625rem; font-weight: 600; letter-spacing: -0.022em; color: var(--pizarra);
+    transform: translateY(4px); transition: transform 0.25s var(--resorte);
+  }
+  .titulo-compacto[data-visible='true'] { opacity: 1; }
+  .titulo-compacto[data-visible='true'] .titulo-compacto-texto { transform: none; }
+  /* Que la barra no tape lo que recibe el foco ni el destino de un ancla. */
+  html { scroll-padding-top: calc(56px + env(safe-area-inset-top, 0px)); }
 }
 
 /* ------------------------------------------------------------------- Botones
@@ -206,10 +258,10 @@ main:focus { outline: none; }
   color: var(--pizarra); font-size: 1.0625rem; font-weight: 600; letter-spacing: -0.022em; text-decoration: none; cursor: pointer;
   transition: background 0.15s, border-color 0.15s, transform 0.1s ease-out;
 }
-.boton:hover { background: var(--linea); }
+@media (hover: hover) and (pointer: fine) { .boton:hover { background: var(--linea); } }
 .boton:active { transform: scale(0.97); }
 .boton--tinta, .boton--amarillo { background: var(--ambar); color: var(--pizarra); border-color: var(--ambar); }
-.boton--tinta:hover, .boton--amarillo:hover { background: var(--ambar-hondo); border-color: var(--ambar-hondo); color: var(--pizarra); }
+@media (hover: hover) and (pointer: fine) { .boton--tinta:hover, .boton--amarillo:hover { background: var(--ambar-hondo); border-color: var(--ambar-hondo); color: var(--pizarra); } }
 .boton--lleno { width: 100%; }
 .boton--chico { min-height: 44px; padding: 0 16px; font-size: 0.9375rem; border-radius: 999px; }
 .boton[disabled] { opacity: 0.5; cursor: not-allowed; transform: none; }
@@ -219,7 +271,7 @@ main:focus { outline: none; }
   font-weight: 600; color: var(--pizarra); text-decoration: underline; text-decoration-color: currentColor;
   text-decoration-thickness: 1px; text-underline-offset: 5px; cursor: pointer;
 }
-.enlace:hover { text-decoration-color: var(--pizarra); }
+@media (hover: hover) and (pointer: fine) { .enlace:hover { text-decoration-color: var(--pizarra); } }
 
 .aviso-linea {
   margin: 16px 0; padding: 12px 16px; background: var(--blanco); border: 0;
@@ -269,7 +321,7 @@ main:focus { outline: none; }
   border: 0; border-radius: 999px; background: var(--blanco); color: var(--pizarra); box-shadow: var(--sombra-1);
   font-size: 0.9375rem; font-weight: 500; letter-spacing: -0.015em; text-decoration: none; transition: background 0.15s, transform 0.1s ease-out;
 }
-.chip:hover { background: var(--gris); }
+@media (hover: hover) and (pointer: fine) { .chip:hover { background: var(--gris); } }
 .chip:active { transform: scale(0.96); }
 .chip[aria-pressed='true'] { background: var(--pizarra); color: var(--blanco); font-weight: 600; }
 .chip[disabled] { opacity: 0.6; cursor: progress; }
@@ -281,7 +333,7 @@ main:focus { outline: none; }
 }
 .flotante {
   position: relative; display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 8px 36px 8px 16px; text-decoration: none;
-  transition: background 0.1s ease-out;
+  transition: background-color var(--soltar);
 }
 .flotante + .flotante::before { content: ''; position: absolute; top: 0; left: 62px; right: 0; border-top: 0.5px solid var(--separador); }
 /* El «›» de iOS, dibujado con dos bordes: adorno (la fila entera es el enlace). */
@@ -289,7 +341,8 @@ main:focus { outline: none; }
   content: ''; position: absolute; right: 18px; top: 50%; width: 8px; height: 8px; margin-top: -4px;
   border-top: 2px solid var(--chevron); border-right: 2px solid var(--chevron); transform: rotate(45deg);
 }
-.flotante:hover, .flotante:active { background: var(--relleno); }
+.flotante:active { background: var(--relleno); transition-duration: 0s; }
+@media (hover: hover) and (pointer: fine) { .flotante:hover { background: var(--relleno); } }
 .flotante > span:not(.monograma) { display: grid; flex: 1; min-width: 0; line-height: 1.3; }
 .flotante strong { font-size: 1.0625rem; font-weight: 400; }
 .flotante small { color: var(--suave); font-size: 0.875rem; font-weight: 400; letter-spacing: -0.01em; }
@@ -321,20 +374,20 @@ main:focus { outline: none; }
   flex: 1; min-width: 0; min-height: 44px; padding: 0 4px; border: 0; background: transparent; outline: none;
   font-size: 1.0625rem; font-weight: 400; letter-spacing: -0.022em; color: var(--pizarra); caret-color: var(--pizarra);
 }
-.barra-campo::placeholder { color: var(--suave); opacity: 1; }
+.barra-campo::placeholder { color: var(--terciaria); opacity: 1; }
 .barra-campo::-webkit-search-cancel-button { display: none; }
 .barra-limpiar {
   display: grid; place-items: center; width: 44px; height: 44px; flex: none; border: 0; border-radius: 50%;
   background: none; color: var(--suave); cursor: pointer;
 }
 .barra-limpiar .icono { width: 1.1rem; height: 1.1rem; padding: 3px; box-sizing: content-box; border-radius: 50%; background: var(--relleno); }
-.barra-limpiar:hover { color: var(--pizarra); }
+@media (hover: hover) and (pointer: fine) { .barra-limpiar:hover { color: var(--pizarra); } }
 .barra-boton {
   display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 18px; flex: none; border: 0;
   border-radius: 10px; background: var(--ambar); color: var(--pizarra); font-size: 1rem; font-weight: 600; cursor: pointer;
   transition: background 0.15s, transform 0.1s ease-out;
 }
-.barra-boton:hover { background: var(--ambar-hondo); }
+@media (hover: hover) and (pointer: fine) { .barra-boton:hover { background: var(--ambar-hondo); } }
 .barra-boton:active { transform: scale(0.97); }
 
 .barra-lista {
@@ -344,7 +397,7 @@ main:focus { outline: none; }
 .barra-opcion {
   display: flex; align-items: center; gap: 14px; min-height: 52px; padding: 8px 12px; border-radius: 10px; cursor: pointer;
 }
-.barra-opcion--activa { background: var(--relleno); box-shadow: inset 3px 0 0 var(--pizarra); }
+.barra-opcion--activa { background: var(--relleno); } /* la fila resaltada de iOS: sin franja al costado */
 .barra-opcion > .icono { color: var(--suave); }
 .barra-opcion-texto { display: grid; flex: 1; min-width: 0; line-height: 1.3; }
 .barra-opcion-texto strong { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -382,10 +435,13 @@ main:focus { outline: none; }
   font-size: clamp(1.75rem, 5vw, 3.25rem); font-weight: 700; line-height: 1.1; letter-spacing: -0.02em;
   color: var(--pizarra); font-variant-numeric: tabular-nums;
 }
-.cifra-etiqueta { font-size: 0.8125rem; font-weight: 400; letter-spacing: 0; color: var(--suave); line-height: 1.25; }
+.cifra-etiqueta { font-size: 0.8125rem; font-weight: 400; letter-spacing: 0; color: var(--terciaria); line-height: 1.25; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  /* Menos movimiento no es cero respuesta: lo que aparece llega con un fundido corto, sin desplazarse. */
+  .menu-movil { animation: fundido 0.2s ease-out !important; }
+  .titulo-compacto { transition: opacity 0.2s ease-out !important; }
 }
 
 /* ------------------------------------------------------------------ Secciones
@@ -403,10 +459,10 @@ main:focus { outline: none; }
   display: grid; grid-template-columns: 44px minmax(0, 1fr); grid-template-rows: auto auto auto 1fr; column-gap: 12px;
   height: 100%; padding: 14px 16px; text-decoration: none; position: relative; overflow: hidden;
   background: var(--blanco); border: 0; border-radius: var(--radio-celda);
-  transition: background 0.1s ease-out, transform 0.1s ease-out;
+  transition: background-color var(--soltar);
 }
-.tarjeta-persona:hover { background: var(--gris-claro); }
-.tarjeta-persona:active { background: var(--relleno); }
+@media (hover: hover) and (pointer: fine) { .tarjeta-persona:hover { background: var(--gris-claro); } }
+.tarjeta-persona:active { background: var(--relleno); transition-duration: 0s; }
 .tarjeta-cabeza { display: contents; }
 .tarjeta-cabeza > .monograma { grid-column: 1; grid-row: 1 / span 4; align-self: start; }
 .tarjeta-cabeza > div { grid-column: 2; }
@@ -418,7 +474,7 @@ main:focus { outline: none; }
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
 .tarjeta-ver { grid-column: 2; align-self: end; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; font-weight: 500; font-size: 0.9375rem; }
-.tarjeta-precio { font-size: 0.875rem; font-weight: 400; color: var(--suave); font-variant-numeric: tabular-nums; }
+.tarjeta-precio { font-size: 0.875rem; font-weight: 400; color: var(--terciaria); font-variant-numeric: tabular-nums; }
 /* El precio es uno de los pocos lugares del ambar: una pildora ambar con la cifra en pizarra. */
 .tarjeta-precio strong { display: inline-block; margin-left: 2px; padding: 1px 7px; border-radius: 6px; background: var(--ambar); color: var(--pizarra); font-size: 0.9375rem; font-weight: 600; }
 .tarjeta-precio--vacio { font-weight: 400; }
@@ -445,7 +501,7 @@ main:focus { outline: none; }
   position: relative; display: flex; flex-direction: column; gap: 8px; min-height: 200px; padding: 20px; text-decoration: none;
   background: var(--blanco); border: 0; border-radius: var(--radio-hoja); transition: background 0.1s ease-out, transform 0.1s ease-out;
 }
-.tile:hover { background: var(--gris-claro); }
+@media (hover: hover) and (pointer: fine) { .tile:hover { background: var(--gris-claro); } }
 .tile:active { transform: scale(0.98); }
 .tile > .icono { width: 2.25rem; height: 2.25rem; padding: 7px; border-radius: 9px; background: var(--fondo-agrupado); color: var(--pizarra); stroke-width: 1.8; box-sizing: border-box; }
 .tile h3 { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; }
@@ -495,7 +551,7 @@ main:focus { outline: none; }
   padding: 12px 8px; margin: 0 -8px; border-bottom: 1px solid var(--linea); font-size: 1.1875rem;
   font-weight: 700; letter-spacing: -0.015em; text-decoration: none; border-radius: 8px; transition: background 0.15s;
 }
-.barrio:hover { background: var(--gris); }
+@media (hover: hover) and (pointer: fine) { .barrio:hover { background: var(--gris); } }
 .cuenta { font-size: 0.875rem; font-weight: 700; color: var(--suave); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .cuenta--cero { color: var(--suave); font-weight: 500; }
 
@@ -505,7 +561,7 @@ main:focus { outline: none; }
   display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 24px; align-items: center;
   padding: 26px 8px; margin: 0 -8px; border-top: 1px solid var(--linea-fuerte); text-decoration: none; transition: background 0.15s;
 }
-.oficio:hover { background: var(--gris); }
+@media (hover: hover) and (pointer: fine) { .oficio:hover { background: var(--gris); } }
 .oficio h2 { font-size: clamp(1.7rem, 4vw, 2.8rem); font-weight: 800; letter-spacing: -0.04em; line-height: 1.1; }
 .oficio-lado { display: flex; align-items: center; gap: 14px; font-size: 0.875rem; font-weight: 700; color: var(--suave); font-variant-numeric: tabular-nums; }
 .oficio-lado .icono { width: 2.1em; height: 2.1em; padding: 0.45em; border: 1px solid var(--linea-fuerte); border-radius: 50%; color: var(--pizarra); }
@@ -533,10 +589,10 @@ main:focus { outline: none; }
   flex: 1 1 auto; justify-content: center; min-height: 44px; padding: 0 8px; border-radius: 8px; background: transparent; box-shadow: none;
   color: var(--pizarra); font-size: 0.875rem; font-weight: 500; white-space: nowrap;
 }
-.segmentado .chip--radio:hover { background: rgba(255, 255, 255, 0.5); }
+@media (hover: hover) and (pointer: fine) { .segmentado .chip--radio:hover { background: rgba(255, 255, 255, 0.5); } }
 .segmentado .chip--radio[aria-pressed='true'] { background: var(--blanco); color: var(--pizarra); font-weight: 600; box-shadow: var(--sombra-1); }
 /* El recuento sobre la lista: el encabezado de seccion de iOS, chico y gris. */
-.resultados-cuenta { margin-top: 24px; padding-inline: 4px; font-size: 0.8125rem; font-weight: 400; color: var(--suave); letter-spacing: -0.005em; }
+.resultados-cuenta { margin-top: 24px; padding-inline: 16px; font-size: 0.8125rem; font-weight: 400; color: var(--terciaria); letter-spacing: -0.005em; }
 .resultados-cuenta strong { color: var(--pizarra); font-size: 0.8125rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .resultados-cuenta + .tarjetas-rejilla { margin-top: 8px; }
 .bloque-titulo { font-size: 1.375rem; font-weight: 700; letter-spacing: -0.018em; }
@@ -555,8 +611,9 @@ main:focus { outline: none; }
   display: inline-flex; align-items: center; gap: 4px; min-height: 44px; margin-left: -4px; padding-right: 8px;
   font-weight: 400; font-size: 1.0625rem; color: var(--pizarra); text-decoration: none;
 }
-.volver:active { opacity: 0.5; }
-.volver .icono { transform: rotate(180deg); }
+.volver { transition: opacity var(--soltar); }
+.volver:active { opacity: 0.4; transition-duration: 0s; }
+.volver .icono { width: 1.4em; height: 1.4em; margin-left: -6px; stroke-width: 2.4; transform: rotate(180deg); }
 /*
   La ficha publica: el encabezado (quien es), el contacto y el cuerpo, EN ESE ORDEN en el HTML.
   En una columna (telefono) se ven asi: la persona y enseguida como hablarle, antes del detalle.
@@ -638,9 +695,9 @@ main:focus { outline: none; }
 .lateral-caja h2 { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; }
 .contacto { display: grid; gap: 8px; margin-top: 12px; }
 .lateral-caja .boton { justify-content: flex-start; overflow-wrap: anywhere; background: var(--fondo-agrupado); border-color: transparent; color: var(--pizarra); font-weight: 500; }
-.lateral-caja .boton:hover { background: var(--relleno); }
+@media (hover: hover) and (pointer: fine) { .lateral-caja .boton:hover { background: var(--relleno); } }
 .lateral-caja .boton--amarillo { background: var(--esmeralda); color: var(--pizarra); border-color: var(--esmeralda); font-weight: 600; }
-.lateral-caja .boton--amarillo:hover { background: #0ea371; border-color: #0ea371; }
+@media (hover: hover) and (pointer: fine) { .lateral-caja .boton--amarillo:hover { background: #0ea371; border-color: #0ea371; } }
 .lateral-caja .bloque-vacio { color: var(--suave); }
 .letra-chica { margin-top: 12px; font-size: 0.8125rem; color: var(--suave); font-weight: 400; letter-spacing: -0.005em; }
 
@@ -713,7 +770,7 @@ main:focus { outline: none; }
 .titulo { font-size: 2.4rem; font-weight: 800; letter-spacing: -0.04em; line-height: 1.02; }
 .tarjeta .bajada { margin: -6px 0 0; font-size: 1rem; }
 .tarjeta .boton[type='submit'] { background: var(--ambar); color: var(--pizarra); border-color: var(--ambar); width: 100%; }
-.tarjeta .boton[type='submit']:hover { background: var(--ambar-hondo); border-color: var(--ambar-hondo); }
+@media (hover: hover) and (pointer: fine) { .tarjeta .boton[type='submit']:hover { background: var(--ambar-hondo); border-color: var(--ambar-hondo); } }
 .formulario-pie { margin-top: 28px; text-align: center; font-weight: 700; color: var(--suave); }
 .formulario-pie a {
   display: inline-flex; align-items: center; min-height: 44px; color: var(--pizarra);
@@ -756,7 +813,7 @@ option { background: var(--blanco); color: var(--pizarra); }
 .pie-fila p { color: var(--suave); font-size: 0.875rem; font-weight: 400; max-width: 36ch; margin-top: 6px; }
 .pie-fila ul { display: grid; gap: 0; }
 .pie-fila li a { display: inline-flex; align-items: center; min-height: 44px; font-size: 0.9375rem; font-weight: 400; text-decoration: none; }
-.pie-fila li a:hover { text-decoration: underline; text-underline-offset: 4px; }
+@media (hover: hover) and (pointer: fine) { .pie-fila li a:hover { text-decoration: underline; text-underline-offset: 4px; } }
 .pie-final { margin-top: 20px; padding-top: 16px; border-top: 0.5px solid var(--separador); font-size: 0.8125rem; color: var(--suave); font-weight: 400; }
 .pie-final a { display: inline-flex; align-items: center; min-height: 44px; color: var(--pizarra); text-underline-offset: 4px; }
 
@@ -842,7 +899,8 @@ option { background: var(--blanco); color: var(--pizarra); }
 .mapa-nucleo { fill: var(--pizarra); stroke: var(--blanco); stroke-width: 1.5; transition: fill 0.15s; }
 .mapa-onda { fill: none; stroke: var(--pizarra); stroke-width: 1.2; transform-box: fill-box; transform-origin: center; animation: onda 3s ease-out infinite; }
 @keyframes onda { from { transform: scale(1); opacity: 0.5; } to { transform: scale(2.6); opacity: 0; } }
-.mapa-vivo:hover .mapa-nucleo, .mapa-vivo:focus-visible .mapa-nucleo, .mapa-vivo--activo .mapa-nucleo { fill: var(--blanco); stroke: var(--pizarra); }
+.mapa-vivo:focus-visible .mapa-nucleo, .mapa-vivo--activo .mapa-nucleo { fill: var(--blanco); stroke: var(--pizarra); }
+@media (hover: hover) and (pointer: fine) { .mapa-vivo:hover .mapa-nucleo { fill: var(--blanco); stroke: var(--pizarra); } }
 .mapa-vivo:focus-visible .mapa-toque { stroke: var(--pizarra); stroke-width: 2; }
 .mapa-nombre { font-size: 12.5px; font-weight: 800; fill: var(--pizarra); paint-order: stroke; stroke: var(--blanco); stroke-width: 4px; pointer-events: none; }
 .mapa-leyenda {
@@ -878,10 +936,10 @@ option { background: var(--blanco); color: var(--pizarra); }
   border-bottom: 1px solid var(--linea); text-decoration: none; border-radius: 8px; transition: background 0.15s;
 }
 .comuna { font-size: 1.0625rem; font-weight: 700; letter-spacing: -0.01em; }
-.comuna:hover, .barrio-enlace:hover { background: var(--gris); }
-.barrios-lista { margin: 0 0 6px 14px; padding-left: 12px; border-left: 2px solid var(--celeste); }
+@media (hover: hover) and (pointer: fine) { .comuna:hover, .barrio-enlace:hover { background: var(--gris); } }
+.barrios-lista { margin: 0 0 6px 14px; padding-left: 12px; } /* la sangria basta: sin la franja celeste de la v3 */
 .barrio-enlace { min-height: 44px; font-size: 0.9375rem; font-weight: 600; color: var(--suave); }
-.barrio-enlace:hover { color: var(--pizarra); }
+@media (hover: hover) and (pointer: fine) { .barrio-enlace:hover { color: var(--pizarra); } }
 
 /* --- Editor de comunas de Mi ficha --- */
 .elegidas { display: grid; gap: 10px; padding: 18px 20px; background: var(--gris-claro); border: 1px solid var(--linea); border-radius: 20px; }
@@ -892,7 +950,7 @@ option { background: var(--blanco); color: var(--pizarra); }
 .elegida--principal { border-color: var(--celeste); background: var(--celeste-suave); }
 .elegida-nombre { flex: 1; min-width: 8ch; font-weight: 700; }
 .elegida-quitar { display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 50%; background: none; color: var(--suave); cursor: pointer; }
-.elegida-quitar:hover { color: var(--pizarra); background: var(--gris); }
+@media (hover: hover) and (pointer: fine) { .elegida-quitar:hover { color: var(--pizarra); background: var(--gris); } }
 .filtro-comunas--editor { position: static; max-width: none; margin: 0; }
 .comunas-lista--editor .casilla { width: 100%; }
 
@@ -904,7 +962,7 @@ option { background: var(--blanco); color: var(--pizarra); }
   transition: border-color 0.15s, transform 0.12s;
 }
 .ficha-opcion span { color: var(--suave); font-size: 0.875rem; }
-.ficha-opcion:hover { border-color: var(--borde-campo); }
+@media (hover: hover) and (pointer: fine) { .ficha-opcion:hover { border-color: var(--borde-campo); } }
 .ficha-opcion:active { transform: scale(0.98); }
 .ficha-opcion--activa { border-color: var(--pizarra); background: var(--fondo-agrupado); box-shadow: inset 0 0 0 1px var(--pizarra); }
 .agenda-aviso {
@@ -919,7 +977,7 @@ option { background: var(--blanco); color: var(--pizarra); }
   background: var(--blanco); color: var(--pizarra); border: 1px solid var(--linea-fuerte); border-radius: 12px;
   transition: border-color 0.15s, transform 0.12s;
 }
-.hora:hover { border-color: var(--pizarra); }
+@media (hover: hover) and (pointer: fine) { .hora:hover { border-color: var(--pizarra); } }
 .hora:active { transform: scale(0.96); }
 .hora--activa { background: var(--pizarra); color: var(--blanco); border-color: var(--pizarra); }
 .agenda-resumen { margin-top: 20px; padding: 18px; border: 1px solid var(--linea-fuerte); border-radius: 16px; background: var(--gris-claro); }
@@ -954,7 +1012,7 @@ option { background: var(--blanco); color: var(--pizarra); }
 .cita-cabecera { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
 .cita-con { display: block; color: var(--suave); font-size: 0.9375rem; letter-spacing: -0.015em; }
 .cita-cuando { margin: 6px 0 0; font-variant-numeric: tabular-nums; }
-.cita-codigo { margin-left: 10px; font-size: 0.8125rem; font-weight: 500; color: var(--suave); font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+.cita-codigo { margin-left: 10px; font-size: 0.8125rem; font-weight: 500; color: var(--terciaria); font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
 .cita-nota { margin: 8px 0 0; color: var(--suave); font-style: italic; }
 .cita-acciones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .cita-formulario { margin-top: 12px; padding-top: 12px; border-top: 0.5px solid var(--separador); }
@@ -1012,8 +1070,10 @@ option { background: var(--blanco); color: var(--pizarra); }
   font-size: 0.8125rem; font-weight: 700; color: var(--suave);
 }
 .resena-respuesta {
-  margin-top: 18px; padding: 16px 18px; border-left: 3px solid var(--celeste); border-radius: 0 14px 14px 0;
-  background: var(--gris-claro);
+  /* La respuesta del prestador: un bloque gris redondeado, como una burbuja citada de iOS (sin la
+     franja celeste al costado de la v3). */
+  margin-top: 18px; padding: 14px 16px; border-radius: var(--radio-celda);
+  background: var(--fondo-agrupado);
 }
 .resena-respuesta h4 { font-size: 0.875rem; font-weight: 800; letter-spacing: 0.02em; color: var(--pizarra); }
 .resena-acciones { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin-top: 14px; }
@@ -1083,50 +1143,70 @@ option { background: var(--blanco); color: var(--pizarra); }
 .tarjeta-nfc-cifras p { margin-top: 8px; }
 
 /* =============================================================== Barra inferior (celular)
-   La barra de pestañas de iOS: de vidrio, de borde a borde, y el contenido pasa por debajo. Lo mas
-   usado abajo, al alcance del pulgar; en escritorio no existe. La pestaña puesta lleva el UNICO
-   celeste de la pantalla: una pildora celeste con el icono en pizarra (6,7:1; nunca blanco encima). */
+   La barra de pestañas de iOS 26: una CAPSULA de vidrio que flota sobre el contenido, separada de
+   los bordes, con un brillo claro en el borde y una sombra corta. Lo mas usado, al alcance del
+   pulgar; en escritorio no existe. La pestaña puesta lleva el UNICO celeste de la pantalla: una
+   pildora celeste con el icono en pizarra (6,7:1; nunca blanco encima). */
 .barra-inferior { display: none; }
 .pestana {
   display: grid; justify-items: center; align-content: center; gap: 2px; min-height: 52px; padding: 4px 2px;
-  border: 0; background: none; border-radius: 14px; cursor: pointer; text-decoration: none;
+  border: 0; background: none; border-radius: 999px; cursor: pointer; text-decoration: none;
   color: var(--suave); font-size: 0.6875rem; font-weight: 500; letter-spacing: 0.005em; line-height: 1.2;
   -webkit-touch-callout: none; user-select: none;
 }
-.pestana-icono { display: grid; place-items: center; width: 52px; height: 30px; border-radius: 999px; transition: background 0.15s, transform 0.1s ease-out; }
+.pestana-icono {
+  display: grid; place-items: center; width: 52px; height: 30px; border-radius: 999px;
+  transition: background-color 0.2s ease-out, transform var(--soltar);
+}
 .pestana-icono .icono { width: 23px; height: 23px; }
 .pestana.active, .pestana[aria-expanded='true'] { color: var(--pizarra); font-weight: 600; }
 .pestana.active .pestana-icono { background: var(--celeste); color: var(--pizarra); }
 .pestana[aria-expanded='true'] .pestana-icono { background: var(--relleno); }
 .pestana.active .pestana-icono .icono { stroke-width: 2.3; }
-/* Respuesta al APOYAR el dedo, no al soltarlo. */
-.pestana:active .pestana-icono { transform: scale(0.9); }
+/* Respuesta al APOYAR el dedo (al instante), y al soltar vuelve despacio. */
+.pestana:active .pestana-icono { transform: scale(0.88); transition-duration: 0s; }
 .pestana:focus-visible { outline-offset: -3px; }
 .pestana--hueco { pointer-events: none; }
 
 @media (max-width: 880px) {
+  :root {
+    /* Donde se apoya la capsula: sobre la barra de inicio del iPhone, o a 10 px del borde. */
+    --barra-abajo: max(10px, calc(env(safe-area-inset-bottom, 0px) - 12px));
+    --barra-alto: 62px;
+  }
   .barra-inferior {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+    position: fixed; z-index: 60;
+    left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px));
+    bottom: var(--barra-abajo); max-width: 520px; margin-inline: auto;
     display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px;
-    padding: 4px 8px calc(4px + env(safe-area-inset-bottom));
-    background: var(--vidrio); border-top: 0.5px solid var(--separador);
+    min-height: var(--barra-alto); padding: 5px;
+    background: var(--vidrio); border: 0.5px solid var(--vidrio-borde); border-radius: 999px;
+    box-shadow: var(--sombra-flotante);
     -webkit-backdrop-filter: var(--vidrio-filtro); backdrop-filter: var(--vidrio-filtro);
   }
-  /* Que el final de cada pagina (el pie) no quede tapado por la barra. */
-  body { padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
-  /* La pestaña «Mas» reemplaza al boton «Menu» de la cabecera: uno solo, abajo. */
-  .menu-boton { display: none; }
-  /* El menu es una HOJA de iOS: sube desde abajo hasta justo encima de la barra, con su curva
-     de resorte sin rebote. No oscurece lo de atras: no bloquea, se cierra con la misma pestaña. */
+  /* Que el final de cada pagina (el pie) no quede tapado por la capsula. */
+  body { padding-bottom: calc(var(--barra-alto) + var(--barra-abajo) + 16px); }
+  /* El menu «Mas» es una HOJA de iOS: sube desde la pestaña que la abre (abajo a la derecha) hasta
+     justo encima de la capsula, con la curva de resorte sin rebote. No oscurece lo de atras: no
+     bloquea, y se cierra con la misma pestaña o al elegir. Su contenido no arrastra la pagina. */
   .menu-movil {
-    position: fixed; left: 8px; right: 8px; bottom: calc(66px + env(safe-area-inset-bottom)); z-index: 70;
-    width: auto; margin: 0; max-height: calc(100dvh - 150px); overflow: auto; overscroll-behavior: contain;
+    position: fixed; left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px));
+    bottom: calc(var(--barra-abajo) + var(--barra-alto) + 10px); z-index: 70;
+    width: auto; max-width: 520px; margin: 0 auto; max-height: calc(100dvh - var(--barra-alto) - var(--barra-abajo) - 40px);
+    overflow: auto; overscroll-behavior: contain; border-radius: 24px;
     box-shadow: 0 8px 40px rgba(17, 24, 39, 0.18), 0 0 0 0.5px rgba(17, 24, 39, 0.08);
-    transform-origin: bottom right;
-    animation: sube 0.38s var(--resorte);
+    transform-origin: 88% 100%;
+    animation: sube 0.36s var(--resorte);
   }
 }
-@keyframes sube { from { opacity: 0; transform: translateY(24px) scale(0.98); } to { opacity: 1; transform: none; } }
+/* Pantallas bajas (iPhone SE acostado o de 568 px): las diez filas de un prestador caben sin
+   deslizar dentro de la hoja; «Salir» quedaba fuera de la vista y sin pista (break-ui, 320×568). */
+@media (max-width: 880px) and (max-height: 640px) {
+  .menu-enlace { min-height: 44px; }
+  .menu-movil { padding-block: 4px; }
+}
+@keyframes sube { from { opacity: 0; transform: translateY(16px) scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes fundido { from { opacity: 0; } }
 
 
 /* =============================================================== Esqueletos
@@ -1174,7 +1254,7 @@ option { background: var(--blanco); color: var(--pizarra); }
    Las listas agrupadas de iOS: margen de 20 px a los lados, y las personas como CELDAS pegadas en
    una sola tarjeta blanca (como Contactos), con la linea fina que empieza donde empieza el texto. */
 @media (max-width: 600px) {
-  .contenedor { padding: 0 20px; }
+  .contenedor { padding: 0 max(20px, env(safe-area-inset-right, 0px)) 0 max(20px, env(safe-area-inset-left, 0px)); }
   .cifras { padding-inline: 20px; }
   .seccion { padding: 24px 0; }
   .tile { min-height: 0; }
@@ -1192,9 +1272,9 @@ option { background: var(--blanco); color: var(--pizarra); }
    «Reducir transparencia» (iOS y macOS): las barras de vidrio pasan a solidas. «Mas contraste»:
    solidas y con una linea que se ve. Las preferencias del sistema mandan sobre el estilo. */
 @media (prefers-reduced-transparency: reduce) {
-  .cabecera-fila, .barra-inferior { background: var(--blanco); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .cabecera-fila, .barra-inferior, .titulo-compacto { background: var(--blanco); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 @media (prefers-contrast: more) {
-  .cabecera-fila, .barra-inferior { background: var(--blanco); -webkit-backdrop-filter: none; backdrop-filter: none; border-color: var(--borde-campo); }
+  .cabecera-fila, .barra-inferior, .titulo-compacto { background: var(--blanco); -webkit-backdrop-filter: none; backdrop-filter: none; border-color: var(--borde-campo); }
   .tarjetas-rejilla > li + li::before, .flotante + .flotante::before, .cita + .cita::before, .menu-enlace + .menu-enlace::before { border-top-color: var(--borde-campo); }
 }
