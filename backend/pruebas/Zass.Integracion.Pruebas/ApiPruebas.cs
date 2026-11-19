@@ -48,6 +48,9 @@ public sealed class Aplicacion : WebApplicationFactory<Program>
             // la pondria roja sin que nadie entienda por que. Lo que hace se prueba llamandolo
             // directo (CoordinadorDeTrabajos y CorrerDiarioAsync), no esperando su temporizador.
             ["Zass:Fondo:Activo"] = "false",
+
+            // P19 (T49): en pruebas no consultamos HIBP para no salir a internet
+            ["Zass:RevisarContrasenasFiltradas"] = "false",
         };
     }
 
@@ -86,6 +89,8 @@ public sealed class AplicacionParaAuditoria : WebApplicationFactory<Program>
 
             ["Zass:Verificacion:PermitirSinDocumentos"] = permitirSinDocumentos ? "true" : "false",
             ["Zass:Fondo:Activo"] = "false",
+            // P19 (T49): en pruebas no consultamos HIBP para no salir a internet
+            ["Zass:RevisarContrasenasFiltradas"] = "false",
         };
     }
 
