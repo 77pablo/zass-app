@@ -13,7 +13,7 @@ import { useTitulo } from '../marco/useTitulo'
  * parece a la de un banco y no lo es, es la clase de cosa que alguien llega a confundir.
  *
  * El aviso se manda a API-70 con los nombres de campo que espera el adaptador simulado
- * (`intento`, `monto`, `estado`, `referencia`). No se inventan aquí: están en
+ * (`intento`, `monto`, `estado`, `referencia`, `firma`). No se inventan aquí: están en
  * `PasarelaSimulada.cs` y si cambian allá, esta pantalla deja de servir.
  *
  * TEXTOS PROPUESTOS, pendientes de aprobación de Pablo.
@@ -29,6 +29,7 @@ export function PagoSimulado() {
   const [parametros] = useSearchParams()
   const navegar = useNavigate()
   const intento = parametros.get('intento') ?? parametros.get('ref') ?? ''
+  const firma = parametros.get('firma') ?? ''
 
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -43,6 +44,7 @@ export function PagoSimulado() {
         monto: MONTO_DE_LA_INSCRIPCION,
         estado: aprobado ? 'aprobado' : 'rechazado',
         referencia: `prueba-${intento.slice(0, 8)}`,
+        firma,
       })
       navegar('/planes/listo')
     } catch {
