@@ -113,7 +113,7 @@ export function Registrarse({
       </p>
 
       <button className="boton" type="submit" disabled={enviando}>
-        {enviando ? 'Creando...' : 'Crear cuenta'}
+        {enviando ? 'Creando…' : 'Crear cuenta'}
       </button>
     </form>
   )
