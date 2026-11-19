@@ -27,26 +27,22 @@ public static class EndpointsAuditoria
                 IRepositorioAuditoria repo, CancellationToken ct) =>
             {
                 // Validar que haya exactamente un filtro
-                // M2 MUTACION: quitar validacion de filtro (devuelve todo)
-                // var filtroEntidad = !string.IsNullOrWhiteSpace(entidad) && entidadId.HasValue;
-                // var filtroActor = actorId.HasValue;
-
-                // if (filtroEntidad && filtroActor)
-                //     return Results.BadRequest(new
-                //     {
-                //         titulo = "Parametros invalidos",
-                //         detalle = "No se puede filtrar por entidad y por actor a la vez."
-                //     });
-
-                // if (!filtroEntidad && !filtroActor)
-                //     return Results.BadRequest(new
-                //     {
-                //         titulo = "Parametros invalidos",
-                //         detalle = "Se debe filtrar por entidad+entidadId o por actorId."
-                //     });
-
                 var filtroEntidad = !string.IsNullOrWhiteSpace(entidad) && entidadId.HasValue;
                 var filtroActor = actorId.HasValue;
+
+                if (filtroEntidad && filtroActor)
+                    return Results.BadRequest(new
+                    {
+                        titulo = "Parametros invalidos",
+                        detalle = "No se puede filtrar por entidad y por actor a la vez."
+                    });
+
+                if (!filtroEntidad && !filtroActor)
+                    return Results.BadRequest(new
+                    {
+                        titulo = "Parametros invalidos",
+                        detalle = "Se debe filtrar por entidad+entidadId o por actorId."
+                    });
 
                 // Validar y acotar el limite
                 var limiteAcotado = Math.Clamp(limite ?? 50, 1, 100);
