@@ -155,9 +155,8 @@ public sealed class ServicioTarjetas : IServicioTarjetas
         };
 
         _repo.Agregar(tarjeta);
-        await _trabajo.GuardarAsync(ct);
 
-        // Auditoria SIN el codigo en claro
+        // Auditoria SIN el codigo en claro (antes de GuardarAsync para que se guarde en la misma transaccion)
         _auditor.Registrar(new RegistroAuditoria
         {
             Accion = "TarjetaEmitida",
@@ -166,6 +165,8 @@ public sealed class ServicioTarjetas : IServicioTarjetas
             Contexto = $"UrlEstable={tarjeta.UrlEstable}, VenceEn={venceEn:O}",
             OcurridoEn = _reloj.Ahora,
         });
+
+        await _trabajo.GuardarAsync(ct);
 
         return Resultado.Ok(new EmitirTarjetaResultado(tarjeta.UrlEstable, codigo, venceEn));
     }
@@ -221,9 +222,7 @@ public sealed class ServicioTarjetas : IServicioTarjetas
         tarjeta.ActivadaEn = _reloj.Ahora;
         tarjeta.HashCodigoActivacion = null; // Consumo atomico - borrar el hash
 
-        await _trabajo.GuardarAsync(ct);
-
-        // Auditoria
+        // Auditoria (antes de GuardarAsync para que se guarde en la misma transaccion)
         _auditor.Registrar(new RegistroAuditoria
         {
             ActorId = perfilPrestadorId,
@@ -234,6 +233,8 @@ public sealed class ServicioTarjetas : IServicioTarjetas
             IpOrigen = ipOrigen,
             OcurridoEn = _reloj.Ahora,
         });
+
+        await _trabajo.GuardarAsync(ct);
 
         // Notificacion (A-08) - pendiente en otra tarea
         // var slug = tarjeta.PerfilPrestador?.Slug; // necesitamos el slug

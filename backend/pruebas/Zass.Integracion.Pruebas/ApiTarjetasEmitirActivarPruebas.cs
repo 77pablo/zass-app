@@ -48,11 +48,7 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
         _admin = await CrearYAutenticarAsync("admin", "administrador");
         _prestador = await CrearYAutenticarAsync("prestador");
         _perfilPrestadorId = (await ObtenerPerfilIdAsync($"apitj-prestador-{_marca}@zass.local"))!.Value;
-        var verificador = await CrearYAutenticarAsync("verificador", "verificador");
-        verificador.Dispose(); // Solo para crear el usuario, no lo usamos en las pruebas
         _otroHttp = await CrearYAutenticarAsync("otro");
-        var borrador = await CrearYAutenticarAsync("borrador");
-        borrador.Dispose(); // Solo para crear el usuario
     }
 
     private async Task<HttpClient> CrearYAutenticarAsync(string sufijo, string rol = "prestador")
@@ -180,7 +176,10 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
     [Fact]
     public async Task Admin_emite_tarjeta_devuelve_201_con_codigo_en_claro_y_guarda_solo_hash()
     {
-        var r = await _admin.PostAsync("/api/interno/tarjetas", null);
+        var csrf = await ObtenerCsrfAsync(_admin);
+        var req = new HttpRequestMessage(HttpMethod.Post, "/api/interno/tarjetas");
+        req.Headers.Add("X-CSRF-Token", csrf);
+        var r = await _admin.SendAsync(req);
 
         Assert.Equal(HttpStatusCode.Created, r.StatusCode);
 
@@ -212,7 +211,10 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
     [Fact]
     public async Task Usuario_normal_no_puede_emitir_403()
     {
-        var r = await _prestador.PostAsync("/api/interno/tarjetas", null);
+        var csrf = await ObtenerCsrfAsync(_prestador);
+        var req = new HttpRequestMessage(HttpMethod.Post, "/api/interno/tarjetas");
+        req.Headers.Add("X-CSRF-Token", csrf);
+        var r = await _prestador.SendAsync(req);
 
         Assert.Equal(HttpStatusCode.Forbidden, r.StatusCode);
     }
@@ -220,10 +222,14 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
     [Fact]
     public async Task Verificador_no_puede_emitir_403()
     {
-        var verificador = await CrearYAutenticarAsync("verificador", "verificador");
+        // Usar sufijo unico para evitar colision con el verificador creado en InitializeAsync
+        var verificador = await CrearYAutenticarAsync($"verificador-{Guid.NewGuid():N}", "verificador");
         try
         {
-            var r = await verificador.PostAsync("/api/interno/tarjetas", null);
+            var csrf = await ObtenerCsrfAsync(verificador);
+            var req = new HttpRequestMessage(HttpMethod.Post, "/api/interno/tarjetas");
+            req.Headers.Add("X-CSRF-Token", csrf);
+            var r = await verificador.SendAsync(req);
             Assert.Equal(HttpStatusCode.Forbidden, r.StatusCode);
         }
         finally
@@ -235,6 +241,7 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
     [Fact]
     public async Task Sin_sesion_emitir_devuelve_401()
     {
+        // Sin sesion no hay CSRF, el endpoint rechazara antes por falta de autorizacion
         var r = await _cliente.PostAsync("/api/interno/tarjetas", null);
 
         Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode);
@@ -243,7 +250,10 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
     [Fact]
     public async Task Emitir_auditoria_no_contiene_codigo_en_claro()
     {
-        await _admin.PostAsync("/api/interno/tarjetas", null);
+        var csrf = await ObtenerCsrfAsync(_admin);
+        var req = new HttpRequestMessage(HttpMethod.Post, "/api/interno/tarjetas");
+        req.Headers.Add("X-CSRF-Token", csrf);
+        await _admin.SendAsync(req);
 
         using var ctx = ContextoDePrueba.Crear();
         var auditoria = await ctx.Auditoria
@@ -261,15 +271,22 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
 
     // ------------------------------------------------------------- API-55: Activar tarjeta
 
+    private static async Task<(string segmento, string codigo)> EmitirTarjetaAsync(HttpClient admin)
+    {
+        var csrf = await ObtenerCsrfAsync(admin);
+        var req = new HttpRequestMessage(HttpMethod.Post, "/api/interno/tarjetas");
+        req.Headers.Add("X-CSRF-Token", csrf);
+        var r = await admin.SendAsync(req);
+        r.EnsureSuccessStatusCode();
+        var body = await r.Content.ReadFromJsonAsync<JsonElement>();
+        return (body.GetProperty("segmento").GetString()!, body.GetProperty("codigo").GetString()!);
+    }
+
     [Fact]
     public async Task Activar_con_codigo_correcto_tarjeta_queda_activa_ligada_y_hash_borrado()
     {
         // Primero emitir una tarjeta como admin
-        var emitir = await _admin.PostAsync("/api/interno/tarjetas", null);
-        emitir.EnsureSuccessStatusCode();
-        var emitBody = await emitir.Content.ReadFromJsonAsync<JsonElement>();
-        var segmento = emitBody.GetProperty("segmento").GetString()!;
-        var codigo = emitBody.GetProperty("codigo").GetString()!;
+        var (segmento, codigo) = await EmitirTarjetaAsync(_admin);
 
         // Ahora activar como prestador
         var csrf = await ObtenerCsrfAsync(_prestador);
@@ -293,11 +310,7 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
     [Fact]
     public async Task Segundo_intento_con_mismo_codigo_rechazo_mismo_mensaje()
     {
-        var emitir = await _admin.PostAsync("/api/interno/tarjetas", null);
-        emitir.EnsureSuccessStatusCode();
-        var emitBody = await emitir.Content.ReadFromJsonAsync<JsonElement>();
-        var segmento = emitBody.GetProperty("segmento").GetString()!;
-        var codigo = emitBody.GetProperty("codigo").GetString()!;
+        var (segmento, codigo) = await EmitirTarjetaAsync(_admin);
 
         var csrf = await ObtenerCsrfAsync(_prestador);
 
@@ -323,11 +336,7 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
     [Fact]
     public async Task Codigo_vencido_rechazo_con_mismo_mensaje()
     {
-        var emitir = await _admin.PostAsync("/api/interno/tarjetas", null);
-        emitir.EnsureSuccessStatusCode();
-        var emitBody = await emitir.Content.ReadFromJsonAsync<JsonElement>();
-        var segmento = emitBody.GetProperty("segmento").GetString()!;
-        var codigo = emitBody.GetProperty("codigo").GetString()!;
+        var (segmento, codigo) = await EmitirTarjetaAsync(_admin);
 
         // Cambiar la fecha de vencimiento a ayer
         using (var ctx = ContextoDePrueba.Crear())
@@ -349,10 +358,7 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
     [Fact]
     public async Task Codigo_incorrecto_rechazo_con_mismo_mensaje()
     {
-        var emitir = await _admin.PostAsync("/api/interno/tarjetas", null);
-        emitir.EnsureSuccessStatusCode();
-        var emitBody = await emitir.Content.ReadFromJsonAsync<JsonElement>();
-        var segmento = emitBody.GetProperty("segmento").GetString()!;
+        var (segmento, _) = await EmitirTarjetaAsync(_admin);
 
         var csrf = await ObtenerCsrfAsync(_prestador);
         var r = await _prestador.SendAsync(CrearActivarRequest(_prestador, segmento, "CODIGO-INCORRECTO-1234", csrf));
@@ -365,26 +371,14 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
     [Fact]
     public async Task Tarjeta_ajena_o_inexistente_devuelve_404_igual()
     {
-        var emitir = await _admin.PostAsync("/api/interno/tarjetas", null);
-        emitir.EnsureSuccessStatusCode();
-        var emitBody = await emitir.Content.ReadFromJsonAsync<JsonElement>();
-        var segmento = emitBody.GetProperty("segmento").GetString()!;
-        var codigo = emitBody.GetProperty("codigo").GetString()!;
+        var (segmento, codigo) = await EmitirTarjetaAsync(_admin);
 
         // Usar el prestador "otro" ya creado en InitializeAsync
-        var otro = await CrearYAutenticarAsync("otro");
-        try
-        {
-            var csrf = await ObtenerCsrfAsync(otro);
-            var r = await otro.SendAsync(CrearActivarRequest(otro, segmento, codigo, csrf));
+        var csrf = await ObtenerCsrfAsync(_otroHttp);
+        var r = await _otroHttp.SendAsync(CrearActivarRequest(_otroHttp, segmento, codigo, csrf));
 
-            // 404 igual que si no existiera
-            Assert.Equal(HttpStatusCode.NotFound, r.StatusCode);
-        }
-        finally
-        {
-            otro.Dispose();
-        }
+        // 404 igual que si no existiera
+        Assert.Equal(HttpStatusCode.NotFound, r.StatusCode);
 
         // Segmento inexistente
         var csrf2 = await ObtenerCsrfAsync(_prestador);
@@ -399,54 +393,40 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
     [Fact]
     public async Task Activacion_simultanea_mismo_codigo_solo_una_gana_CC05()
     {
-        var emitir = await _admin.PostAsync("/api/interno/tarjetas", null);
-        emitir.EnsureSuccessStatusCode();
-        var emitBody = await emitir.Content.ReadFromJsonAsync<JsonElement>();
-        var segmento = emitBody.GetProperty("segmento").GetString()!;
-        var codigo = emitBody.GetProperty("codigo").GetString()!;
+        var (segmento, codigo) = await EmitirTarjetaAsync(_admin);
 
-        var otro = await CrearYAutenticarAsync("otro");
-        try
-        {
-            var csrf1 = await ObtenerCsrfAsync(_prestador);
-            var csrf2 = await ObtenerCsrfAsync(otro);
+        // Usar el prestador "otro" ya creado en InitializeAsync
+        var csrf1 = await ObtenerCsrfAsync(_prestador);
+        var csrf2 = await ObtenerCsrfAsync(_otroHttp);
 
-            // Dos peticiones simultaneas
-            var t1 = _prestador.SendAsync(CrearActivarRequest(_prestador, segmento, codigo, csrf1));
-            var t2 = otro.SendAsync(CrearActivarRequest(otro, segmento, codigo, csrf2));
+        // Dos peticiones simultaneas
+        var t1 = _prestador.SendAsync(CrearActivarRequest(_prestador, segmento, codigo, csrf1));
+        var t2 = _otroHttp.SendAsync(CrearActivarRequest(_otroHttp, segmento, codigo, csrf2));
 
-            await Task.WhenAll(t1, t2);
+        await Task.WhenAll(t1, t2);
 
-            var r1 = t1.Result;
-            var r2 = t2.Result;
+        var r1 = t1.Result;
+        var r2 = t2.Result;
 
-            // Exactamente una OK, la otra 409 o 422 (ya activada)
-            var okCount = new[] { r1, r2 }.Count(r => r.StatusCode == HttpStatusCode.OK);
-            Assert.Equal(1, okCount);
+        // Exactamente una OK, la otra 409 o 422 (ya activada)
+        var okCount = new[] { r1, r2 }.Count(r => r.StatusCode == HttpStatusCode.OK);
+        Assert.Equal(1, okCount);
 
-            // La que gano tiene la tarjeta ligada a su perfil
-            using var ctx = ContextoDePrueba.Crear();
-            var tarjeta = await ctx.Tarjetas.FirstAsync(t => t.UrlEstable == segmento);
-            Assert.Equal(EstadoTarjeta.Activa, tarjeta.Estado);
+        // La que gano tiene la tarjeta ligada a su perfil
+        using var ctx = ContextoDePrueba.Crear();
+        var tarjeta = await ctx.Tarjetas.FirstAsync(t => t.UrlEstable == segmento);
+        Assert.Equal(EstadoTarjeta.Activa, tarjeta.Estado);
 
-            var otroUser = await ctx.Usuarios.FirstAsync(u => u.Correo == $"apitj-otro-{_marca}@zass.local");
-            var otroPerfil = await ctx.PerfilesPrestador.FirstAsync(p => p.UsuarioId == otroUser.Id);
-            Assert.True(tarjeta.PerfilPrestadorId == _perfilPrestadorId ||
-                        tarjeta.PerfilPrestadorId == otroPerfil.Id);
-        }
-        finally
-        {
-            otro.Dispose();
-        }
+        var otroUser = await ctx.Usuarios.FirstAsync(u => u.Correo == $"apitj-otro-{_marca}@zass.local");
+        var otroPerfil = await ctx.PerfilesPrestador.FirstAsync(p => p.UsuarioId == otroUser.Id);
+        Assert.True(tarjeta.PerfilPrestadorId == _perfilPrestadorId ||
+                    tarjeta.PerfilPrestadorId == otroPerfil.Id);
     }
 
     [Fact]
     public async Task Sin_sesion_activar_devuelve_401()
     {
-        var emitir = await _admin.PostAsync("/api/interno/tarjetas", null);
-        emitir.EnsureSuccessStatusCode();
-        var emitBody = await emitir.Content.ReadFromJsonAsync<JsonElement>();
-        var segmento = emitBody.GetProperty("segmento").GetString()!;
+        var (segmento, _) = await EmitirTarjetaAsync(_admin);
 
         var r = await _cliente.PostAsJsonAsync($"/t/{segmento}/activar", new { codigo = "CODIGO-VALIDO-1234" });
         Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode);
@@ -455,14 +435,20 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
     [Fact]
     public async Task Perfil_no_publicado_no_puede_activar()
     {
-        // El perfil "borrador" ya fue creado en InitializeAsync con estado Borrador
-        var client = await CrearYAutenticarAsync("borrador");
+        // Crear un usuario con perfil en estado Borrador (no Publicado)
+        var sufijo = $"borrador-{Guid.NewGuid():N}";
+        var client = await CrearYAutenticarAsync(sufijo);
 
-        var emitir = await _admin.PostAsync("/api/interno/tarjetas", null);
-        emitir.EnsureSuccessStatusCode();
-        var emitBody = await emitir.Content.ReadFromJsonAsync<JsonElement>();
-        var segmento = emitBody.GetProperty("segmento").GetString()!;
-        var codigo = emitBody.GetProperty("codigo").GetString()!;
+        // Cambiar el perfil a estado Borrador
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var usuario = await ctx.Usuarios.SingleAsync(u => u.Correo == $"apitj-{sufijo}@zass.local");
+            var perfil = await ctx.PerfilesPrestador.SingleAsync(p => p.UsuarioId == usuario.Id);
+            perfil.Estado = EstadoPerfil.Borrador;
+            await ctx.SaveChangesAsync();
+        }
+
+        var (segmento, codigo) = await EmitirTarjetaAsync(_admin);
 
         try
         {
