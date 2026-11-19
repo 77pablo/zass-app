@@ -159,16 +159,18 @@ public class AuditoriaIdentidadPruebas : IAsyncLifetime
         var unidad = new UnidadDeTrabajoEfCore(ctx);
         var auditor = new AuditorEfCore(ctx);
         var reloj = new RelojUtc();
+        var filtradas = new ContrasenasFiltradasNunca();
         var cuenta = new ServicioCuenta(
             new RepositorioUsuariosEfCore(ctx),
             new RepositorioPerfilesEfCore(ctx),
-            unidad, hash, secretos, reloj, 
+            unidad, hash, secretos, reloj,
             new ColaNotificacionesEfCore(ctx),
             auditor,
             new ServicioSesion(
                 new RepositorioUsuariosEfCore(ctx),
                 new RepositorioSesionesEfCore(ctx),
-                unidad, hash, secretos, reloj, auditor));
+                unidad, hash, secretos, reloj, auditor),
+            filtradas);
 
         var resultado = await cuenta.EliminarAsync(usuarioId);
         Assert.True(resultado.Exito, resultado.Mensaje);

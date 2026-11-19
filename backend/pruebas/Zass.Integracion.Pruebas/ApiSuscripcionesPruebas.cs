@@ -1,9 +1,11 @@
+using System.Linq;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Zass.Infraestructura.Pagos;
 
 namespace Zass.Integracion.Pruebas;
 
@@ -22,6 +24,17 @@ namespace Zass.Integracion.Pruebas;
 /// </summary>
 public class ApiSuscripcionesPruebas : IAsyncLifetime
 {
+    /// <summary>
+    /// Secreto de prueba para firmar avisos (32 bytes en Base64). Debe coincidir con el
+    /// configurado en <see cref="ApiPruebas.Aplicacion"/>.
+    /// </summary>
+    private static readonly string SecretoPrueba = Convert.ToBase64String(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray());
+
+    /// <summary>
+    /// Referencia dummy para los avisos de prueba que no pasan por el flujo real de iniciación.
+    /// </summary>
+    private const string ReferenciaPrueba = "sim-prueba12345678";
+
     private readonly Aplicacion _app = new();
     private HttpClient _cliente = null!;
 
@@ -135,9 +148,11 @@ public class ApiSuscripcionesPruebas : IAsyncLifetime
         // así que no hay cookie que proteger y pedirle un token sería pedirle algo que no
         // puede tener. Si alguien «arregla» esto añadiéndole el filtro de CSRF, la pasarela
         // deja de poder confirmar pagos y nadie se entera hasta que falte el dinero.
-        var contenido = new StringContent(
-            """{"intento":"00000000-0000-0000-0000-000000000000","monto":"7990"}""",
-            Encoding.UTF8, "application/json");
+        var intento = Guid.Parse("00000000-0000-0000-0000-000000000000");
+        var monto = 7990;
+        var firma = PasarelaSimulada.CalcularFirma(SecretoPrueba, intento, monto, ReferenciaPrueba);
+        var json = $"{{\"intento\":\"{intento}\",\"monto\":\"{monto}\",\"referencia\":\"{ReferenciaPrueba}\",\"firma\":\"{firma}\"}}";
+        var contenido = new StringContent(json, Encoding.UTF8, "application/json");
 
         var respuesta = await _cliente.PostAsync("/api/pagos/aviso", contenido);
 
@@ -153,9 +168,11 @@ public class ApiSuscripcionesPruebas : IAsyncLifetime
         var tomadosAntes = await CuposTomadosAsync();
         var intentosAntes = await IntentosAsync();
 
-        var contenido = new StringContent(
-            $$"""{"intento":"{{Guid.NewGuid()}}","monto":"5990","estado":"aprobado"}""",
-            Encoding.UTF8, "application/json");
+        var intento = Guid.NewGuid();
+        var monto = 5990;
+        var firma = PasarelaSimulada.CalcularFirma(SecretoPrueba, intento, monto, ReferenciaPrueba);
+        var json = $"{{\"intento\":\"{intento}\",\"monto\":\"{monto}\",\"estado\":\"aprobado\",\"referencia\":\"{ReferenciaPrueba}\",\"firma\":\"{firma}\"}}";
+        var contenido = new StringContent(json, Encoding.UTF8, "application/json");
 
         var respuesta = await _cliente.PostAsync("/api/pagos/aviso", contenido);
 

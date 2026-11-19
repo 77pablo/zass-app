@@ -126,6 +126,15 @@ public interface ISondaDeBase
     Task<bool> RespondeAsync(CancellationToken ct = default);
 }
 
+/// <summary>
+/// Comprueba si una contrasena aparece en filtraciones de datos conocidas (Have I Been Pwned,
+/// rango k-anonimo). Se usa ANTES de hashear para rechazar contrasenas comprometidas.
+/// </summary>
+public interface IContrasenasFiltradas
+{
+    Task<bool> EstaFiltradaAsync(string contrasena, CancellationToken ct = default);
+}
+
 public interface IRepositorioUsuarios
 {
     Task<Usuario?> PorIdAsync(Guid id, CancellationToken ct = default);
