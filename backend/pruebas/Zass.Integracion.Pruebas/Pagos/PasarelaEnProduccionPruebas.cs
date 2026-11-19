@@ -38,11 +38,15 @@ public class PasarelaEnProduccionPruebas
     /// </summary>
     private static IServiceProvider Contenedor(string entorno, string? pasarela)
     {
+        const string SecretoAvisoValido =
+            "secreto-de-prueba-del-aviso-0123456789ab"; // 40 caracteres
+
         var ajustes = new Dictionary<string, string?>
         {
             ["Zass:CadenaConexion"] = "Host=no-se-conecta;Database=no-existe",
             ["Zass:ClaveDireccionesBase64"] =
                 Convert.ToBase64String(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray()),
+            ["Zass:SecretoAvisoPagos"] = SecretoAvisoValido,
         };
         if (pasarela is not null) ajustes[RegistroDeServicios.ClavePasarela] = pasarela;
 

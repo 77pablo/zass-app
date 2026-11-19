@@ -32,11 +32,12 @@ public sealed class ServicioRegistro
     private readonly IRelojSistema _reloj;
     private readonly INotificaciones _avisos;
     private readonly IAuditor _auditor;
+    private readonly IContrasenasFiltradas _filtradas;
 
     public ServicioRegistro(
         IRepositorioUsuarios usuarios, IRepositorioPerfiles perfiles, IUnidadDeTrabajo unidad,
         IHashContrasenas hash, IGeneradorSecretos secretos, IRelojSistema reloj,
-        INotificaciones avisos, IAuditor auditor)
+        INotificaciones avisos, IAuditor auditor, IContrasenasFiltradas filtradas)
     {
         _usuarios = usuarios;
         _perfiles = perfiles;
@@ -46,6 +47,7 @@ public sealed class ServicioRegistro
         _reloj = reloj;
         _avisos = avisos;
         _auditor = auditor;
+        _filtradas = filtradas;
     }
 
     public async Task<Resultado<CuentaCreadaDto>> RegistrarAsync(
@@ -71,6 +73,11 @@ public sealed class ServicioRegistro
         if (await _usuarios.ExisteCorreoAsync(correo, ct))
             return Resultado.Falla<CuentaCreadaDto>(Fallas.Conflicto,
                 "Ya existe una cuenta con ese correo.");
+
+        // P19 (T49): rechazar contrasenas que aparecen en filtraciones conocidas (HIBP).
+        if (await _filtradas.EstaFiltradaAsync(cmd.Contrasena, ct))
+            return Resultado.Falla<CuentaCreadaDto>(Fallas.Validacion,
+                "Esa contraseña aparece en filtraciones de datos conocidas. Elige otra.");
 
         var ahora = _reloj.Ahora;
         var token = _secretos.NuevoToken();

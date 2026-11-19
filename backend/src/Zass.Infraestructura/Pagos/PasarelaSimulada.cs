@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Security.Cryptography;
+using System.Text;
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
 using Zass.Infraestructura.Configuracion;
@@ -73,6 +75,7 @@ public sealed class PasarelaSimulada : IPasarelaDePagos
     public const string CampoEstado = "estado";
     public const string CampoMonto = "monto";
     public const string CampoReferencia = "referencia";
+    public const string CampoFirma = "firma";
     public const string EstadoAprobado = "aprobado";
     public const string EstadoRechazado = "rechazado";
 
@@ -86,6 +89,28 @@ public sealed class PasarelaSimulada : IPasarelaDePagos
     }
 
     public string Nombre => NombreDeLaPasarela;
+
+    /// <summary>
+    /// Calcula la firma HMAC-SHA256 del mensaje "{intento:D}|{monto}|{referencia}" con la clave
+    /// indicada, y la devuelve en Base64Url (sin padding, + → -, / → _).
+    /// </summary>
+    private static string Firmar(string secreto, Guid intento, int monto, string referencia)
+    {
+        var mensaje = $"{intento:D}|{monto}|{referencia}";
+        var claveBytes = Encoding.UTF8.GetBytes(secreto);
+        var mensajeBytes = Encoding.UTF8.GetBytes(mensaje);
+        var hash = HMACSHA256.HashData(claveBytes, mensajeBytes);
+        return Convert.ToBase64String(hash)
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+    }
+
+    /// <summary>
+    /// Version publica para que las pruebas puedan calcular la firma esperada.
+    /// </summary>
+    public static string CalcularFirma(string secreto, Guid intento, int monto, string referencia)
+        => Firmar(secreto, intento, monto, referencia);
 
     public Task<Resultado<CobroIniciado>> IniciarCobroAsync(
         SolicitudDeCobro solicitud, CancellationToken ct = default)
@@ -102,8 +127,11 @@ public sealed class PasarelaSimulada : IPasarelaDePagos
         // que venga del cliente: una direccion de retorno elegida por quien llama es un
         // redirector abierto con forma de formulario de pago.
         var raiz = (_opciones.Value.UrlPublica ?? "").TrimEnd('/');
+        var secreto = _opciones.Value.SecretoAvisoPagos!;
+        var firma = Firmar(secreto, solicitud.IntentoDePagoId, solicitud.Monto, referencia);
         var url = $"{raiz}{RutaDeLaPantalla}?{CampoIntento}={solicitud.IntentoDePagoId}"
-                  + $"&{CampoReferencia}={referencia}&{CampoMonto}={solicitud.Monto}";
+                  + $"&{CampoReferencia}={Uri.EscapeDataString(referencia)}&{CampoMonto}={solicitud.Monto}"
+                  + $"&{CampoFirma}={Uri.EscapeDataString(firma)}";
 
         _registro.LogWarning(
             "Cobro SIMULADO de {Monto} {Moneda} para el intento {Intento}. "
@@ -129,8 +157,11 @@ public sealed class PasarelaSimulada : IPasarelaDePagos
         var referencia = $"sim-{Guid.NewGuid():N}"[..20];
 
         var raiz = (_opciones.Value.UrlPublica ?? "").TrimEnd('/');
+        var secreto = _opciones.Value.SecretoAvisoPagos!;
+        var firma = Firmar(secreto, solicitud.IntentoDePagoId, 0, referencia);
         var url = $"{raiz}{RutaDeLaPantalla}?{CampoIntento}={solicitud.IntentoDePagoId}"
-                  + $"&{CampoReferencia}={referencia}&{CampoMonto}=0";
+                  + $"&{CampoReferencia}={Uri.EscapeDataString(referencia)}&{CampoMonto}=0"
+                  + $"&{CampoFirma}={Uri.EscapeDataString(firma)}";
 
         _registro.LogWarning(
             "Inscripcion SIMULADA del medio de pago para el intento {Intento}. "
@@ -199,6 +230,24 @@ public sealed class PasarelaSimulada : IPasarelaDePagos
             return Task.FromResult(Resultado.Falla<CobroResuelto>(
                 Fallas.Validacion, $"La confirmación no trae un «{CampoMonto}» válido."));
 
+        // Validar la firma DESPUES de validar intento y monto (para no filtrar informacion
+        // por canal lateral). El campo "estado" NO entra en la firma a proposito: la pantalla
+        // de prueba elige aprobar o rechazar su PROPIO intento.
+        var firmaRecibida = aviso.Campo(CampoFirma);
+        var referencia = aviso.Campo(CampoReferencia);
+        if (string.IsNullOrWhiteSpace(firmaRecibida) || string.IsNullOrWhiteSpace(referencia))
+            return Task.FromResult(Resultado.Falla<CobroResuelto>(
+                Fallas.Validacion, "La confirmación no viene firmada por la pasarela."));
+
+        var secreto = _opciones.Value.SecretoAvisoPagos!;
+        var firmaEsperada = Firmar(secreto, intentoId, monto, referencia);
+
+        var recibidaBytes = Encoding.UTF8.GetBytes(firmaRecibida);
+        var esperadaBytes = Encoding.UTF8.GetBytes(firmaEsperada);
+        if (!CryptographicOperations.FixedTimeEquals(recibidaBytes, esperadaBytes))
+            return Task.FromResult(Resultado.Falla<CobroResuelto>(
+                Fallas.Validacion, "La confirmación no viene firmada por la pasarela."));
+
         // El estado puede venir forzado (asi se prueba el rechazo desde la pantalla) o
         // deducirse del monto. Cualquier valor distinto de 'aprobado' es un rechazo: ante
         // un campo que no se entiende, no se regala un mes.
@@ -209,7 +258,7 @@ public sealed class PasarelaSimulada : IPasarelaDePagos
 
         return Task.FromResult(Resultado.Ok(new CobroResuelto(
             IntentoDePagoId: intentoId,
-            ReferenciaPasarela: aviso.Campo(CampoReferencia),
+            ReferenciaPasarela: referencia,
             Aprobado: aprobado,
             MontoConfirmado: monto,
             MotivoFallo: aprobado

@@ -2,6 +2,8 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting.Internal;
 using Npgsql;
 using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Puertos;
@@ -608,13 +610,21 @@ public class ResenasIntegracionPruebas : IDisposable
     [Fact]
     public void El_contenedor_resuelve_el_servicio_de_reseñas_y_su_repositorio()
     {
+        const string SecretoAvisoValido =
+            "secreto-de-prueba-del-aviso-0123456789ab"; // 40 caracteres
+
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Zass:CadenaConexion"] = Conexion.Cadena,
             ["Zass:ClaveDireccionesBase64"] =
                 Convert.ToBase64String(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray()),
+            ["Zass:SecretoAvisoPagos"] = SecretoAvisoValido,
         }).Build();
-        using var proveedor = new ServiceCollection().AgregarZass(config)
+        using var proveedor = new ServiceCollection()
+            .AddSingleton<IConfiguration>(config)
+            .AddLogging()
+            .AddSingleton<IHostEnvironment>(new HostingEnvironment { EnvironmentName = "Development" })
+            .AgregarZass(config)
             .BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
         using var ambito = proveedor.CreateScope();
 
