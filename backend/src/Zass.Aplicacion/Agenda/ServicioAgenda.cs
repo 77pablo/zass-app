@@ -1074,95 +1074,76 @@ public sealed class ServicioAgenda : IServicioAgenda
             var hoyChile = HoraDeChile.DiaLocal(ahora);
 
             // 1. Bloqueo de fila sobre la cita (patrón CC-01): SELECT ... FOR UPDATE
-            var cita = await _repo.CitaParaCambioAsync(citaId, t);
+            var cita = await _repo.CitaParaReenviarAsync(citaId, t);
             if (cita is null)
-                return Resultado.Falla<string>("NoEncontrada", "La cita no existe.");
+                return Resultado.Falla<string>(Fallas.NoEncontrado, "La cita no existe.");
 
             // 2. Verificar que el usuario es parte de la cita (buscador o prestador)
             var esBuscador = cita.BuscadorId == usuarioId;
             var esPrestador = cita.PerfilPrestadorId == perfilPrestadorId;
             if (!esBuscador && !esPrestador)
-                return Resultado.Falla<string>("NoEncontrada", "La cita no existe.");
+                return Resultado.Falla<string>(Fallas.NoEncontrado, "La cita no existe.");
 
             // 3. Solo cita CONFIRMADA y FUTURA (la hora de inicio todavía no llega)
             if (cita.Estado != EstadoCita.Confirmada)
-                return Resultado.Falla<string>("EstadoInvalido",
+                return Resultado.Falla<string>(Fallas.Conflicto,
                     "Solo se puede reenviar el recordatorio de una cita confirmada.");
 
             if (cita.BloqueHorario is null || cita.BloqueHorario.InicioEn <= ahora)
-                return Resultado.Falla<string>("CitaPasada",
+                return Resultado.Falla<string>(Fallas.Conflicto,
                     "Solo se puede reenviar el recordatorio de una cita futura.");
 
-            // 4. Usar la clave de idempotencia única como garantía de límite (patrón CC-04).
-            // El índice único en notificaciones.clave_idempotencia (TBL-27) impone el límite de 5.
-            // Intentamos insertar con N=1, luego N=2... hasta N=5.
-            var prefijoHoy = $"recordatorio-reenviado:{citaId}:{hoyChile:yyyy-MM-dd}:";
-            var asuntoBuscador = "Recordatorio: tienes una hora en ZASS!";
-            var asuntoPrestador = "Recordatorio: tienes una hora agendada en ZASS!";
+            // 4. Contar reenvios del buscador (cada reenvio deja uno del buscador y uno del prestador)
+            var prefijo = $"recordatorio-reenviado:{citaId}:{hoyChile:yyyy-MM-dd}:";
+            var hechos = await _repo.ContarReenviosRecordatorioAsync(citaId, prefijo + "buscador:", t);
+            if (hechos >= MaximoReenviosPorDia)
+            {
+                var manana = hoyChile.AddDays(1).ToString("dd 'de' MMMM", new System.Globalization.CultureInfo("es-CL"));
+                return Resultado.Falla<string>(Fallas.Conflicto,
+                    $"Ya se reenvió el recordatorio 5 veces hoy. Se puede volver a enviar mañana {manana}.");
+            }
+
+            // 5. Encolar DOS avisos con claves DISTINTAS
+            var n = hechos + 1;
+            var claveBuscador = prefijo + "buscador:" + n;
+            var clavePrestador = prefijo + "prestador:" + n;
             var prestadorUsuarioId = cita.PerfilPrestador?.UsuarioId
                 ?? throw new InvalidOperationException("La cita llegó sin su perfil de prestador.");
 
-            for (int n = 1; n <= MaximoReenviosPorDia; n++)
+            _avisos.Encolar(new Notificacion
             {
-                var claveBuscador = $"{prefijoHoy}{n}";
-                var clavePrestador = $"{prefijoHoy}{n}";
+                DestinatarioId = cita.BuscadorId,
+                CitaId = citaId,
+                Tipo = TipoNotificacion.Recordatorio24h,
+                ClaveIdempotencia = claveBuscador,
+                Asunto = "Recordatorio: tienes una hora en ZASS!",
+                Cuerpo = CargaDeAviso.ConCampos((AvisosDeCita.CampoRol, AvisosDeCita.RolBuscador)),
+                ProgramadaPara = ahora,
+            });
 
-                // Encolar para el buscador
-                _avisos.Encolar(new Notificacion
-                {
-                    DestinatarioId = cita.BuscadorId,
-                    CitaId = citaId,
-                    Tipo = TipoNotificacion.Recordatorio24h,
-                    ClaveIdempotencia = claveBuscador,
-                    Asunto = asuntoBuscador,
-                    Cuerpo = CargaDeAviso.ConCampos((AvisosDeCita.CampoRol, AvisosDeCita.RolBuscador)),
-                    ProgramadaPara = ahora,
-                });
+            _avisos.Encolar(new Notificacion
+            {
+                DestinatarioId = prestadorUsuarioId,
+                CitaId = citaId,
+                Tipo = TipoNotificacion.Recordatorio24h,
+                ClaveIdempotencia = clavePrestador,
+                Asunto = "Recordatorio: tienes una hora agendada en ZASS!",
+                Cuerpo = CargaDeAviso.ConCampos((AvisosDeCita.CampoRol, AvisosDeCita.RolPrestador)),
+                ProgramadaPara = ahora,
+            });
 
-                // Encolar para el prestador
-                _avisos.Encolar(new Notificacion
-                {
-                    DestinatarioId = prestadorUsuarioId,
-                    CitaId = citaId,
-                    Tipo = TipoNotificacion.Recordatorio24h,
-                    ClaveIdempotencia = clavePrestador,
-                    Asunto = asuntoPrestador,
-                    Cuerpo = CargaDeAviso.ConCampos((AvisosDeCita.CampoRol, AvisosDeCita.RolPrestador)),
-                    ProgramadaPara = ahora,
-                });
+            // 6. Auditoria y UN solo GuardarAsync
+            _auditor.Registrar(Auditar.Entrada(
+                accion: "RecordatorioReenviado",
+                entidad: "cita",
+                entidadId: citaId,
+                ahora: ahora,
+                actorId: usuarioId,
+                contexto: new { Reenvio = n, Dia = hoyChile.ToString("yyyy-MM-dd") }));
 
-                try
-                {
-                    await _trabajo.GuardarAsync(t);
+            await _trabajo.GuardarAsync(t);
 
-                    _auditor.Registrar(Auditar.Entrada(
-                        accion: "RecordatorioReenviado",
-                        entidad: "cita",
-                        entidadId: citaId,
-                        ahora: ahora,
-                        actorId: usuarioId,
-                        contexto: new { Reenvio = n, Dia = hoyChile.ToString("yyyy-MM-dd") }));
-
-                    return Resultado<string>.Ok("Recordatorio reenviado a ambas partes.");
-                }
-                catch
-                {
-                    // Si es el último intento (n == 5), retornamos error de límite diario
-                    // Si no, re-lanzamos la excepción para que el endpoint la capture (409 Conflict)
-                    if (n == MaximoReenviosPorDia)
-                    {
-                        var mananaCatch = hoyChile.AddDays(1).ToString("dd 'de' MMMM", new System.Globalization.CultureInfo("es-CL"));
-                        return Resultado.Falla<string>("LimiteDiario",
-                            $"Ya se reenvió el recordatorio 5 veces hoy. Se puede volver a enviar mañana {mananaCatch}.");
-                    }
-                    throw;
-                }
-            }
-
-            // No debería llegar aquí, pero el compilador lo exige
-            var mananaFinally = hoyChile.AddDays(1).ToString("dd 'de' MMMM", new System.Globalization.CultureInfo("es-CL"));
-            return Resultado.Falla<string>("LimiteDiario",
-                $"Ya se reenvió el recordatorio 5 veces hoy. Se puede volver a enviar mañana {mananaFinally}.");
+            return Resultado<string>.Ok("Recordatorio reenviado a ambas partes.");
         }, ct);
     }
 

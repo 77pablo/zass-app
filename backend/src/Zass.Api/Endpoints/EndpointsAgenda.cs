@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using Microsoft.EntityFrameworkCore;
 using Zass.Api.Configuracion;
 using Zass.Aplicacion.Agenda;
 using Zass.Aplicacion.Identidad;
@@ -346,25 +345,10 @@ public static class EndpointsAgenda
                 if (usuarioId is null) return Results.Unauthorized();
 
                 var perfilId = await identidad.PerfilPrestadorIdAsync(usuarioId.Value);
-                try
-                {
-                    var r = await agenda.ReenviarRecordatorioAsync(id, usuarioId.Value, perfilId);
-                    return r.Exito
-                        ? Results.Accepted("", new { mensaje = r.Mensaje })
-                        : Respuestas.Problema(r);
-                }
-                catch (DbUpdateException ex)
-                {
-                    // Verificar si es violación de clave única (duplicado de clave idempotencia)
-                    if (ex.InnerException is Npgsql.PostgresException pg && pg.SqlState == "23505")
-                    {
-                        return Results.Problem(
-                            title: "Límite diario alcanzado",
-                            detail: "Ya se reenvió el recordatorio 5 veces hoy. Se puede volver a enviar mañana.",
-                            statusCode: StatusCodes.Status409Conflict);
-                    }
-                    throw; // Re-lanzar si es otro tipo de error de BD
-                }
+                var r = await agenda.ReenviarRecordatorioAsync(id, usuarioId.Value, perfilId);
+                return r.Exito
+                    ? Results.Accepted("", new { mensaje = r.Mensaje })
+                    : Respuestas.Problema(r);
             })
             .RequireRateLimiting(Tasa.General)
             .WithName("API-44");

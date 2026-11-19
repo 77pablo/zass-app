@@ -243,12 +243,23 @@ public sealed class RepositorioAgendaEfCore : IRepositorioAgenda
     /// </summary>
     public Task<Cita?> CitaParaCambioAsync(Guid id, CancellationToken ct = default) =>
         _ctx.Citas
-            .FromSqlRaw("SELECT * FROM citas WHERE id = {0} FOR UPDATE", id)
             .Include(c => c.BloqueHorario)
             .Include(c => c.PrestadorServicio).ThenInclude(ps => ps!.Servicio)
             .Include(c => c.PerfilPrestador)
             .AsTracking()
             .FirstOrDefaultAsync(c => c.Id == id, ct);
+
+    /// <summary>
+    /// Para reenviar recordatorio: con FOR UPDATE (patrón CC-01), igual que TomarBloqueAsync.
+    /// </summary>
+    public Task<Cita?> CitaParaReenviarAsync(Guid id, CancellationToken ct = default) =>
+        _ctx.Citas
+            .FromSqlInterpolated($"SELECT * FROM citas WHERE id = {id} FOR UPDATE")
+            .Include(c => c.BloqueHorario)
+            .Include(c => c.PrestadorServicio).ThenInclude(ps => ps!.Servicio)
+            .Include(c => c.PerfilPrestador)
+            .AsTracking()
+            .FirstOrDefaultAsync(ct);
 
     // ------------------------------------------------------- CC-06
 

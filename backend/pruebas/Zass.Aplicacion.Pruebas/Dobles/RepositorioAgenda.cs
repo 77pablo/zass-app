@@ -243,6 +243,9 @@ public sealed class RepositorioAgendaEnMemoria : IRepositorioAgenda
     public Task<Cita?> CitaParaCambioAsync(Guid id, CancellationToken ct = default) =>
         CitaPorIdAsync(id, ct);
 
+    public Task<Cita?> CitaParaReenviarAsync(Guid id, CancellationToken ct = default) =>
+        CitaPorIdAsync(id, ct);
+
     /// <summary>Cuántas veces se pidió el bloqueo ordenado de CC-06.</summary>
     public int BloqueosDeDosFilas { get; private set; }
 

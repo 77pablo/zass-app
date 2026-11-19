@@ -773,6 +773,11 @@ public interface IRepositorioAgenda
     /// </summary>
     Task<Cita?> CitaParaCambioAsync(Guid id, CancellationToken ct = default);
 
+    /// <summary>
+    /// Para reenviar recordatorio: con FOR UPDATE (patrón CC-01), igual que TomarBloqueAsync.
+    /// </summary>
+    Task<Cita?> CitaParaReenviarAsync(Guid id, CancellationToken ct = default);
+
     // ------------------------------------------------------- CS-13: reenviar recordatorio
 
     /// <summary>
