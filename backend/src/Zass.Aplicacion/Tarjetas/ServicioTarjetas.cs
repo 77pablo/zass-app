@@ -190,65 +190,69 @@ public sealed class ServicioTarjetas : IServicioTarjetas
         if (urlEstable.Length != 9 || !FormaDeUrlEstable.IsMatch(urlEstable))
             return Resultado.Falla<ActivarTarjetaResultado>(Fallas.NoEncontrado, "Tarjeta no válida.");
 
-        // Tomar la fila CON BLOQUEO (CC-05) - solo si esta en estado Emitida
-        var tarjeta = await _repo.TomarParaActivarAsync(urlEstable, ct);
-        if (tarjeta is null)
+        // Ejecutar todo en una transaccion explicita para que el FOR UPDATE bloquee bien (CC-05)
+        return await _trabajo.EnTransaccionAsync(async ct =>
         {
-            // Distinguir "no existe" de "ya no esta en Emitida (ya activada/vencida)"
-            // para no revelar informacion: mismo error que codigo incorrecto.
-            var existe = await _repo.ExistePorUrlEstableAsync(urlEstable, ct);
-            if (existe)
+            // Tomar la fila CON BLOQUEO (CC-05) - solo si esta en estado Emitida
+            var tarjeta = await _repo.TomarParaActivarAsync(urlEstable, ct);
+            if (tarjeta is null)
             {
-                // La tarjeta existe pero ya no esta en Emitida (ya activada, vencida, etc.)
-                // Mismo mensaje que codigo incorrecto (no revelar cual)
+                // Distinguir "no existe" de "ya no esta en Emitida (ya activada/vencida)"
+                // para no revelar informacion: mismo error que codigo incorrecto.
+                var existe = await _repo.ExistePorUrlEstableAsync(urlEstable, ct);
+                if (existe)
+                {
+                    // La tarjeta existe pero ya no esta en Emitida (ya activada, vencida, etc.)
+                    // Mismo mensaje que codigo incorrecto (no revelar cual)
+                    return Resultado.Falla<ActivarTarjetaResultado>(Fallas.ReglaDeNegocio, "El código no es válido.");
+                }
+                // Tarjeta no existe
+                return Resultado.Falla<ActivarTarjetaResultado>(Fallas.NoEncontrado, "Tarjeta no válida.");
+            }
+
+            // Verificar vigencia del codigo (30 dias)
+            if (tarjeta.CodigoVenceEn.HasValue && _reloj.Ahora > tarjeta.CodigoVenceEn.Value)
+            {
+                // Codigo vencido - MISMO mensaje que codigo incorrecto (no revelar cual)
                 return Resultado.Falla<ActivarTarjetaResultado>(Fallas.ReglaDeNegocio, "El código no es válido.");
             }
-            // Tarjeta no existe
-            return Resultado.Falla<ActivarTarjetaResultado>(Fallas.NoEncontrado, "Tarjeta no válida.");
-        }
 
-        // Verificar vigencia del codigo (30 dias)
-        if (tarjeta.CodigoVenceEn.HasValue && _reloj.Ahora > tarjeta.CodigoVenceEn.Value)
-        {
-            // Codigo vencido - MISMO mensaje que codigo incorrecto (no revelar cual)
-            return Resultado.Falla<ActivarTarjetaResultado>(Fallas.ReglaDeNegocio, "El código no es válido.");
-        }
+            // Verificar hash con tiempo constante
+            var hashRecibido = _secretos.HashToken(codigoNorm);
+            if (!CryptographicOperations.FixedTimeEquals(
+                    System.Text.Encoding.UTF8.GetBytes(hashRecibido),
+                    System.Text.Encoding.UTF8.GetBytes(tarjeta.HashCodigoActivacion!)))
+            {
+                // Codigo incorrecto - MISMO mensaje
+                return Resultado.Falla<ActivarTarjetaResultado>(Fallas.ReglaDeNegocio, "El código no es válido.");
+            }
 
-        // Verificar hash con tiempo constante
-        var hashRecibido = _secretos.HashToken(codigoNorm);
-        if (!CryptographicOperations.FixedTimeEquals(
-                System.Text.Encoding.UTF8.GetBytes(hashRecibido),
-                System.Text.Encoding.UTF8.GetBytes(tarjeta.HashCodigoActivacion!)))
-        {
-            // Codigo incorrecto - MISMO mensaje
-            return Resultado.Falla<ActivarTarjetaResultado>(Fallas.ReglaDeNegocio, "El código no es válido.");
-        }
+            // TODO: Verificar intentos fallidos y bloqueo por IP (4B.5) - pendiente
 
-        // TODO: Verificar intentos fallidos y bloqueo por IP (4B.5) - pendiente
+            // Consumir el codigo y activar la tarjeta EN LA MISMA TRANSACCION
+            tarjeta.PerfilPrestadorId = perfilPrestadorId;
+            tarjeta.Estado = EstadoTarjeta.Activa;
+            tarjeta.ActivadaEn = _reloj.Ahora;
+            tarjeta.HashCodigoActivacion = null; // Consumo atomico - borrar el hash
 
-        // Consumir el codigo y activar la tarjeta EN LA MISMA TRANSACCION
-        tarjeta.PerfilPrestadorId = perfilPrestadorId;
-        tarjeta.Estado = EstadoTarjeta.Activa;
-        tarjeta.ActivadaEn = _reloj.Ahora;
-        tarjeta.HashCodigoActivacion = null; // Consumo atomico - borrar el hash
+            // Auditoria (antes de GuardarAsync para que se guarde en la misma transaccion)
+            _auditor.Registrar(new RegistroAuditoria
+            {
+                ActorId = perfilPrestadorId,
+                Accion = "TarjetaActivada",
+                Entidad = "Tarjeta",
+                EntidadId = tarjeta.Id,
+                Contexto = JsonSerializer.Serialize(new { UrlEstable = tarjeta.UrlEstable }),
+                IpOrigen = ipOrigen,
+                OcurridoEn = _reloj.Ahora,
+            });
 
-        // Auditoria (antes de GuardarAsync para que se guarde en la misma transaccion)
-        _auditor.Registrar(new RegistroAuditoria
-        {
-            ActorId = perfilPrestadorId,
-            Accion = "TarjetaActivada",
-            Entidad = "Tarjeta",
-            EntidadId = tarjeta.Id,
-            Contexto = JsonSerializer.Serialize(new { UrlEstable = tarjeta.UrlEstable }),
-            IpOrigen = ipOrigen,
-            OcurridoEn = _reloj.Ahora,
-        });
+            await _trabajo.GuardarAsync(ct);
 
-        await _trabajo.GuardarAsync(ct);
+            // Notificacion (A-08) - pendiente en otra tarea
+            // var slug = tarjeta.PerfilPrestador?.Slug; // necesitamos el slug
 
-        // Notificacion (A-08) - pendiente en otra tarea
-        // var slug = tarjeta.PerfilPrestador?.Slug; // necesitamos el slug
-
-        return Resultado.Ok(new ActivarTarjetaResultado("Tarjeta activada", $"/prestadores/{tarjeta.PerfilPrestador!.Slug}"));
+            return Resultado.Ok(new ActivarTarjetaResultado("Tarjeta activada", $"/prestadores/{tarjeta.PerfilPrestador!.Slug}"));
+        }, ct);
     }
 }
