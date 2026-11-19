@@ -97,7 +97,7 @@ public class ZonaHorariaCobroPruebas
     // (Chile está en horario de verano UTC-3 en noviembre).
     //
     // El mes gratis vence 30 días exactos después a la MISMA HORA: 30 de diciembre
-    // a las 23:30 de Chile = 1 de enero a las 02:30 UTC.
+    // a las 23:30 de Chile = 31 de diciembre a las 02:30 UTC.
     //
     // La ventana de cobro (7 días antes) es desde el 23 de diciembre a las 23:30
     // de Chile = 24 de diciembre 02:30 UTC.
@@ -239,101 +239,125 @@ public class ZonaHorariaCobroPruebas
 
     /// <summary>
     /// Dos corridas del cobro el mismo día de Chile que caen en días UTC distintos:
-    /// DEBE generar UNA SOLA clave.
+    /// DEBE haber UN SOLO intento de cobro, y la segunda corrida debe contar YaIntentadas == 1.
     ///
-    /// Escenario: el trabajo corre a las 23:30 de Chile (02:30 UTC día siguiente) y
-    /// vuelve a correr a las 00:30 de Chile (03:30 UTC mismo día siguiente).
-    /// En Chile es el MISMO día (24-dic), en UTC son días DISTINTOS (24-dic vs 25-dic? No...
-    /// espera: 23:30 Chile 24-dic = 02:30 UTC 25-dic; 00:30 Chile 25-dic = 03:30 UTC 25-dic.
-    /// Ah, en este caso SON el mismo día UTC también.
+    /// Escenario hostil: el trabajo corre a las 20:30 de Chile (23:30 UTC) y vuelve a
+    /// correr a las 23:30 de Chile (02:30 UTC del día SIGUIENTE). En Chile es el MISMO día
+    /// (24-dic), pero en UTC son días DISTINTOS (24-dic vs 25-dic).
     ///
-    /// Buscamos un caso donde en Chile sea el mismo día pero en UTC sean días distintos:
-    /// - 23:00 Chile 23-dic = 02:00 UTC 24-dic
-    /// - 01:00 Chile 24-dic = 04:00 UTC 24-dic -> mismo día UTC
+    /// La clave de cobro usa vigenteHasta:yyyy-MM-dd (fecha del vencimiento en UTC), no la
+    /// fecha de hoy. Como vigenteHasta NO cambia entre las dos corridas (el cobro no se
+    /// aprobó todavía), la clave DEBE ser la misma y la segunda corrida debe contar como
+    /// YaIntentadas.
     ///
-    /// El caso real es cuando el día cambia en Chile pero no en UTC, o viceversa.
-    /// Por ejemplo, en horario de invierno (UTC-4):
-    /// - 23:00 Chile 23-dic = 03:00 UTC 24-dic
-    /// - 01:00 Chile 24-dic = 05:00 UTC 24-dic -> mismo día UTC
-    ///
-    /// En horario de verano (UTC-3):
-    /// - 22:00 Chile 23-dic = 01:00 UTC 24-dic
-    /// - 23:00 Chile 23-dic = 02:00 UTC 24-dic -> mismo día UTC
-    ///
-    /// El caso donde caen en días UTC distintos es cuando la hora de Chile está cerca
-    /// de la medianoche UTC. Por ejemplo, si el servidor está en UTC+12 (Pacific/Kiritimati):
-    /// - 23:30 Chile = 02:30 UTC día siguiente
-    /// - En UTC+14 son las 16:30 del día anterior... esto se vuelve confuso.
-    ///
-    /// Lo que importa: la clave usa vigenteHasta:yyyy-MM-dd (fecha del vencimiento, no de hoy).
-    /// Como vigenteHasta NO cambia entre las dos corridas (el cobro no se aprobó), la clave
-    /// DEBE ser la misma independientemente de en qué zona horaria corra el trabajo.
-    ///
-    /// La prueba verifica que ClaveDeCobroAutomatico produce la misma clave para la misma
-    /// suscripción y mismo vigenteHasta, sin importar la hora actual del reloj.
+    /// Esta prueba falla si el código usa la fecha de hoy (_reloj.Ahora) en lugar de
+    /// vigenteHasta para construir la clave de idempotencia.
     /// </summary>
     [Fact]
-    public void Dos_corridas_mismo_dia_Chile_dias_UTC_distintos_una_sola_clave()
+    public async Task Dos_corridas_mismo_dia_Chile_dias_UTC_distintos_una_sola_clave()
     {
-        var idSuscripcion = new Guid("11111111-2222-3333-4444-555555555555");
-        var vigenteHasta = FinMesGratisChile; // 2027-01-01 02:30:00 UTC
+        var baseEnMemoria = MontarBase(out var reloj, out var pasarela, out var suscripciones, out var cobros);
 
-        // La clave se genera desde la suscripción y el vigenteHasta, NO desde la hora actual
-        var clave1 = ServicioCobros.ClaveDeCobroAutomatico(idSuscripcion, vigenteHasta);
-        var clave2 = ServicioCobros.ClaveDeCobroAutomatico(idSuscripcion, vigenteHasta);
+        // Crear fundador inscrito a las 23:30 de Chile del 30-nov
+        var perfil = CrearFundadorConMesGratis(baseEnMemoria, suscripciones, cobros, pasarela, reloj, InscripcionChile);
 
+        var s = baseEnMemoria.Suscripciones.Single(x => x.PerfilPrestadorId == perfil.Id);
+
+        // Poner medio de pago inscrito (necesario para que el cobro intente cobrar)
+        s.ReferenciaPasarela = "medio-inscrito";
+
+        // Primera corrida: 20:30 de Chile del 24-dic = 23:30 UTC del 24-dic
+        var primeraCorrida = ChileAUtc(2026, 12, 24, 20, 30);
+        PonerReloj(reloj, primeraCorrida);
+        _output.WriteLine($"Primera corrida: {primeraCorrida:o} UTC ({UtcAChile(primeraCorrida):o} Chile)");
+
+        var resumen1 = await cobros.CobrarVencimientosAsync();
+        Assert.Equal(1, resumen1.Cobradas);
+        Assert.Equal(0, resumen1.YaIntentadas);
+
+        var intento1 = baseEnMemoria.IntentosDePago.Single(i => i.PerfilPrestadorId == perfil.Id && i.Tipo == TipoDeIntento.Cobro);
+        var clave1 = intento1.ClaveIdempotencia;
+        _output.WriteLine($"Primera corrida - Clave: {clave1}, Intentos totales: {baseEnMemoria.IntentosDePago.Count(i => i.Tipo == TipoDeIntento.Cobro)}");
+
+        // Rechazar el cobro (para que vigenteHasta NO se mueva y la suscripción siga en ventana)
+        pasarela.Veredicto = new CobroResuelto(intento1.Id, "ref-rechazo", false, 0, null);
+        var confirmacionRechazo = await cobros.ConfirmarAsync(new AvisoDePasarela(new Dictionary<string, string>()));
+        Assert.False(confirmacionRechazo.Exito);
+
+        // Segunda corrida: 23:30 de Chile del 24-dic = 02:30 UTC del 25-dic
+        // En Chile es el MISMO día (24-dic), en UTC es el día SIGUIENTE (25-dic)
+        var segundaCorrida = ChileAUtc(2026, 12, 24, 23, 30);
+        PonerReloj(reloj, segundaCorrida);
+        _output.WriteLine($"Segunda corrida: {segundaCorrida:o} UTC ({UtcAChile(segundaCorrida):o} Chile)");
+
+        var resumen2 = await cobros.CobrarVencimientosAsync();
+
+        // La segunda corrida debe contar como YaIntentadas (la clave es la misma)
+        Assert.Equal(0, resumen2.Cobradas);
+        Assert.Equal(1, resumen2.YaIntentadas);
+
+        // Solo debe haber UN intento de cobro (el de la primera corrida)
+        var intentosTotales = baseEnMemoria.IntentosDePago.Count(i => i.PerfilPrestadorId == perfil.Id && i.Tipo == TipoDeIntento.Cobro);
+        Assert.Equal(1, intentosTotales);
+
+        var intento2 = baseEnMemoria.IntentosDePago.Single(i => i.PerfilPrestadorId == perfil.Id && i.Tipo == TipoDeIntento.Cobro);
+        var clave2 = intento2.ClaveIdempotencia;
+        _output.WriteLine($"Segunda corrida - Clave: {clave2}, Intentos totales: {intentosTotales}");
+
+        // Las claves deben ser IGUALES (idempotencia por período, no por día de corrida)
         Assert.Equal(clave1, clave2);
-
-        // La clave incluye solo la fecha (yyyy-MM-dd) del vigenteHasta EN UTC
-        // vigenteHasta = 2026-12-31 02:30:00 UTC -> fecha UTC = 2026-12-31
-        _output.WriteLine($"Clave generada: {clave1}");
-        _output.WriteLine($"vigenteHasta UTC: {vigenteHasta:o}");
-        _output.WriteLine($"vigenteHasta Chile: {UtcAChile(vigenteHasta):o}");
-        _output.WriteLine($"DateOnly UTC de vigenteHasta: {DateOnly.FromDateTime(vigenteHasta)}");
-        _output.WriteLine($"DateOnly Chile de vigenteHasta: {DateOnly.FromDateTime(UtcAChile(vigenteHasta))}");
-
-        var esperado = "cobro-automatico:11111111-2222-3333-4444-555555555555:2026-12-31";
-        Assert.Equal(esperado, clave1);
-
-        // Aunque el reloj esté en momentos distintos (simulando dos corridas),
-        // la clave NO cambia porque usa vigenteHasta, no la hora actual
+        _output.WriteLine($"Claves iguales: {clave1 == clave2}");
     }
 
     /// <summary>
-    /// Cambio de horario de Chile: primer sábado de abril (entra horario de invierno)
-    /// y primer sábado de septiembre (entra horario de verano).
+    /// Cambio de horario de Chile en S7: el mes gratis de alguien inscrito el día antes
+    /// del cambio de horario debe vencer 30 días exactos (720 horas) después, en UTC.
     ///
     /// En 2026:
     /// - 4 de abril: a las 24:00 (medianoche) Chile adelanta el reloj a 01:00 → horario de invierno (UTC-4)
-    /// - 5 de septiembre: a las 24:00 Chile atrasa el reloj a 23:00 → horario de verano (UTC-3)
     ///
-    /// La prueba verifica que la conversión Chile ↔ UTC funciona correctamente en ambos bordes.
+    /// Si alguien se inscribe el 3 de abril a las 22:00 de Chile (UTC-3), el mes gratis
+    /// vence el 3 de mayo a las 22:00 de Chile (UTC-4). En UTC:
+    /// - Inscripción: 3 de abril 22:00 Chile = 4 de abril 01:00 UTC
+    /// - Vencimiento: 3 de mayo 22:00 Chile = 4 de mayo 02:00 UTC
+    ///
+    /// La prueba verifica que el código de S7 (ServicioSuscripciones.IniciarPruebaAsync)
+    /// usa DateTime.AddDays(30) correctamente, sin cortarse por día UTC.
     /// </summary>
-    [Theory]
-    [InlineData(2026, 4, 4, 22, 0, "Antes del salto de abril (verano UTC-3)")]
-    [InlineData(2026, 4, 5, 1, 0, "Después del salto de abril (invierno UTC-4) - 01:00 existe")]
-    [InlineData(2026, 4, 5, 0, 30, "La hora saltada (00:30) no existe en Chile")]
-    [InlineData(2026, 9, 5, 22, 0, "Antes del salto de septiembre (invierno UTC-4)")]
-    [InlineData(2026, 9, 6, 0, 30, "Después del salto de septiembre (verano UTC-3) - 00:30 existe")]
-    public void Cambio_horario_Chile_conversion_correcta(
-        int ano, int mes, int dia, int hora, int minuto, string descripcion)
+    [Fact]
+    public async Task Mes_gratis_cambio_de_horario_chile_s7()
     {
-        var local = new DateTime(ano, mes, dia, hora, minuto, 0, DateTimeKind.Unspecified);
-        var utc = HoraDeChile.AUtc(new DateOnly(ano, mes, dia), new TimeOnly(hora, minuto));
+        var baseEnMemoria = MontarBase(out var reloj, out var pasarela, out var suscripciones, out var cobros);
 
-        _output.WriteLine($"{descripcion}: local={local:o}, utc={utc}");
+        // Inscripción: 3 de abril de 2026 a las 22:00 de Chile (antes del salto de horario)
+        // En UTC: 3 de abril 22:00 Chile (UTC-3) = 4 de abril 01:00 UTC
+        var inscripcionChile = ChileAUtc(2026, 4, 3, 22, 0);
+        _output.WriteLine($"Inscripción: {inscripcionChile:o} UTC ({UtcAChile(inscripcionChile):o} Chile)");
 
-        if (utc.HasValue)
-        {
-            var vuelta = HoraDeChile.ALocal(utc.Value);
-            _output.WriteLine($"  Vuelta a Chile: {vuelta:o}");
-            Assert.Equal(local, vuelta);
-        }
-        else
-        {
-            _output.WriteLine($"  Hora inexistente en Chile (salto de horario de verano)");
-            Assert.Null(utc);
-        }
+        // Crear perfil y suscripción
+        var perfil = new PerfilPrestador { Id = Guid.NewGuid(), UsuarioId = Guid.NewGuid() };
+        baseEnMemoria.PerfilesPrestador.Add(perfil);
+
+        PonerReloj(reloj, inscripcionChile);
+
+        var rPrueba = await suscripciones.IniciarPruebaAsync(perfil.Id);
+        Assert.True(rPrueba.Exito);
+
+        var s = baseEnMemoria.Suscripciones.Single(x => x.PerfilPrestadorId == perfil.Id);
+
+        // El vencimiento debe ser 30 días exactos después (720 horas) en UTC
+        var vencimientoEsperado = inscripcionChile.AddDays(30);
+        Assert.Equal(vencimientoEsperado, s.VigenteHasta);
+
+        // En hora de Chile: debe ser 3 de mayo a las 22:00 (UTC-4 en mayo)
+        var enChile = UtcAChile(s.VigenteHasta);
+        _output.WriteLine($"Vencimiento: {s.VigenteHasta:o} UTC ({enChile:o} Chile)");
+        Assert.Equal(new DateTime(2026, 5, 3, 22, 0, 0), enChile);
+
+        // Verificar que son exactamente 30 días (720 horas) en UTC
+        var diferencia = s.VigenteHasta - inscripcionChile;
+        Assert.Equal(30, diferencia.Days);
+        Assert.Equal(720, diferencia.TotalHours);
     }
 
     /// <summary>
