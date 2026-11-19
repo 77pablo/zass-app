@@ -793,26 +793,30 @@ public class ApiAgendaPruebas : IAsyncLifetime
     /// API-38: El prestador confirma una cita solicitada. RN-S4-03: solo se confirma una vez,
     /// y solo desde Solicitada.
     /// 
-    /// Skip por defecto en codigo productivo: CerrarCambioAsync:861 crea una notificacion con
-    /// clave_idempotencia duplicada cuando se confirma una cita solicitada, lanzando 500
-    /// (duplicate key value violates unique constraint "i_x_notificaciones_clave_idempotencia").
-    /// T51c: API-38 responde 500 al confirmar cita solicitada.
+    /// T51d: la cita se crea en modo manual, que es el unico camino real para que quede
+    /// Solicitada. En modo automatico, la cita nace Confirmada y el aviso ya esta encolado;
+    /// forzar el estado a Solicitada y luego confirmar duplicaba la clave_idempotencia.
     /// </summary>
-    [Fact(Skip = "defecto: API-38 responde 500 al confirmar cita solicitada por clave_idempotencia duplicada en notificaciones (CerrarCambioAsync:861) (T51c)")]
+    [Fact]
     public async Task Confirmar_cita_solicitada_responde_200_y_cambia_el_estado()
     {
-        // Primero agendar una cita como buscador
+        // Poner el servicio en modo manual: es el unico camino real para que la cita nazca Solicitada
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var ps = await ctx.PrestadorServicios.SingleAsync(ps => ps.Id == _servicioOfrecido);
+            ps.ModoAgenda = ModoAgenda.Manual;
+            await ctx.SaveChangesAsync();
+        }
+
+        // Agenda en modo manual -> la cita nace en estado Solicitada
         var citaId = await UnBuscadorConCitaAsync();
 
-        // Forzar que la cita este en estado Solicitada y obtener el correo del prestador
+        // Obtener el correo del prestador
         string correoPrestador;
         using (var ctx = ContextoDePrueba.Crear())
         {
-            var cita = await ctx.Citas.SingleAsync(c => c.Id == Guid.Parse(citaId));
-            cita.Estado = EstadoCita.Solicitada;
-            var u = await ctx.Usuarios.SingleAsync(u => u.PerfilPrestador != null && u.PerfilPrestador.Id == cita.PerfilPrestadorId);
+            var u = await ctx.Usuarios.SingleAsync(u => u.PerfilPrestador != null && u.PerfilPrestador.Id == _perfil);
             correoPrestador = u.Correo;
-            await ctx.SaveChangesAsync();
         }
 
         // Iniciar sesion como el prestador en _cliente
@@ -830,24 +834,34 @@ public class ApiAgendaPruebas : IAsyncLifetime
     /// <summary>
     /// API-39: El prestador rechaza una cita solicitada con motivo. RN-S4-04: el rechazo es
     /// definitivo y libera el bloque.
+    /// 
+    /// T51d: la cita se crea en modo manual, que es el unico camino real para que quede
+    /// Solicitada. Forzar el estado a mano en una cita creada en modo automatico era
+    /// incoherente con los avisos ya encolados.
     /// </summary>
     [Fact]
     public async Task Rechazar_cita_solicitada_libera_el_bloque()
     {
-        // Primero agendar una cita como buscador
+        // Poner el servicio en modo manual: es el unico camino real para que la cita nazca Solicitada
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var ps = await ctx.PrestadorServicios.SingleAsync(ps => ps.Id == _servicioOfrecido);
+            ps.ModoAgenda = ModoAgenda.Manual;
+            await ctx.SaveChangesAsync();
+        }
+
+        // Agenda en modo manual -> la cita nace en estado Solicitada
         var citaId = await UnBuscadorConCitaAsync();
 
-        // Forzar que la cita este en estado Solicitada y obtener el correo del prestador
+        // Obtener el correo del prestador y el bloque original
         Guid bloqueIdOriginal;
         string correoPrestador;
         using (var ctx = ContextoDePrueba.Crear())
         {
             var cita = await ctx.Citas.SingleAsync(c => c.Id == Guid.Parse(citaId));
-            cita.Estado = EstadoCita.Solicitada;
             bloqueIdOriginal = cita.BloqueHorarioId;
-            var u = await ctx.Usuarios.SingleAsync(u => u.PerfilPrestador != null && u.PerfilPrestador.Id == cita.PerfilPrestadorId);
+            var u = await ctx.Usuarios.SingleAsync(u => u.PerfilPrestador != null && u.PerfilPrestador.Id == _perfil);
             correoPrestador = u.Correo;
-            await ctx.SaveChangesAsync();
         }
 
         // Iniciar sesion como el prestador en _cliente
