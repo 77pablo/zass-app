@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 /**
@@ -9,21 +9,57 @@ import { useLocation } from 'react-router-dom'
  * Asi se cierra al navegar sin un efecto que ponga estado: el efecto llegaria un
  * fotograma tarde y el menu se veria abierto sobre la pagina nueva.
  *
+ * Con el teclado: al abrirse, el foco entra al menu (en el telefono es una hoja fija encima de
+ * la pagina, y quien navega con teclado o lector seguiria abajo sin saber que se abrio). Escape
+ * lo cierra y el foco vuelve al boton que lo abrio, sea el de la cabecera o «Mas».
+ *
  * El proveedor (un componente) vive aparte, en ProveedorDeMenuMovil.tsx: un archivo que mezcla
  * componentes con hooks pierde la recarga en caliente de Vite.
  */
 export interface MenuMovil {
   abierto: boolean
-  alternar: () => void
+  /**
+   * Los botones lo pasan tal cual a `onClick`: del evento sale QUE boton abrio el menu, para
+   * devolverle el foco. No se usa `document.activeElement` porque Safari no enfoca un boton al
+   * tocarlo.
+   */
+  alternar: (evento?: { currentTarget: EventTarget | null }) => void
 }
+
+/** El id que la cabecera le pone al menu (y que los botones nombran en aria-controls). */
+const ID_DEL_MENU = 'menu-movil'
 
 export const ContextoDelMenuMovil = createContext<MenuMovil | null>(null)
 
 export function useEstadoDelMenu(): MenuMovil {
   const { pathname } = useLocation()
   const [abiertoEn, setAbiertoEn] = useState<string | null>(null)
+  const abridor = useRef<HTMLElement | null>(null)
   const abierto = abiertoEn === pathname
-  return { abierto, alternar: () => setAbiertoEn(abierto ? null : pathname) }
+
+  useEffect(() => {
+    if (!abierto) return
+    document.getElementById(ID_DEL_MENU)?.querySelector<HTMLElement>('a[href], button')?.focus()
+
+    const alTeclear = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      setAbiertoEn(null)
+      abridor.current?.focus()
+    }
+    document.addEventListener('keydown', alTeclear)
+    return () => document.removeEventListener('keydown', alTeclear)
+  }, [abierto])
+
+  return {
+    abierto,
+    alternar: (evento) => {
+      if (!abierto) {
+        const boton = evento?.currentTarget
+        abridor.current = boton instanceof HTMLElement ? boton : null
+      }
+      setAbiertoEn(abierto ? null : pathname)
+    },
+  }
 }
 
 /**

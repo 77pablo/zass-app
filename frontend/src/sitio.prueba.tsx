@@ -664,11 +664,13 @@ describe('el sitio de varias paginas', () => {
     expect(screen.getByTestId('url').textContent).toBe('/comunas')
   })
 
-  it('los oficios enlazan a la busqueda de ese oficio', async () => {
+  it('los oficios con gente enlazan a la busqueda de ese oficio', async () => {
     en('/oficios')
 
-    const fila = await screen.findByRole('link', { name: /Derecho/ })
-    expect(fila).toHaveAttribute('href', '/buscar?q=Derecho')
+    // Corretaje y no Derecho: Derecho no tiene a nadie, y un oficio vacio invita a ofrecerlo
+    // (lo cubre paginas/Oficios.prueba.tsx).
+    const fila = await screen.findByRole('link', { name: /Corretaje de propiedades.*3 personas/ })
+    expect(fila).toHaveAttribute('href', '/buscar?q=Corretaje%20de%20propiedades')
   })
 
   it('una direccion que no existe muestra la pagina de no encontrada', async () => {
