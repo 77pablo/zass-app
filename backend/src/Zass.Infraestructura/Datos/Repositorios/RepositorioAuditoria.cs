@@ -37,9 +37,7 @@ public sealed class RepositorioAuditoriaEfCore : IRepositorioAuditoria
         }
 
         // Orden: mas nuevo primero (fecha desc, id desc)
-        // M3 MUTACION: orden ascendente (para prueba A o C)
-        // consulta = consulta.OrderByDescending(r => r.OcurridoEn).ThenByDescending(r => r.Id);
-        consulta = consulta.OrderBy(r => r.OcurridoEn).ThenBy(r => r.Id);
+        consulta = consulta.OrderByDescending(r => r.OcurridoEn).ThenByDescending(r => r.Id);
 
         // Una fila mas para detectar si hay pagina siguiente
         return await consulta.Take(limite + 1).ToListAsync(ct);
