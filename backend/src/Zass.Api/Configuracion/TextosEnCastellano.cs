@@ -29,7 +29,7 @@ public static class TextosEnCastellano
     /// nombre lanza <c>CultureNotFoundException</c>, incluso con <c>predefinedOnly: false</c>, y la API
     /// NO ARRANCARIA por un asunto de textos. Medido el 17-nov-2026 corriendo las pruebas con
     /// <c>DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1</c>. Mejor mensajes en ingles que no tener API:
-    /// quien llama lo avisa en el registro. La imagen de hoy (aspnet:8.0, Debian) trae ICU.
+    /// quien llama lo avisa en el registro. La imagen de hoy (aspnet:10.0, Debian) trae ICU.
     /// </summary>
     public static bool FijarIdiomaDeValidacion()
     {

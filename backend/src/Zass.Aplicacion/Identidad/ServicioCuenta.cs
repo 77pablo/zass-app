@@ -56,11 +56,13 @@ public sealed class ServicioCuenta
     private readonly INotificaciones _avisos;
     private readonly IAuditor _auditor;
     private readonly ServicioSesion _sesiones;
+    private readonly IContrasenasFiltradas _filtradas;
 
     public ServicioCuenta(
         IRepositorioUsuarios usuarios, IRepositorioPerfiles perfiles, IUnidadDeTrabajo unidad,
         IHashContrasenas hash, IGeneradorSecretos secretos, IRelojSistema reloj,
-        INotificaciones avisos, IAuditor auditor, ServicioSesion sesiones)
+        INotificaciones avisos, IAuditor auditor, ServicioSesion sesiones,
+        IContrasenasFiltradas filtradas)
     {
         _usuarios = usuarios;
         _perfiles = perfiles;
@@ -71,6 +73,7 @@ public sealed class ServicioCuenta
         _avisos = avisos;
         _auditor = auditor;
         _sesiones = sesiones;
+        _filtradas = filtradas;
     }
 
     // ------------------------------------------------------------------ CS-01
@@ -216,6 +219,11 @@ public sealed class ServicioCuenta
             return Resultado.Falla(Fallas.NoEncontrado,
                 "Ese enlace para cambiar la contraseña no sirve. Pide uno nuevo.");
 
+        // P19 (T49): rechazar contrasenas que aparecen en filtraciones conocidas (HIBP).
+        if (await _filtradas.EstaFiltradaAsync(contrasenaNueva, ct))
+            return Resultado.Falla(Fallas.Validacion,
+                "Esa contraseña aparece en filtraciones de datos conocidas. Elige otra.");
+
         usuario.HashContrasena = _hash.Hash(contrasenaNueva);
         usuario.TokenRecuperacion = null;
         usuario.TokenRecuperacionExpiraEn = null;
@@ -244,6 +252,11 @@ public sealed class ServicioCuenta
 
         if (!_hash.Verifica(contrasenaActual, usuario.HashContrasena))
             return Resultado.Falla(Fallas.NoAutorizado, "La contraseña actual no es esa.");
+
+        // P19 (T49): rechazar contrasenas que aparecen en filtraciones conocidas (HIBP).
+        if (await _filtradas.EstaFiltradaAsync(contrasenaNueva, ct))
+            return Resultado.Falla(Fallas.Validacion,
+                "Esa contraseña aparece en filtraciones de datos conocidas. Elige otra.");
 
         usuario.HashContrasena = _hash.Hash(contrasenaNueva);
         usuario.ActualizadoEn = _reloj.Ahora;

@@ -1,9 +1,11 @@
 import { Link } from 'react-router-dom'
 import { useSesion } from '../sesion/contexto'
-import { Logo } from './Cabecera'
 
 /**
- * El pie del sitio. La columna de «Cuenta» cambia con la sesion: ofrecerle «Entrar» y «Crear una
+ * El pie del sitio. Estilo iPhone (19-nov-2026): compacto, como el pie de una pantalla de Ajustes:
+ * letra chica y gris, los enlaces seguidos en una o dos lineas y sin el logo (la marca no hace
+ * falta repetirla). Los mismos enlaces de siempre; el credito de OpenStreetMap sigue a la vista.
+ * La columna de «Cuenta» cambia con la sesion: ofrecerle «Entrar» y «Crear una
  * cuenta» a quien ya entro le dice que no lo reconocemos, y encima en la misma pantalla donde la
  * cabecera le saluda por su nombre. Mientras el estado es 'cargando' no se muestra ninguna de las
  * dos: un parpadeo de «Entrar» que luego desaparece da la misma impresion de algo roto.
@@ -16,12 +18,11 @@ export function Pie() {
     <footer className="pie-sitio">
       <div className="contenedor">
         <div className="pie-fila">
-          <div>
-            <Logo />
-            <p>Servicios de tu zona, a un toque. Hecho en Chile.</p>
-          </div>
+          <p className="pie-lema">Servicios de tu zona, a un toque. Hecho en Chile.</p>
           <nav aria-label="Secciones">
             <ul>
+              {/* Lo que era el logo (llevaba al inicio): el enlace se queda, sin la marca. */}
+              <li><Link to="/">Inicio</Link></li>
               <li><Link to="/buscar">Buscar a alguien</Link></li>
               <li><Link to="/comunas">Comunas</Link></li>
               <li><Link to="/oficios">Oficios</Link></li>
