@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Zass.Aplicacion.Comun;
 using Zass.Aplicacion.Puertos;
@@ -162,7 +163,7 @@ public sealed class ServicioTarjetas : IServicioTarjetas
             Accion = "TarjetaEmitida",
             Entidad = "Tarjeta",
             EntidadId = tarjeta.Id,
-            Contexto = $"UrlEstable={tarjeta.UrlEstable}, VenceEn={venceEn:O}",
+            Contexto = JsonSerializer.Serialize(new { UrlEstable = tarjeta.UrlEstable, VenceEn = venceEn }),
             OcurridoEn = _reloj.Ahora,
         });
 
@@ -229,7 +230,7 @@ public sealed class ServicioTarjetas : IServicioTarjetas
             Accion = "TarjetaActivada",
             Entidad = "Tarjeta",
             EntidadId = tarjeta.Id,
-            Contexto = $"UrlEstable={tarjeta.UrlEstable}",
+            Contexto = JsonSerializer.Serialize(new { UrlEstable = tarjeta.UrlEstable }),
             IpOrigen = ipOrigen,
             OcurridoEn = _reloj.Ahora,
         });

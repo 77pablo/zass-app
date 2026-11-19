@@ -277,11 +277,7 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
         var req = new HttpRequestMessage(HttpMethod.Post, "/api/interno/tarjetas");
         req.Headers.Add("X-CSRF-Token", csrf);
         var r = await admin.SendAsync(req);
-        if (!r.IsSuccessStatusCode)
-        {
-            var errorBody = await r.Content.ReadAsStringAsync();
-            throw new HttpRequestException($"POST /api/interno/tarjetas returned {(int)r.StatusCode} {r.StatusCode}. Body: {errorBody}");
-        }
+        r.EnsureSuccessStatusCode();
         var body = await r.Content.ReadFromJsonAsync<JsonElement>();
         return (body.GetProperty("segmento").GetString()!, body.GetProperty("codigo").GetString()!);
     }
