@@ -30,6 +30,11 @@ export function PagoSimulado() {
   const navegar = useNavigate()
   const intento = parametros.get('intento') ?? parametros.get('ref') ?? ''
   const firma = parametros.get('firma') ?? ''
+  // La firma (T48) cubre intento, monto y referencia TAL COMO VIENEN en la dirección que armó
+  // el adaptador: hay que devolverlos sin tocar. Hasta el 19-nov-2026 esta pantalla inventaba
+  // la referencia («prueba-…») y fijaba el monto, y la firma no coincidía nunca.
+  const referencia = parametros.get('referencia') ?? ''
+  const monto = parametros.get('monto') ?? MONTO_DE_LA_INSCRIPCION
 
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -41,9 +46,9 @@ export function PagoSimulado() {
     try {
       await enviar('/api/pagos/aviso', {
         intento,
-        monto: MONTO_DE_LA_INSCRIPCION,
+        monto,
         estado: aprobado ? 'aprobado' : 'rechazado',
-        referencia: `prueba-${intento.slice(0, 8)}`,
+        referencia,
         firma,
       })
       navegar('/planes/listo')
