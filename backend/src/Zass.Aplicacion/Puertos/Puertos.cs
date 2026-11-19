@@ -111,6 +111,15 @@ public interface ISondaDeBase
     Task<bool> RespondeAsync(CancellationToken ct = default);
 }
 
+/// <summary>
+/// Comprueba si una contrasena aparece en filtraciones de datos conocidas (Have I Been Pwned,
+/// rango k-anonimo). Se usa ANTES de hashear para rechazar contrasenas comprometidas.
+/// </summary>
+public interface IContrasenasFiltradas
+{
+    Task<bool> EstaFiltradaAsync(string contrasena, CancellationToken ct = default);
+}
+
 public interface IRepositorioUsuarios
 {
     Task<Usuario?> PorIdAsync(Guid id, CancellationToken ct = default);
@@ -167,6 +176,14 @@ public interface IRepositorioSuscripciones
     /// <summary>Pasadas de fecha pero todavia marcadas Prueba o Activa.</summary>
     Task<IReadOnlyList<Suscripcion>> ExpiradasSinMarcarAsync(
         DateTime ahora, CancellationToken ct = default);
+
+    /// <summary>
+    /// Suscripciones activas que vencieron en la ventana [desde, ahora].
+    /// Se usa para el cobro tardio: si el trabajo diario no corrio y una suscripcion
+    /// vencio mientras tanto (dentro de los ultimos 7 dias), se cobra al despertar.
+    /// </summary>
+    Task<IReadOnlyList<Suscripcion>> ActivasVencidasDesdeAsync(
+        DateTime desde, DateTime ahora, CancellationToken ct = default);
 
     /// <summary>Vigentes que vencen antes de una fecha, para avisar con tiempo.</summary>
     Task<IReadOnlyList<Suscripcion>> VigentesQueVencenAntesDeAsync(
