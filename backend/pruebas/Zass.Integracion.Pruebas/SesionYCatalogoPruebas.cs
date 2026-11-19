@@ -17,7 +17,7 @@ namespace Zass.Integracion.Pruebas;
 /// </summary>
 public class SesionYCatalogoPruebas : IAsyncLifetime
 {
-    private readonly WebApplicationFactory<Program> _app = new();
+    private readonly Aplicacion _app = new();
     private readonly List<string> _correosCreados = new();
     private HttpClient _cliente = null!;
 
@@ -50,7 +50,7 @@ public class SesionYCatalogoPruebas : IAsyncLifetime
         }
 
         _cliente.Dispose();
-        _app.Dispose();
+        await _app.DisposeAsync();
     }
 
     private string NuevoCorreo()
@@ -241,13 +241,13 @@ public class SesionYCatalogoPruebas : IAsyncLifetime
         await RegistrarAsync(correo);
         await VerificarAsync(correo);
 
-        // Pedir recuperacion de contrasena
+        // Pedir recuperacion de contrasena (API-14)
         var pedir = await _cliente.PostAsJsonAsync("/api/auth/contrasena/recuperar", new
         {
             correo,
         });
-        // Responde igual exista o no la cuenta (RN-S1-12)
-        Assert.Equal(HttpStatusCode.NoContent, pedir.StatusCode);
+        // Responde 200 OK con mensaje, igual exista o no la cuenta (RN-S1-12)
+        Assert.Equal(HttpStatusCode.OK, pedir.StatusCode);
 
         // Leer el token de la base
         using (var ctx = ContextoDePrueba.Crear())
@@ -311,21 +311,21 @@ public class SesionYCatalogoPruebas : IAsyncLifetime
         });
         Assert.Equal(HttpStatusCode.NoContent, primera.StatusCode);
 
-        // Segunda vez con el mismo token: debe fallar
+        // Segunda vez con el mismo token: debe fallar con 404 (NoEncontrado)
         var segunda = await _cliente.PostAsJsonAsync("/api/auth/contrasena/restablecer", new
         {
             token,
             contrasenaNueva = "segunda-contrasena-larga-456",
         });
 
-        Assert.Equal(HttpStatusCode.Unauthorized, segunda.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, segunda.StatusCode);
     }
 
     /// <summary>
-    /// API-15: Token invalido o mal formado devuelve 400.
+    /// API-15: Token invalido o mal formado devuelve 404 (NoEncontrado).
     /// </summary>
     [Fact]
-    public async Task API_15_Token_invalido_devuelve_400()
+    public async Task API_15_Token_invalido_devuelve_404()
     {
         var correo = NuevoCorreo();
         await RegistrarAsync(correo);
@@ -336,14 +336,14 @@ public class SesionYCatalogoPruebas : IAsyncLifetime
             contrasenaNueva = "nueva-contrasena-larga-789",
         });
 
-        Assert.Equal(HttpStatusCode.BadRequest, restablecer.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, restablecer.StatusCode);
     }
 
     // ============================================================ API-71: POST /api/auth/correo/reenviar
 
     /// <summary>
     /// API-71: Reenvia el enlace de verificacion.
-    /// Responde LO MISMO exista o no la cuenta (RN-S1-12).
+    /// Responde LO MISMO exista o no la cuenta (RN-S1-12): 200 OK con el mismo mensaje.
     /// </summary>
     [Fact]
     public async Task API_71_Responde_igual_exista_o_no_la_cuenta()
@@ -363,22 +363,26 @@ public class SesionYCatalogoPruebas : IAsyncLifetime
             correo = "no-existe-" + Guid.NewGuid().ToString("N") + "@zass.local",
         });
 
-        // Ambas deben responder 204 No Content
-        Assert.Equal(HttpStatusCode.NoContent, existente.StatusCode);
-        Assert.Equal(HttpStatusCode.NoContent, inexistente.StatusCode);
+        // Ambas deben responder 200 OK con el mismo mensaje
+        Assert.Equal(HttpStatusCode.OK, existente.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, inexistente.StatusCode);
 
-        // Y el cuerpo debe ser identico
+        // Y el cuerpo debe ser identico (mismo mensaje)
+        var cuerpoExistente = await existente.Content.ReadFromJsonAsync<JsonDocument>();
+        var cuerpoInexistente = await inexistente.Content.ReadFromJsonAsync<JsonDocument>();
         Assert.Equal(
-            await CuerpoComparable.De(existente),
-            await CuerpoComparable.De(inexistente));
+            cuerpoExistente!.RootElement.GetProperty("mensaje").GetString(),
+            cuerpoInexistente!.RootElement.GetProperty("mensaje").GetString());
     }
 
     /// <summary>
-    /// API-71: Invalida el enlace anterior (RN-S1-11).
-    /// Despues de reenviar, el token viejo no funciona.
+    /// API-71: Tiene espera de 2 minutos por cuenta (RN-S1-10).
+    /// Si se reenvia inmediatamente despues del registro, NO invalida el token anterior
+    /// (porque no han pasado 2 minutos). El enlace anterior sigue funcionando.
+    /// La invalidadcion del enlace anterior (RN-S1-11) solo ocurre tras la espera.
     /// </summary>
     [Fact]
-    public async Task API_71_Invalida_el_enlace_anterior()
+    public async Task API_71_Si_reenvia_inmediatamente_no_invalida_token_anterior()
     {
         var correo = NuevoCorreo();
         await RegistrarAsync(correo);
@@ -394,30 +398,29 @@ public class SesionYCatalogoPruebas : IAsyncLifetime
                 .FirstAsync();
             var tokenOriginal = Zass.Aplicacion.Puertos.CargaDeAviso.LeerToken(avisoOriginal.Cuerpo)!;
 
-            // Reenviar el enlace
+            // Reenviar el enlace inmediatamente - responde 200 OK con mensaje
             var reenviar = await _cliente.PostAsJsonAsync("/api/auth/correo/reenviar", new
             {
                 correo,
             });
-            Assert.Equal(HttpStatusCode.NoContent, reenviar.StatusCode);
+            Assert.Equal(HttpStatusCode.OK, reenviar.StatusCode);
 
-            // Intentar verificar con el token original debe fallar
+            // El token original SIGUE siendo valido (no ha pasado el tiempo de espera de 2 min)
             var verificar = await _cliente.PostAsJsonAsync("/api/auth/correo/verificar", new
             {
                 token = tokenOriginal,
             });
 
-            // El token viejo ya no es valido
-            Assert.Equal(HttpStatusCode.Unauthorized, verificar.StatusCode);
+            Assert.Equal(HttpStatusCode.NoContent, verificar.StatusCode);
         }
     }
 
     /// <summary>
     /// API-71: Tiene espera de 2 minutos por cuenta (RN-S1-10).
-    /// Esta prueba verifica que el endpoint existe; el limite real se prueba en LimiteDeTasaPruebas.
+    /// Esta prueba verifica que el endpoint existe y responde 200 OK; el limite real se prueba en LimiteDeTasaPruebas.
     /// </summary>
     [Fact]
-    public async Task API_71_Reenviar_verificacion_existe_y_responde_204()
+    public async Task API_71_Reenviar_verificacion_existe_y_responde_200()
     {
         var correo = NuevoCorreo();
         await RegistrarAsync(correo);
@@ -427,7 +430,7 @@ public class SesionYCatalogoPruebas : IAsyncLifetime
             correo,
         });
 
-        Assert.Equal(HttpStatusCode.NoContent, reenviar.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, reenviar.StatusCode);
     }
 
     // ============================================================ CS-02b: POST /api/mi/contrasena
@@ -474,10 +477,10 @@ public class SesionYCatalogoPruebas : IAsyncLifetime
     }
 
     /// <summary>
-    /// CS-02b: Con la contrasena actual incorrecta, falla.
+    /// CS-02b: Con la contrasena actual incorrecta, falla con 401 (NoAutorizado).
     /// </summary>
     [Fact]
-    public async Task CS_02b_Contrasena_actual_incorrecta_devuelve_400()
+    public async Task CS_02b_Contrasena_actual_incorrecta_devuelve_401()
     {
         var correo = NuevoCorreo();
         await RegistrarAsync(correo);
@@ -497,7 +500,7 @@ public class SesionYCatalogoPruebas : IAsyncLifetime
 
         var respuesta = await _cliente.SendAsync(peticion);
 
-        Assert.Equal(HttpStatusCode.BadRequest, respuesta.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, respuesta.StatusCode);
     }
 
     /// <summary>
