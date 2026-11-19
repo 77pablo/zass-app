@@ -469,6 +469,8 @@ public sealed class ServicioCobros : IServicioCobros
     /// </summary>
     public static int DiasAntesDeVencer => ServicioSuscripciones.DiasDeAviso.Max();
 
+    private const string PrefijoCobroAutomatico = "cobro-automatico:";
+
     /// <summary>
     /// CC-04. La clave del cobro automatico, determinista: la suscripcion y el periodo
     /// que se esta cobrando.
@@ -489,21 +491,67 @@ public sealed class ServicioCobros : IServicioCobros
     /// </para>
     /// </summary>
     public static string ClaveDeCobroAutomatico(Guid suscripcionId, DateTime vigenteHasta) =>
-        $"cobro-automatico:{suscripcionId:D}:{vigenteHasta:yyyy-MM-dd}";
+        $"{PrefijoCobroAutomatico}{suscripcionId:D}:{vigenteHasta:yyyy-MM-dd}";
 
     public async Task<ResumenDeCobros> CobrarVencimientosAsync(CancellationToken ct = default)
     {
         // La misma consulta que usa el aviso, con el mismo umbral. Si algun dia cambia
         // DiasDeAviso, el cobro se mueve con el y no se queda en otro calendario.
-        var porVencer = await _suscripciones.PorVencerAsync(DiasAntesDeVencer, ct);
+        var porVencerDto = await _suscripciones.PorVencerAsync(DiasAntesDeVencer, ct);
 
-        int cobradas = 0, rechazadas = 0, sinMedio = 0, yaIntentadas = 0, paraRevisar = 0;
+        var contadores = new ContadoresCobro();
 
-        foreach (var cercana in porVencer)
+        // Procesar suscripciones por vencer (cobro normal)
+        // Primero traemos las suscripciones completas
+        var porVencer = new List<Suscripcion>();
+        foreach (var dto in porVencerDto)
         {
-            var s = await _repo.PorIdAsync(cercana.SuscripcionId, ct);
-            if (s is null) continue;
+            var s = await _repo.PorIdAsync(dto.SuscripcionId, ct);
+            if (s is not null) porVencer.Add(s);
+        }
+        await ProcesarSuscripcionesAsync(porVencer, esCobroTardio: false, ct, contadores);
 
+        // Procesar suscripciones vencidas en los ultimos 7 dias (cobro tardio)
+        // RN-S7-16: si el trabajo diario no corrio y una suscripcion Activa con medio
+        // de pago inscrito vencio hace 7 dias o menos, se cobra una vez al despertar.
+        var ahora = _reloj.Ahora;
+        var desde = ahora.AddDays(-7);
+        var vencidas = await _repo.ActivasVencidasDesdeAsync(desde, ahora, ct);
+        await ProcesarSuscripcionesAsync(vencidas, esCobroTardio: true, ct, contadores);
+
+        // Los contadores de arriba son numeros y nada mas: este resumen lo lee cualquiera
+        // que mire trabajos_de_fondo (S7 §6).
+        await _trabajo.GuardarAsync(ct);
+        return new ResumenDeCobros(
+            contadores.Cobradas, contadores.Rechazadas, contadores.SinMedio, contadores.YaIntentadas, contadores.ParaRevisar);
+    }
+
+    /// <summary>
+    /// Contadores mutables para el procesamiento de cobros.
+    /// Evita problemas con records inmutables y ref en metodos async.
+    /// </summary>
+    private sealed class ContadoresCobro
+    {
+        public int Cobradas { get; set; }
+        public int Rechazadas { get; set; }
+        public int SinMedio { get; set; }
+        public int YaIntentadas { get; set; }
+        public int ParaRevisar { get; set; }
+    }
+
+    /// <summary>
+    /// Procesa una lista de suscripciones para cobro (normal o tardio).
+    /// Extrae la logica comun para no duplicar codigo.
+    /// </summary>
+    private async Task ProcesarSuscripcionesAsync(
+        IReadOnlyList<Suscripcion> suscripciones,
+        bool esCobroTardio,
+        CancellationToken ct,
+        ContadoresCobro contadores)
+    {
+        var ahora = _reloj.Ahora;
+        foreach (var s in suscripciones)
+        {
             var plan = await _repo.PlanPorIdAsync(s.PlanId, ct);
             if (plan is null) continue;
 
@@ -511,7 +559,7 @@ public sealed class ServicioCobros : IServicioCobros
             // cupon: un codigo de descuento lo escribe una persona, y aqui no hay nadie
             // escribiendo. Esto tambien es lo que descarta, sin contarlo, a quien esta en
             // el plan de prueba: ese mes es gratis y no se cobra nunca.
-            var calculo = await CalcularAsync(cercana.PerfilPrestadorId, plan.Codigo, null, ct);
+            var calculo = await CalcularAsync(s.PerfilPrestadorId, plan.Codigo, null, ct);
             if (!calculo.Exito || calculo.Valor is null) continue;
 
             // Con QUE se cobra. La suscripcion tiene que traer la referencia del medio de
@@ -520,10 +568,11 @@ public sealed class ServicioCobros : IServicioCobros
             // taparse: hoy esta columna no la escribe nadie (ver el informe de C3).
             if (string.IsNullOrWhiteSpace(s.ReferenciaPasarela))
             {
-                sinMedio++;
+                contadores.SinMedio++;
+                var dias = esCobroTardio ? (int)(ahora - s.VigenteHasta).TotalDays : s.DiasRestantes(ahora);
                 _auditor.Registrar(Auditar.Entrada(
                     "cobro_sin_medio_inscrito", "suscripciones", s.Id, _reloj.Ahora,
-                    contexto: new { diasRestantes = cercana.DiasRestantes }));
+                    contexto: new { diasRestantes = dias }));
                 continue;
             }
 
@@ -535,7 +584,7 @@ public sealed class ServicioCobros : IServicioCobros
             // existen (RN-S7-10 solo dice que el rechazo es normal).
             if (await _repo.IntentoPorClaveAsync(clave, ct) is not null)
             {
-                yaIntentadas++;
+                contadores.YaIntentadas++;
                 continue;
             }
 
@@ -549,7 +598,7 @@ public sealed class ServicioCobros : IServicioCobros
                 var nuevo = new IntentoDePago
                 {
                     SuscripcionId = s.Id,
-                    PerfilPrestadorId = cercana.PerfilPrestadorId,
+                    PerfilPrestadorId = s.PerfilPrestadorId,
                     PlanId = plan.Id,
                     Meses = MesesPorCobro,
                     MontoBruto = plan.PrecioMensual,
@@ -567,15 +616,25 @@ public sealed class ServicioCobros : IServicioCobros
                 // El cupo fundador NO se toca: quien renueva ya lo tiene confirmado, y
                 // volverle a poner plazo de reserva seria arriesgarse a que el trabajo
                 // diario se lo suelte.
+                var dias = esCobroTardio ? (int)(ahora - s.VigenteHasta).TotalDays : s.DiasRestantes(ahora);
                 _auditor.Registrar(Auditar.Entrada(
                     "cobro_automatico_iniciado", "intentos_de_pago", nuevo.Id, _reloj.Ahora,
                     contexto: new
                     {
                         plan = plan.Codigo,
                         monto = nuevo.Monto,
-                        diasRestantes = cercana.DiasRestantes,
+                        diasRestantes = dias,
                         pasarela = _pasarela.Nombre,
+                        cobro_tardio = esCobroTardio,
                     }));
+
+                // RN-S7-16: auditoria especifica para cobro tardio (se crea al iniciar el intento)
+                if (esCobroTardio)
+                {
+                    _auditor.Registrar(Auditar.Entrada(
+                        "cobro_tardio", "suscripciones", s.Id, _reloj.Ahora,
+                        contexto: new { diasDeAtraso = dias }));
+                }
 
                 await _trabajo.GuardarAsync(t);
                 return nuevo;
@@ -583,7 +642,7 @@ public sealed class ServicioCobros : IServicioCobros
 
             if (intento is null)
             {
-                yaIntentadas++;
+                contadores.YaIntentadas++;
                 continue;
             }
 
@@ -606,22 +665,20 @@ public sealed class ServicioCobros : IServicioCobros
             // ciegas lo que no se sabe si se cobro es como se cobra dos veces.
             if (!cobro.Exito || cobro.Valor is null)
             {
-                paraRevisar++;
+                contadores.ParaRevisar++;
                 continue;
             }
 
             // El mismo camino que el aviso de la pasarela. El rechazo deja el intento
             // Fallido y la suscripcion EXACTAMENTE como estaba (RN-S7-10).
             var resuelto = await ResolverAsync(cobro.Valor, ct);
-            if (!resuelto.Exito || resuelto.Valor is null) paraRevisar++;
-            else if (resuelto.Valor.Aprobado) cobradas++;
-            else rechazadas++;
+            if (!resuelto.Exito || resuelto.Valor is null)
+                contadores.ParaRevisar++;
+            else if (resuelto.Valor.Aprobado)
+                contadores.Cobradas++;
+            else
+                contadores.Rechazadas++;
         }
-
-        // Los contadores de arriba son numeros y nada mas: este resumen lo lee cualquiera
-        // que mire trabajos_de_fondo (S7 §6).
-        await _trabajo.GuardarAsync(ct);
-        return new ResumenDeCobros(cobradas, rechazadas, sinMedio, yaIntentadas, paraRevisar);
     }
 
     // ------------------------------------------------------------- Confirmar
@@ -750,9 +807,18 @@ public sealed class ServicioCobros : IServicioCobros
 
             // El llamador que faltaba. Toda la regla de vigencia sigue viviendo alli y no
             // aqui: quien paga el dia 25 de un mes de 30 no pierde los 5 que le quedaban.
+            //
+            // La decision de si extender desde el vencimiento original sale del INTENTO:
+            // si es un cobro automatico (ClaveIdempotencia empieza con el prefijo),
+            // se extiende desde el VigenteHasta de la suscripcion TAL COMO ESTA.
+            // VencerExpiradasAsync solo cambia Estado, no VigenteHasta.
+            // Si no es cobro automatico (pago manual), se queda la logica de siempre
+            // (desde hoy si ya vencio).
+            var esCobroAutomatico = intento.ClaveIdempotencia?.StartsWith(PrefijoCobroAutomatico) == true;
+
             var pagado = await _suscripciones.RegistrarPeriodoPagadoAsync(
                 intento.SuscripcionId, intento.Meses, intento.Monto,
-                intento.ReferenciaPasarela, intento.Id, t);
+                intento.ReferenciaPasarela, intento.Id, esCobroAutomatico, t);
             if (!pagado.Exito)
                 return Resultado.Falla<ConfirmacionDto>(pagado.Codigo!, pagado.Mensaje!);
 
