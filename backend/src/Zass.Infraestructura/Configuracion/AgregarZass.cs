@@ -52,6 +52,13 @@ public sealed class OpcionesZass
     /// </summary>
     public string? UrlPublica { get; set; }
 
+    /// <summary>
+    /// Si es true, consulta Have I Been Pwned (rango k-anonimo) antes de aceptar una contrasena
+    /// nueva. En produccion debe ser true; en desarrollo y pruebas false para no salir a internet.
+    /// Por defecto true (se sobreescribe en appsettings.Development.json).
+    /// </summary>
+    public bool RevisarContrasenasFiltradas { get; set; } = true;
+
     public byte[] ClaveDirecciones()
     {
         byte[] clave;
@@ -112,6 +119,22 @@ public static class RegistroDeServicios
         servicios.AddSingleton<IGeneradorSecretos, GeneradorSecretos>();
         servicios.AddSingleton<ICifradoDeDatos>(sp => new CifradoAesGcm(
             sp.GetRequiredService<IOptions<OpcionesZass>>().Value.ClaveDirecciones()));
+
+        // IContrasenasFiltradas: adaptador HIBP con HttpClient de 3s, o nulo segun opcion.
+        // Se resuelve al final para leer la opcion ya vinculada.
+        servicios.AddHttpClient<ContrasenasFiltradasHibp>(c =>
+        {
+            c.BaseAddress = new Uri("https://api.pwnedpasswords.com/");
+            c.Timeout = TimeSpan.FromSeconds(3);
+        });
+
+        servicios.AddScoped<IContrasenasFiltradas>(sp =>
+        {
+            var opciones = sp.GetRequiredService<IOptions<OpcionesZass>>().Value;
+            if (opciones.RevisarContrasenasFiltradas)
+                return sp.GetRequiredService<ContrasenasFiltradasHibp>();
+            return sp.GetRequiredService<ContrasenasFiltradasNunca>();
+        });
 
         // --- Puertos con estado por peticion ---
         servicios.AddScoped<IUnidadDeTrabajo, UnidadDeTrabajoEfCore>();
