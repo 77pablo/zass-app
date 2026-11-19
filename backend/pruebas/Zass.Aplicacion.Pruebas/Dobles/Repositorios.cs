@@ -5,6 +5,7 @@ using Zass.Dominio.Credenciales;
 using Zass.Dominio.Reputacion;
 using Zass.Dominio.Identidad;
 using Zass.Dominio.Suscripciones;
+using Zass.Dominio.Comun;
 
 namespace Zass.Aplicacion.Pruebas.Dobles;
 
@@ -50,6 +51,7 @@ public sealed class BaseEnMemoria : IUnidadDeTrabajo
     public List<Cita> Citas { get; } = new();
     public List<CambioCita> CambiosCita { get; } = new();
     public List<Contacto> Contactos { get; } = new();
+    public List<Notificacion> Notificaciones { get; } = new();
 
     public int Guardados { get; private set; }
     public Task<int> GuardarAsync(CancellationToken ct = default)

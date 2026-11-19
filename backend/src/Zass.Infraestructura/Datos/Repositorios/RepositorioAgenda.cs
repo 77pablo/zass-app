@@ -2,6 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using Zass.Aplicacion.Agenda;
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Agenda;
+using Zass.Dominio.Catalogo;
+using Zass.Dominio.Identidad;
 using Zass.Dominio.Comun;
 using Zass.Dominio.Reputacion;
 
@@ -237,10 +239,11 @@ public sealed class RepositorioAgendaEfCore : IRepositorioAgenda
 
     /// <summary>
     /// Rastreada y con el bloque, para poder cambiarle el estado y liberar o vencer la hora
-    /// en la misma transacción.
+    /// en la misma transacción. Usa FOR UPDATE en la tabla citas para bloquear la fila (patrón CC-01).
     /// </summary>
     public Task<Cita?> CitaParaCambioAsync(Guid id, CancellationToken ct = default) =>
         _ctx.Citas
+            .FromSqlRaw("SELECT * FROM citas WHERE id = {0} FOR UPDATE", id)
             .Include(c => c.BloqueHorario)
             .Include(c => c.PrestadorServicio).ThenInclude(ps => ps!.Servicio)
             .Include(c => c.PerfilPrestador)
@@ -279,6 +282,20 @@ public sealed class RepositorioAgendaEfCore : IRepositorioAgenda
         var ms = $"{Math.Max(1, (int)limite.TotalMilliseconds)}ms";
         return _ctx.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT set_config('lock_timeout', {ms}, true)", ct);
+    }
+
+    // ------------------------------------------------------- CS-13: reenviar recordatorio
+
+    /// <summary>
+    /// Cuenta reenvios de recordatorio para una cita hoy (prefijo = "recordatorio-reenviado:<citaId>:<rol>:<fechaChile>:").
+    /// Usa la tabla notificaciones y busca por ClaveIdempotencia que empieza con el prefijo.
+    /// </summary>
+    public async Task<int> ContarReenviosRecordatorioAsync(
+        Guid citaId, string prefijoHoy, CancellationToken ct = default)
+    {
+        return await _ctx.Notificaciones
+            .Where(n => n.CitaId == citaId && n.ClaveIdempotencia.StartsWith(prefijoHoy))
+            .CountAsync(ct);
     }
 
     public void AgregarCita(Cita cita) => _ctx.Citas.Add(cita);
