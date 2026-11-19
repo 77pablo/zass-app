@@ -431,4 +431,53 @@ public class ZonaHorariaCobroPruebas
         Assert.Equal(new DateTime(2027, 1, 30, 23, 30, 0), vigenciaEnChile);
         _output.WriteLine($"Nueva vigencia: {vigenciaEnChile:o} Chile ({sDespues.VigenteHasta:o} UTC)");
     }
+
+    /// <summary>
+    /// Prueba directa de PasarAFundadorConMesGratisAsync (sin prueba previa).
+    /// Esta prueba detecta la mutación M1: cambiar _reloj.Ahora.AddDays(30) por
+    /// _reloj.Ahora.Date.AddDays(30) en PasarAFundadorConMesGratisAsync.
+    ///
+    /// Inscrito a las 23:30 de Chile (02:30 UTC) -> mes gratis debe vencer a las
+    /// 23:30 de Chile 30 días después (02:30 UTC), NO a medianoche UTC.
+    /// </summary>
+    [Fact]
+    public async Task Mes_gratis_fundador_vence_misma_hora_sin_prueba_previa()
+    {
+        var baseEnMemoria = MontarBase(out var reloj, out var pasarela, out var suscripciones, out var cobros);
+
+        // Crear perfil y suscripción en estado inicial (sin prueba)
+        var perfil = new PerfilPrestador { Id = Guid.NewGuid(), UsuarioId = Guid.NewGuid() };
+        baseEnMemoria.PerfilesPrestador.Add(perfil);
+
+        // Crear suscripción con PlanId inicial (simulando que ya existe)
+        var suscripcion = new Zass.Dominio.Suscripciones.Suscripcion
+        {
+            Id = Guid.NewGuid(),
+            PerfilPrestadorId = perfil.Id,
+            PlanId = 1, // plan de prueba
+            Estado = EstadoSuscripcion.Prueba,
+            IniciaEn = InscripcionChile,
+            VigenteHasta = InscripcionChile, // vence AHORA (para forzar el cálculo en PasarAFundadorConMesGratisAsync)
+            RenovacionAutomatica = false,
+        };
+        baseEnMemoria.Suscripciones.Add(suscripcion);
+
+        // Poner reloj en el momento de inscripción como fundador
+        PonerReloj(reloj, InscripcionChile); // 2026-12-01 02:30 UTC
+
+        // Llamar directamente a PasarAFundadorConMesGratisAsync (simula inscripción fundador)
+        var resultado = await suscripciones.PasarAFundadorConMesGratisAsync(suscripcion.Id, "medio-inscrito");
+        Assert.True(resultado.Exito);
+
+        var s = baseEnMemoria.Suscripciones.Single(x => x.Id == suscripcion.Id);
+
+        // El mes gratis debe vencer EXACTAMENTE 30 días después a la misma hora
+        var esperado = InscripcionChile.AddDays(30);
+        Assert.Equal(esperado, s.VigenteHasta);
+
+        // Verificar en hora de Chile: 30-dic a las 23:30
+        var enChile = UtcAChile(s.VigenteHasta);
+        Assert.Equal(new DateTime(2026, 12, 30, 23, 30, 0), enChile);
+        _output.WriteLine($"Mes gratis fundador vence: {enChile:o} Chile ({s.VigenteHasta:o} UTC)");
+    }
 }
