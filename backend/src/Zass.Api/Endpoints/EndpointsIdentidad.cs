@@ -1,10 +1,12 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.Extensions.Options;
 using Zass.Api.Configuracion;
 using Zass.Aplicacion.Busqueda;
 using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Suscripciones;
+using Zass.Infraestructura.Configuracion;
 
 namespace Zass.Api.Endpoints;
 
@@ -414,6 +416,113 @@ public static class EndpointsIdentidad
             })
             .RequireRateLimiting(Tasa.Publico)
             .WithName("API-05");
+
+        // API-07 - Descarga .vcf con los canales marcados publicos (CS-19).
+        //
+        // Usa la MISMA fuente que la ficha publica (API-05): IServicioBusqueda.FichaPublicaAsync.
+        // Si la ficha no existe o no esta publicada -> 404 igual que la ficha.
+        // Si la ficha existe pero NO expone contacto (sin suscripcion, RN-S6-10) -> 404 con el
+        // mismo cuerpo que un inexistente (no filtrar que existe).
+        //
+        // vCard 3.0, lineas con CRLF, escapar coma, punto y coma, barra invertida y saltos
+        // de linea en los valores (RFC 2426), UTF-8.
+        // Content-Type "text/vcard; charset=utf-8" y Content-Disposition attachment
+        // con filename "<slug>.vcf" (sanea el slug a [a-z0-9-]).
+        grupo.MapGet("/prestadores/{slug}/vcard", async (
+                string slug,
+                IServicioBusqueda busqueda,
+                IOptions<OpcionesZass> opciones,
+                HttpContext http) =>
+            {
+                var ficha = await busqueda.FichaPublicaAsync(slug);
+                if (ficha is null) return Results.NotFound();
+
+                // RN-S6-10: sin suscripcion vigente, la ficha se ve pero sin contacto ni agendar.
+                // Para la vCard, que ES contacto, devolvemos 404 indistinguible de un inexistente.
+                if (!ficha.SuscripcionVigente) return Results.NotFound();
+
+                var contacto = ficha.Contacto;
+                var urlPublica = opciones.Value.UrlPublica?.TrimEnd('/');
+                var urlFicha = urlPublica is null ? null : $"{urlPublica}/prestadores/{slug}";
+
+                var vcard = ConstruirVCard(ficha.NombrePublico, contacto, urlFicha, slug);
+                var filename = SanitizarSlug(slug) + ".vcf";
+
+                return Results.File(
+                    System.Text.Encoding.UTF8.GetBytes(vcard),
+                    "text/vcard; charset=utf-8",
+                    filename);
+            })
+            .RequireRateLimiting(Tasa.Publico)
+            .WithName("API-07")
+            .AllowAnonymous();
+    }
+
+    // ------------------------------------------------------------ auxiliares vCard
+
+    /// <summary>
+    /// Construye una vCard 3.0 (RFC 2426) con CRLF y escapado correcto.
+    /// </summary>
+    private static string ConstruirVCard(
+        string nombre,
+        ContactoPublicoDto contacto,
+        string? urlFicha,
+        string slug)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append("BEGIN:VCARD\r\n");
+        sb.Append("VERSION:3.0\r\n");
+        sb.Append($"FN:{Escape(nombre)}\r\n");
+        // N: Apellidos;Nombre;Prefijo;Sufijo - usamos el nombre completo como FN y N
+        sb.Append($"N:{Escape(nombre)};;;\r\n");
+
+        if (!string.IsNullOrWhiteSpace(contacto.Telefono))
+            sb.Append($"TEL;TYPE=VOICE:{Escape(contacto.Telefono)}\r\n");
+
+        if (!string.IsNullOrWhiteSpace(contacto.Whatsapp))
+            sb.Append($"TEL;TYPE=CELL:{Escape(contacto.Whatsapp)}\r\n");
+
+        if (!string.IsNullOrWhiteSpace(contacto.Correo))
+            sb.Append($"EMAIL:{Escape(contacto.Correo)}\r\n");
+
+        if (!string.IsNullOrWhiteSpace(contacto.SitioWeb))
+            sb.Append($"URL:{Escape(contacto.SitioWeb)}\r\n");
+
+        if (!string.IsNullOrWhiteSpace(urlFicha))
+            sb.Append($"URL:{Escape(urlFicha)}\r\n");
+
+        sb.Append("END:VCARD\r\n");
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Escapa caracteres especiales segun RFC 2426: \ , ; \n \r
+    /// </summary>
+    private static string Escape(string valor)
+    {
+        if (string.IsNullOrEmpty(valor)) return valor;
+        return valor
+            .Replace("\\", "\\\\")
+            .Replace(",", "\\,")
+            .Replace(";", "\\;")
+            .Replace("\n", "\\n")
+            .Replace("\r", "\\r");
+    }
+
+    /// <summary>
+    /// Sanea el slug para usarlo como nombre de archivo: solo a-z 0-9 y guion.
+    /// </summary>
+    private static string SanitizarSlug(string slug)
+    {
+        if (string.IsNullOrWhiteSpace(slug)) return "vcard";
+        var sb = new System.Text.StringBuilder();
+        foreach (var c in slug.ToLowerInvariant())
+        {
+            if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-')
+                sb.Append(c);
+        }
+        var resultado = sb.ToString();
+        return string.IsNullOrWhiteSpace(resultado) ? "vcard" : resultado;
     }
 
     // ------------------------------------------------------------ auxiliares
