@@ -1520,10 +1520,11 @@ public partial class ApiPruebas : IAsyncLifetime
         var cuerpo = await respuesta.Content.ReadAsStringAsync();
         var cuerpoNormalizado = cuerpo.Replace("\r\n", "\n").Replace("\r", "\n");
 
-        // Verificar que el nombre aparece (el test de mutacion M2 validara el escapado exacto)
-        Assert.Contains("FN:Juan Perez", cuerpoNormalizado);
-        Assert.Contains("Jr", cuerpoNormalizado);
-        Assert.Contains("Especialista", cuerpoNormalizado);
+        // El nombre "Juan Perez, Jr.; Especialista" debe salir con coma y punto y coma escapados
+        // (RFC 2426: coma -> \,  punto y coma -> \;)
+        // Usamos verbatim strings (@"") para que los backslashes sean literales
+        Assert.Contains(@"FN:Juan Perez\, Jr.\; Especialista", cuerpoNormalizado);
+        Assert.Contains(@"N:Juan Perez\, Jr.\; Especialista;;;", cuerpoNormalizado);
     }
 
     [Fact]
