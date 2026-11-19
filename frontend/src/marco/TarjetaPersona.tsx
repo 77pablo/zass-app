@@ -49,7 +49,7 @@ export function TarjetaPersona({ p }: { p: DatosDeTarjeta }) {
         {p.precioDesde != null
           ? <span className="tarjeta-precio">desde <strong>{pesos(p.precioDesde)}</strong></span>
           : <span className="tarjeta-precio tarjeta-precio--vacio">Precio a convenir</span>}
-        <span className="tarjeta-ir">Ver ficha<Icono nombre="flecha" /></span>
+        <span className="tarjeta-ir">Ver ficha<Icono nombre="chevron" /></span>
       </span>
     </Link>
   )
