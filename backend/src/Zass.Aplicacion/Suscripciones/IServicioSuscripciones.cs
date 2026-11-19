@@ -60,6 +60,14 @@ public interface IServicioSuscripciones
     /// <summary>El prestador deja de pagar por voluntad propia. Sale de la busqueda de inmediato.</summary>
     Task<Resultado> CancelarAsync(Guid suscripcionId, CancellationToken ct = default);
 
+    /// <summary>
+    /// CS-04: el prestador eliminó su cuenta. Se cancela su suscripción vigente, si la tiene,
+    /// para que el cobro recurrente nunca le cobre a una cuenta que ya no existe. Sin reembolso:
+    /// decisión de Pablo, 17-nov-2026. Sin suscripción vigente no hay nada que hacer, y no es
+    /// un error. Repetirlo no cambia nada.
+    /// </summary>
+    Task<Resultado> CancelarDePrestadorAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+
     /// <summary>Trabajo de fondo. Devuelve cuantas marco. Vencer no borra: solo cambia el estado.</summary>
     Task<int> VencerExpiradasAsync(CancellationToken ct = default);
 

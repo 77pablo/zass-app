@@ -127,6 +127,9 @@ public class TrabajoDiarioCobraPruebas
         public Task<Resultado> CancelarAsync(Guid suscripcionId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
+        public Task<Resultado> CancelarDePrestadorAsync(Guid perfilPrestadorId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<int> VencerExpiradasAsync(CancellationToken ct = default) =>
             throw new NotSupportedException();
 
