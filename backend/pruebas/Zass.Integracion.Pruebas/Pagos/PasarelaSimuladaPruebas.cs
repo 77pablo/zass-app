@@ -1,6 +1,12 @@
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Primitives;
+using System.Linq;
+using System.Web;
 using Zass.Aplicacion.Puertos;
+using Zass.Dominio.Comun;
 using Zass.Infraestructura.Configuracion;
 using Zass.Infraestructura.Pagos;
 
@@ -31,6 +37,7 @@ namespace Zass.Integracion.Pruebas.Pagos;
 public class PasarelaSimuladaPruebas
 {
     private const string Raiz = "https://zass.cl";
+    private static readonly string SecretoPrueba = Convert.ToBase64String(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray());
 
     private static PasarelaSimulada LaPasarela() =>
         new(Options.Create(new OpcionesZass
@@ -39,6 +46,7 @@ public class PasarelaSimuladaPruebas
             ClaveDireccionesBase64 =
                 Convert.ToBase64String(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray()),
             UrlPublica = Raiz,
+            SecretoAvisoPagos = SecretoPrueba,
         }),
         NullLogger<PasarelaSimulada>.Instance);
 
@@ -107,5 +115,304 @@ public class PasarelaSimuladaPruebas
             new SolicitudDeInscripcion(intento, "inscripcion"));
 
         Assert.Contains($"{PasarelaSimulada.CampoIntento}={intento}", r.Valor!.UrlParaPagar);
+    }
+
+    // ===== Pruebas de firma (T48 - P16) =====
+
+    /// <summary>
+    /// A) Aviso con firma correcta -> Ok.
+    /// </summary>
+    [Fact]
+    public async Task LeerConfirmacion_con_firma_correcta_devuelve_Ok()
+    {
+        var pasarela = LaPasarela();
+        var intento = Guid.NewGuid();
+        var monto = 5990;
+
+        var cobro = await pasarela.IniciarCobroAsync(
+            new SolicitudDeCobro(intento, monto, "CLP", "test"));
+        var referencia = cobro.Valor!.ReferenciaPasarela;
+        var url = cobro.Valor.UrlParaPagar;
+
+        // Extraer la firma de la URL generada
+        var uri = new Uri(url);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        var firma = query[PasarelaSimulada.CampoFirma];
+
+        var aviso = new AvisoDePasarela(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [PasarelaSimulada.CampoIntento] = intento.ToString(),
+            [PasarelaSimulada.CampoMonto] = monto.ToString(),
+            [PasarelaSimulada.CampoReferencia] = referencia!,
+            [PasarelaSimulada.CampoFirma] = firma!,
+            [PasarelaSimulada.CampoEstado] = "aprobado",
+        });
+
+        var r = await pasarela.LeerConfirmacionAsync(aviso, CancellationToken.None);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(intento, r.Valor!.IntentoDePagoId);
+        Assert.Equal(monto, r.Valor.MontoConfirmado);
+        Assert.True(r.Valor.Aprobado);
+    }
+
+    /// <summary>
+    /// B) Aviso sin firma -> Falla Validacion.
+    /// </summary>
+    [Fact]
+    public async Task LeerConfirmacion_sin_firma_devuelve_Falla_Validacion()
+    {
+        var pasarela = LaPasarela();
+        var intento = Guid.NewGuid();
+        var monto = 5990;
+        var referencia = "sim-test1234567890";
+
+        var aviso = new AvisoDePasarela(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [PasarelaSimulada.CampoIntento] = intento.ToString(),
+            [PasarelaSimulada.CampoMonto] = monto.ToString(),
+            [PasarelaSimulada.CampoReferencia] = referencia,
+            [PasarelaSimulada.CampoEstado] = "aprobado",
+            // Sin firma
+        });
+
+        var r = await pasarela.LeerConfirmacionAsync(aviso, CancellationToken.None);
+
+        Assert.False(r.Exito);
+        Assert.Equal(Fallas.Validacion, r.Codigo);
+        Assert.Contains("firmada", r.Mensaje, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// C) Monto cambiado con la firma original -> Falla.
+    /// </summary>
+    [Fact]
+    public async Task LeerConfirmacion_con_monto_cambiado_devuelve_Falla_Validacion()
+    {
+        var pasarela = LaPasarela();
+        var intento = Guid.NewGuid();
+        var montoOriginal = 5990;
+        var montoCambiado = 7990;
+
+        var cobro = await pasarela.IniciarCobroAsync(
+            new SolicitudDeCobro(intento, montoOriginal, "CLP", "test"));
+        var referencia = cobro.Valor!.ReferenciaPasarela;
+        var url = cobro.Valor.UrlParaPagar;
+
+        var uri = new Uri(url);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        var firmaOriginal = query[PasarelaSimulada.CampoFirma];
+
+        // Usar la firma original pero con monto cambiado
+        var aviso = new AvisoDePasarela(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [PasarelaSimulada.CampoIntento] = intento.ToString(),
+            [PasarelaSimulada.CampoMonto] = montoCambiado.ToString(),
+            [PasarelaSimulada.CampoReferencia] = referencia!,
+            [PasarelaSimulada.CampoFirma] = firmaOriginal!,
+            [PasarelaSimulada.CampoEstado] = "aprobado",
+        });
+
+        var r = await pasarela.LeerConfirmacionAsync(aviso, CancellationToken.None);
+
+        Assert.False(r.Exito);
+        Assert.Equal(Fallas.Validacion, r.Codigo);
+        Assert.Contains("firmada", r.Mensaje, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// D) Intento cambiado -> Falla.
+    /// </summary>
+    [Fact]
+    public async Task LeerConfirmacion_con_intento_cambiado_devuelve_Falla_Validacion()
+    {
+        var pasarela = LaPasarela();
+        var intentoOriginal = Guid.NewGuid();
+        var intentoCambiado = Guid.NewGuid();
+        var monto = 5990;
+
+        var cobro = await pasarela.IniciarCobroAsync(
+            new SolicitudDeCobro(intentoOriginal, monto, "CLP", "test"));
+        var referencia = cobro.Valor!.ReferenciaPasarela;
+        var url = cobro.Valor.UrlParaPagar;
+
+        var uri = new Uri(url);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        var firmaOriginal = query[PasarelaSimulada.CampoFirma];
+
+        // Usar la firma original pero con intento cambiado
+        var aviso = new AvisoDePasarela(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [PasarelaSimulada.CampoIntento] = intentoCambiado.ToString(),
+            [PasarelaSimulada.CampoMonto] = monto.ToString(),
+            [PasarelaSimulada.CampoReferencia] = referencia!,
+            [PasarelaSimulada.CampoFirma] = firmaOriginal!,
+            [PasarelaSimulada.CampoEstado] = "aprobado",
+        });
+
+        var r = await pasarela.LeerConfirmacionAsync(aviso, CancellationToken.None);
+
+        Assert.False(r.Exito);
+        Assert.Equal(Fallas.Validacion, r.Codigo);
+        Assert.Contains("firmada", r.Mensaje, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// E) Referencia cambiada -> Falla.
+    /// </summary>
+    [Fact]
+    public async Task LeerConfirmacion_con_referencia_cambiada_devuelve_Falla_Validacion()
+    {
+        var pasarela = LaPasarela();
+        var intento = Guid.NewGuid();
+        var monto = 5990;
+        var referenciaOriginal = "sim-original1234567";
+        var referenciaCambiada = "sim-cambiada1234567";
+
+        // Firmar con la referencia original
+        var firmaOriginal = PasarelaSimulada.CalcularFirma(SecretoPrueba, intento, monto, referenciaOriginal);
+
+        // Usar la firma original pero con referencia cambiada
+        var aviso = new AvisoDePasarela(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [PasarelaSimulada.CampoIntento] = intento.ToString(),
+            [PasarelaSimulada.CampoMonto] = monto.ToString(),
+            [PasarelaSimulada.CampoReferencia] = referenciaCambiada,
+            [PasarelaSimulada.CampoFirma] = firmaOriginal,
+            [PasarelaSimulada.CampoEstado] = "aprobado",
+        });
+
+        var r = await pasarela.LeerConfirmacionAsync(aviso, CancellationToken.None);
+
+        Assert.False(r.Exito);
+        Assert.Equal(Fallas.Validacion, r.Codigo);
+        Assert.Contains("firmada", r.Mensaje, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// F) Firma hecha con otro secreto -> Falla.
+    /// </summary>
+    [Fact]
+    public async Task LeerConfirmacion_con_firma_de_otro_secreto_devuelve_Falla_Validacion()
+    {
+        var pasarela = LaPasarela();
+        var intento = Guid.NewGuid();
+        var monto = 5990;
+        var referencia = "sim-test1234567890";
+
+        // Firmar con un secreto diferente
+        var otroSecreto = Convert.ToBase64String(Enumerable.Range(32, 32).Select(i => (byte)i).ToArray());
+        var firmaConOtroSecreto = PasarelaSimulada.CalcularFirma(otroSecreto, intento, monto, referencia);
+
+        var aviso = new AvisoDePasarela(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [PasarelaSimulada.CampoIntento] = intento.ToString(),
+            [PasarelaSimulada.CampoMonto] = monto.ToString(),
+            [PasarelaSimulada.CampoReferencia] = referencia,
+            [PasarelaSimulada.CampoFirma] = firmaConOtroSecreto,
+            [PasarelaSimulada.CampoEstado] = "aprobado",
+        });
+
+        var r = await pasarela.LeerConfirmacionAsync(aviso, CancellationToken.None);
+
+        Assert.False(r.Exito);
+        Assert.Equal(Fallas.Validacion, r.Codigo);
+        Assert.Contains("firmada", r.Mensaje, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// G) La URL de IniciarInscripcionAsync trae una firma que LeerConfirmacionAsync acepta (ida y vuelta).
+    /// </summary>
+    [Fact]
+    public async Task Url_de_IniciarInscripcionAsync_tiene_firma_que_LeerConfirmacionAsync_acepta()
+    {
+        var pasarela = LaPasarela();
+        var intento = Guid.NewGuid();
+
+        var inscripcion = await pasarela.IniciarInscripcionAsync(
+            new SolicitudDeInscripcion(intento, "test"));
+        var referencia = inscripcion.Valor!.ReferenciaPasarela;
+        var url = inscripcion.Valor.UrlParaPagar;
+
+        // Extraer todos los parámetros de la URL
+        var uri = new Uri(url);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        var firma = query[PasarelaSimulada.CampoFirma];
+        var montoStr = query[PasarelaSimulada.CampoMonto];
+        var intentoStr = query[PasarelaSimulada.CampoIntento];
+        var referenciaStr = query[PasarelaSimulada.CampoReferencia];
+
+        Assert.NotNull(firma);
+        Assert.NotNull(montoStr);
+        Assert.NotNull(intentoStr);
+        Assert.NotNull(referenciaStr);
+
+        // Construir el aviso con los mismos valores que vienen en la URL
+        var aviso = new AvisoDePasarela(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [PasarelaSimulada.CampoIntento] = intentoStr!,
+            [PasarelaSimulada.CampoMonto] = montoStr!,
+            [PasarelaSimulada.CampoReferencia] = referenciaStr!,
+            [PasarelaSimulada.CampoFirma] = firma!,
+            [PasarelaSimulada.CampoEstado] = "aprobado",
+        });
+
+        var r = await pasarela.LeerConfirmacionAsync(aviso, CancellationToken.None);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(intento, r.Valor!.IntentoDePagoId);
+        Assert.Equal(0, r.Valor.MontoConfirmado); // Inscripción es monto 0
+        Assert.Equal(referencia, r.Valor.ReferenciaPasarela);
+        Assert.True(r.Valor.Aprobado);
+    }
+
+    /// <summary>
+    /// H) Arranque en Production sin secreto -> falla con el mensaje.
+    /// </summary>
+    [Fact]
+    public void Arranque_en_Production_sin_secreto_falla_con_mensaje_claro()
+    {
+        // Probar el validador directamente con entorno Production simulado
+        var entornoProduction = new EntornoDePrueba(esProduccion: true);
+        var logger = NullLogger<ValidadorOpcionesPagos>.Instance;
+        var validador = new ValidadorOpcionesPagos(entornoProduction, logger);
+
+        var opciones = new OpcionesZass
+        {
+            CadenaConexion = "Host=localhost;Database=test",
+            ClaveDireccionesBase64 = Convert.ToBase64String(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray()),
+            SecretoAvisoPagos = "", // Vacío
+        };
+
+        var resultado = validador.Validate(null, opciones);
+
+        Assert.True(resultado.Failed);
+        Assert.Contains("Falta Zass:SecretoAvisoPagos (32 caracteres o mas)", resultado.Failures);
+    }
+
+    /// <summary>
+    /// Entorno de prueba que permite simular Production.
+    /// </summary>
+    private sealed class EntornoDePrueba : IHostEnvironment
+    {
+        public EntornoDePrueba(bool esProduccion)
+        {
+            EnvironmentName = esProduccion ? Environments.Production : Environments.Development;
+        }
+
+        public string EnvironmentName { get; set; }
+        public string ApplicationName { get; set; } = "Test";
+        public string ContentRootPath { get; set; } = "";
+        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+    }
+
+    /// <summary>
+    /// Proveedor de archivos nulo para tests.
+    /// </summary>
+    private sealed class NullFileProvider : IFileProvider
+    {
+        public IDirectoryContents GetDirectoryContents(string subpath) => NotFoundDirectoryContents.Singleton;
+        public IFileInfo GetFileInfo(string subpath) => new NotFoundFileInfo(subpath);
+        public IChangeToken Watch(string filter) => NullChangeToken.Singleton;
     }
 }
