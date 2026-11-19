@@ -203,6 +203,7 @@ public static class RegistroDeServicios
         servicios.AddSingleton<IGeocodificador, GeocodificadorNoDisponible>();
         servicios.AddScoped<INotificaciones, ColaNotificacionesEfCore>();
         servicios.AddScoped<IAuditor, AuditorEfCore>();
+        servicios.AddScoped<IRepositorioAuditoria, RepositorioAuditoriaEfCore>();
 
         // AddLogging aqui y no en quien llama: varios servicios de este modulo escriben en
         // el registro (la sonda de abajo, y los enviadores y el procesador de correo). Sin

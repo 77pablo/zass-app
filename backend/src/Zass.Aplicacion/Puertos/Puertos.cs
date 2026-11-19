@@ -69,6 +69,21 @@ public interface IAuditor
 }
 
 /// <summary>
+/// TBL-28. Solo lectura para administradores (API-61).
+/// Paginacion por cursor (fecha + id), orden mas nuevo primero.
+/// </summary>
+public interface IRepositorioAuditoria
+{
+    /// <summary>
+    /// Filtra por entidad+entidadId o por actorId (exactamente uno de los dos).
+    /// Devuelve una fila mas para detectar si hay pagina siguiente.
+    /// </summary>
+    Task<IReadOnlyList<RegistroAuditoria>> ConsultarAsync(
+        string? entidad, Guid? entidadId, Guid? actorId,
+        DateTime? antesDe, long? antesDeId, int limite, CancellationToken ct = default);
+}
+
+/// <summary>
 /// Una transaccion por caso de uso. Quien orquesta decide cuando se confirma; los
 /// repositorios solo acumulan cambios.
 /// </summary>

@@ -129,6 +129,7 @@ app.MapearResenas();
 app.MapearSuscripciones();                               // API-66 a API-70 (S7 suscripciones y pagos)
 
 app.MapearVerificacion();
+app.MapearAuditoria();
 
 app.MapearTarjetas();                                  // API-54 /t/{segmento} (CS-18)
 
