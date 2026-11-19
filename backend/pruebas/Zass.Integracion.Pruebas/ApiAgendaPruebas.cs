@@ -658,4 +658,167 @@ public class ApiAgendaPruebas : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode);
     }
+
+    // ------------------------------------------------------------- camino feliz de cada accion
+
+    /// <summary>
+    /// API-38: El prestador confirma una cita solicitada. RN-S4-03: solo se confirma una vez,
+    /// y solo desde Solicitada.
+    /// </summary>
+    [Fact]
+    public async Task Confirmar_cita_solicitada_responde_200_y_cambia_el_estado()
+    {
+        await UnBuscadorConSesionAsync();
+        var citaId = await UnaCitaPropiaAsync();
+
+        // Forzar que la cita vuelva a Solicitada para probar la confirmacion
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var cita = await ctx.Citas.SingleAsync(c => c.Id == Guid.Parse(citaId));
+            cita.Estado = EstadoCita.Solicitada;
+            await ctx.SaveChangesAsync();
+        }
+
+        var r = await AccionAsync(citaId, "confirmar");
+
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        using var ctx2 = ContextoDePrueba.Crear();
+        var citaConfirmada = await ctx2.Citas.SingleAsync(c => c.Id == Guid.Parse(citaId));
+        Assert.Equal(EstadoCita.Confirmada, citaConfirmada.Estado);
+    }
+
+    /// <summary>
+    /// API-39: El prestador rechaza una cita solicitada con motivo. RN-S4-04: el rechazo es
+    /// definitivo y libera el bloque.
+    /// </summary>
+    [Fact]
+    public async Task Rechazar_cita_solicitada_libera_el_bloque()
+    {
+        await UnBuscadorConSesionAsync();
+        var citaId = await UnaCitaPropiaAsync();
+        Guid bloqueIdOriginal;
+
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var cita = await ctx.Citas.SingleAsync(c => c.Id == Guid.Parse(citaId));
+            cita.Estado = EstadoCita.Solicitada;
+            bloqueIdOriginal = cita.BloqueHorarioId;
+            await ctx.SaveChangesAsync();
+        }
+
+        var r = await AccionAsync(citaId, "rechazar", new { motivo = "No coincide el horario" });
+
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        using var ctx2 = ContextoDePrueba.Crear();
+        var citaRechazada = await ctx2.Citas.SingleAsync(c => c.Id == Guid.Parse(citaId));
+        Assert.Equal(EstadoCita.Rechazada, citaRechazada.Estado);
+        var bloque = await ctx2.Bloques.SingleAsync(b => b.Id == bloqueIdOriginal);
+        Assert.Equal(EstadoBloque.Libre, bloque.Estado);
+    }
+
+    /// <summary>
+    /// API-41: Reprogramar es cancelar y crear con vinculo. RN-S4-05: la cita nueva conserva
+    /// la elegibilidad para resenar de la original. CC-06: el bloque nuevo debe estar libre.
+    /// </summary>
+    [Fact]
+    public async Task Reprogramar_cita_cancela_la_original_y_crea_una_nueva_vinculada()
+    {
+        await UnBuscadorConSesionAsync();
+        var citaOriginalId = await UnaCitaPropiaAsync();
+
+        // Crear un bloque nuevo para reprogramar
+        Guid bloqueNuevoId;
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var bloqueOriginal = await ctx.Bloques.SingleAsync(b => b.Id == _bloque);
+            var bloqueNuevo = new BloqueHorario
+            {
+                DisponibilidadId = bloqueOriginal.DisponibilidadId,
+                PerfilPrestadorId = bloqueOriginal.PerfilPrestadorId,
+                PrestadorServicioId = bloqueOriginal.PrestadorServicioId,
+                InicioEn = bloqueOriginal.InicioEn.AddHours(2),
+                FinEn = bloqueOriginal.FinEn.AddHours(2),
+                Estado = EstadoBloque.Libre,
+            };
+            ctx.Bloques.Add(bloqueNuevo);
+            await ctx.SaveChangesAsync();
+            bloqueNuevoId = bloqueNuevo.Id;
+        }
+
+        var clave = $"reprogramar-{Guid.NewGuid():N}";
+        var r = await AccionAsync(citaOriginalId, "reprogramar", new { bloqueNuevoId, motivo = "Cambio de horario" }, clave);
+
+        Assert.Equal(HttpStatusCode.Created, r.StatusCode);
+        var citaNueva = await LeerCitaAsync(r);
+
+        using var ctx2 = ContextoDePrueba.Crear();
+        var original = await ctx2.Citas.SingleAsync(c => c.Id == Guid.Parse(citaOriginalId));
+        var nueva = await ctx2.Citas.SingleAsync(c => c.Id == Guid.Parse(citaNueva.id));
+
+        Assert.Equal(EstadoCita.Cancelada, original.Estado);
+        Assert.Equal(EstadoCita.Confirmada, nueva.Estado);
+        Assert.Equal(Guid.Parse(citaOriginalId), nueva.CitaOrigenId);
+        Assert.Equal(bloqueNuevoId, nueva.BloqueHorarioId);
+    }
+
+    /// <summary>
+    /// API-42: El prestador marca asistencia despues de la hora de la cita. CS-12: solo
+    /// despues de la hora, y solo el prestador de ESA cita.
+    /// </summary>
+    [Fact]
+    public async Task Marcar_asistencia_despues_de_la_hora_cambia_a_realizada()
+    {
+        await UnBuscadorConSesionAsync();
+        var citaId = await UnaCitaPropiaAsync();
+
+        // Forzar que la cita este en el estado correcto para marcar asistencia
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var citaAsistencia = await ctx.Citas.SingleAsync(c => c.Id == Guid.Parse(citaId));
+            citaAsistencia.Estado = EstadoCita.PendienteAsistencia;
+            // Mover la cita al pasado para que pueda marcar asistencia
+            var bloque = await ctx.Bloques.SingleAsync(b => b.Id == citaAsistencia.BloqueHorarioId);
+            bloque.InicioEn = DateTime.UtcNow.AddHours(-2);
+            bloque.FinEn = DateTime.UtcNow.AddHours(-1);
+            await ctx.SaveChangesAsync();
+        }
+
+        var r = await AccionAsync(citaId, "asistencia", new { asistio = true });
+
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        using var ctx2 = ContextoDePrueba.Crear();
+        var cita = await ctx2.Citas.SingleAsync(c => c.Id == Guid.Parse(citaId));
+        Assert.Equal(EstadoCita.Realizada, cita.Estado);
+        Assert.Equal(FaltaEnCita.Nadie, cita.QuienFalto);
+    }
+
+    /// <summary>
+    /// API-42b: El buscador acusa que el prestador no asistio. La otra mitad de CS-12:
+    /// solo el buscador de ESA cita puede acusar, y solo despues de la hora.
+    /// </summary>
+    [Fact]
+    public async Task Acusar_ausencia_del_prestador_cambia_a_realizada_con_falta()
+    {
+        await UnBuscadorConSesionAsync();
+        var citaId = await UnaCitaPropiaAsync();
+
+        // Forzar que la cita este en estado de esperar asistencia
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var citaAusencia = await ctx.Citas.SingleAsync(c => c.Id == Guid.Parse(citaId));
+            citaAusencia.Estado = EstadoCita.PendienteAsistencia;
+            var bloque = await ctx.Bloques.SingleAsync(b => b.Id == citaAusencia.BloqueHorarioId);
+            bloque.InicioEn = DateTime.UtcNow.AddHours(-2);
+            bloque.FinEn = DateTime.UtcNow.AddHours(-1);
+            await ctx.SaveChangesAsync();
+        }
+
+        var r = await AccionAsync(citaId, "no-asistio-el-prestador");
+
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        using var ctx2 = ContextoDePrueba.Crear();
+        var cita = await ctx2.Citas.SingleAsync(c => c.Id == Guid.Parse(citaId));
+        Assert.Equal(EstadoCita.Realizada, cita.Estado);
+        Assert.Equal(FaltaEnCita.Prestador, cita.QuienFalto);
+    }
 }
