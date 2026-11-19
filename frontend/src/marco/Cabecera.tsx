@@ -71,47 +71,47 @@ export function Cabecera() {
         <nav id="menu-movil" className="menu-movil" aria-label="Principal">
           {ENLACES.map((e) => (
             <NavLink key={e.a} to={e.a} className="menu-enlace">
-              {e.texto}<Icono nombre="flecha" />
+              {e.texto}<Icono nombre="chevron" />
             </NavLink>
           ))}
           {estado === 'dentro' && (
             <NavLink to="/mis-citas" className="menu-enlace">
-              Mis citas<Icono nombre="flecha" />
+              Mis citas<Icono nombre="chevron" />
             </NavLink>
           )}
           {estado === 'dentro' && (
             <NavLink to="/mis-resenas" className="menu-enlace">
-              Mis reseñas<Icono nombre="flecha" />
+              Mis reseñas<Icono nombre="chevron" />
             </NavLink>
           )}
           {estado === 'dentro' && esPrestador && (
             <NavLink to="/mi-ficha" className="menu-enlace">
-              Mi ficha<Icono nombre="flecha" />
+              Mi ficha<Icono nombre="chevron" />
             </NavLink>
           )}
           {estado === 'dentro' && esPrestador && (
             <NavLink to="/mi-agenda" className="menu-enlace">
-              Mi agenda<Icono nombre="flecha" />
+              Mi agenda<Icono nombre="chevron" />
             </NavLink>
           )}
           {estado === 'dentro' && esPrestador && (
             <NavLink to="/mis-tarjetas" className="menu-enlace">
-              Mis tarjetas<Icono nombre="flecha" />
+              Mis tarjetas<Icono nombre="chevron" />
             </NavLink>
           )}
           {estado === 'dentro' && !esPrestador && (
             <NavLink to="/ofrecer-servicios" className="menu-enlace">
-              Ofrecer mis servicios<Icono nombre="flecha" />
+              Ofrecer mis servicios<Icono nombre="chevron" />
             </NavLink>
           )}
           {estado === 'dentro' && (
             <button type="button" className="menu-enlace" onClick={() => void salir()}>
-              Salir<Icono nombre="flecha" />
+              Salir<Icono nombre="chevron" />
             </button>
           )}
           {estado === 'fuera' && (
             <NavLink to="/entrar" className="menu-enlace menu-enlace--entrar">
-              Entrar<Icono nombre="flecha" />
+              Entrar<Icono nombre="chevron" />
             </NavLink>
           )}
         </nav>
