@@ -367,7 +367,8 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
         var (segmento, _) = await EmitirTarjetaAsync(_admin);
 
         var csrf = await ObtenerCsrfAsync(_prestador);
-        var r = await _prestador.SendAsync(CrearActivarRequest(_prestador, segmento, "CODIGO-INCORRECTO-1234", csrf));
+        // Usar formato valido (4-4-4) pero codigo inexistente
+        var r = await _prestador.SendAsync(CrearActivarRequest(_prestador, segmento, "AAAA-AAAA-AAAA", csrf));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, r.StatusCode);
         var prob = await r.Content.ReadFromJsonAsync<JsonElement>();
@@ -434,7 +435,8 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
     {
         var (segmento, _) = await EmitirTarjetaAsync(_admin);
 
-        var r = await _cliente.PostAsJsonAsync($"/t/{segmento}/activar", new { codigo = "CODIGO-VALIDO-1234" });
+        // Usar formato valido pero codigo inexistente
+        var r = await _cliente.PostAsJsonAsync($"/t/{segmento}/activar", new { codigo = "AAAA-AAAA-AAAA" });
         Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode);
     }
 
@@ -445,10 +447,10 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
         var sufijo = $"borrador-{Guid.NewGuid():N}";
         var client = await CrearYAutenticarAsync(sufijo);
 
-        // Cambiar el perfil a estado Borrador
+        // Cambiar el perfil a estado Borrador (usar el correo correcto con marca)
         using (var ctx = ContextoDePrueba.Crear())
         {
-            var usuario = await ctx.Usuarios.SingleAsync(u => u.Correo == $"apitj-{sufijo}@zass.local");
+            var usuario = await ctx.Usuarios.SingleAsync(u => u.Correo == $"apitj-{sufijo}-{_marca}@zass.local");
             var perfil = await ctx.PerfilesPrestador.SingleAsync(p => p.UsuarioId == usuario.Id);
             perfil.Estado = EstadoPerfil.Borrador;
             await ctx.SaveChangesAsync();
