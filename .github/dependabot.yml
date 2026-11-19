@@ -11,7 +11,7 @@ updates:
     groups:
       npm-deps:
         patterns: ["*"]
-        update-types: ["version-update:semver-minor", "version-update:semver-patch"]
+        update-types: ["minor", "patch"]
     commit-message:
       prefix: "deps"
   - package-ecosystem: "nuget"
@@ -25,7 +25,7 @@ updates:
     groups:
       nuget-deps:
         patterns: ["*"]
-        update-types: ["version-update:semver-minor", "version-update:semver-patch"]
+        update-types: ["minor", "patch"]
     commit-message:
       prefix: "deps"
   - package-ecosystem: "github-actions"
@@ -39,6 +39,6 @@ updates:
     groups:
       gha-deps:
         patterns: ["*"]
-        update-types: ["version-update:semver-minor", "version-update:semver-patch"]
+        update-types: ["minor", "patch"]
     commit-message:
       prefix: "deps"

@@ -1,8 +1,13 @@
+using System.Collections.Generic;
 using System.Globalization;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using FluentValidation;
+using Zass.Api.Configuracion;
+using Zass.Api.Endpoints;
+using Zass.Aplicacion.Catalogo;
 
 namespace Zass.Integracion.Pruebas;
 
@@ -161,4 +166,71 @@ public class TextosEnCastellanoPruebas : IAsyncLifetime
             c.PostAsync("/api/auth/contrasena/recuperar",
                 new StringContent("correo=a@b.cl", Encoding.UTF8, "text/plain"))),
             "tipo de contenido equivocado");
+
+    /// <summary>
+    /// T5: los nombres de campo en los errores de validacion se muestran en castellano.
+    /// Se prueba con propiedades que tienen tilde (contraseña, código, teléfono, etc.)
+    /// y propiedades compuestas (contraseña nueva, nombre público, etc.).
+    /// </summary>
+    [Fact]
+    public async Task Los_nombres_de_campo_se_muestran_en_castellano()
+    {
+        // Contrasena → contraseña (con tilde)
+        var contrasenaCorta = await ComoEnRender(c =>
+            c.PostAsJsonAsync("/api/auth/registro", new
+            {
+                correo = $"test-{Guid.NewGuid():N}@zass.local",
+                contrasena = "abc",
+                nombre = "Test",
+                rol = "buscador"
+            }));
+        var textosContrasena = await LoQueVeElUsuario(contrasenaCorta);
+        Assert.True(textosContrasena.Any(t => t.Contains("contraseña", StringComparison.OrdinalIgnoreCase)),
+            "El mensaje de contrasena corta no muestra 'contraseña' con tilde. Textos: " + string.Join(", ", textosContrasena));
+        await SinPalabrasEnIngles(contrasenaCorta, "contraseña corta");
+
+        // ContrasenaNueva → contraseña nueva (con tilde y espacio)
+        var contrasenaNuevaCorta = await ComoEnRender(c =>
+            c.PostAsJsonAsync("/api/auth/contrasena/restablecer", new
+            {
+                token = "token-valido",
+                contrasenaNueva = "x"
+            }));
+        var textosContrasenaNueva = await LoQueVeElUsuario(contrasenaNuevaCorta);
+        Assert.True(textosContrasenaNueva.Any(t => t.Contains("contraseña nueva", StringComparison.OrdinalIgnoreCase)),
+            "El mensaje de contrasena nueva corta no muestra 'contraseña nueva'. Textos: " + string.Join(", ", textosContrasenaNueva));
+        await SinPalabrasEnIngles(contrasenaNuevaCorta, "contraseña nueva corta");
+    }
+
+    private static async Task SinPalabrasEnIngles(HttpResponseMessage r, string contexto)
+    {
+        var textos = await LoQueVeElUsuario(r);
+        if (textos.Count == 0) return;
+        var enIngles = textos.Where(t => Ingles.IsMatch(t)).ToList();
+        Assert.True(enIngles.Count == 0,
+            $"{contexto} muestra ingles:\n  " + string.Join("\n  ", enIngles));
+    }
+
+    /// <summary>
+    /// T5c: el nombre en castellano de ModoAgenda (definido en TextosEnCastellano.cs)
+    /// aparece en el mensaje de validación cuando está vacío.
+    /// </summary>
+    [Fact]
+    public void ModoAgenda_vacio_muestra_nombre_en_castellano()
+    {
+        TextosEnCastellano.ConfigurarResolvedor();
+        TextosEnCastellano.FijarIdiomaDeValidacion();
+
+        var validador = new ValidadorReemplazarServicios();
+        var cmd = new ReemplazarServiciosHttpCmd(
+            new List<ServicioOfrecidoCmd> {
+                new ServicioOfrecidoCmd(1, null, 60, "", 10000)
+            }.AsReadOnly());
+
+        var result = validador.Validate(cmd);
+
+        Assert.False(result.IsValid);
+        var error = Assert.Single(result.Errors, e => e.PropertyName == "Servicios[0].ModoAgenda" && e.ErrorCode == "NotEmptyValidator");
+        Assert.Contains("modo agenda", error.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
 }
