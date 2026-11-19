@@ -73,6 +73,21 @@ public sealed class RepositorioSuscripcionesEfCore : IRepositorioSuscripciones
                         && s.VigenteHasta <= ahora)
             .ToListAsync(ct);
 
+    /// <summary>
+    /// Suscripciones activas que vencieron en la ventana [desde, ahora].
+    /// Se usa para el cobro tardio: si el trabajo diario no corrio y una suscripcion
+    /// vencio mientras tanto (dentro de los ultimos 7 dias), se cobra al despertar.
+    /// </summary>
+    public async Task<IReadOnlyList<Suscripcion>> ActivasVencidasDesdeAsync(
+        DateTime desde, DateTime ahora, CancellationToken ct = default) =>
+        await _ctx.Suscripciones
+            .Where(s => (s.Estado == EstadoSuscripcion.Prueba
+                         || s.Estado == EstadoSuscripcion.Activa)
+                        && s.VigenteHasta > desde
+                        && s.VigenteHasta <= ahora)
+            .OrderBy(s => s.VigenteHasta)
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<Suscripcion>> VigentesQueVencenAntesDeAsync(
         DateTime ahora, DateTime hasta, CancellationToken ct = default) =>
         await _ctx.Suscripciones

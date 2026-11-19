@@ -197,6 +197,9 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.HasIndex("PrestadorServicioId", "InicioEn", "Estado")
                         .HasDatabaseName("i_x_bloques_prestador_servicio_id_inicio_en_estado");
 
+                    b.HasIndex(new[] { "DisponibilidadId", "Estado", "InicioEn" }, "ix_bloque_disponibilidad_estado_inicio")
+                        .HasDatabaseName("ix_bloque_disponibilidad_estado_inicio");
+
                     b.ToTable("bloques", t =>
                         {
                             t.HasCheckConstraint("ck_bloque_rango", "fin_en > inicio_en");

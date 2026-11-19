@@ -471,6 +471,8 @@ public class ZassDbContext : DbContext
             e.ToTable(t => t.HasCheckConstraint("ck_bloque_rango", "fin_en > inicio_en"));
             e.HasIndex(x => new { x.PerfilPrestadorId, x.InicioEn });
             e.HasIndex(x => new { x.PrestadorServicioId, x.InicioEn, x.Estado });
+            // Índice para acelerar el borrado masivo de bloques libres
+            e.HasIndex(x => new { x.DisponibilidadId, x.Estado, x.InicioEn }, "ix_bloque_disponibilidad_estado_inicio");
             e.HasOne(x => x.PerfilPrestador).WithMany()
                 .HasForeignKey(x => x.PerfilPrestadorId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.PrestadorServicio).WithMany()
