@@ -380,42 +380,48 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Tarjeta_ya_activa_o_inexistente_responden_igual_4A()
+    public async Task Tarjeta_ya_activa_responde_igual_que_codigo_incorrecto_4A()
     {
-        // 1. El admin emite una tarjeta
-        var (segmento, codigo) = await EmitirTarjetaAsync(_admin);
+        // 1. El admin emite la tarjeta T1
+        var (segmentoT1, codigoT1) = await EmitirTarjetaAsync(_admin);
 
         // 2. _prestador la activa con su codigo -> 200
         var csrfPrestador = await ObtenerCsrfAsync(_prestador);
-        var rActivar = await _prestador.SendAsync(CrearActivarRequest(_prestador, segmento, codigo, csrfPrestador));
-        Assert.Equal(HttpStatusCode.OK, rActivar.StatusCode);
+        var rActivarT1 = await _prestador.SendAsync(CrearActivarRequest(_prestador, segmentoT1, codigoT1, csrfPrestador));
+        Assert.Equal(HttpStatusCode.OK, rActivarT1.StatusCode);
 
-        // 3. _otroHttp intenta activarla con ese MISMO codigo -> guarda status y cuerpo
+        // 3. _otroHttp intenta activar T1 con ese MISMO codigo -> guarda status y detail (A)
         var csrfOtro = await ObtenerCsrfAsync(_otroHttp);
-        var rOtro = await _otroHttp.SendAsync(CrearActivarRequest(_otroHttp, segmento, codigo, csrfOtro));
-        var statusOtro = rOtro.StatusCode;
-        var bodyOtro = await rOtro.Content.ReadFromJsonAsync<JsonElement>();
-        var detailOtro = bodyOtro.GetProperty("detail").GetString();
+        var rOtro = await _otroHttp.SendAsync(CrearActivarRequest(_otroHttp, segmentoT1, codigoT1, csrfOtro));
+        var statusA = rOtro.StatusCode;
+        var bodyA = await rOtro.Content.ReadFromJsonAsync<JsonElement>();
+        var detailA = bodyA.GetProperty("detail").GetString();
 
-        // 4. _otroHttp intenta activar un segmento inexistente ("XXXX-XXXX") con cualquier codigo -> guarda status y cuerpo
-        var rInexistente = await _otroHttp.SendAsync(CrearActivarRequest(_otroHttp, "XXXX-XXXX", "AAAA-AAAA-AAAA", csrfOtro));
-        var statusInexistente = rInexistente.StatusCode;
-        var bodyInexistente = await rInexistente.Content.ReadFromJsonAsync<JsonElement>();
-        var detailInexistente = bodyInexistente.GetProperty("detail").GetString();
+        // 4. El admin emite OTRA tarjeta T2 (emitida, no activada)
+        var (segmentoT2, _) = await EmitirTarjetaAsync(_admin);
 
-        // 5. Assert: los dos status son IGUALES entre si y los dos "detail" del cuerpo son IGUALES entre si
-        // (no los inventes: compara uno con el otro; ademas anota en el informe que valor tienen)
-        Assert.Equal(statusInexistente, statusOtro);
-        Assert.Equal(detailInexistente, detailOtro);
+        // 5. _otroHttp intenta activar T2 con un codigo INCORRECTO de 12 caracteres (formato valido) -> guarda status y detail (B)
+        // Copiamos el formato de los codigos que devuelve EmitirTarjetaAsync (4-4-4 con alfabeto sin I, L, O, 0, 1)
+        var codigoIncorrecto = "AAAA-AAAA-AAAA";
+        var rIncorrecto = await _otroHttp.SendAsync(CrearActivarRequest(_otroHttp, segmentoT2, codigoIncorrecto, csrfOtro));
+        var statusB = rIncorrecto.StatusCode;
+        var bodyB = await rIncorrecto.Content.ReadFromJsonAsync<JsonElement>();
+        var detailB = bodyB.GetProperty("detail").GetString();
 
-        // 6. Assert: la tarjeta sigue siendo de _prestador (consulta la base como hacen las otras pruebas del archivo)
+        // 6. Assert: A y B son IGUALES entre si (tarjeta ya activada responde igual que codigo incorrecto)
+        Assert.Equal(statusB, statusA);
+        Assert.Equal(detailB, detailA);
+
+        // 7. Assert: T1 sigue siendo de _prestador
         using var ctx = ContextoDePrueba.Crear();
-        var tarjeta = await ctx.Tarjetas.FirstAsync(t => t.UrlEstable == segmento);
-        Assert.Equal(EstadoTarjeta.Activa, tarjeta.Estado);
-        Assert.Equal(_perfilPrestadorId, tarjeta.PerfilPrestadorId);
+        var tarjetaT1 = await ctx.Tarjetas.FirstAsync(t => t.UrlEstable == segmentoT1);
+        Assert.Equal(EstadoTarjeta.Activa, tarjetaT1.Estado);
+        Assert.Equal(_perfilPrestadorId, tarjetaT1.PerfilPrestadorId);
 
-        // Anotar en el informe los valores reales (se hace manualmente despues de ver el resultado)
-        // statusOtro = statusInexistente = <valor>, detailOtro = detailInexistente = "<valor>"
+        // 8. Assert: T2 sigue Emitida (no se activó con el codigo incorrecto)
+        var tarjetaT2 = await ctx.Tarjetas.FirstAsync(t => t.UrlEstable == segmentoT2);
+        Assert.Equal(EstadoTarjeta.Emitida, tarjetaT2.Estado);
+        Assert.Null(tarjetaT2.PerfilPrestadorId);
     }
 
     [Fact]
