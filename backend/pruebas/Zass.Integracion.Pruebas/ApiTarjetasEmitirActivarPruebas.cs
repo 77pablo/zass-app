@@ -116,6 +116,12 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
                     };
                     ctx.PerfilesPrestador.Add(perfil);
                 }
+                else
+                {
+                    // El registro crea el perfil en Borrador; aseguramos que quede Publicado
+                    perfilExistente.Estado = EstadoPerfil.Publicado;
+                    perfilExistente.PublicadoEn = DateTime.UtcNow.AddDays(-1);
+                }
                 await ctx.SaveChangesAsync();
             }
             else
