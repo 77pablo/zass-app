@@ -1,5 +1,8 @@
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Primitives;
 using System.Linq;
 using System.Web;
 using Zass.Aplicacion.Puertos;
@@ -367,16 +370,13 @@ public class PasarelaSimuladaPruebas
     /// H) Arranque en Production sin secreto -> falla con el mensaje.
     /// </summary>
     [Fact]
-    public async Task Arranque_en_Production_sin_secreto_falla_con_mensaje_claro()
+    public void Arranque_en_Production_sin_secreto_falla_con_mensaje_claro()
     {
-        // Este test verifica el comportamiento del validador en producción
-        // No podemos cambiar el entorno fácilmente aquí, así que probamos la lógica del validador
-        // creando un validador con entorno de producción simulado.
-        
-        // El validador se prueba indirectamente: si no hay secreto en producción, 
-        // AgregarZass lanza OptionsValidationException con el mensaje específico.
-        // Aquí verificamos que el mensaje de error es el esperado.
-        
+        // Probar el validador directamente con entorno Production simulado
+        var entornoProduction = new EntornoDePrueba(esProduccion: true);
+        var logger = NullLogger<ValidadorOpcionesPagos>.Instance;
+        var validador = new ValidadorOpcionesPagos(entornoProduction, logger);
+
         var opciones = new OpcionesZass
         {
             CadenaConexion = "Host=localhost;Database=test",
@@ -384,13 +384,35 @@ public class PasarelaSimuladaPruebas
             SecretoAvisoPagos = "", // Vacío
         };
 
-        // En producción, el validador debería fallar con mensaje específico
-        // Como no podemos cambiar el entorno en este test unitario, verificamos
-        // que la validación de data annotations no atrapa esto (es el validador personalizado)
-        // y que el mensaje está en el código del validador.
-        
-        // Este test sirve como documentación del comportamiento esperado.
-        // La prueba real de integración en CI con entorno Production verificará el arranque.
-        Assert.True(true, "Test de documentación: en Production sin SecretoAvisoPagos debe fallar con 'Falta Zass:SecretoAvisoPagos (32 caracteres o mas)'");
+        var resultado = validador.Validate(null, opciones);
+
+        Assert.True(resultado.Failed);
+        Assert.Contains("Falta Zass:SecretoAvisoPagos (32 caracteres o mas)", resultado.Failures);
+    }
+
+    /// <summary>
+    /// Entorno de prueba que permite simular Production.
+    /// </summary>
+    private sealed class EntornoDePrueba : IHostEnvironment
+    {
+        public EntornoDePrueba(bool esProduccion)
+        {
+            EnvironmentName = esProduccion ? Environments.Production : Environments.Development;
+        }
+
+        public string EnvironmentName { get; set; }
+        public string ApplicationName { get; set; } = "Test";
+        public string ContentRootPath { get; set; } = "";
+        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+    }
+
+    /// <summary>
+    /// Proveedor de archivos nulo para tests.
+    /// </summary>
+    private sealed class NullFileProvider : IFileProvider
+    {
+        public IDirectoryContents GetDirectoryContents(string subpath) => NotFoundDirectoryContents.Singleton;
+        public IFileInfo GetFileInfo(string subpath) => new NotFoundFileInfo(subpath);
+        public IChangeToken Watch(string filter) => NullChangeToken.Singleton;
     }
 }
