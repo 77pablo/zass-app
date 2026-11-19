@@ -46,6 +46,8 @@ public sealed class AplicacionConProxy : WebApplicationFactory<Program>
             ["Zass:SecretoAvisoPagos"] = SecretoAvisoValido,
             ["Zass:Tasa:A"] = "10000", ["Zass:Tasa:G"] = "10000", ["Zass:Tasa:S"] = "10000",
             ["Zass:Tasa:P"] = limitePublico.ToString(),
+            // Contraseñas filtradas: desactivado en pruebas para evitar llamadas a HIBP y usar el adaptador nulo.
+            ["Zass:RevisarContrasenasFiltradas"] = "false",
         };
         if (limiteSalud is not null) _ajustes["Zass:Tasa:Salud"] = limiteSalud.ToString();
         if (proxies is not null) _ajustes[ProxiesDeConfianza.ClaveRedes] = proxies;
