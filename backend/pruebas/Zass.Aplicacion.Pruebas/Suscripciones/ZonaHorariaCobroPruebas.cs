@@ -271,18 +271,19 @@ public class ZonaHorariaCobroPruebas
         PonerReloj(reloj, primeraCorrida);
         _output.WriteLine($"Primera corrida: {primeraCorrida:o} UTC ({UtcAChile(primeraCorrida):o} Chile)");
 
+        // Configurar la pasarela para que RECHACE el cobro recurrente
+        // Esto hace que el intento se cree pero no se apruebe, así VigenteHasta no se mueve
+        pasarela.RechazaElCobro = true;
+
         var resumen1 = await cobros.CobrarVencimientosAsync();
-        Assert.Equal(1, resumen1.Cobradas);
+        // El cobro se intentó pero fue rechazado, cuenta como Rechazadas
+        Assert.Equal(0, resumen1.Cobradas);
+        Assert.Equal(1, resumen1.Rechazadas);
         Assert.Equal(0, resumen1.YaIntentadas);
 
         var intento1 = baseEnMemoria.IntentosDePago.Single(i => i.PerfilPrestadorId == perfil.Id && i.Tipo == TipoDeIntento.Cobro);
         var clave1 = intento1.ClaveIdempotencia;
-        _output.WriteLine($"Primera corrida - Clave: {clave1}, Intentos totales: {baseEnMemoria.IntentosDePago.Count(i => i.Tipo == TipoDeIntento.Cobro)}");
-
-        // Rechazar el cobro (para que vigenteHasta NO se mueva y la suscripción siga en ventana)
-        pasarela.Veredicto = new CobroResuelto(intento1.Id, "ref-rechazo", false, 0, null);
-        var confirmacionRechazo = await cobros.ConfirmarAsync(new AvisoDePasarela(new Dictionary<string, string>()));
-        Assert.False(confirmacionRechazo.Exito);
+        _output.WriteLine($"Primera corrida - Clave: {clave1}, Estado: {intento1.Estado}, Intentos totales: {baseEnMemoria.IntentosDePago.Count(i => i.Tipo == TipoDeIntento.Cobro)}");
 
         // Segunda corrida: 23:30 de Chile del 24-dic = 02:30 UTC del 25-dic
         // En Chile es el MISMO día (24-dic), en UTC es el día SIGUIENTE (25-dic)
@@ -317,9 +318,10 @@ public class ZonaHorariaCobroPruebas
     /// - 4 de abril: a las 24:00 (medianoche) Chile adelanta el reloj a 01:00 → horario de invierno (UTC-4)
     ///
     /// Si alguien se inscribe el 3 de abril a las 22:00 de Chile (UTC-3), el mes gratis
-    /// vence el 3 de mayo a las 22:00 de Chile (UTC-4). En UTC:
-    /// - Inscripción: 3 de abril 22:00 Chile = 4 de abril 01:00 UTC
-    /// - Vencimiento: 3 de mayo 22:00 Chile = 4 de mayo 02:00 UTC
+    /// vence 30 días exactos después en UTC. En UTC:
+    /// - Inscripción: 3 de abril 22:00 Chile (UTC-3) = 4 de abril 01:00 UTC
+    /// - Vencimiento: 4 de abril 01:00 UTC + 30 días = 4 de mayo 01:00 UTC
+    /// En hora de Chile (UTC-4 en mayo): 3 de mayo 21:00 (NO 22:00, porque cambió el offset).
     ///
     /// La prueba verifica que el código de S7 (ServicioSuscripciones.IniciarPruebaAsync)
     /// usa DateTime.AddDays(30) correctamente, sin cortarse por día UTC.
@@ -349,10 +351,10 @@ public class ZonaHorariaCobroPruebas
         var vencimientoEsperado = inscripcionChile.AddDays(30);
         Assert.Equal(vencimientoEsperado, s.VigenteHasta);
 
-        // En hora de Chile: debe ser 3 de mayo a las 22:00 (UTC-4 en mayo)
+        // En hora de Chile (UTC-4 en mayo): 3 de mayo 21:00 (no 22:00, porque cambió el offset)
         var enChile = UtcAChile(s.VigenteHasta);
         _output.WriteLine($"Vencimiento: {s.VigenteHasta:o} UTC ({enChile:o} Chile)");
-        Assert.Equal(new DateTime(2026, 5, 3, 22, 0, 0), enChile);
+        Assert.Equal(new DateTime(2026, 5, 3, 21, 0, 0), enChile);
 
         // Verificar que son exactamente 30 días (720 horas) en UTC
         var diferencia = s.VigenteHasta - inscripcionChile;
