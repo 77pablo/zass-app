@@ -53,5 +53,8 @@ public sealed class RepositorioTarjetasEnMemoria : IRepositorioTarjetas
         return Task.FromResult(t);
     }
 
+    public Task<bool> ExistePorUrlEstableAsync(string urlEstable, CancellationToken ct = default) =>
+        Task.FromResult(Tarjetas.Any(t => t.UrlEstable == urlEstable));
+
     public void Agregar(Tarjeta tarjeta) => Tarjetas.Add(tarjeta);
 }
