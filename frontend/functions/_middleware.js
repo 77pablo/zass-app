@@ -25,6 +25,8 @@
  * el contenido del sitio, y eso es lo que queda guardado en el buscador durante semanas.
  */
 
+import { conCabecerasDeSeguridad } from './_comun/cabeceras.js'
+
 const VARIABLE_INTERRUPTOR = 'MANTENIMIENTO'
 const VARIABLE_PASE = 'MANTENIMIENTO_PASE'
 const COOKIE_PASE = 'zass_pase'
@@ -159,7 +161,12 @@ function respuestaDeMantenimiento(peticion) {
   return new Response(paginaDeMantenimiento(), { status: 503, headers: cabeceras })
 }
 
+/** Toda respuesta sale con las cabeceras de seguridad: _headers no cubre a las Functions. */
 export async function onRequest(contexto) {
+  return conCabecerasDeSeguridad(await decidir(contexto))
+}
+
+async function decidir(contexto) {
   const { request, env, next } = contexto
 
   if (!enMantenimiento(env)) return next()
