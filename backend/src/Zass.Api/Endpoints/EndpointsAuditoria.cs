@@ -13,7 +13,7 @@ public static class EndpointsAuditoria
     public static IEndpointRouteBuilder MapearAuditoria(this IEndpointRouteBuilder app)
     {
         var grupo = app.MapGroup("/api/interno");
-        grupo.RequireAuthorization(Politicas.Verificador);
+        grupo.RequireAuthorization(Politicas.Administrador);
         grupo.RequireRateLimiting(Tasa.Sensible);
 
         // API-61 - Consulta el rastro por entidad o por actor.
