@@ -17,6 +17,7 @@ const legal = readFileSync(resolve(SRC, 'legal.css'), 'utf8')
 const html = readFileSync(resolve(SRC, '..', 'index.html'), 'utf8')
 const cabecera = readFileSync(resolve(SRC, 'marco', 'Cabecera.tsx'), 'utf8')
 const marco = readFileSync(resolve(SRC, 'marco', 'Marco.tsx'), 'utf8')
+const pie = readFileSync(resolve(SRC, 'marco', 'Pie.tsx'), 'utf8')
 const sinComentarios = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '')
 const sinComentariosHtml = (t) => t.replace(/<!--[\s\S]*?-->/g, '')
 
@@ -170,13 +171,14 @@ describe('estilo iPhone: sin lo «tecnologico»', () => {
       // `[^;\s]` y no `\s*(?!none)`: con este ultimo, el `\s*` cede el espacio y « none» pasaba por vidrio.
       .filter(({ cuerpo }) => /(?<!-webkit-)backdrop-filter:\s*(?!none\b)[^;\s]/.test(cuerpo))
       .map((r) => r.selector)
-    expect(conVidrio).toEqual(['.cabecera-fila', '.titulo-compacto', '.barra-inferior'])
+    // La capsula de pestañas dos veces: abajo (telefono) y arriba al centro (escritorio).
+    expect(conVidrio).toEqual(['.titulo-compacto', '.barra-inferior', '.barra-inferior'])
   })
 
-  it('con «reducir transparencia», las tres barras quedan solidas y sin desenfoque', () => {
+  it('con «reducir transparencia», las barras quedan solidas y sin desenfoque', () => {
     const bloque = bloqueMedia('prefers-reduced-transparency: reduce')
     expect(bloque, 'falta @media (prefers-reduced-transparency: reduce)').not.toBeNull()
-    expect(bloque).toMatch(/\.cabecera-fila,\s*\.barra-inferior,\s*\.titulo-compacto\s*\{[^}]*background:\s*var\(--blanco\)[^}]*(?<!-webkit-)backdrop-filter:\s*none/)
+    expect(bloque).toMatch(/\.barra-inferior,\s*\.titulo-compacto\s*\{[^}]*background:\s*var\(--blanco\)[^}]*(?<!-webkit-)backdrop-filter:\s*none/)
   })
 
   it.each([['index.css', css], ['legal.css', legal]])('%s solo usa variables que existen', (_n, hoja) => {
@@ -191,16 +193,41 @@ describe('estilo iPhone: sin lo «tecnologico»', () => {
 // Pablo, 18-nov-2026: «saca la parte superior que dice zass». Cada pantalla abre con su titulo
 // grande; al bajar, el titulo pasa a una barra fina de vidrio; en el telefono no hay barra arriba.
 describe('estilo iPhone: sin la barra de la marca, con el titulo grande', () => {
-  it('la cabecera ya no pinta el logo ni el boton «Menú»', () => {
+  it('la cabecera ya no pinta el logo, ni el boton «Menú», ni una barra propia', () => {
     expect(cabecera).not.toMatch(/<Logo\s*\/>/)
     expect(cabecera).not.toMatch(/menu-boton/)
+    expect(cabecera).not.toMatch(/cabecera-fila|nav-escritorio/)
     // El sitio conserva su nombre para el lector de pantalla.
     expect(cabecera).toMatch(/<header className="cabecera" aria-label="ZASS!">/)
   })
 
-  it('en el telefono la fila de la cabecera no se dibuja', () => {
-    const bloque = bloqueMedia('max-width: 880px')
-    expect(bloque).toMatch(/\.cabecera-fila\s*\{\s*display:\s*none/)
+  // Una sola barra en todos los anchos: la misma capsula, abajo hasta 880 px y arriba desde 881.
+  // Si los dos limites no se tocan, hay anchos con dos barras o con ninguna.
+  it('la capsula de pestañas va abajo hasta 880 px y arriba al centro desde 881, sin hueco', () => {
+    const t = sinComentarios(css)
+    expect(t).toMatch(/@media \(max-width: 880px\)\s*\{[^@]*?\.barra-inferior\s*\{[^}]*position:\s*fixed[^}]*bottom:\s*var\(--barra-abajo\)/)
+    expect(t).toMatch(/@media \(min-width: 881px\), \(width > 880px\)\s*\{[^@]*?\.barra-inferior\s*\{[^}]*position:\s*fixed[^}]*top:\s*var\(--capsula-arriba\)/)
+    // La base la esconde: solo los dos @media la muestran, y entre los dos cubren todo ancho
+    // (`width > 880px` cierra el hueco de los anchos fraccionarios entre 880 y 881, con zoom).
+    expect(reglas.find((r) => r.selector === '.barra-inferior').cuerpo).toMatch(/display:\s*none/)
+    expect(t).not.toMatch(/\.cabecera-fila/)
+  })
+
+  it('en escritorio «Más» es un popover bajo la capsula, no una hoja escondida', () => {
+    const t = sinComentarios(css)
+    expect(t).toMatch(/@media \(min-width: 881px\), \(width > 880px\)\s*\{[^@]*?\.menu-movil\s*\{[^}]*position:\s*fixed[^}]*top:\s*calc\(var\(--capsula-arriba\)/)
+    expect(t).not.toMatch(/\.menu-movil\s*\{\s*display:\s*none/)
+  })
+
+  // Pablo (19-nov): en buscar-pantalla2 se leia «Contabi…» mezclado con el titulo. El titulo compacto
+  // tiene que leerse limpio aunque el desenfoque no funcione: fondo de al menos 95 % de opacidad.
+  it('el titulo compacto es casi opaco (95 % o mas)', () => {
+    const tel = reglas.filter((r) => r.selector === '.titulo-compacto').find((r) => /position:\s*fixed/.test(r.cuerpo))
+    const m = tel.cuerpo.match(/background:\s*var\((--[a-z-]+)\)/)
+    expect(m, 'el titulo compacto sin fondo de variable').not.toBeNull()
+    const alfa = tokens[m[1]].match(/rgba\([^)]*,\s*([\d.]+)\)/)
+    expect(alfa, `${m[1]} no es rgba`).not.toBeNull()
+    expect(Number(alfa[1])).toBeGreaterThanOrEqual(0.95)
   })
 
   it('el titulo compacto existe, es de vidrio y solo aparece con data-visible', () => {
@@ -227,7 +254,7 @@ describe('estilo iPhone: el movimiento y el tacto', () => {
   })
 
   it('las animaciones nuevas solo mueven transform y opacity', () => {
-    for (const nombre of ['sube', 'fundido']) {
+    for (const nombre of ['sube', 'cae', 'fundido']) {
       const m = sinComentarios(css).match(new RegExp(`@keyframes ${nombre}\\s*\\{([\\s\\S]*?\\})\\s*\\}`))
       expect(m, `falta @keyframes ${nombre}`).not.toBeNull()
       const props = [...m[1].matchAll(/([a-z-]+)\s*:/g)].map((x) => x[1])
@@ -264,5 +291,21 @@ describe('estilo iPhone: el movimiento y el tacto', () => {
     expect(t).toMatch(/--barra-abajo:\s*max\(10px,\s*calc\(env\(safe-area-inset-bottom/)
     expect(t).toMatch(/\.barra-inferior\s*\{[^}]*bottom:\s*var\(--barra-abajo\)/)
     expect(bloque).not.toBeNull()
+  })
+})
+
+// Pablo (19-nov): el pie compacto, de app. Sin el logo grande, y sin perder ningun enlace.
+describe('estilo iPhone: el pie', () => {
+  it('no repite la marca', () => {
+    expect(pie).not.toMatch(/<Logo\b/)
+    expect(sinComentarios(css)).not.toMatch(/\.logo\b/)
+  })
+
+  it('el credito de OpenStreetMap (obligacion de la licencia) sigue en el pie, a la vista', () => {
+    expect(pie).toMatch(/href="https:\/\/www\.openstreetmap\.org\/copyright"/)
+    expect(pie).toMatch(/OpenStreetMap contributors/)
+    const final = reglas.filter((r) => /^\.pie-final(\s+a)?$/.test(r.selector))
+    expect(final.length).toBe(2)
+    for (const r of final) expect(r.cuerpo).not.toMatch(/display:\s*none|visibility:\s*hidden|opacity:\s*0[;\s]/)
   })
 })

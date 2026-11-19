@@ -62,6 +62,9 @@
   /* La barra de pestañas flota (iOS 26): un borde claro donde la luz pega en el material y una
      sombra corta y suave debajo. */
   --vidrio-borde: rgba(255, 255, 255, 0.7);
+  /* El titulo compacto lleva letra encima de lo que pasa por debajo: casi opaco (96 %), para que se
+     lea limpio aunque el navegador no desenfoque (el 90 % dejaba leer «Contabi…» bajo «corredora»). */
+  --vidrio-denso: rgba(249, 249, 251, 0.96);
   --sombra-flotante: 0 8px 24px rgba(17, 24, 39, 0.12), 0 0 0 0.5px rgba(17, 24, 39, 0.1);
 
   /* Nombres de antes: los usa legal.css y codigo que aun no se mueve. Apuntan a los nuevos. */
@@ -110,7 +113,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* Que el toque responda al instante (sin la espera del doble toque) y que mantener el dedo sobre un
    control no seleccione su texto ni abra el menu de copiar. El texto de contenido sigue seleccionable. */
 a, button, summary, [role='button'], label, select { touch-action: manipulation; }
-button, .boton, .chip, .pestana, .nav-enlace, .menu-enlace, .volver {
+button, .boton, .chip, .pestana, .menu-enlace, .volver {
   -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
 main:focus { outline: none; }
@@ -142,48 +145,10 @@ main:focus { outline: none; }
 .contenedor--angosto { max-width: 560px; }
 
 /* ------------------------------------------------------------------ Cabecera
-   Ya no hay barra con la marca (Pablo, 18-nov-2026). En ESCRITORIO queda la barra de navegacion
-   de iOS/macOS: de borde a borde, de vidrio, sin logo, con «Inicio» primero y la cuenta a la
-   derecha. En el TELEFONO no se dibuja: la pantalla abre con su titulo grande, la navegacion esta
-   en la barra de pestañas de abajo y lo demas en la hoja «Mas» (que sigue dentro de <header>).
-   El vidrio va en la FILA y no en <header>: un backdrop-filter en el padre haria de «contenedor»
-   de la hoja (position: fixed) y la dejaria pegada arriba. */
+   Ya no dibuja nada (Pablo, 18 y 19-nov-2026): sin marca y sin barra. La navegacion es UNA sola,
+   la capsula de pestañas (.barra-inferior), abajo en el telefono y arriba al centro en escritorio,
+   como en el iPad. <header> solo guarda la hoja «Mas» y el nombre del sitio (aria-label). */
 .cabecera { position: sticky; top: 0; z-index: 50; pointer-events: none; }
-.cabecera-fila {
-  pointer-events: auto; display: flex; align-items: center; justify-content: space-between;
-  gap: 16px; min-height: calc(52px + env(safe-area-inset-top)); margin: 0; max-width: none; width: 100%;
-  padding: env(safe-area-inset-top) max(16px, calc((100% - var(--ancho)) / 2 + 24px)) 0;
-  background: var(--vidrio); border-bottom: 0.5px solid var(--separador);
-  -webkit-backdrop-filter: var(--vidrio-filtro); backdrop-filter: var(--vidrio-filtro);
-}
-
-.logo {
-  display: inline-flex; align-items: center; min-height: 44px; font-size: 1.375rem; font-weight: 800;
-  letter-spacing: -0.03em; text-decoration: none; color: var(--pizarra);
-}
-/* El «S!» de la marca: el ambar va en el elemento principal, con la letra en pizarra encima. */
-.logo em {
-  font-style: normal; color: var(--pizarra); background: var(--ambar);
-  padding: 0 0.14em; border-radius: 7px; margin-left: 2px;
-}
-
-.nav-escritorio { display: flex; flex: 1; align-items: center; gap: 2px; }
-/* La cuenta, a la derecha: «Entrar» fuera de la sesion; dentro, desde «Mis citas» (la primera). */
-.nav-escritorio > .nav-entrar, .nav-escritorio > a[href='/mis-citas'] { margin-left: auto; }
-.nav-enlace {
-  display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border: 0;
-  background: none; cursor: pointer; font-size: 0.9375rem; font-weight: 600; letter-spacing: -0.015em; text-decoration: none;
-  border-radius: 999px; color: var(--suave); transition: background 0.15s, color 0.15s;
-}
-@media (hover: hover) and (pointer: fine) { .nav-enlace:hover { background: var(--relleno); color: var(--pizarra); } }
-.nav-enlace.active { color: var(--pizarra); background: var(--relleno); }
-.nav-entrar {
-  display: inline-flex; align-items: center; min-height: 44px; padding: 0 22px; margin-left: 8px;
-  background: var(--ambar); color: var(--pizarra); font-size: 0.9375rem; font-weight: 600;
-  text-decoration: none; border-radius: 999px; transition: background 0.15s, transform 0.1s ease-out;
-}
-@media (hover: hover) and (pointer: fine) { .nav-entrar:hover { background: var(--ambar-hondo); } }
-.nav-entrar:active { transform: scale(0.97); }
 
 /* El menu es una LISTA AGRUPADA de iOS: una tarjeta blanca con las filas separadas por una linea
    fina que empieza donde empieza el texto, y el «›» a la derecha. En el celular sube como hoja. */
@@ -210,13 +175,6 @@ main:focus { outline: none; }
 .menu-enlace--entrar .icono { color: var(--pizarra); }
 
 
-@media (max-width: 880px) {
-  .cabecera-fila { display: none; }
-}
-/* La hoja «Mas» solo existe en el telefono (la abre la pestaña de abajo). */
-@media (min-width: 881px) {
-  .menu-movil { display: none; }
-}
 
 /* ------------------------------------------------------------- Titulo compacto
    El titulo grande de cada pantalla, al pasar por debajo del borde de arriba, reaparece chico y
@@ -234,7 +192,7 @@ main:focus { outline: none; }
   .titulo-compacto {
     position: fixed; inset: 0 0 auto; z-index: 55; display: flex; align-items: center; justify-content: center;
     height: calc(44px + env(safe-area-inset-top, 0px)); padding: env(safe-area-inset-top, 0px) 56px 0;
-    background: var(--vidrio); border-bottom: 0.5px solid var(--separador);
+    background: var(--vidrio-denso); border-bottom: 0.5px solid var(--separador);
     -webkit-backdrop-filter: var(--vidrio-filtro); backdrop-filter: var(--vidrio-filtro);
     pointer-events: none; opacity: 0; transition: opacity 0.2s ease-out;
   }
@@ -805,17 +763,24 @@ option { background: var(--blanco); color: var(--pizarra); }
 .opcion:focus-within { outline: 3px solid var(--pizarra); outline-offset: 1px; }
 
 /* ---------------------------------------------------------------------- Pie
-   Como el pie de una pantalla de Ajustes: sobre el mismo fondo gris, letra chica y gris, separado
-   por una linea fina. Ya no es una escena oscura: en iOS nada cambia de fondo al final. */
-.pie-sitio { background: var(--fondo-agrupado); color: var(--pizarra); padding: 32px 0 32px; border-top: 0.5px solid var(--separador); }
-.pie-sitio .logo { color: var(--pizarra); font-size: 1.25rem; }
-.pie-fila { display: flex; flex-wrap: wrap; gap: 16px 48px; justify-content: space-between; align-items: flex-start; }
-.pie-fila p { color: var(--suave); font-size: 0.875rem; font-weight: 400; max-width: 36ch; margin-top: 6px; }
-.pie-fila ul { display: grid; gap: 0; }
-.pie-fila li a { display: inline-flex; align-items: center; min-height: 44px; font-size: 0.9375rem; font-weight: 400; text-decoration: none; }
-@media (hover: hover) and (pointer: fine) { .pie-fila li a:hover { text-decoration: underline; text-underline-offset: 4px; } }
-.pie-final { margin-top: 20px; padding-top: 16px; border-top: 0.5px solid var(--separador); font-size: 0.8125rem; color: var(--suave); font-weight: 400; }
-.pie-final a { display: inline-flex; align-items: center; min-height: 44px; color: var(--pizarra); text-underline-offset: 4px; }
+   Como el pie de una pantalla de Ajustes: sobre el mismo fondo gris, letra chica y gris, compacto
+   y sin logo (19-nov-2026). Ya no es una escena oscura: en iOS nada cambia de fondo al final. */
+.pie-sitio { background: var(--fondo-agrupado); color: var(--suave); padding: 16px 0 20px; }
+/* Todo seguido: el lema chico y, debajo, los enlaces en una o dos lineas (sin columnas ni logo). */
+.pie-fila { display: flex; flex-wrap: wrap; align-items: center; column-gap: 4px; }
+.pie-lema { flex-basis: 100%; margin-bottom: 2px; font-size: 0.8125rem; font-weight: 400; color: var(--suave); }
+.pie-fila ul { display: flex; flex-wrap: wrap; column-gap: 4px; margin-inline: -6px; } /* el texto alineado al borde, en toda fila */
+/* 44 px de alto para el dedo aunque la letra sea chica; el subrayado aparece con el mouse. */
+.pie-fila li a {
+  display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px;
+  font-size: 0.8125rem; font-weight: 400; color: var(--suave); text-decoration: none;
+  transition: opacity var(--soltar);
+}
+.pie-fila li a:active { opacity: 0.5; transition-duration: 0s; }
+@media (hover: hover) and (pointer: fine) { .pie-fila li a:hover { color: var(--pizarra); text-decoration: underline; text-underline-offset: 3px; } }
+/* El credito de OpenStreetMap es obligacion de la licencia: queda a la vista, subrayado. */
+.pie-final { margin-top: 2px; font-size: 0.75rem; font-weight: 400; color: var(--terciaria); }
+.pie-final a { display: inline-flex; align-items: center; min-height: 44px; color: var(--suave); text-underline-offset: 3px; }
 
 
 /* =============================================================== Movimiento
@@ -1205,6 +1170,46 @@ option { background: var(--blanco); color: var(--pizarra); }
   .menu-enlace { min-height: 44px; }
   .menu-movil { padding-block: 4px; }
 }
+/* ESCRITORIO (y el iPad): la MISMA capsula, arriba al centro, como la barra de pestañas del iPad.
+   El icono y el nombre van en fila. «Mas» abre la hoja como un POPOVER que cae bajo la capsula,
+   alineado a su borde derecho (donde esta «Mas»). Un solo punto de corte (880/881): en ningun ancho
+   hay dos barras ni ninguna, porque es el mismo elemento que cambia de lugar. */
+@media (min-width: 881px), (width > 880px) {
+  :root {
+    --capsula-ancho: 472px;
+    --capsula-alto: 52px;
+    --capsula-arriba: calc(12px + env(safe-area-inset-top, 0px));
+  }
+  .barra-inferior {
+    position: fixed; z-index: 60; top: var(--capsula-arriba); left: 0; right: 0; margin-inline: auto;
+    width: var(--capsula-ancho); min-height: var(--capsula-alto);
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px; padding: 4px;
+    background: var(--vidrio); border: 0.5px solid var(--vidrio-borde); border-radius: 999px;
+    box-shadow: var(--sombra-flotante);
+    -webkit-backdrop-filter: var(--vidrio-filtro); backdrop-filter: var(--vidrio-filtro);
+  }
+  .pestana {
+    grid-auto-flow: column; justify-content: center; align-items: center; gap: 4px;
+    min-height: 44px; padding: 0 12px 0 4px; font-size: 0.9375rem; letter-spacing: -0.015em;
+  }
+  .pestana-icono { width: 40px; height: 32px; }
+  .pestana-icono .icono { width: 20px; height: 20px; }
+  .pestana { transition: background-color 0.15s ease-out; }
+  /* La capsula no tapa el titulo grande ni lo que recibe el foco. */
+  main { padding-top: calc(var(--capsula-alto) + 28px); }
+  html { scroll-padding-top: calc(var(--capsula-alto) + 32px); }
+  .menu-movil {
+    position: fixed; z-index: 70; top: calc(var(--capsula-arriba) + var(--capsula-alto) + 8px);
+    left: auto; right: calc(50% - var(--capsula-ancho) / 2); width: 320px; margin: 0;
+    max-height: calc(100dvh - var(--capsula-alto) - 48px); overflow: auto; overscroll-behavior: contain;
+    border-radius: 20px; padding: 6px 0;
+    box-shadow: 0 12px 40px rgba(17, 24, 39, 0.16), 0 0 0 0.5px rgba(17, 24, 39, 0.08);
+    transform-origin: 88% 0;
+    animation: cae 0.28s var(--resorte);
+  }
+  @media (hover: hover) and (pointer: fine) { .pestana:hover { background: rgba(17, 24, 39, 0.05); } }
+}
+@keyframes cae { from { opacity: 0; transform: translateY(-8px) scale(0.96); } to { opacity: 1; transform: none; } }
 @keyframes sube { from { opacity: 0; transform: translateY(16px) scale(0.96); } to { opacity: 1; transform: none; } }
 @keyframes fundido { from { opacity: 0; } }
 
@@ -1272,9 +1277,9 @@ option { background: var(--blanco); color: var(--pizarra); }
    «Reducir transparencia» (iOS y macOS): las barras de vidrio pasan a solidas. «Mas contraste»:
    solidas y con una linea que se ve. Las preferencias del sistema mandan sobre el estilo. */
 @media (prefers-reduced-transparency: reduce) {
-  .cabecera-fila, .barra-inferior, .titulo-compacto { background: var(--blanco); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .barra-inferior, .titulo-compacto { background: var(--blanco); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 @media (prefers-contrast: more) {
-  .cabecera-fila, .barra-inferior, .titulo-compacto { background: var(--blanco); -webkit-backdrop-filter: none; backdrop-filter: none; border-color: var(--borde-campo); }
+  .barra-inferior, .titulo-compacto { background: var(--blanco); -webkit-backdrop-filter: none; backdrop-filter: none; border-color: var(--borde-campo); }
   .tarjetas-rejilla > li + li::before, .flotante + .flotante::before, .cita + .cita::before, .menu-enlace + .menu-enlace::before { border-top-color: var(--borde-campo); }
 }

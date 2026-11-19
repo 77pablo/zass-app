@@ -4,13 +4,14 @@ import { Icono, type NombreDeIcono } from './Icono'
 import { useMenuMovil } from './menuMovil'
 
 /**
- * La barra de abajo del telefono, como en una app: lo mas usado al alcance del pulgar.
- * Solo se ve en pantallas angostas (CSS); en escritorio manda la cabecera.
+ * La barra de pestañas, como en una app: lo mas usado al alcance del pulgar. Es la UNICA
+ * navegacion del sitio: en el telefono flota abajo; en escritorio (y el iPad), arriba al centro
+ * (CSS, 19-nov-2026). Por eso no hay un ancho con dos barras ni sin ninguna.
  *
  *   fuera de la sesion:  Inicio · Buscar · Entrar    · Mas
  *   dentro:              Inicio · Buscar · Mis citas · Mas
  *
- * «Mas» abre el mismo menu que el boton «Menu» de la cabecera (menuMovil.tsx): ahi esta todo
+ * «Mas» abre la hoja del menu (Cabecera.tsx, estado en menuMovil.ts): ahi esta todo
  * lo demas (comunas, oficios, la ficha del prestador, salir). Cuatro pestañas y no cinco: con
  * cinco, a 360 px las etiquetas se cortan.
  */
