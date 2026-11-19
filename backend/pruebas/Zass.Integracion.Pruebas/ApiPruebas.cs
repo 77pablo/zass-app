@@ -2302,6 +2302,7 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-03",
             "API-04",
             "API-05",
+            "API-07",
             "API-08",
             "API-09",
             "API-10",
