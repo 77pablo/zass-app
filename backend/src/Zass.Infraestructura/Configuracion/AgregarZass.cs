@@ -128,6 +128,9 @@ public static class RegistroDeServicios
             c.Timeout = TimeSpan.FromSeconds(3);
         });
 
+        // Adaptador nulo para cuando RevisarContrasenasFiltradas = false (desarrollo, pruebas).
+        servicios.AddSingleton<ContrasenasFiltradasNunca>();
+
         servicios.AddScoped<IContrasenasFiltradas>(sp =>
         {
             var opciones = sp.GetRequiredService<IOptions<OpcionesZass>>().Value;
