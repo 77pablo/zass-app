@@ -10,6 +10,8 @@ interface Opcion {
   etiqueta: string
   detalle?: string
   nombrePersona?: string
+  /** JQ-15: la foto de la persona (JQ-9), si subió una. */
+  foto?: string | null
   verificada?: boolean
   alElegir: () => void
 }
@@ -64,6 +66,7 @@ export function BarraDeBusqueda({
         etiqueta: p.nombrePublico,
         detalle: [p.rubro, p.zonaPrincipal].filter(Boolean).join(' · '),
         nombrePersona: p.nombrePublico,
+        foto: p.urlFoto,
         verificada: p.tieneCredencialVerificada,
         alElegir: () => { setAbierto(false); navegar(`/prestadores/${p.slug}`) },
       })
@@ -149,7 +152,7 @@ export function BarraDeBusqueda({
               onMouseDown={(e) => { e.preventDefault(); o.alElegir() }}
               onMouseEnter={() => setActivo(i)}
             >
-              {o.nombrePersona ? <Monograma nombre={o.nombrePersona} tamano="p" /> : <Icono nombre={o.clave === '__todos' ? 'flecha' : 'lupa'} />}
+              {o.nombrePersona ? <Monograma nombre={o.nombrePersona} tamano="p" foto={o.foto} /> : <Icono nombre={o.clave === '__todos' ? 'flecha' : 'lupa'} />}
               <span className="barra-opcion-texto">
                 <strong>{o.etiqueta}</strong>
                 {o.detalle && <small>{o.detalle}</small>}

@@ -529,7 +529,8 @@ public sealed record ConteoCrudo(int Id, int Personas);
 public sealed record ConteoDeRegion(string Region, int Personas);
 
 public sealed record RecienLlegadoFila(
-    string Slug, string NombrePublico, string? RubroNombre, string? ZonaPrincipal, bool Verificada);
+    string Slug, string NombrePublico, string? RubroNombre, string? ZonaPrincipal, bool Verificada,
+    string? UrlFoto = null);
 
 public sealed record ResumenCrudo(
     int Total,
