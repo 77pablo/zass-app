@@ -554,7 +554,9 @@ public class FlowPasarelaPruebas
 
         var intento = Guid.NewGuid();
         var montoPedido = 5990;
-        var montoRespuesta = 5990m; // Mismo monto para que pase
+        // DISTINTO a proposito: lo que vale es lo que Flow dice que cobro, no lo que se pidio.
+        // Con el mismo monto, esta prueba no distinguia una cosa de la otra (mutacion F3).
+        var montoRespuesta = 5900m;
 
         handler.Responder = req =>
         {
