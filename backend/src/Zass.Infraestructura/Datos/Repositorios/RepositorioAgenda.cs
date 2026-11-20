@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Zass.Aplicacion.Agenda;
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Agenda;
 using Zass.Dominio.Comun;
@@ -211,6 +212,28 @@ public sealed class RepositorioAgendaEfCore : IRepositorioAgenda
         await _ctx.Citas
             .Where(c => c.Estado == EstadoCita.PendienteAsistencia && c.BloqueHorario!.FinEn <= limite)
             .OrderBy(c => c.BloqueHorario!.FinEn).Select(c => c.Id).Take(maximo).ToListAsync(ct);
+
+    public async Task<IReadOnlyList<Guid>> CitasPorRecordarAsync(
+        DateTime ahora, int maximo, CancellationToken ct = default)
+    {
+        // Filtro grueso en la base; la regla fina (RecordatoriosDeCita.Corresponde) se vuelve a
+        // aplicar dentro de la transaccion de cada cita. La anticipacion va aqui tambien: sin
+        // ella, una cita agendada a ultima hora se releeria cada 15 min y ocuparia cupo.
+        var d24 = RecordatoriosDeCita.Desde24h;
+        var d2 = RecordatoriosDeCita.Desde2h;
+        DateTime a24 = ahora + RecordatoriosDeCita.Hasta24h, b24 = ahora + d24;
+        DateTime a2 = ahora + RecordatoriosDeCita.Hasta2h, b2 = ahora + d2;
+        return await _ctx.Citas
+            .Where(c => c.Estado == EstadoCita.Confirmada)
+            .Where(c =>
+                (c.BloqueHorario!.InicioEn >= a24 && c.BloqueHorario.InicioEn <= b24
+                 && c.CreadaEn + d24 <= c.BloqueHorario.InicioEn
+                 && !_ctx.Notificaciones.Any(n => n.CitaId == c.Id && n.Tipo == TipoNotificacion.Recordatorio24h))
+             || (c.BloqueHorario!.InicioEn >= a2 && c.BloqueHorario.InicioEn <= b2
+                 && c.CreadaEn + d2 <= c.BloqueHorario.InicioEn
+                 && !_ctx.Notificaciones.Any(n => n.CitaId == c.Id && n.Tipo == TipoNotificacion.Recordatorio2h)))
+            .OrderBy(c => c.BloqueHorario!.InicioEn).Select(c => c.Id).Take(maximo).ToListAsync(ct);
+    }
 
     /// <summary>
     /// Rastreada y con el bloque, para poder cambiarle el estado y liberar o vencer la hora

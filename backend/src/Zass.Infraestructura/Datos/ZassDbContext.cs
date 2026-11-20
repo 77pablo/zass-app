@@ -228,7 +228,7 @@ public class ZassDbContext : DbContext
             // y eso NO es un detalle: este cluster se creo con locale C, donde lower()
             // solo plega ASCII. Un indice sobre lower(nombre) aceptaba
             // "TASACION COMERCIAL" al lado de "Tasacion comercial", y lo hacia depender
-            // del locale del servidor, que en Azure sera otro. Lo encontro una prueba
+            // del locale del servidor, que en Render sera otro. Lo encontro una prueba
             // de integracion que esperaba el rechazo y no lo obtuvo.
             e.HasIndex(x => new { x.RubroId, x.NombreNormalizado })
                 .IsUnique()
@@ -471,6 +471,8 @@ public class ZassDbContext : DbContext
             e.ToTable(t => t.HasCheckConstraint("ck_bloque_rango", "fin_en > inicio_en"));
             e.HasIndex(x => new { x.PerfilPrestadorId, x.InicioEn });
             e.HasIndex(x => new { x.PrestadorServicioId, x.InicioEn, x.Estado });
+            // Índice para acelerar el borrado masivo de bloques libres
+            e.HasIndex(x => new { x.DisponibilidadId, x.Estado, x.InicioEn }, "ix_bloque_disponibilidad_estado_inicio");
             e.HasOne(x => x.PerfilPrestador).WithMany()
                 .HasForeignKey(x => x.PerfilPrestadorId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.PrestadorServicio).WithMany()
@@ -986,6 +988,12 @@ public class ZassDbContext : DbContext
             e.Property(x => x.Asunto).HasMaxLength(200);
             e.HasIndex(x => new { x.Estado, x.ProgramadaPara });
             e.HasIndex(x => new { x.DestinatarioId, x.EnviadaEn });
+            // AUDITORIA-INDICES 3.c. Los recordatorios (JQ-3) preguntan por (cita_id, tipo) en
+            // cada pasada de A-09 y al cancelar o reprogramar; sin esto, cada pregunta recorre la
+            // tabla entera, que crece con CADA correo. Parcial: la mayoria de las notificaciones
+            // no son de una cita, y para `cita_id = $1` el planificador lo usa igual.
+            e.HasIndex(x => new { x.CitaId, x.Tipo }, "ix_notificacion_cita_tipo")
+                .HasFilter("cita_id IS NOT NULL");
             e.HasOne(x => x.Destinatario).WithMany()
                 .HasForeignKey(x => x.DestinatarioId).OnDelete(DeleteBehavior.Cascade);
         });

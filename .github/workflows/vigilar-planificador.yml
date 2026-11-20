@@ -1,0 +1,67 @@
+# Vigilante del planificador: comprueba que el trabajo "suscripciones-diario" corrio bien
+# hace menos de 26 horas.
+# Si falla: revisa los registros de Render (API) — la causa tipica es que la API se durmio.
+# El secreto NEON_URL_COPIAS es el mismo que usa .github/workflows/copia-base-de-datos.yml.
+name: Vigilante del planificador
+
+on:
+  schedule:
+    - cron: "43 13 * * *"  # una vez al dia, mañana en Chile (UTC-3/UTC-4 segun DST)
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  vigilar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Consultar ultima corrida del trabajo diario
+        env:
+          NEON_URL_COPIAS: ${{ secrets.NEON_URL_COPIAS }}
+        run: |
+          set -euo pipefail
+          test -n "$NEON_URL_COPIAS" || { echo "Falta el secreto NEON_URL_COPIAS" >&2; exit 1; }
+
+          # Ejecutar psql dentro de contenedor postgres:18 (misma version que copia-base-de-datos.yml)
+          # Consulta de solo lectura, salida tabular sin cabeceras (-t), sin alinear (-A),
+          # sin prompts (-X), y para en primer error (ON_ERROR_STOP=1).
+          SALIDA=$(docker run --rm -e NEON_URL_COPIAS postgres:18 \
+            sh -c 'psql -X -A -t -v ON_ERROR_STOP=1 "$NEON_URL_COPIAS" -c "SELECT ultima_corrida_en, corridas, left(ultimo_resumen, 80) FROM trabajos_de_fondo WHERE nombre = '"'"'suscripciones-diario'"'"';"')
+
+          # Si no hay fila, SALIDA viene vacia
+          if [ -z "$SALIDA" ]; then
+            echo "::error::No existe el trabajo 'suscripciones-diario' en la tabla trabajos_de_fondo"
+            echo "ERROR: No existe el trabajo 'suscripciones-diario'" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          # Parsear: ultima_corrida_en|corridas|ultimo_resumen (truncado a 80)
+          ULTIMA_CORRIDA=$(echo "$SALIDA" | cut -d'|' -f1)
+          CORRIDAS=$(echo "$SALIDA" | cut -d'|' -f2)
+          RESUMEN=$(echo "$SALIDA" | cut -d'|' -f3)
+
+          # Comprobar si el resumen empieza con "error" (case-insensitive para robustez)
+          if echo "$RESUMEN" | grep -qi '^error'; then
+            echo "::error::La ultima corrida termino con error: $RESUMEN"
+            echo "ERROR: La ultima corrida termino con error: $RESUMEN" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          # Comprobar antigüedad: mas de 26 horas desde ultima_corrida_en
+          # Convertir a epoch (segundos desde 1970) para comparar
+          AHORA_EPOCH=$(date -u +%s)
+          ULTIMA_EPOCH=$(date -u -d "$ULTIMA_CORRIDA" +%s 2>/dev/null || date -u -d "$ULTIMA_CORRIDA UTC" +%s)
+          DIFERENCIA_SEG=$(( AHORA_EPOCH - ULTIMA_EPOCH ))
+          DIFERENCIA_HORAS=$(( DIFERENCIA_SEG / 3600 ))
+
+          if [ "$DIFERENCIA_SEG" -gt 93600 ]; then
+            echo "::error::La ultima corrida fue hace $DIFERENCIA_HORAS horas (mas de 26): $ULTIMA_CORRIDA"
+            echo "ERROR: La ultima corrida fue hace $DIFERENCIA_HORAS horas (mas de 26): $ULTIMA_CORRIDA" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          # Todo OK
+          echo "OK: Ultima corrida: $ULTIMA_CORRIDA (hace $DIFERENCIA_HORAS horas), corridas: $CORRIDAS, resumen: $RESUMEN"
+          echo "OK: Ultima corrida: $ULTIMA_CORRIDA (hace $DIFERENCIA_HORAS horas), corridas: $CORRIDAS, resumen: $RESUMEN" >> "$GITHUB_STEP_SUMMARY"

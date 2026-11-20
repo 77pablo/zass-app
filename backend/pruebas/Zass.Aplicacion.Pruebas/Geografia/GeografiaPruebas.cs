@@ -323,7 +323,7 @@ public class GeografiaPruebas
 
         Assert.True(r.Exito, r.Mensaje);
         var cobertura = await _servicio.ZonasDeCoberturaAsync(perfilId);
-        Assert.Single(cobertura.Where(z => z.EsPrincipal));
+        Assert.Single(cobertura, z => z.EsPrincipal);
         Assert.Equal("Amanecer", cobertura.Single(z => z.EsPrincipal).Nombre);
     }
 

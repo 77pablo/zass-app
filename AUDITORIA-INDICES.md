@@ -4,12 +4,19 @@ Medido el 14-nov-2026 contra PostgreSQL **16.4** real (`127.0.0.1:5433`, base `z
 `pg_indexes`, `pg_constraint`, `pg_index`, `pg_stat_user_indexes` e `information_schema`. No se leyó
 el modelo de EF para decidir nada: el catálogo manda.
 
-**Nada de esto está aplicado.** No hay migración de EF ni se tocó la base: solo consultas de lectura.
+**Índices 1 y 3 ya aplicados en Neon (15-nov).** Índice 2 en migración `IDX_Bloques_DisponibilidadEstadoInicio` (17-nov), sin aplicar en Neon. Índice 6 (3.c) en migración `IndiceNotificacionCita` (#59), **aplicado en Neon** (corrida `44090594566`). Índices 4 y 5 no se aplican (ver abajo).
 El SQL de abajo es una propuesta para que Pablo decida, una migración a la vez.
 
 Fotografía del clúster: 34 tablas del producto, **41 claves foráneas**, **106 índices** (≈2 MB en total).
 
 ---
+
+> **Al día 17-nov-2026:** los dos índices de la sección 1 **ya están aplicados en producción**
+> (migración `20261114204429_IndicesDeClavesForaneas`, aplicada en Neon el 15-nov).
+> Índice 2 (`ix_bloque_disponibilidad_estado_inicio`) en migración `IDX_Bloques_DisponibilidadEstadoInicio`, **sin aplicar en Neon**.
+> Índice 5 (`i_x_servicios_rubro_id`): no se quita, exige trucos (quitar FK y reconfigurar índice único); coste, no riesgo.
+> Índice 4 no se hace: producción tiene 0 prestadores y la auditoría dice volver a medir con datos reales.
+> En la sección 3, **3.c (índice 6) ya está aplicado en Neon** (#59, corrida `44090594566`).
 
 ## Lo que más duele, en orden
 
@@ -190,6 +197,73 @@ datos reales.
 
 ---
 
+### 3.c `notificaciones.cita_id` — lo que trajeron los recordatorios de cita
+
+Lo añade **JQ-3** (PR #44, los recordatorios a 24 h y 2 h), y son **dos** caminos nuevos que
+filtran por esa columna:
+
+| Dónde | Cuándo corre | Qué hace |
+|---|---|---|
+| `CitasPorRecordarAsync` | cada pasada del planificador A-09 | un `NOT EXISTS` sobre `notificaciones` **por cada cita candidata**, para no encolar dos veces el mismo recordatorio |
+| `AnularRecordatoriosAsync` | **cada** cancelación y **cada** reprogramación | apaga los recordatorios pendientes de esa cita |
+
+Medido el 15-nov-2026 con `enable_seqscan = off`, que es lo que demuestra la ausencia de índice
+usable aunque la tabla esté casi vacía:
+
+```
+-- notificaciones.cita_id
+Seq Scan on notificaciones  (cost=10000000000.00..10000000002.05 rows=1 width=4)
+  Filter: (cita_id = '...'::uuid)
+
+-- y con el tipo, que es como lo consulta el NOT EXISTS
+Seq Scan on notificaciones  (cost=10000000000.00..10000000002.06 rows=1 width=4)
+  Filter: ((cita_id = '...'::uuid) AND ((tipo)::text = 'Recordatorio24h'::text))
+```
+
+La penalización de 10.000 millones encima y sigue en `Seq Scan`: **no hay índice alternativo**.
+Los cuatro que tiene la tabla son la clave primaria, `clave_idempotencia` (único),
+`(destinatario_id, enviada_en)` y `(estado, programada_para)`; ninguno empieza por `cita_id`.
+
+Hoy no se nota: producción tiene **0 prestadores publicados** y la tabla está casi vacía. Con
+tráfico real duele en el sitio peor, que es la cancelación: quien cancela una hora espera que la
+pantalla responda, y esa espera incluye un recorrido completo de la tabla de notificaciones, que
+crece con **cada** correo que el sistema manda, no solo con los recordatorios.
+
+```sql
+-- Propuesto, NO aplicado. El tipo va de segunda columna porque el NOT EXISTS pregunta por los
+-- dos, y la anulación se conforma con la primera.
+CREATE INDEX CONCURRENTLY ix_notificacion_cita_tipo
+    ON public.notificaciones (cita_id, tipo);
+```
+
+> `cita_id` es **anulable** (la mayoría de las notificaciones no son de una cita: verificación de
+> correo, recuperación, avisos de reseña). Un índice parcial `WHERE cita_id IS NOT NULL` sería más
+> pequeño y el planificador lo usa igual para `cita_id = $1`, como ya se comprobó con
+> `ux_cupo_fundador_perfil` en la sección 1. Decidirlo al aplicarlo, midiendo los dos.
+
+### 3.d `citas.estado` — FALSO POSITIVO, y por qué no hay que «arreglarlo»
+
+Al revisar JQ-3 anoté que la consulta de recordatorios filtra `estado = 'Confirmada'` y que no
+había índice por `estado`. **Lo medí y es falso**, así que queda escrito para que nadie lo añada:
+
+```
+-- select 1 from citas where estado='Confirmada', con enable_seqscan = off
+Bitmap Heap Scan on citas
+  Filter: ((estado)::text = 'Confirmada'::text)
+  ->  Bitmap Index Scan on ux_cita_bloque_activo
+```
+
+El planificador **sí** usa `ux_cita_bloque_activo`, que es R-1, el índice único parcial de la
+doble reserva: su predicado es `estado IN ('Solicitada','Confirmada')`, y de ahí deduce que
+`estado = 'Confirmada'` cae dentro. Es el mismo mecanismo que hizo de `cupos_fundador` un falso
+positivo en la sección 1.
+
+**Dos cosas que esto enseña, y valen más que el índice:** que una medición contradice una
+intuición razonable —la mía, en una revisión de código—, y que **un índice puesto para garantizar
+una regla termina sirviendo también para consultar**. Nadie planeó que R-1 acelerara esto.
+
+---
+
 ## 4. Índices que nadie usa — y por qué este dato no sirve todavía
 
 | Métrica | Valor |
@@ -219,11 +293,12 @@ no depende del tráfico.
 
 | Orden | SQL | Qué arregla |
 |---|---|---|
-| 1 | `CREATE INDEX ix_citas_bloque_horario_id ON citas (bloque_horario_id);` | FK sin índice; recorrido completo de `citas` por cada bloque borrado |
-| 2 | `CREATE INDEX ix_bloques_disponibilidad_id_estado ON bloques (disponibilidad_id, estado, inicio_en);` | El filtro del mismo borrado |
-| 3 | `CREATE INDEX ix_suscripciones_perfil_prestador_id ON suscripciones (perfil_prestador_id, inicia_en DESC);` | FK sin índice + `UltimaDePrestadorAsync` |
-| 4 | `CREATE INDEX ix_citas_expira_en_solicitadas ON citas (expira_en) WHERE estado = 'Solicitada' AND expira_en IS NOT NULL;` | A-09 sin ordenación en memoria. **Volver a medir con datos reales.** |
-| 5 | `DROP INDEX i_x_servicios_rubro_id;` | Redundante por prefijo exacto |
+| ~~1~~ | ~~`CREATE INDEX ix_citas_bloque_horario_id …`~~ | **YA APLICADO** el 15-nov como `ix_cita_bloque_horario` |
+| **2** | `CREATE INDEX ix_bloque_disponibilidad_estado_inicio ON bloques (disponibilidad_id, estado, inicio_en);` | El filtro del mismo borrado. **En migración `IDX_Bloques_DisponibilidadEstadoInicio` (17-nov), sin aplicar en Neon.** |
+| ~~3~~ | ~~`CREATE INDEX ix_suscripciones_perfil_prestador_id …`~~ | **YA APLICADO** el 15-nov como `ix_suscripcion_perfil_inicia` |
+| 4 | `CREATE INDEX ix_citas_expira_en_solicitadas ON citas (expira_en) WHERE estado = 'Solicitada' AND expira_en IS NOT NULL;` | A-09 sin ordenación en memoria. **Volver a medir con datos reales.** No se hace (producción tiene 0 prestadores). |
+| 5 | `DROP INDEX i_x_servicios_rubro_id;` | Redundante por prefijo exacto. **No se quita**: exige quitar la FK `servicios.rubro_id → rubros` y reconfigurar el índice único `ux_servicio_rubro_nombre`; coste, no riesgo. |
+| **6** | `CREATE INDEX ix_notificacion_cita_tipo ON notificaciones (cita_id, tipo) WHERE cita_id IS NOT NULL;` | 3.c: los dos caminos que trajo JQ-3, y el que duele es la cancelación. **En la migración `IndiceNotificacionCita` (#59), aplicado en Neon el 17-nov (corrida `44090594566`).** Se eligió el parcial: medido el 17-nov, `cita_id = $1` usa *Index Scan* y el `NOT EXISTS` (`cita_id` + `tipo`) *Index Only Scan* |
 
 Todo esto es una sola migración si Pablo quiere, pero es **N3** y la decide él.
 

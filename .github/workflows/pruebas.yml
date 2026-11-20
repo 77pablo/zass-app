@@ -29,7 +29,7 @@ jobs:
     # Fue lo que tuvo `main` en rojo del 12 al 13 de noviembre de 2026.
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: PostgreSQL con PostGIS y techo de conexiones alto
         run: |
@@ -99,9 +99,9 @@ jobs:
           echo "max_connections = $techo"
           test "$techo" -ge 200
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: "10.0.x"
 
       - name: Compilar
         run: dotnet build backend/Zass.sln -c Debug
@@ -129,9 +129,9 @@ jobs:
         working-directory: frontend
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "26"
           cache: npm

@@ -5,7 +5,7 @@
 import { CABECERAS_DE_SEGURIDAD, escaparHtml, origenDelSitio } from './seo.js'
 
 /** Paginas fijas del sitio. Las privadas (/mi-ficha, /entrar...) NO van: tambien estan en robots.txt. */
-export const RUTAS_ESTATICAS = ['/', '/buscar', '/comunas', '/oficios', '/profesionales', '/terminos', '/privacidad']
+export const RUTAS_ESTATICAS = ['/', '/buscar', '/comunas', '/oficios', '/profesionales', '/planes', '/terminos', '/privacidad']
 
 /** Limite del protocolo sitemap: 50 000 URLs por archivo. */
 export const MAXIMO_URLS = 50_000

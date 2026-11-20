@@ -1,4 +1,4 @@
-using Zass.Aplicacion.Agenda;
+﻿using Zass.Aplicacion.Agenda;
 using Zass.Aplicacion.Catalogo;
 using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Pruebas.Dobles;
@@ -279,7 +279,7 @@ public class CicloDeLaCitaPruebas
         Assert.True(primera.Exito);
         Assert.True(segunda.Exito, segunda.Mensaje);
         Assert.Equal(primera.Valor!.Id, segunda.Valor!.Id);
-        Assert.Single(_base.CambiosCita.Where(c => c.Tipo == TipoCambio.Cancelacion));
+        Assert.Single(_base.CambiosCita, c => c.Tipo == TipoCambio.Cancelacion);
     }
 
     [Fact]
@@ -902,7 +902,7 @@ public class CicloDeLaCitaPruebas
         var segunda = await _servicio.AvanzarPorElTiempoAsync();
 
         Assert.Equal(new ResumenDeCitas(0, 0, 0), segunda);
-        Assert.Single(_base.CambiosCita.Where(c => c.CitaId == cita.Id && c.Tipo == TipoCambio.Asistencia));
+        Assert.Single(_base.CambiosCita, c => c.CitaId == cita.Id && c.Tipo == TipoCambio.Asistencia);
     }
 
     [Fact]
@@ -1123,5 +1123,193 @@ public class CicloDeLaCitaPruebas
         var claves = _avisos.Encoladas.Select(n => n.ClaveIdempotencia).ToList();
         Assert.Equal(7, claves.Count);
         Assert.Equal(claves.Count, claves.Distinct().Count());
+    }
+
+    // ========================================================= JQ-3 recordatorios (RN-S4-07)
+
+    private IReadOnlyList<Notificacion> RecordatoriosDe(Guid citaId) =>
+        AvisosDe(citaId).Where(n => n.Tipo is TipoNotificacion.Recordatorio24h
+            or TipoNotificacion.Recordatorio2h).ToList();
+
+    /// <summary>Lleva el reloj hasta que falte exactamente <paramref name="falta"/> para el bloque.</summary>
+    private void FaltandoParaLaHora(BloqueHorario bloque, TimeSpan falta) =>
+        _reloj.Avanzar(bloque.InicioEn - falta - _reloj.Ahora);
+
+    [Fact]
+    public async Task Faltando_24_horas_se_encola_uno_para_cada_parte_con_su_clave_fija()
+    {
+        var (cita, bloque) = await UnaCitaAsync(inicio: Ahora.AddDays(3));
+        FaltandoParaLaHora(bloque, TimeSpan.FromHours(23.75));
+
+        var r = await _servicio.AvanzarPorElTiempoAsync();
+
+        Assert.Equal(2, r.Recordatorios);
+        var al = RecordatoriosDe(cita.Id);
+        Assert.All(al, n => Assert.Equal(TipoNotificacion.Recordatorio24h, n.Tipo));
+        var buscador = Assert.Single(al, n => n.DestinatarioId == _buscador.Id);
+        var prestador = Assert.Single(al, n => n.DestinatarioId == _duenoPrestador.Id);
+        Assert.Equal($"recordatorio-24h:{cita.Id}:buscador", buscador.ClaveIdempotencia);
+        Assert.Equal($"recordatorio-24h:{cita.Id}:prestador", prestador.ClaveIdempotencia);
+        Assert.Equal("{\"rol\":\"buscador\"}", buscador.Cuerpo);
+        Assert.Equal("{\"rol\":\"prestador\"}", prestador.Cuerpo);
+    }
+
+    [Fact]
+    public async Task Dos_pasadas_seguidas_no_repiten_el_recordatorio()
+    {
+        var (cita, bloque) = await UnaCitaAsync(inicio: Ahora.AddDays(3));
+        FaltandoParaLaHora(bloque, TimeSpan.FromHours(23));
+
+        await _servicio.AvanzarPorElTiempoAsync();
+        _reloj.Avanzar(TimeSpan.FromMinutes(15));
+        var segunda = await _servicio.AvanzarPorElTiempoAsync();
+
+        Assert.Equal(0, segunda.Recordatorios);
+        Assert.Equal(2, RecordatoriosDe(cita.Id).Count);
+    }
+
+    [Fact]
+    public async Task Una_cita_con_tiempo_recibe_el_de_24_y_despues_el_de_2_y_nada_mas()
+    {
+        var (cita, bloque) = await UnaCitaAsync(inicio: Ahora.AddDays(3));
+
+        FaltandoParaLaHora(bloque, TimeSpan.FromHours(23));
+        await _servicio.AvanzarPorElTiempoAsync();
+        FaltandoParaLaHora(bloque, TimeSpan.FromHours(6));     // el hueco entre ventanas
+        Assert.Equal(0, (await _servicio.AvanzarPorElTiempoAsync()).Recordatorios);
+        FaltandoParaLaHora(bloque, TimeSpan.FromHours(1.5));
+        await _servicio.AvanzarPorElTiempoAsync();
+        FaltandoParaLaHora(bloque, TimeSpan.FromHours(1));
+        await _servicio.AvanzarPorElTiempoAsync();
+
+        var al = RecordatoriosDe(cita.Id);
+        Assert.Equal(4, al.Count);
+        Assert.Equal(2, al.Count(n => n.Tipo == TipoNotificacion.Recordatorio2h));
+        Assert.Equal(al.Count, al.Select(n => n.ClaveIdempotencia).Distinct().Count());
+    }
+
+    [Fact]
+    public async Task Agendada_con_menos_de_24_horas_solo_recibe_el_de_2()
+    {
+        var (cita, bloque) = await UnaCitaAsync(inicio: Ahora.AddHours(20));
+
+        // Recien agendada ya esta «dentro de las 24 h», y aun asi no se le manda.
+        Assert.Equal(0, (await _servicio.AvanzarPorElTiempoAsync()).Recordatorios);
+        FaltandoParaLaHora(bloque, TimeSpan.FromHours(13));
+        Assert.Equal(0, (await _servicio.AvanzarPorElTiempoAsync()).Recordatorios);
+        FaltandoParaLaHora(bloque, TimeSpan.FromHours(1.75));
+        await _servicio.AvanzarPorElTiempoAsync();
+
+        var al = RecordatoriosDe(cita.Id);
+        Assert.Equal(2, al.Count);
+        Assert.All(al, n => Assert.Equal(TipoNotificacion.Recordatorio2h, n.Tipo));
+    }
+
+    /// <summary>
+    /// Por los caminos de hoy no se llega aqui: agendar y reprogramar exigen 2 h de anticipacion
+    /// a las dos partes. Se fuerza el dato para probar la red, no el camino.
+    /// </summary>
+    [Fact]
+    public async Task Agendada_con_menos_de_2_horas_no_recibe_ninguno()
+    {
+        var (cita, bloque) = await UnaCitaAsync(inicio: Ahora.AddDays(1));
+        cita.CreadaEn = bloque.InicioEn.AddMinutes(-90);
+
+        FaltandoParaLaHora(bloque, TimeSpan.FromHours(20));
+        await _servicio.AvanzarPorElTiempoAsync();
+        FaltandoParaLaHora(bloque, TimeSpan.FromHours(1));
+        await _servicio.AvanzarPorElTiempoAsync();
+
+        Assert.Empty(RecordatoriosDe(cita.Id));
+    }
+
+    [Fact]
+    public async Task Una_pasada_atrasada_no_manda_un_recordatorio_que_ya_no_toca()
+    {
+        var (cita, bloque) = await UnaCitaAsync(inicio: Ahora.AddDays(3));
+
+        FaltandoParaLaHora(bloque, TimeSpan.FromHours(11));    // la de 24 h ya cerro
+        await _servicio.AvanzarPorElTiempoAsync();
+        FaltandoParaLaHora(bloque, TimeSpan.FromMinutes(20));  // y la de 2 h tambien
+        await _servicio.AvanzarPorElTiempoAsync();
+
+        Assert.Empty(RecordatoriosDe(cita.Id));
+    }
+
+    [Fact]
+    public async Task Una_solicitada_sin_confirmar_no_recibe_recordatorio()
+    {
+        var (cita, bloque) = await UnaCitaAsync(inicio: Ahora.AddHours(30), de: _manual);
+        FaltandoParaLaHora(bloque, TimeSpan.FromHours(23.9));   // aun dentro del plazo de respuesta
+
+        await _servicio.AvanzarPorElTiempoAsync();
+
+        Assert.Equal(EstadoCita.Solicitada, cita.Estado);
+        Assert.Empty(RecordatoriosDe(cita.Id));
+    }
+
+    [Fact]
+    public async Task Cancelar_anula_el_recordatorio_que_esperaba_en_la_cola()
+    {
+        var (cita, bloque) = await UnaCitaAsync(inicio: Ahora.AddDays(3));
+        FaltandoParaLaHora(bloque, TimeSpan.FromHours(23));
+        await _servicio.AvanzarPorElTiempoAsync();
+
+        var r = await _servicio.CancelarAsync(new CancelarCitaCmd(
+            cita.Id, ComoBuscador, $"c-{Guid.NewGuid():N}", null));
+
+        Assert.True(r.Exito, r.Mensaje);
+        var al = RecordatoriosDe(cita.Id);
+        Assert.Equal(2, al.Count);
+        Assert.All(al, n => Assert.Equal(EstadoEnvio.Anulada, n.Estado));
+        // Y no vuelven: la pasada siguiente no le encola el de 2 h a una cita cancelada.
+        FaltandoParaLaHora(bloque, TimeSpan.FromHours(1));
+        await _servicio.AvanzarPorElTiempoAsync();
+        Assert.Equal(2, RecordatoriosDe(cita.Id).Count);
+        // El aviso de cancelacion no se toca.
+        Assert.Equal(EstadoEnvio.Programada,
+            Assert.Single(AvisosDe(cita.Id), n => n.Tipo == TipoNotificacion.CitaCancelada).Estado);
+    }
+
+    [Fact]
+    public async Task Reprogramar_apaga_los_de_la_vieja_y_la_nueva_recibe_los_suyos()
+    {
+        var (vieja, bloqueViejo) = await UnaCitaAsync(inicio: Ahora.AddDays(3));
+        var bloqueNuevo = UnBloque(inicio: Ahora.AddDays(5));
+        FaltandoParaLaHora(bloqueViejo, TimeSpan.FromHours(23));
+        await _servicio.AvanzarPorElTiempoAsync();
+
+        var r = await _servicio.ReprogramarAsync(new ReprogramarCitaCmd(
+            vieja.Id, bloqueNuevo.Id, ComoBuscador, $"r-{Guid.NewGuid():N}", null));
+        Assert.True(r.Exito, r.Mensaje);
+        var nueva = r.Valor!.Id;
+
+        Assert.All(RecordatoriosDe(vieja.Id), n => Assert.Equal(EstadoEnvio.Anulada, n.Estado));
+        FaltandoParaLaHora(bloqueNuevo, TimeSpan.FromHours(23));
+        await _servicio.AvanzarPorElTiempoAsync();
+
+        var deLaNueva = RecordatoriosDe(nueva);
+        Assert.Equal(2, deLaNueva.Count);
+        Assert.All(deLaNueva, n =>
+        {
+            Assert.Equal(EstadoEnvio.Programada, n.Estado);
+            Assert.StartsWith($"recordatorio-24h:{nueva}:", n.ClaveIdempotencia);
+        });
+        Assert.Equal(2, RecordatoriosDe(vieja.Id).Count);   // la vieja no gano ninguno
+    }
+
+    [Fact]
+    public async Task Un_recordatorio_no_toca_el_estado_ni_la_version_de_la_cita()
+    {
+        var (cita, bloque) = await UnaCitaAsync(inicio: Ahora.AddDays(3));
+        var version = cita.Version;
+        var cambios = _base.CambiosCita.Count;
+        FaltandoParaLaHora(bloque, TimeSpan.FromHours(23));
+
+        await _servicio.AvanzarPorElTiempoAsync();
+
+        Assert.Equal(EstadoCita.Confirmada, cita.Estado);
+        Assert.Equal(version, cita.Version);
+        Assert.Equal(cambios, _base.CambiosCita.Count);
     }
 }

@@ -50,12 +50,37 @@ public interface ICifradoDeDatos
 public interface INotificaciones
 {
     void Encolar(Notificacion aviso);
+
+    /// <summary>JQ-3. Si ya hay un aviso con esa clave, en el estado que sea: una clave no se reusa.</summary>
+    Task<bool> ExisteAsync(string claveIdempotencia, CancellationToken ct = default);
+
+    /// <summary>
+    /// JQ-3. Anula los recordatorios de la cita que aun esperan en la cola. Corre dentro de la
+    /// transaccion abierta (mismo contexto), asi que si el caso de uso se deshace, esto tambien.
+    /// El que ya estaba tomado para enviar lo para el procesador, que vuelve a mirar la cita.
+    /// </summary>
+    Task<int> AnularRecordatoriosAsync(Guid citaId, CancellationToken ct = default);
 }
 
 /// <summary>TBL-28. Solo insercion. Nunca contrasenas, tokens ni direcciones.</summary>
 public interface IAuditor
 {
     void Registrar(RegistroAuditoria entrada);
+}
+
+/// <summary>
+/// TBL-28. Solo lectura para administradores (API-61).
+/// Paginacion por cursor (fecha + id), orden mas nuevo primero.
+/// </summary>
+public interface IRepositorioAuditoria
+{
+    /// <summary>
+    /// Filtra por entidad+entidadId o por actorId (exactamente uno de los dos).
+    /// Devuelve una fila mas para detectar si hay pagina siguiente.
+    /// </summary>
+    Task<IReadOnlyList<RegistroAuditoria>> ConsultarAsync(
+        string? entidad, Guid? entidadId, Guid? actorId,
+        DateTime? antesDe, long? antesDeId, int limite, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -99,6 +124,15 @@ public interface IUnidadDeTrabajo
 public interface ISondaDeBase
 {
     Task<bool> RespondeAsync(CancellationToken ct = default);
+}
+
+/// <summary>
+/// Comprueba si una contrasena aparece en filtraciones de datos conocidas (Have I Been Pwned,
+/// rango k-anonimo). Se usa ANTES de hashear para rechazar contrasenas comprometidas.
+/// </summary>
+public interface IContrasenasFiltradas
+{
+    Task<bool> EstaFiltradaAsync(string contrasena, CancellationToken ct = default);
 }
 
 public interface IRepositorioUsuarios
@@ -157,6 +191,14 @@ public interface IRepositorioSuscripciones
     /// <summary>Pasadas de fecha pero todavia marcadas Prueba o Activa.</summary>
     Task<IReadOnlyList<Suscripcion>> ExpiradasSinMarcarAsync(
         DateTime ahora, CancellationToken ct = default);
+
+    /// <summary>
+    /// Suscripciones activas que vencieron en la ventana [desde, ahora].
+    /// Se usa para el cobro tardio: si el trabajo diario no corrio y una suscripcion
+    /// vencio mientras tanto (dentro de los ultimos 7 dias), se cobra al despertar.
+    /// </summary>
+    Task<IReadOnlyList<Suscripcion>> ActivasVencidasDesdeAsync(
+        DateTime desde, DateTime ahora, CancellationToken ct = default);
 
     /// <summary>Vigentes que vencen antes de una fecha, para avisar con tiempo.</summary>
     Task<IReadOnlyList<Suscripcion>> VigentesQueVencenAntesDeAsync(
@@ -744,6 +786,12 @@ public interface IRepositorioAgenda
     Task<IReadOnlyList<Guid>> CitasSinAsistenciaAsync(DateTime limite, int maximo, CancellationToken ct = default);
 
     /// <summary>
+    /// JQ-3. Confirmadas en la ventana de algun recordatorio, agendadas con la anticipacion que
+    /// ese recordatorio pide y que aun no lo tienen. Solo los ids.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> CitasPorRecordarAsync(DateTime ahora, int maximo, CancellationToken ct = default);
+
+    /// <summary>
     /// La cita RASTREADA, con su bloque, para poder cambiarle el estado. Separada de
     /// <see cref="CitaPorIdAsync"/> porque esa es de lectura y puede venir sin rastreo.
     /// </summary>
@@ -772,12 +820,48 @@ public interface IRepositorioAgenda
     void AgregarCambio(CambioCita cambio);
 }
 
-/// <summary>MOD-12 · TBL-25/26. Solo lo que CS-18 necesita; API-55 a API-59 agregaran lo suyo.</summary>
+/// <summary>MOD-12 · TBL-25/26. CS-18 y API-56 a API-58; API-55 y API-59 agregaran lo suyo.</summary>
 public interface IRepositorioTarjetas
 {
     /// <summary>La tarjeta con su perfil, o nulo. Comparacion exacta: el servicio ya normalizo.</summary>
     Task<Tarjeta?> PorUrlEstableAsync(string urlEstable, CancellationToken ct = default);
 
+    /// <summary>
+    /// API-55. Toma la fila de la tarjeta CON BLOQUEO (SELECT ... FOR UPDATE) para activacion.
+    /// Incluye el perfil. Nulo si no existe o no esta en estado Emitida.
+    /// </summary>
+    Task<Tarjeta?> TomarParaActivarAsync(string urlEstable, CancellationToken ct = default);
+
+    /// <summary>
+    /// Comprueba si existe una tarjeta con esa URL estable (cualquier estado).
+    /// Usado para distinguir "no existe" de "ya activada/vencida" sin revelar cual.
+    /// </summary>
+    Task<bool> ExistePorUrlEstableAsync(string urlEstable, CancellationToken ct = default);
+
     /// <summary>Sin identidad del visitante (R-20): la entidad no tiene donde guardarla.</summary>
     void AgregarEscaneo(EscaneoTarjeta escaneo);
+
+    /// <summary>API-56. Las del perfil, sin seguimiento, la mas reciente primero.</summary>
+    Task<IReadOnlyList<Tarjeta>> DePrestadorAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+
+    /// <summary>
+    /// API-57 y API-58. RASTREADA y por id, SIN filtrar por dueno: esa comprobacion vive en el
+    /// servicio, donde la prueba unitaria la ve. Nulo si no existe.
+    /// </summary>
+    Task<Tarjeta?> PorIdAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>
+    /// API-58. Una sola consulta agrupada por medio. Un escaneo cuenta en un periodo si
+    /// <c>ocurrido_en >= desde</c>: el borde exacto entra.
+    /// </summary>
+    Task<EscaneosContados> EscaneosPorMedioAsync(
+        Guid tarjetaId, DateTime desde7, DateTime desde30, CancellationToken ct = default);
+
+    /// <summary>API-59. Agrega una tarjeta nueva en estado Emitida.</summary>
+    void Agregar(Tarjeta tarjeta);
 }
+
+
+/// <summary>API-58. Lo que el repositorio cuenta, ya agrupado: el servicio no recorre escaneos.</summary>
+public sealed record EscaneosContados(
+    int Nfc7, int Qr7, int Nfc30, int Qr30, int NfcTotal, int QrTotal);

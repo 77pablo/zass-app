@@ -784,7 +784,7 @@ public class ResenasApiPruebas : IAsyncLifetime
         Assert.Equal(HttpStatusCode.NotFound, r2.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, r3.StatusCode);
         // Y el 404 de "no es tuya" es indistinguible del de "no existe".
-        Assert.Equal(await r1.Content.ReadAsStringAsync(), await r3.Content.ReadAsStringAsync());
+        Assert.Equal(await CuerpoComparable.De(r1), await CuerpoComparable.De(r3));
     }
 
     // ------------------------------------------------------------- reportar y moderar

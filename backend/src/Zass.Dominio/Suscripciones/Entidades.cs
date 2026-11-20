@@ -23,7 +23,8 @@ public class Plan
     public int PrecioMensual { get; set; }
     public short DiasPrueba { get; set; } = 30;
     public int MaxServicios { get; set; } = 10;
-    public int MaxTarjetas { get; set; } = 3;
+    /// <summary>Coincide con los tres planes sembrados (1). El tope real se lee de la fila del plan.</summary>
+    public int MaxTarjetas { get; set; } = 1;
     public bool PermiteCredenciales { get; set; } = true;
     public bool Activo { get; set; } = true;
 }
@@ -77,9 +78,16 @@ public class Suscripcion
     }
 
     /// <summary>Extiende el periodo tras un pago confirmado. La llamara la pasarela.</summary>
-    public void RegistrarPeriodoPagado(DateTime ahora, int meses = 1)
+    /// <param name="esCobroAutomatico">
+    /// True si es un cobro automatico (incluye cobro tardio). En ese caso, la extension
+    /// se calcula desde el VigenteHasta de la suscripcion TAL COMO ESTA (VencerExpiradasAsync
+    /// solo cambia Estado, no VigenteHasta). False para pagos manuales: desde hoy si ya vencio.
+    /// </param>
+    public void RegistrarPeriodoPagado(DateTime ahora, int meses = 1, bool esCobroAutomatico = false)
     {
-        var baseFecha = VigenteHasta > ahora ? VigenteHasta : ahora;
+        var baseFecha = esCobroAutomatico
+            ? VigenteHasta
+            : (VigenteHasta > ahora ? VigenteHasta : ahora);
         VigenteHasta = baseFecha.AddMonths(meses);
         Estado = EstadoSuscripcion.Activa;
     }

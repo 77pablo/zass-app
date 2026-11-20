@@ -23,9 +23,22 @@ constructor.Services
     .AgregarProxiesDeConfianza()                      // X-Forwarded-*: solo desde redes listadas
     .AgregarAutenticacion(exigirHttps)                // cookie de 15 min + CSRF
     .AddValidatorsFromAssemblyContaining<ValidadorVerificarCorreo>()
-    .AddProblemDetails()                              // RFC 7807 en todos los errores
+    .AddProblemDetails(o =>                           // RFC 7807 en todos los errores:
+    {
+        IdDePeticion.Configurar(o);                   //   con idPeticion
+        TextosEnCastellano.Configurar(o);             //   y sin titulos de fabrica en ingles
+    })
     .AddEndpointsApiExplorer()
     .AddSwaggerGen();
+
+// El registro de la consola muestra los ambitos: asi cada linea lleva el IdPeticion de la
+// peticion que la escribio (ver IdDePeticion). En una sola linea, para que buscar el
+// identificador en los registros de Render devuelva el mensaje entero y no solo el ambito.
+constructor.Logging.AddSimpleConsole(opciones =>
+{
+    opciones.IncludeScopes = true;
+    opciones.SingleLine = true;
+});
 
 // Los enums viajan como TEXTO, no como numero.
 //
@@ -49,8 +62,20 @@ constructor.Services.Configure<Microsoft.AspNetCore.Routing.RouteHandlerOptions>
 
 var app = constructor.Build();
 
+// En Render la cultura es la invariante y FluentValidation responderia en ingles. Si la maquina
+// ni siquiera tiene datos de idioma (modo de globalizacion invariante), la API arranca igual y
+// lo dice: un texto en ingles no puede costar la API entera.
+if (!TextosEnCastellano.FijarIdiomaDeValidacion())
+    app.Logger.LogWarning(
+        "Sin datos de idioma (globalizacion invariante): los mensajes de validacion saldran en ingles.");
+
+// Registrar el resolvedor de nombres en castellano para FluentValidation.
+TextosEnCastellano.ConfigurarResolvedor();
+
 // Se valida DESPUES de Build y con app.Configuration: ahi ya estan todas las fuentes
-// (variables de entorno, Key Vault, y los ajustes que inyectan las pruebas). Falla antes de
+// (variables de entorno de Render, y los ajustes que inyectan las pruebas). Falla antes de
+// *Diseño original: Key Vault con identidad administrada. Desplegado: variables de entorno
+// de Render, porque no documentado.
 // abrir ningun puerto. Todo lo que no sea Development se trata como produccion.
 ValidacionDeArranque.Exigir(app.Configuration, esProductivo: !app.Environment.IsDevelopment());
 
@@ -61,6 +86,9 @@ if (Migrador.Solicitado(args))
 // Lo PRIMERO: el HSTS, la redireccion a HTTPS y el limitador de tasa tienen que ver ya la IP
 // y el esquema reales del visitante. Sin proxies configurados no hace nada.
 app.UsarProxiesDeConfianza(app.Configuration);
+
+// Antes del manejador de excepciones: su linea de error tambien lleva el identificador.
+app.UsarIdDePeticion();
 
 // El orden importa: las cabeceras primero, para que acompanen incluso a una respuesta
 // de error o de limite de tasa.
@@ -101,6 +129,7 @@ app.MapearResenas();
 app.MapearSuscripciones();                               // API-66 a API-70 (S7 suscripciones y pagos)
 
 app.MapearVerificacion();
+app.MapearAuditoria();
 
 app.MapearTarjetas();                                  // API-54 /t/{segmento} (CS-18)
 

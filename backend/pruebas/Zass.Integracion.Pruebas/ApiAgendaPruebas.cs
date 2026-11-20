@@ -40,29 +40,52 @@ public class ApiAgendaPruebas : IAsyncLifetime
 
         _marca = Guid.NewGuid().ToString("N")[..12];
         _slug = $"apiag-{_marca}";
+        var prestadorCorreo = $"apiag-p-{_marca}@zass.local";
+
+        // Registrar prestador via HTTP API para que tenga hash de contrasena correcto
+        var tempCliente = _app.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            HandleCookies = true, AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost"),
+        });
+
+        var prestadorReg = await tempCliente.PostAsJsonAsync("/api/auth/registro", new
+        {
+            correo = prestadorCorreo, contrasena = "contrasena-larga-1",
+            nombre = "Pablo Espinoza", rol = "prestador",
+        });
+        Assert.Equal(HttpStatusCode.Created, prestadorReg.StatusCode);
+
+        // Verificar correo del prestador
+        using (var ctxPrest = ContextoDePrueba.Crear())
+        {
+            var usuario = await ctxPrest.Usuarios.SingleAsync(u => u.Correo == prestadorCorreo);
+            var aviso = await ctxPrest.Notificaciones
+                .Where(n => n.DestinatarioId == usuario.Id
+                            && n.Tipo == TipoNotificacion.CorreoVerificacion)
+                .OrderByDescending(n => n.ProgramadaPara).FirstAsync();
+            var token = Zass.Aplicacion.Puertos.CargaDeAviso.LeerToken(aviso.Cuerpo)!;
+            Assert.Equal(HttpStatusCode.NoContent,
+                (await tempCliente.PostAsJsonAsync("/api/auth/correo/verificar", new { token })).StatusCode);
+        }
+
+        tempCliente.Dispose();
 
         using var ctx = ContextoDePrueba.Crear();
         var ahora = DateTime.UtcNow;
 
-        var prestador = new Usuario
-        {
-            Correo = $"apiag-p-{_marca}@zass.local", HashContrasena = "x",
-            Nombre = "Pablo Espinoza", CorreoVerificado = true,
-        };
-        ctx.Usuarios.Add(prestador);
-
-        var rubro = await ctx.Rubros.FirstAsync(r => r.Activo);
-        var perfil = new PerfilPrestador
-        {
-            UsuarioId = prestador.Id, RubroId = rubro.Id, Slug = _slug,
-            NombrePublico = "Estudio de prueba", Estado = EstadoPerfil.Publicado,
-            PublicadoEn = ahora.AddDays(-2),
-        };
-        ctx.PerfilesPrestador.Add(perfil);
+        // Usar el PerfilPrestador que ya creó el registro HTTP (en estado Borrador)
+        var prestador = await ctx.Usuarios.SingleAsync(u => u.Correo == prestadorCorreo);
+        var perfil = await ctx.PerfilesPrestador.SingleAsync(p => p.UsuarioId == prestador.Id);
+        perfil.RubroId = (await ctx.Rubros.FirstAsync(r => r.Activo)).Id;
+        perfil.Slug = _slug;
+        perfil.NombrePublico = "Estudio de prueba";
+        perfil.Estado = EstadoPerfil.Publicado;
+        perfil.PublicadoEn = ahora.AddDays(-2);
 
         var servicio = new Servicio
         {
-            RubroId = rubro.Id, Nombre = $"Consulta {_marca}",
+            RubroId = (short)perfil.RubroId!, Nombre = $"Consulta {_marca}",
             NombreNormalizado = $"consulta {_marca}", EsCatalogo = false,
         };
         ctx.Servicios.Add(servicio);
@@ -149,6 +172,18 @@ public class ApiAgendaPruebas : IAsyncLifetime
 
     // ------------------------------------------------------------- ayudantes
 
+    /// <summary>Crea un HttpClient nuevo con su propio contenedor de cookies.</summary>
+    private HttpClient CrearCliente()
+    {
+        return _app.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            HandleCookies = true,
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost"),
+        });
+    }
+
+    /// <summary>Registra un buscador, verifica su correo e inicia sesión en _cliente. Devuelve el correo.</summary>
     private async Task<string> UnBuscadorConSesionAsync()
     {
         var correo = $"apiag-b-{Guid.NewGuid():N}-{_marca}@zass.local";
@@ -180,9 +215,8 @@ public class ApiAgendaPruebas : IAsyncLifetime
         (await (await _cliente.GetAsync("/api/auth/csrf")).Content.ReadFromJsonAsync<JsonDocument>())!
             .RootElement.GetProperty("token").GetString()!;
 
-    /// <summary>POST /api/citas con control fino de la cabecera, que es lo que se prueba.</summary>
-    private async Task<HttpResponseMessage> AgendarAsync(
-        Guid bloqueId, string? claveIdempotencia, bool dosClaves = false)
+    /// <summary>POST /api/citas con control fino de la cabecera (usa _cliente).</summary>
+    private async Task<HttpResponseMessage> AgendarAsync(Guid bloqueId, string? claveIdempotencia, bool dosClaves = false)
     {
         var p = new HttpRequestMessage(HttpMethod.Post, "/api/citas")
         {
@@ -196,6 +230,103 @@ public class ApiAgendaPruebas : IAsyncLifetime
         return await _cliente.SendAsync(p);
     }
 
+    /// <summary>POST /api/citas/{id}/{accion} con CSRF y, si se pide, clave de idempotencia (usa _cliente).</summary>
+    private async Task<HttpResponseMessage> AccionAsync(string citaId, string accion, object? cuerpo = null, string? clave = null)
+    {
+        var p = new HttpRequestMessage(HttpMethod.Post, $"/api/citas/{citaId}/{accion}")
+        {
+            Content = JsonContent.Create(cuerpo ?? new { }),
+        };
+        p.Headers.Add("X-CSRF-Token", await CsrfAsync());
+        if (clave is not null) p.Headers.Add(FiltroIdempotencia.Cabecera, clave);
+        return await _cliente.SendAsync(p);
+    }
+
+    /// <summary>Helper para tests que solo usan un buscador: agenda y devuelve citaId.</summary>
+    private async Task<string> UnBuscadorConCitaAsync(string? clave = null)
+    {
+        await UnBuscadorConSesionAsync();
+        var r = await AgendarAsync(_bloque, clave ?? $"c-{Guid.NewGuid():N}");
+        Assert.Equal(HttpStatusCode.Created, r.StatusCode);
+        var cita = await LeerCitaAsync(r);
+        return cita.id;
+    }
+
+    /// <summary>Inicia sesión como prestador en _cliente.</summary>
+    private async Task LoginComoPrestadorAsync(string correo)
+    {
+        Assert.Equal(HttpStatusCode.OK, (await _cliente.PostAsJsonAsync("/api/auth/sesion", new
+        {
+            correo, contrasena = "contrasena-larga-1",
+        })).StatusCode);
+    }
+
+    /// <summary>POST /api/citas con control fino de la cabecera, usando el cliente dado.</summary>
+    private async Task<HttpResponseMessage> AgendarAsync(HttpClient cliente, Guid bloqueId, string? claveIdempotencia, bool dosClaves = false)
+    {
+        var p = new HttpRequestMessage(HttpMethod.Post, "/api/citas")
+        {
+            Content = JsonContent.Create(new { bloqueId, notaBuscador = (string?)null }),
+        };
+        p.Headers.Add("X-CSRF-Token", await CsrfAsync(cliente));
+        if (claveIdempotencia is not null)
+            p.Headers.Add(FiltroIdempotencia.Cabecera, claveIdempotencia);
+        if (dosClaves)
+            p.Headers.Add(FiltroIdempotencia.Cabecera, $"otra-{Guid.NewGuid():N}");
+        return await cliente.SendAsync(p);
+    }
+
+    /// <summary>POST /api/citas/{id}/{accion} con CSRF y, si se pide, clave de idempotencia (cliente dado).</summary>
+    private async Task<HttpResponseMessage> AccionAsync(HttpClient cliente, string citaId, string accion, object? cuerpo = null, string? clave = null)
+    {
+        var p = new HttpRequestMessage(HttpMethod.Post, $"/api/citas/{citaId}/{accion}")
+        {
+            Content = JsonContent.Create(cuerpo ?? new { }),
+        };
+        p.Headers.Add("X-CSRF-Token", await CsrfAsync(cliente));
+        if (clave is not null) p.Headers.Add(FiltroIdempotencia.Cabecera, clave);
+        return await cliente.SendAsync(p);
+    }
+
+    /// <summary>Registra un buscador en un cliente dado, verifica correo e inicia sesión. Devuelve el correo.</summary>
+    private async Task<string> UnBuscadorAsync(HttpClient cliente)
+    {
+        var correo = $"apiag-b-{Guid.NewGuid():N}-{_marca}@zass.local";
+        Assert.Equal(HttpStatusCode.Created, (await cliente.PostAsJsonAsync("/api/auth/registro", new
+        {
+            correo, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
+        })).StatusCode);
+
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var usuario = await ctx.Usuarios.SingleAsync(u => u.Correo == correo);
+            var aviso = await ctx.Notificaciones
+                .Where(n => n.DestinatarioId == usuario.Id
+                            && n.Tipo == TipoNotificacion.CorreoVerificacion)
+                .OrderByDescending(n => n.ProgramadaPara).FirstAsync();
+            var token = Zass.Aplicacion.Puertos.CargaDeAviso.LeerToken(aviso.Cuerpo)!;
+            Assert.Equal(HttpStatusCode.NoContent,
+                (await cliente.PostAsJsonAsync("/api/auth/correo/verificar", new { token })).StatusCode);
+        }
+
+        Assert.Equal(HttpStatusCode.OK, (await cliente.PostAsJsonAsync("/api/auth/sesion", new
+        {
+            correo, contrasena = "contrasena-larga-1",
+        })).StatusCode);
+        return correo;
+    }
+
+    private async Task<string> CsrfAsync(HttpClient cliente) =>
+        (await (await cliente.GetAsync("/api/auth/csrf")).Content.ReadFromJsonAsync<JsonDocument>())!
+            .RootElement.GetProperty("token").GetString()!;
+
+    /// <summary>Registra un buscador, verifica su correo e inicia sesión en _cliente. Devuelve (_cliente, correo).</summary>
+    private async Task<(HttpClient cliente, string correo)> UnBuscadorAsync()
+    {
+        var correo = await UnBuscadorConSesionAsync();
+        return (_cliente, correo);
+    }
+
     // ------------------------------------------------------------- CC-04, la cabecera
 
     /// <summary>
@@ -205,9 +336,9 @@ public class ApiAgendaPruebas : IAsyncLifetime
     [Fact]
     public async Task Agendar_sin_la_cabecera_de_idempotencia_responde_400_y_no_crea_nada()
     {
-        await UnBuscadorConSesionAsync();
+        var (cliente, _) = await UnBuscadorAsync();
 
-        var r = await AgendarAsync(_bloque, null);
+        var r = await AgendarAsync(cliente, _bloque, null);
 
         Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
         Assert.Contains(FiltroIdempotencia.Cabecera, await r.Content.ReadAsStringAsync());
@@ -224,9 +355,10 @@ public class ApiAgendaPruebas : IAsyncLifetime
     [InlineData("tiene/barra/y/eso/no")]
     public async Task Una_clave_mal_formada_responde_400(string clave)
     {
-        await UnBuscadorConSesionAsync();
+        var cliente = CrearCliente();
+        await UnBuscadorAsync(cliente);
 
-        Assert.Equal(HttpStatusCode.BadRequest, (await AgendarAsync(_bloque, clave)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await AgendarAsync(cliente, _bloque, clave)).StatusCode);
     }
 
     /// <summary>
@@ -236,9 +368,10 @@ public class ApiAgendaPruebas : IAsyncLifetime
     [Fact]
     public async Task Dos_claves_en_la_misma_solicitud_responden_400()
     {
-        await UnBuscadorConSesionAsync();
+        var cliente = CrearCliente();
+        await UnBuscadorAsync(cliente);
 
-        var r = await AgendarAsync(_bloque, $"clave-{Guid.NewGuid():N}", dosClaves: true);
+        var r = await AgendarAsync(cliente, _bloque, $"clave-{Guid.NewGuid():N}", dosClaves: true);
 
         Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
     }
@@ -250,11 +383,12 @@ public class ApiAgendaPruebas : IAsyncLifetime
     [Fact]
     public async Task El_mismo_envio_responde_201_y_luego_200_con_la_misma_cita()
     {
-        await UnBuscadorConSesionAsync();
+        var cliente = CrearCliente();
+        await UnBuscadorAsync(cliente);
         var clave = $"intencion-{Guid.NewGuid():N}";
 
-        var primera = await AgendarAsync(_bloque, clave);
-        var segunda = await AgendarAsync(_bloque, clave);
+        var primera = await AgendarAsync(cliente, _bloque, clave);
+        var segunda = await AgendarAsync(cliente, _bloque, clave);
 
         Assert.Equal(HttpStatusCode.Created, primera.StatusCode);
         Assert.Equal(HttpStatusCode.OK, segunda.StatusCode);
@@ -271,13 +405,15 @@ public class ApiAgendaPruebas : IAsyncLifetime
     [Fact]
     public async Task Un_bloque_ya_tomado_por_otra_persona_responde_409()
     {
-        await UnBuscadorConSesionAsync();
+        var cliente1 = CrearCliente();
+        await UnBuscadorAsync(cliente1);
         Assert.Equal(HttpStatusCode.Created,
-            (await AgendarAsync(_bloque, $"uno-{Guid.NewGuid():N}")).StatusCode);
+            (await AgendarAsync(cliente1, _bloque, $"uno-{Guid.NewGuid():N}")).StatusCode);
 
         // Otra persona, otra intención, el mismo bloque.
-        await UnBuscadorConSesionAsync();
-        var r = await AgendarAsync(_bloque, $"dos-{Guid.NewGuid():N}");
+        var cliente2 = CrearCliente();
+        await UnBuscadorAsync(cliente2);
+        var r = await AgendarAsync(cliente2, _bloque, $"dos-{Guid.NewGuid():N}");
 
         Assert.Equal(HttpStatusCode.Conflict, r.StatusCode);
     }
@@ -293,7 +429,8 @@ public class ApiAgendaPruebas : IAsyncLifetime
     [Fact]
     public async Task Agendar_sin_sesion_no_pasa_ni_con_clave_bien_puesta()
     {
-        var r = await AgendarAsync(_bloque, $"clave-{Guid.NewGuid():N}");
+        var cliente = CrearCliente();
+        var r = await AgendarAsync(cliente, _bloque, $"clave-{Guid.NewGuid():N}");
 
         Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode);
     }
@@ -301,7 +438,7 @@ public class ApiAgendaPruebas : IAsyncLifetime
     [Fact]
     public async Task Agendar_sin_csrf_no_pasa()
     {
-        await UnBuscadorConSesionAsync();
+        var (cliente, _) = await UnBuscadorAsync();
 
         var p = new HttpRequestMessage(HttpMethod.Post, "/api/citas")
         {
@@ -309,16 +446,17 @@ public class ApiAgendaPruebas : IAsyncLifetime
         };
         p.Headers.Add(FiltroIdempotencia.Cabecera, $"clave-{Guid.NewGuid():N}");
 
-        Assert.Equal(HttpStatusCode.Forbidden, (await _cliente.SendAsync(p)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await cliente.SendAsync(p)).StatusCode);
     }
 
     [Fact]
     public async Task La_disponibilidad_y_los_bloqueos_exigen_sesion()
     {
+        var cliente = CrearCliente();
         Assert.Equal(HttpStatusCode.Unauthorized,
-            (await _cliente.GetAsync("/api/mi/disponibilidad")).StatusCode);
+            (await cliente.GetAsync("/api/mi/disponibilidad")).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized,
-            (await _cliente.GetAsync("/api/mi/citas")).StatusCode);
+            (await cliente.GetAsync("/api/mi/citas")).StatusCode);
     }
 
         // ------------------------------------------------------------- CS-11, listar y quitar bloqueos
@@ -377,29 +515,30 @@ public class ApiAgendaPruebas : IAsyncLifetime
         return await ctx.Set<BloqueoAgenda>().AnyAsync(b => b.Id == id);
     }
 
-    private async Task<HttpResponseMessage> QuitarBloqueoAsync(Guid id, bool conCsrf = true)
+    private async Task<HttpResponseMessage> QuitarBloqueoAsync(HttpClient cliente, Guid id, bool conCsrf = true)
     {
         var p = new HttpRequestMessage(HttpMethod.Delete, $"/api/mi/bloqueos/{id}");
-        if (conCsrf) p.Headers.Add("X-CSRF-Token", await CsrfAsync());
-        return await _cliente.SendAsync(p);
+        if (conCsrf) p.Headers.Add("X-CSRF-Token", await CsrfAsync(cliente));
+        return await cliente.SendAsync(p);
     }
 
     [Fact]
     public async Task Listar_y_quitar_bloqueos_exigen_sesion()
     {
-        Assert.Equal(HttpStatusCode.Unauthorized, (await _cliente.GetAsync("/api/mi/bloqueos")).StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await QuitarBloqueoAsync(Guid.NewGuid(), conCsrf: false)).StatusCode);
+        var cliente = CrearCliente();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await cliente.GetAsync("/api/mi/bloqueos")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await QuitarBloqueoAsync(cliente, Guid.NewGuid(), conCsrf: false)).StatusCode);
     }
 
     [Fact]
     public async Task Quitar_un_bloqueo_sin_csrf_da_403_y_no_lo_borra()
     {
-        var correo = await UnBuscadorConSesionAsync();
+        var (cliente, correo) = await UnBuscadorAsync();
         await HacerloDuenoDelPerfilAsync(correo);
         var ahora = DateTime.UtcNow;
         var id = await UnBloqueoAsync(_perfil, ahora.AddDays(5), ahora.AddDays(5).AddHours(1));
 
-        var r = await QuitarBloqueoAsync(id, conCsrf: false);
+        var r = await QuitarBloqueoAsync(cliente, id, conCsrf: false);
 
         Assert.Equal(HttpStatusCode.Forbidden, r.StatusCode);
         Assert.True(await ExisteElBloqueoAsync(id));
@@ -408,11 +547,11 @@ public class ApiAgendaPruebas : IAsyncLifetime
     [Fact]
     public async Task Quitar_un_bloqueo_ajeno_da_404_y_no_lo_borra()
     {
-        var correo = await UnBuscadorConSesionAsync();
+        var (cliente, correo) = await UnBuscadorAsync();
         await HacerloDuenoDelPerfilAsync(correo);   // tiene perfil: llega hasta el filtro de dueño
         var ajeno = await UnBloqueoAjenoAsync();
 
-        var r = await QuitarBloqueoAsync(ajeno);
+        var r = await QuitarBloqueoAsync(cliente, ajeno);
 
         Assert.Equal(HttpStatusCode.NotFound, r.StatusCode);
         Assert.True(await ExisteElBloqueoAsync(ajeno));
@@ -421,47 +560,48 @@ public class ApiAgendaPruebas : IAsyncLifetime
     [Fact]
     public async Task Quitar_un_bloqueo_sin_perfil_de_prestador_da_404()
     {
-        await UnBuscadorConSesionAsync();   // buscador puro, sin perfil
+        var (cliente, _) = await UnBuscadorAsync();   // buscador puro, sin perfil
         var ajeno = await UnBloqueoAjenoAsync();
 
-        Assert.Equal(HttpStatusCode.NotFound, (await QuitarBloqueoAsync(ajeno)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await QuitarBloqueoAsync(Guid.NewGuid())).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await QuitarBloqueoAsync(cliente, ajeno)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await QuitarBloqueoAsync(cliente, Guid.NewGuid())).StatusCode);
         Assert.True(await ExisteElBloqueoAsync(ajeno));
     }
 
     [Fact]
     public async Task Quitar_el_propio_da_204_lo_borra_y_repetirlo_da_404()
     {
-        var correo = await UnBuscadorConSesionAsync();
+        var (cliente, correo) = await UnBuscadorAsync();
         await HacerloDuenoDelPerfilAsync(correo);
         var ahora = DateTime.UtcNow;
         var id = await UnBloqueoAsync(_perfil, ahora.AddDays(5), ahora.AddDays(5).AddHours(1));
 
-        Assert.Equal(HttpStatusCode.NoContent, (await QuitarBloqueoAsync(id)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await QuitarBloqueoAsync(cliente, id)).StatusCode);
         Assert.False(await ExisteElBloqueoAsync(id));
-        Assert.Equal(HttpStatusCode.NotFound, (await QuitarBloqueoAsync(id)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await QuitarBloqueoAsync(cliente, id)).StatusCode);
     }
 
     [Fact]
     public async Task Mis_bloqueos_trae_solo_los_propios_y_vigentes()
     {
-        var correo = await UnBuscadorConSesionAsync();
+        var cliente = CrearCliente();
+        var correo = await UnBuscadorAsync(cliente);
         await HacerloDuenoDelPerfilAsync(correo);
         var ahora = DateTime.UtcNow;
         var vigente = await UnBloqueoAsync(_perfil, ahora.AddDays(5), ahora.AddDays(5).AddHours(1));
         await UnBloqueoAsync(_perfil, ahora.AddDays(-3), ahora.AddDays(-3).AddHours(1));   // ya pasó
         await UnBloqueoAjenoAsync();                                                       // de otro
 
-        var r = await _cliente.GetAsync("/api/mi/bloqueos");
+        var r = await cliente.GetAsync("/api/mi/bloqueos");
 
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
         var ids = (await r.Content.ReadFromJsonAsync<JsonDocument>())!.RootElement
             .EnumerateArray().Select(x => x.GetProperty("id").GetGuid()).ToList();
         Assert.Equal(new[] { vigente }, ids);
     }
-        private async Task<string> EstadoPublicoDelBloqueAsync()
+        private async Task<string> EstadoPublicoDelBloqueAsync(HttpClient cliente)
     {
-        var r = await _cliente.GetAsync(
+        var r = await cliente.GetAsync(
             $"/api/prestadores/{_slug}/bloques?servicio={_servicioOfrecido}");
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
         var json = (await r.Content.ReadFromJsonAsync<JsonDocument>())!.RootElement;
@@ -473,9 +613,9 @@ public class ApiAgendaPruebas : IAsyncLifetime
     [Fact]
     public async Task El_calendario_vuelve_a_mostrar_libre_al_quitar_el_bloqueo()
     {
-        var correo = await UnBuscadorConSesionAsync();
+        var (cliente, correo) = await UnBuscadorAsync();
         await HacerloDuenoDelPerfilAsync(correo);
-        Assert.Equal("libre", await EstadoPublicoDelBloqueAsync());
+        Assert.Equal("libre", await EstadoPublicoDelBloqueAsync(cliente));
 
         var ahora = DateTime.UtcNow;
         var crear = new HttpRequestMessage(HttpMethod.Post, "/api/mi/bloqueos")
@@ -485,17 +625,17 @@ public class ApiAgendaPruebas : IAsyncLifetime
                 desdeEn = ahora.AddHours(12), hastaEn = ahora.AddDays(2), motivo = "Prueba",
             }),
         };
-        crear.Headers.Add("X-CSRF-Token", await CsrfAsync());
-        var creado = await _cliente.SendAsync(crear);
+        crear.Headers.Add("X-CSRF-Token", await CsrfAsync(cliente));
+        var creado = await cliente.SendAsync(crear);
         Assert.Equal(HttpStatusCode.Created, creado.StatusCode);
         var id = (await creado.Content.ReadFromJsonAsync<JsonDocument>())!.RootElement
             .GetProperty("id").GetGuid();
 
-        Assert.Equal("bloqueado", await EstadoPublicoDelBloqueAsync());
+        Assert.Equal("bloqueado", await EstadoPublicoDelBloqueAsync(cliente));
 
-        Assert.Equal(HttpStatusCode.NoContent, (await QuitarBloqueoAsync(id)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await QuitarBloqueoAsync(cliente, id)).StatusCode);
 
-        Assert.Equal("libre", await EstadoPublicoDelBloqueAsync());
+        Assert.Equal("libre", await EstadoPublicoDelBloqueAsync(cliente));
     }
     // ------------------------------------------------------------- API-35, el calendario público
 
@@ -532,7 +672,8 @@ public class ApiAgendaPruebas : IAsyncLifetime
     [Fact]
     public async Task Un_slug_que_no_existe_responde_404()
     {
-        var r = await _cliente.GetAsync(
+        var cliente = CrearCliente();
+        var r = await cliente.GetAsync(
             $"/api/prestadores/no-existe-{Guid.NewGuid():N}/bloques?servicio={_servicioOfrecido}");
 
         Assert.Equal(HttpStatusCode.NotFound, r.StatusCode);
@@ -541,11 +682,11 @@ public class ApiAgendaPruebas : IAsyncLifetime
     [Fact]
     public async Task Mis_citas_trae_la_que_acabo_de_agendar()
     {
-        await UnBuscadorConSesionAsync();
+        var (cliente, _) = await UnBuscadorAsync();
         Assert.Equal(HttpStatusCode.Created,
-            (await AgendarAsync(_bloque, $"mia-{Guid.NewGuid():N}")).StatusCode);
+            (await AgendarAsync(cliente, _bloque, $"mia-{Guid.NewGuid():N}")).StatusCode);
 
-        var r = await _cliente.GetAsync("/api/mi/citas");
+        var r = await cliente.GetAsync("/api/mi/citas");
 
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
         var citas = (await r.Content.ReadFromJsonAsync<JsonDocument>())!.RootElement;
@@ -559,22 +700,9 @@ public class ApiAgendaPruebas : IAsyncLifetime
 
     // ------------------------------------------------------------- el ciclo de la cita, por HTTP
 
-    /// <summary>POST a /api/citas/{id}/{accion} con CSRF y, si se pide, la clave de idempotencia.</summary>
-    private async Task<HttpResponseMessage> AccionAsync(
-        string citaId, string accion, object? cuerpo = null, string? clave = null)
+    private async Task<string> UnaCitaPropiaAsync(HttpClient cliente)
     {
-        var p = new HttpRequestMessage(HttpMethod.Post, $"/api/citas/{citaId}/{accion}")
-        {
-            Content = JsonContent.Create(cuerpo ?? new { }),
-        };
-        p.Headers.Add("X-CSRF-Token", await CsrfAsync());
-        if (clave is not null) p.Headers.Add(FiltroIdempotencia.Cabecera, clave);
-        return await _cliente.SendAsync(p);
-    }
-
-    private async Task<string> UnaCitaPropiaAsync()
-    {
-        var r = await AgendarAsync(_bloque, $"ciclo-{Guid.NewGuid():N}");
+        var r = await AgendarAsync(cliente, _bloque, $"ciclo-{Guid.NewGuid():N}");
         Assert.Equal(HttpStatusCode.Created, r.StatusCode);
         return (await LeerCitaAsync(r)).id;
     }
@@ -589,10 +717,10 @@ public class ApiAgendaPruebas : IAsyncLifetime
     [InlineData("reprogramar")]
     public async Task Cancelar_y_reprogramar_exigen_la_clave_de_idempotencia(string accion)
     {
-        await UnBuscadorConSesionAsync();
-        var cita = await UnaCitaPropiaAsync();
+        var (cliente, _) = await UnBuscadorAsync();
+        var cita = await UnaCitaPropiaAsync(cliente);
 
-        var r = await AccionAsync(cita, accion, new { bloqueNuevoId = Guid.NewGuid(), motivo = (string?)null });
+        var r = await AccionAsync(cliente, cita, accion, new { bloqueNuevoId = Guid.NewGuid(), motivo = (string?)null });
 
         Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
         Assert.Contains(FiltroIdempotencia.Cabecera, await r.Content.ReadAsStringAsync());
@@ -601,10 +729,10 @@ public class ApiAgendaPruebas : IAsyncLifetime
     [Fact]
     public async Task Cancelar_con_tiempo_responde_200_y_libera_la_hora()
     {
-        await UnBuscadorConSesionAsync();
-        var cita = await UnaCitaPropiaAsync();
+        var (cliente, _) = await UnBuscadorAsync();
+        var cita = await UnaCitaPropiaAsync(cliente);
 
-        var r = await AccionAsync(cita, "cancelar", new { motivo = (string?)null }, $"c-{Guid.NewGuid():N}");
+        var r = await AccionAsync(cliente, cita, "cancelar", new { motivo = (string?)null }, $"c-{Guid.NewGuid():N}");
 
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
         using var ctx = ContextoDePrueba.Crear();
@@ -617,16 +745,15 @@ public class ApiAgendaPruebas : IAsyncLifetime
     [Fact]
     public async Task Cancelar_la_cita_de_otro_responde_404_igual_que_una_inexistente()
     {
-        await UnBuscadorConSesionAsync();
-        var ajena = await UnaCitaPropiaAsync();
+        var (cliente1, _) = await UnBuscadorAsync();
+        var ajena = await UnaCitaPropiaAsync(cliente1);
 
-        await UnBuscadorConSesionAsync();   // otra persona, otra sesión
-        var deOtro = await AccionAsync(ajena, "cancelar", new { motivo = (string?)null }, $"c-{Guid.NewGuid():N}");
-        var inexistente = await AccionAsync(
-            Guid.NewGuid().ToString(), "cancelar", new { motivo = (string?)null }, $"c-{Guid.NewGuid():N}");
+        var (cliente2, _) = await UnBuscadorAsync();   // otra persona, otra sesión
+        var deOtro = await AccionAsync(cliente2, ajena, "cancelar", new { motivo = (string?)null }, $"c-{Guid.NewGuid():N}");
+        var inexistente = await AccionAsync(cliente2, Guid.NewGuid().ToString(), "cancelar", new { motivo = (string?)null }, $"c-{Guid.NewGuid():N}");
 
         Assert.Equal(HttpStatusCode.NotFound, deOtro.StatusCode);
-        Assert.Equal(await inexistente.Content.ReadAsStringAsync(), await deOtro.Content.ReadAsStringAsync());
+        Assert.Equal(await CuerpoComparable.De(inexistente), await CuerpoComparable.De(deOtro));
     }
 
     /// <summary>
@@ -636,14 +763,14 @@ public class ApiAgendaPruebas : IAsyncLifetime
     [Fact]
     public async Task El_buscador_no_puede_marcar_asistencia_ni_confirmar()
     {
-        await UnBuscadorConSesionAsync();
-        var cita = await UnaCitaPropiaAsync();
+        var (cliente, _) = await UnBuscadorAsync();
+        var cita = await UnaCitaPropiaAsync(cliente);
 
         Assert.Equal(HttpStatusCode.NotFound,
-            (await AccionAsync(cita, "asistencia", new { asistio = true })).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await AccionAsync(cita, "confirmar")).StatusCode);
+            (await AccionAsync(cliente, cita, "asistencia", new { asistio = true })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await AccionAsync(cliente, cita, "confirmar")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound,
-            (await AccionAsync(cita, "rechazar", new { motivo = (string?)null })).StatusCode);
+            (await AccionAsync(cliente, cita, "rechazar", new { motivo = (string?)null })).StatusCode);
     }
 
     [Theory]
@@ -654,8 +781,211 @@ public class ApiAgendaPruebas : IAsyncLifetime
     [InlineData("reprogramar")]
     public async Task Sin_sesion_ninguna_accion_sobre_una_cita_pasa(string accion)
     {
-        var r = await AccionAsync(Guid.NewGuid().ToString(), accion, new { }, $"x-{Guid.NewGuid():N}");
+        var cliente = CrearCliente();
+        var r = await AccionAsync(cliente, Guid.NewGuid().ToString(), accion, new { }, $"x-{Guid.NewGuid():N}");
 
         Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode);
+    }
+
+    // ------------------------------------------------------------- camino feliz de cada accion
+
+    /// <summary>
+    /// API-38: El prestador confirma una cita solicitada. RN-S4-03: solo se confirma una vez,
+    /// y solo desde Solicitada.
+    /// 
+    /// T51d: la cita se crea en modo manual, que es el unico camino real para que quede
+    /// Solicitada. En modo automatico, la cita nace Confirmada y el aviso ya esta encolado;
+    /// forzar el estado a Solicitada y luego confirmar duplicaba la clave_idempotencia.
+    /// </summary>
+    [Fact]
+    public async Task Confirmar_cita_solicitada_responde_200_y_cambia_el_estado()
+    {
+        // Poner el servicio en modo manual: es el unico camino real para que la cita nazca Solicitada
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var ps = await ctx.PrestadorServicios.SingleAsync(ps => ps.Id == _servicioOfrecido);
+            ps.ModoAgenda = ModoAgenda.Manual;
+            await ctx.SaveChangesAsync();
+        }
+
+        // Agenda en modo manual -> la cita nace en estado Solicitada
+        var citaId = await UnBuscadorConCitaAsync();
+
+        // Obtener el correo del prestador
+        string correoPrestador;
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var u = await ctx.Usuarios.SingleAsync(u => u.PerfilPrestador != null && u.PerfilPrestador.Id == _perfil);
+            correoPrestador = u.Correo;
+        }
+
+        // Iniciar sesion como el prestador en _cliente
+        await LoginComoPrestadorAsync(correoPrestador);
+
+        // Ahora confirmar como prestador (usa _cliente con CSRF fresco)
+        var r = await AccionAsync(citaId, "confirmar");
+
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        using var ctx2 = ContextoDePrueba.Crear();
+        var citaConfirmada = await ctx2.Citas.SingleAsync(c => c.Id == Guid.Parse(citaId));
+        Assert.Equal(EstadoCita.Confirmada, citaConfirmada.Estado);
+    }
+
+    /// <summary>
+    /// API-39: El prestador rechaza una cita solicitada con motivo. RN-S4-04: el rechazo es
+    /// definitivo y libera el bloque.
+    /// 
+    /// T51d: la cita se crea en modo manual, que es el unico camino real para que quede
+    /// Solicitada. Forzar el estado a mano en una cita creada en modo automatico era
+    /// incoherente con los avisos ya encolados.
+    /// </summary>
+    [Fact]
+    public async Task Rechazar_cita_solicitada_libera_el_bloque()
+    {
+        // Poner el servicio en modo manual: es el unico camino real para que la cita nazca Solicitada
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var ps = await ctx.PrestadorServicios.SingleAsync(ps => ps.Id == _servicioOfrecido);
+            ps.ModoAgenda = ModoAgenda.Manual;
+            await ctx.SaveChangesAsync();
+        }
+
+        // Agenda en modo manual -> la cita nace en estado Solicitada
+        var citaId = await UnBuscadorConCitaAsync();
+
+        // Obtener el correo del prestador y el bloque original
+        Guid bloqueIdOriginal;
+        string correoPrestador;
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var cita = await ctx.Citas.SingleAsync(c => c.Id == Guid.Parse(citaId));
+            bloqueIdOriginal = cita.BloqueHorarioId;
+            var u = await ctx.Usuarios.SingleAsync(u => u.PerfilPrestador != null && u.PerfilPrestador.Id == _perfil);
+            correoPrestador = u.Correo;
+        }
+
+        // Iniciar sesion como el prestador en _cliente
+        await LoginComoPrestadorAsync(correoPrestador);
+
+        // Ahora rechazar como prestador (usa _cliente con CSRF fresco)
+        var r = await AccionAsync(citaId, "rechazar", new { motivo = "No coincide el horario" });
+
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        using var ctx2 = ContextoDePrueba.Crear();
+        var citaRechazada = await ctx2.Citas.SingleAsync(c => c.Id == Guid.Parse(citaId));
+        Assert.Equal(EstadoCita.Rechazada, citaRechazada.Estado);
+        var bloque = await ctx2.Bloques.SingleAsync(b => b.Id == bloqueIdOriginal);
+        Assert.Equal(EstadoBloque.Libre, bloque.Estado);
+    }
+
+    /// <summary>
+    /// API-41: Reprogramar es cancelar y crear con vinculo. RN-S4-05: la cita nueva conserva
+    /// la elegibilidad para resenar de la original. CC-06: el bloque nuevo debe estar libre.
+    /// </summary>
+    [Fact]
+    public async Task Reprogramar_cita_cancela_la_original_y_crea_una_nueva_vinculada()
+    {
+        var citaOriginalId = await UnBuscadorConCitaAsync();
+
+        // Crear un bloque nuevo para reprogramar
+        Guid bloqueNuevoId;
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var bloqueOriginal = await ctx.Bloques.SingleAsync(b => b.Id == _bloque);
+            var bloqueNuevo = new BloqueHorario
+            {
+                DisponibilidadId = bloqueOriginal.DisponibilidadId,
+                PerfilPrestadorId = bloqueOriginal.PerfilPrestadorId,
+                PrestadorServicioId = bloqueOriginal.PrestadorServicioId,
+                InicioEn = bloqueOriginal.InicioEn.AddHours(2),
+                FinEn = bloqueOriginal.FinEn.AddHours(2),
+                Estado = EstadoBloque.Libre,
+            };
+            ctx.Bloques.Add(bloqueNuevo);
+            await ctx.SaveChangesAsync();
+            bloqueNuevoId = bloqueNuevo.Id;
+        }
+
+        var clave = $"reprogramar-{Guid.NewGuid():N}";
+        var r = await AccionAsync(citaOriginalId, "reprogramar", new { bloqueNuevoId, motivo = "Cambio de horario" }, clave);
+
+        Assert.Equal(HttpStatusCode.Created, r.StatusCode);
+        var citaNueva = await LeerCitaAsync(r);
+
+        using var ctx2 = ContextoDePrueba.Crear();
+        var original = await ctx2.Citas.SingleAsync(c => c.Id == Guid.Parse(citaOriginalId));
+        var nueva = await ctx2.Citas.SingleAsync(c => c.Id == Guid.Parse(citaNueva.id));
+
+        Assert.Equal(EstadoCita.Reprogramada, original.Estado);
+        Assert.Equal(EstadoCita.Confirmada, nueva.Estado);
+        Assert.Equal(Guid.Parse(citaOriginalId), nueva.CitaOrigenId);
+        Assert.Equal(bloqueNuevoId, nueva.BloqueHorarioId);
+    }
+
+    /// <summary>
+    /// API-42: El prestador marca asistencia despues de la hora de la cita. CS-12: solo
+    /// despues de la hora, y solo el prestador de ESA cita.
+    /// </summary>
+    [Fact]
+    public async Task Marcar_asistencia_despues_de_la_hora_cambia_a_realizada()
+    {
+        var citaId = await UnBuscadorConCitaAsync();
+
+        // Forzar que la cita este en el estado correcto y obtener el correo del prestador
+        string correoPrestador;
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var citaAsistencia = await ctx.Citas.SingleAsync(c => c.Id == Guid.Parse(citaId));
+            citaAsistencia.Estado = EstadoCita.PendienteAsistencia;
+            var bloque = await ctx.Bloques.SingleAsync(b => b.Id == citaAsistencia.BloqueHorarioId);
+            bloque.InicioEn = DateTime.UtcNow.AddHours(-2);
+            bloque.FinEn = DateTime.UtcNow.AddHours(-1);
+            var u = await ctx.Usuarios.SingleAsync(u => u.PerfilPrestador != null && u.PerfilPrestador.Id == citaAsistencia.PerfilPrestadorId);
+            correoPrestador = u.Correo;
+            await ctx.SaveChangesAsync();
+        }
+
+        // Iniciar sesion como el prestador en _cliente
+        await LoginComoPrestadorAsync(correoPrestador);
+
+        // Ahora marcar asistencia como prestador (usa _cliente con CSRF fresco)
+        var r = await AccionAsync(citaId, "asistencia", new { asistio = true });
+
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        using var ctx2 = ContextoDePrueba.Crear();
+        var cita = await ctx2.Citas.SingleAsync(c => c.Id == Guid.Parse(citaId));
+        Assert.Equal(EstadoCita.Realizada, cita.Estado);
+        Assert.Equal(FaltaEnCita.Nadie, cita.QuienFalto);
+    }
+
+    /// <summary>
+    /// API-42b: El buscador acusa que el prestador no asistio. La otra mitad de CS-12:
+    /// solo el buscador de ESA cita puede acusar, y solo despues de la hora.
+    /// El estado cambia a NoAsistio (estados-cita.md T10), no a Realizada.
+    /// </summary>
+    [Fact]
+    public async Task Acusar_ausencia_del_prestador_cambia_a_no_asistio()
+    {
+        var citaId = await UnBuscadorConCitaAsync();
+
+        // Forzar que la cita este en estado de esperar asistencia
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var citaAusencia = await ctx.Citas.SingleAsync(c => c.Id == Guid.Parse(citaId));
+            citaAusencia.Estado = EstadoCita.PendienteAsistencia;
+            var bloque = await ctx.Bloques.SingleAsync(b => b.Id == citaAusencia.BloqueHorarioId);
+            bloque.InicioEn = DateTime.UtcNow.AddHours(-2);
+            bloque.FinEn = DateTime.UtcNow.AddHours(-1);
+            await ctx.SaveChangesAsync();
+        }
+
+        // El buscador (ya logueado en _cliente tras UnBuscadorConCitaAsync) acusa la ausencia
+        var r = await AccionAsync(citaId, "no-asistio-el-prestador");
+
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        using var ctx2 = ContextoDePrueba.Crear();
+        var cita = await ctx2.Citas.SingleAsync(c => c.Id == Guid.Parse(citaId));
+        Assert.Equal(EstadoCita.NoAsistio, cita.Estado);
+        Assert.Equal(FaltaEnCita.Prestador, cita.QuienFalto);
     }
 }

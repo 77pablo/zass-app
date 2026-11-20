@@ -31,6 +31,8 @@ public static class Politicas
 {
     public const string Verificador = "verificador";
     public const string RolVerificador = "verificador";
+    public const string Administrador = "administrador";
+    public const string RolAdministrador = "administrador";
 }
 
 public static class ConfiguracionDeSeguridad
@@ -76,6 +78,9 @@ public static class ConfiguracionDeSeguridad
                     detail = "Espera unos minutos antes de volver a intentar.",
                     status = StatusCodes.Status429TooManyRequests,
                     reintentarEn = 900,
+                    // Este cuerpo se escribe a mano, sin pasar por ProblemDetails, asi que
+                    // IdDePeticion.Configurar no lo alcanza: el identificador va aqui.
+                    idPeticion = contexto.HttpContext.TraceIdentifier,
                 },
                 // El tipo de contenido va AQUI y no en Response.ContentType antes de escribir:
                 // WriteAsJsonAsync pone el suyo ("application/json") al escribir y pisaba el
@@ -98,9 +103,9 @@ public static class ConfiguracionDeSeguridad
     }
 
     /// <summary>
-    /// Particionado por IP, 15 minutos de ventana. En produccion los contadores van en
-    /// N-06 Redis, porque la API corre en varias replicas y un contador por proceso
-    /// multiplicaria el limite por el numero de replicas.
+    /// Particionado por IP, 15 minutos de ventana. Los contadores estan en memoria
+    /// (no hay Redis — no existe ningun paquete de Redis en el proyecto) y un contador
+    /// por proceso multiplicaria el limite por el numero de replicas.
     ///
     /// La IP es RemoteIpAddress, que UseForwardedHeaders reescribe SOLO si la conexion directa
     /// viene de un proxy de confianza (ProxiesDeConfianza). Aqui no se lee X-Forwarded-For a
@@ -150,7 +155,10 @@ public static class ConfiguracionDeSeguridad
         // Verificador es lo unico que protege /api/interno: un buscador o un prestador autenticado
         // recibe 403 antes de que el endpoint ejecute nada, ni siquiera para listar la cola.
         servicios.AddAuthorization(opciones =>
-            opciones.AddPolicy(Politicas.Verificador, p => p.RequireRole(Politicas.RolVerificador)));
+        {
+            opciones.AddPolicy(Politicas.Verificador, p => p.RequireRole(Politicas.RolVerificador));
+            opciones.AddPolicy(Politicas.Administrador, p => p.RequireRole(Politicas.RolAdministrador));
+        });
         servicios.AddAntiforgery(opciones =>
         {
             opciones.HeaderName = CabeceraCsrf;

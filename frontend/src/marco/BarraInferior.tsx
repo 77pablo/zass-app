@@ -1,0 +1,75 @@
+import { useEffect, useRef } from 'react'
+import { NavLink } from 'react-router-dom'
+import { useSesion } from '../sesion/contexto'
+import { Icono, type NombreDeIcono } from './Icono'
+import { useMenuMovil } from './menuMovil'
+
+/**
+ * La barra de pestañas, como en una app: lo mas usado al alcance del pulgar. Es la UNICA
+ * navegacion del sitio: en el telefono flota abajo; en escritorio (y el iPad), arriba al centro
+ * (CSS, 19-nov-2026). Por eso no hay un ancho con dos barras ni sin ninguna.
+ *
+ *   fuera de la sesion:  Inicio · Buscar · Entrar    · Mas
+ *   dentro:              Inicio · Buscar · Mis citas · Mas
+ *
+ * «Mas» abre la hoja del menu (Cabecera.tsx, estado en menuMovil.ts): ahi esta todo
+ * lo demas (comunas, oficios, la ficha del prestador, salir). Cuatro pestañas y no cinco: con
+ * cinco, a 360 px las etiquetas se cortan.
+ */
+export function BarraInferior() {
+  const { estado } = useSesion()
+  const { abierto, alternar, cerrar } = useMenuMovil()
+  const boton = useRef<HTMLButtonElement>(null)
+
+  // Con la hoja abierta: Escape la cierra y devuelve el foco a «Mas» (si no, el foco queda en un
+  // enlace que ya no existe); un toque fuera de la hoja y de «Mas» la cierra, como un popover.
+  useEffect(() => {
+    if (!abierto) return
+    const alTeclear = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      cerrar()
+      boton.current?.focus()
+    }
+    const alTocar = (e: PointerEvent) => {
+      const donde = e.target as Node
+      if (boton.current?.contains(donde) || document.getElementById('menu-movil')?.contains(donde)) return
+      cerrar()
+    }
+    document.addEventListener('keydown', alTeclear)
+    document.addEventListener('pointerdown', alTocar)
+    return () => {
+      document.removeEventListener('keydown', alTeclear)
+      document.removeEventListener('pointerdown', alTocar)
+    }
+  }, [abierto, cerrar])
+
+  const tercera: { a: string; texto: string; icono: NombreDeIcono } = estado === 'dentro'
+    ? { a: '/mis-citas', texto: 'Mis citas', icono: 'calendario' }
+    : { a: '/entrar', texto: 'Entrar', icono: 'usuario' }
+
+  return (
+    <nav className="barra-inferior" aria-label="Accesos rápidos">
+      <Pestana a="/" texto="Inicio" icono="casa" />
+      <Pestana a="/buscar" texto="Buscar" icono="lupa" />
+      {/* Mientras la sesion se carga no se sabe cual va: se guarda el lugar para que nada salte. */}
+      {estado === 'cargando' ? <span className="pestana pestana--hueco" aria-hidden="true" /> : <Pestana {...tercera} />}
+      <button
+        ref={boton} type="button" className="pestana" aria-expanded={abierto} aria-controls="menu-movil"
+        onClick={alternar}
+      >
+        <span className="pestana-icono"><Icono nombre={abierto ? 'cerrar' : 'menu'} /></span>
+        <span className="pestana-texto">{abierto ? 'Cerrar' : 'Más'}</span>
+      </button>
+    </nav>
+  )
+}
+
+/** React Router no marca «/» como activa en otras rutas: «Inicio» solo se enciende en la portada. */
+function Pestana({ a, texto, icono }: { a: string; texto: string; icono: NombreDeIcono }) {
+  return (
+    <NavLink to={a} className="pestana">
+      <span className="pestana-icono"><Icono nombre={icono} /></span>
+      <span className="pestana-texto">{texto}</span>
+    </NavLink>
+  )
+}

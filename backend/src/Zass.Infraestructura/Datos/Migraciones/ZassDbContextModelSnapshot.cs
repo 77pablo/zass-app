@@ -197,6 +197,9 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.HasIndex("PrestadorServicioId", "InicioEn", "Estado")
                         .HasDatabaseName("i_x_bloques_prestador_servicio_id_inicio_en_estado");
 
+                    b.HasIndex(new[] { "DisponibilidadId", "Estado", "InicioEn" }, "ix_bloque_disponibilidad_estado_inicio")
+                        .HasDatabaseName("ix_bloque_disponibilidad_estado_inicio");
+
                     b.ToTable("bloques", t =>
                         {
                             t.HasCheckConstraint("ck_bloque_rango", "fin_en > inicio_en");
@@ -5149,6 +5152,10 @@ namespace Zass.Infraestructura.Datos.Migraciones
 
                     b.HasIndex("Estado", "ProgramadaPara")
                         .HasDatabaseName("i_x_notificaciones_estado_programada_para");
+
+                    b.HasIndex(new[] { "CitaId", "Tipo" }, "ix_notificacion_cita_tipo")
+                        .HasDatabaseName("ix_notificacion_cita_tipo")
+                        .HasFilter("cita_id IS NOT NULL");
 
                     b.ToTable("notificaciones");
                 });

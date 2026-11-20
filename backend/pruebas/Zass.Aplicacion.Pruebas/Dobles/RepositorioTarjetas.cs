@@ -1,4 +1,5 @@
 using Zass.Aplicacion.Puertos;
+using Zass.Dominio.Comun;
 using Zass.Dominio.Tarjetas;
 
 namespace Zass.Aplicacion.Pruebas.Dobles;
@@ -19,4 +20,41 @@ public sealed class RepositorioTarjetasEnMemoria : IRepositorioTarjetas
     }
 
     public void AgregarEscaneo(EscaneoTarjeta escaneo) => Escaneos.Add(escaneo);
+
+    public Task<IReadOnlyList<Tarjeta>> DePrestadorAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<Tarjeta>>(Tarjetas
+            .Where(t => t.PerfilPrestadorId == perfilPrestadorId)
+            .OrderByDescending(t => t.EmitidaEn).ToList());
+
+    /// <summary>
+    /// Por id y NADA mas, como la consulta real: si este doble filtrara por dueno, la prueba
+    /// unitaria seguiria verde aunque el servicio dejara de comprobarlo.
+    /// </summary>
+    public Task<Tarjeta?> PorIdAsync(Guid id, CancellationToken ct = default) =>
+        Task.FromResult(Tarjetas.FirstOrDefault(t => t.Id == id));
+
+    public Task<EscaneosContados> EscaneosPorMedioAsync(
+        Guid tarjetaId, DateTime desde7, DateTime desde30, CancellationToken ct = default)
+    {
+        var suyos = Escaneos.Where(e => e.TarjetaId == tarjetaId).ToList();
+        int Contar(MedioEscaneo m, DateTime? desde) =>
+            suyos.Count(e => e.Medio == m && (desde is null || e.OcurridoEn >= desde));
+        return Task.FromResult(new EscaneosContados(
+            Contar(MedioEscaneo.Nfc, desde7), Contar(MedioEscaneo.Qr, desde7),
+            Contar(MedioEscaneo.Nfc, desde30), Contar(MedioEscaneo.Qr, desde30),
+            Contar(MedioEscaneo.Nfc, null), Contar(MedioEscaneo.Qr, null)));
+    }
+
+    /// <summary>En memoria no hay bloqueo real; devuelve si esta en Emitida.</summary>
+    public Task<Tarjeta?> TomarParaActivarAsync(string urlEstable, CancellationToken ct = default)
+    {
+        var t = Tarjetas.FirstOrDefault(x => x.UrlEstable == urlEstable && x.Estado == EstadoTarjeta.Emitida);
+        return Task.FromResult(t);
+    }
+
+    public Task<bool> ExistePorUrlEstableAsync(string urlEstable, CancellationToken ct = default) =>
+        Task.FromResult(Tarjetas.Any(t => t.UrlEstable == urlEstable));
+
+    public void Agregar(Tarjeta tarjeta) => Tarjetas.Add(tarjeta);
 }

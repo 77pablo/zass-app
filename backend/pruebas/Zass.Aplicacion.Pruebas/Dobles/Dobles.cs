@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
@@ -21,8 +21,13 @@ public sealed class RelojFijo : IRelojSistema
 /// </summary>
 public sealed class HashDeJuguete : IHashContrasenas
 {
-    public string Hash(string contrasena) => "hash:" + contrasena.Length + ":" +
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(contrasena)));
+    public int LlamadasHash { get; private set; }
+    public string Hash(string contrasena)
+    {
+        LlamadasHash++;
+        return "hash:" + contrasena.Length + ":" +
+            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(contrasena)));
+    }
     public bool Verifica(string contrasena, string hash) => Hash(contrasena) == hash;
 }
 
@@ -47,6 +52,17 @@ public sealed class ColaEnMemoria : INotificaciones
 {
     public List<Notificacion> Encoladas { get; } = new();
     public void Encolar(Notificacion aviso) => Encoladas.Add(aviso);
+
+    public Task<bool> ExisteAsync(string claveIdempotencia, CancellationToken ct = default) =>
+        Task.FromResult(Encoladas.Any(n => n.ClaveIdempotencia == claveIdempotencia));
+
+    public Task<int> AnularRecordatoriosAsync(Guid citaId, CancellationToken ct = default)
+    {
+        var vivos = Encoladas.Where(n => n.CitaId == citaId && n.Estado == EstadoEnvio.Programada
+            && n.Tipo is TipoNotificacion.Recordatorio24h or TipoNotificacion.Recordatorio2h).ToList();
+        foreach (var n in vivos) n.Anular();
+        return Task.FromResult(vivos.Count);
+    }
 }
 
 public sealed class AuditoriaEnMemoria : IAuditor
@@ -62,4 +78,25 @@ public sealed class CifradoDeJuguete : ICifradoDeDatos
         Encoding.UTF8.GetBytes(texto).Select(b => (byte)(b ^ 0x5A)).ToArray();
     public string Descifrar(byte[] datos) =>
         Encoding.UTF8.GetString(datos.Select(b => (byte)(b ^ 0x5A)).ToArray());
+}
+
+/// <summary>Doble que dice "filtrada" para una contrasena especifica (por defecto "password").</summary>
+public sealed class ContrasenasFiltradasFiltrada : IContrasenasFiltradas
+{
+    private readonly string _contrasenaFiltrada;
+
+    public ContrasenasFiltradasFiltrada(string contrasenaFiltrada = "password")
+    {
+        _contrasenaFiltrada = contrasenaFiltrada;
+    }
+
+    public Task<bool> EstaFiltradaAsync(string contrasena, CancellationToken ct = default)
+        => Task.FromResult(contrasena == _contrasenaFiltrada);
+}
+
+/// <summary>Doble que nunca dice "filtrada" (equivale a la opcion en false).</summary>
+public sealed class ContrasenasFiltradasNunca : IContrasenasFiltradas
+{
+    public Task<bool> EstaFiltradaAsync(string contrasena, CancellationToken ct = default)
+        => Task.FromResult(false);
 }
