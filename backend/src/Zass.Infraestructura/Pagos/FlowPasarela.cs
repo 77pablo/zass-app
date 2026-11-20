@@ -94,7 +94,6 @@ public sealed class FlowPasarela : IPasarelaDePagos
 
         var ordenados = parametros
             .Where(p => p.Key != "s")
-            .OrderBy(p => p.Key, StringComparer.Ordinal)
             .Select(p => $"{p.Key}{p.Value}")
             .Aggregate("", (a, b) => a + b);
 
