@@ -274,6 +274,7 @@ public class ProxiesDeConfianzaPruebas
             {
                 Content = JsonContent.Create(new
                 {
+                    tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true,
                     correo, contrasena = "contrasena-larga-1", nombre = "Prueba Falsa", rol = "buscador",
                 }),
             };
@@ -333,6 +334,7 @@ public class ProxiesDeConfianzaPruebas
             {
                 Content = JsonContent.Create(new
                 {
+                    tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true,
                     correo, contrasena = "contrasena-larga-1", nombre = "Prueba Proxy", rol = "buscador",
                 }),
             };

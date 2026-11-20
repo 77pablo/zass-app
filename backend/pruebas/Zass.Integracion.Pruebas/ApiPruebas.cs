@@ -269,7 +269,7 @@ public partial class ApiPruebas : IAsyncLifetime
 
         var alta = await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo, contrasena = "contrasena-larga-1", nombre = "Pablo Espinoza", rol = "prestador",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo, contrasena = "contrasena-larga-1", nombre = "Pablo Espinoza", rol = "prestador",
         });
         Assert.Equal(HttpStatusCode.Created, alta.StatusCode);
 
@@ -394,7 +394,7 @@ public partial class ApiPruebas : IAsyncLifetime
     {
         var respuesta = await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo = "no-es-un-correo", contrasena = "corta",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo = "no-es-un-correo", contrasena = "corta",
             nombre = "", rol = "administrador",
         });
 
@@ -407,12 +407,76 @@ public partial class ApiPruebas : IAsyncLifetime
         Assert.DoesNotContain("no-es-un-correo", cuerpo);
     }
 
+    // ------------------------------------- registro completo (decision de Pablo, 20-nov-2026)
+
+    [Fact]
+    public async Task Registrar_una_empresa_guarda_sus_datos_y_el_RUT_normalizado()
+    {
+        var correo = NuevoCorreo();
+        var cuerpoRut = Random.Shared.Next(70_000_000, 99_999_999);
+        var t = cuerpoRut.ToString();
+        var rut = $"{t[..2]}.{t[2..5]}.{t[5..]}-{Zass.Aplicacion.Comun.Rut.DigitoVerificador(cuerpoRut)}";   // con puntos, como lo escribe la gente
+
+        var respuesta = await _cliente.PostAsJsonAsync("/api/auth/registro", new
+        {
+            correo, contrasena = "contrasena-larga-1", nombre = "Ana Contacto", rol = "prestador",
+            tipo = "empresa", razonSocial = "Gasfiteria de Prueba SpA", rut,
+            telefono = "22 345 6789", mayorDeEdad = true,
+        });
+
+        Assert.Equal(HttpStatusCode.Created, respuesta.StatusCode);
+        using var ctx = ContextoDePrueba.Crear();
+        var u = await ctx.Usuarios.AsNoTracking().SingleAsync(x => x.Correo == correo);
+        Assert.Equal(TipoCuenta.Empresa, u.Tipo);
+        Assert.Equal($"{cuerpoRut}-{Zass.Aplicacion.Comun.Rut.DigitoVerificador(cuerpoRut)}", u.Rut);
+        Assert.Equal("Gasfiteria de Prueba SpA", u.RazonSocial);
+        Assert.NotNull(u.MayorDeEdadConfirmadoEn);
+        var perfil = await ctx.PerfilesPrestador.AsNoTracking().SingleAsync(p => p.UsuarioId == u.Id);
+        Assert.Equal("Gasfiteria de Prueba SpA", perfil.NombrePublico);
+    }
+
+    [Fact]
+    public async Task Un_RUT_ya_registrado_devuelve_409_y_no_crea_otra_cuenta()
+    {
+        var rut = DatosDeRegistro.Rut();
+        object Cuerpo(string correo) => new
+        {
+            correo, contrasena = "contrasena-larga-1", nombre = "Ana", rol = "buscador",
+            tipo = "particular", apellido = "Rojas", rut, telefono = "+56 9 1234 5678", mayorDeEdad = true,
+        };
+        Assert.Equal(HttpStatusCode.Created,
+            (await _cliente.PostAsJsonAsync("/api/auth/registro", Cuerpo(NuevoCorreo()))).StatusCode);
+
+        var segundo = NuevoCorreo();
+        var r = await _cliente.PostAsJsonAsync("/api/auth/registro", Cuerpo(segundo));
+
+        Assert.Equal(HttpStatusCode.Conflict, r.StatusCode);
+        using var ctx = ContextoDePrueba.Crear();
+        Assert.False(await ctx.Usuarios.AnyAsync(x => x.Correo == segundo));
+    }
+
+    [Fact]
+    public async Task Sin_tipo_RUT_telefono_ni_mayoria_de_edad_devuelve_400_con_cada_campo()
+    {
+        var r = await _cliente.PostAsJsonAsync("/api/auth/registro", new
+        {
+            correo = NuevoCorreo(), contrasena = "contrasena-larga-1", nombre = "Ana", rol = "buscador",
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
+        var cuerpo = await r.Content.ReadAsStringAsync();
+        Assert.Contains("Tipo", cuerpo);
+        Assert.Contains("Rut", cuerpo);
+        Assert.Contains("Telefono", cuerpo);
+        Assert.Contains("MayorDeEdad", cuerpo);
+    }
+
     [Fact]
     public async Task Pedir_el_rol_administrador_al_registrarse_se_rechaza()
     {
         var respuesta = await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo = NuevoCorreo(), contrasena = "contrasena-larga-1",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo = NuevoCorreo(), contrasena = "contrasena-larga-1",
             nombre = "Colado", rol = "administrador",
         });
 
@@ -1309,7 +1373,7 @@ public partial class ApiPruebas : IAsyncLifetime
             var correo = NuevoCorreo();
             Assert.Equal(HttpStatusCode.Created, (await _cliente.PostAsJsonAsync("/api/auth/registro", new
             {
-                correo, contrasena = "contrasena-larga-1", nombre = "Sin Verificar", rol = "buscador",
+                tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo, contrasena = "contrasena-larga-1", nombre = "Sin Verificar", rol = "buscador",
             })).StatusCode);
 
             // A proposito NO se llama a /api/auth/correo/verificar.
@@ -2258,7 +2322,7 @@ public partial class ApiPruebas : IAsyncLifetime
     {
         var respuesta = await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo, contrasena = "contrasena-larga-1", nombre = "Pablo Espinoza", rol,
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo, contrasena = "contrasena-larga-1", nombre = "Pablo Espinoza", rol,
         });
         Assert.Equal(HttpStatusCode.Created, respuesta.StatusCode);
     }

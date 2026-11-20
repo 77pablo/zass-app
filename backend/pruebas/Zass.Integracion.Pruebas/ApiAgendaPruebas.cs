@@ -53,7 +53,7 @@ public class ApiAgendaPruebas : IAsyncLifetime
 
         var prestadorReg = await tempCliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo = prestadorCorreo, contrasena = "contrasena-larga-1",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo = prestadorCorreo, contrasena = "contrasena-larga-1",
             nombre = "Pablo Espinoza", rol = "prestador",
         });
         Assert.Equal(HttpStatusCode.Created, prestadorReg.StatusCode);
@@ -195,7 +195,7 @@ public class ApiAgendaPruebas : IAsyncLifetime
         var correo = $"apiag-b-{Guid.NewGuid():N}-{_marca}@zass.local";
         Assert.Equal(HttpStatusCode.Created, (await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
         })).StatusCode);
 
         using (var ctx = ContextoDePrueba.Crear())
@@ -300,7 +300,7 @@ public class ApiAgendaPruebas : IAsyncLifetime
         var correo = $"apiag-b-{Guid.NewGuid():N}-{_marca}@zass.local";
         Assert.Equal(HttpStatusCode.Created, (await cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
         })).StatusCode);
 
         using (var ctx = ContextoDePrueba.Crear())
@@ -967,7 +967,7 @@ public class ApiAgendaPruebas : IAsyncLifetime
         var terceroCorreo = $"apiag-t-{Guid.NewGuid():N}-{_marca}@zass.local";
         Assert.Equal(HttpStatusCode.Created, (await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo = terceroCorreo, contrasena = "contrasena-larga-1", nombre = "Tercero", rol = "buscador",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo = terceroCorreo, contrasena = "contrasena-larga-1", nombre = "Tercero", rol = "buscador",
         })).StatusCode);
         using (var ctx = ContextoDePrueba.Crear())
         {
@@ -1332,7 +1332,7 @@ public class ApiAgendaPruebas : IAsyncLifetime
             var prestadorCorreo = $"apicl-{marca}@zass.local";
             var prestadorReg = await cliente.PostAsJsonAsync("/api/auth/registro", new
             {
-                correo = prestadorCorreo, contrasena = "contrasena-larga-1",
+                tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo = prestadorCorreo, contrasena = "contrasena-larga-1",
                 nombre = "Pablo Espinoza", rol = "prestador",
             });
             Assert.Equal(HttpStatusCode.Created, prestadorReg.StatusCode);
@@ -1418,7 +1418,7 @@ public class ApiAgendaPruebas : IAsyncLifetime
                 var buscadorCorreo = $"apicl-b-{marca}@zass.local";
                 var buscadorReg = await cliente.PostAsJsonAsync("/api/auth/registro", new
                 {
-                    correo = buscadorCorreo, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
+                    tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo = buscadorCorreo, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
                 });
                 Assert.Equal(HttpStatusCode.Created, buscadorReg.StatusCode);
 
