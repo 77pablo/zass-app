@@ -141,13 +141,28 @@ public class ApiTarjetasBloqueoAlertaPruebas : IAsyncLifetime
     {
         using var ctx = ContextoDePrueba.Crear();
         // Borrar TODOS los usuarios de prueba que empiezan con apitj- (de cualquier corrida anterior)
-        // Usamos TRUNCATE con session_replication_role para deshabilitar foreign keys temporalmente
-        // Incluimos todas las tablas que pueden tener datos de prueba
+        // Usamos un bloque PL/pgSQL para truncar solo tablas que existen
         await ctx.Database.ExecuteSqlRawAsync(
             """
-            SET session_replication_role = 'replica';
-            TRUNCATE TABLE tarjetas, perfiles_prestador, auditoria, notificaciones, sesiones, perfiles_buscador, usuarios, suscripciones, cupos_fundador, citas, citas_copia, trabajos_de_fondo RESTART IDENTITY CASCADE;
-            SET session_replication_role = 'origin';
+            DO $$
+            DECLARE
+                tablas TEXT[] := ARRAY[
+                    'tarjetas', 'perfiles_prestador', 'auditoria', 'notificaciones',
+                    'sesiones', 'perfiles_buscador', 'usuarios', 'suscripciones',
+                    'cupos_fundador', 'citas', 'citas_copia', 'trabajos_de_fondo'
+                ];
+                t TEXT;
+            BEGIN
+                SET session_replication_role = 'replica';
+                FOREACH t IN ARRAY tablas LOOP
+                    BEGIN
+                        EXECUTE format('TRUNCATE TABLE %I RESTART IDENTITY CASCADE', t);
+                    EXCEPTION WHEN undefined_table THEN
+                        -- ignorar tablas que no existen
+                    END;
+                END LOOP;
+                SET session_replication_role = 'origin';
+            END $$;
             """);
     }
 
