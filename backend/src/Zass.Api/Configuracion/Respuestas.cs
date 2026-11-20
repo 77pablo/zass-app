@@ -40,6 +40,9 @@ public static class Respuestas
         Fallas.ReglaDeNegocio => StatusCodes.Status422UnprocessableEntity,
         Fallas.Validacion => StatusCodes.Status400BadRequest,
         Fallas.VersionDesactualizada => StatusCodes.Status412PreconditionFailed,
+        Fallas.ArchivoDemasiadoGrande => StatusCodes.Status413PayloadTooLarge,
+        Fallas.TipoDeArchivoNoAceptado => StatusCodes.Status415UnsupportedMediaType,
+        Fallas.AlmacenamientoNoDisponible => StatusCodes.Status503ServiceUnavailable,
         _ => StatusCodes.Status400BadRequest,
     };
 
@@ -51,6 +54,9 @@ public static class Respuestas
         Fallas.ReglaDeNegocio => "Regla de negocio",
         Fallas.Validacion => "Datos inválidos",
         Fallas.VersionDesactualizada => "Versión desactualizada",
+        Fallas.ArchivoDemasiadoGrande => "Archivo demasiado grande",
+        Fallas.TipoDeArchivoNoAceptado => "Tipo de archivo no aceptado",
+        Fallas.AlmacenamientoNoDisponible => "Almacenamiento no disponible",
         _ => "Petición incorrecta",
     };
 }

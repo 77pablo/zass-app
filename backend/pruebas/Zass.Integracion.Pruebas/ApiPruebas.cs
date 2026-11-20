@@ -57,9 +57,17 @@ public sealed class Aplicacion : WebApplicationFactory<Program>
 
             // P19 (T49): en pruebas no consultamos HIBP para no salir a internet
             ["Zass:RevisarContrasenasFiltradas"] = "false",
+
+            // JQ-9: los archivos de las pruebas en su propia carpeta, nunca en la de desarrollo.
+            ["Zass:Archivos:Proveedor"] = "local",
+            ["Zass:Archivos:CarpetaLocal"] = CarpetaDeArchivos,
         };
         _reloj = reloj;
     }
+
+    /// <summary>Donde guardan los archivos las pruebas (JQ-9). Se puede vaciar sin perder nada.</summary>
+    public static readonly string CarpetaDeArchivos =
+        Path.Combine(Path.GetTempPath(), "zass-archivos-pruebas");
 
     protected override void ConfigureWebHost(IWebHostBuilder constructor)
     {
@@ -2348,6 +2356,11 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-23",
             "API-24",
             "API-25",
+            // JQ-9: los documentos de respaldo. API-26 es el del documento; quitar y ver son el
+            // mismo recurso con el metodo que faltaba.
+            "API-26",
+            "API-26-quitar",
+            "API-26-ver",
             "API-27",
             "API-28",
             "API-29",
@@ -2399,6 +2412,13 @@ public partial class ApiPruebas : IAsyncLifetime
             // terminacion `b` significa «el mismo recurso, el metodo que faltaba», y esto es otro
             // recurso y otra operacion. Documentado en api-rest.md seccion 11.
             "API-71",
+
+            // JQ-9: la foto del perfil (subir, quitar, servirla) y el documento que abre el
+            // Verificador con la credencial tomada.
+            "API-72",
+            "API-72-quitar",
+            "API-73",
+            "API-74",
 
             "API-resenas-publicas",
             "CS-02b",
