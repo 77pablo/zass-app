@@ -141,39 +141,36 @@ public class ApiTarjetasBloqueoAlertaPruebas : IAsyncLifetime
     {
         using var ctx = ContextoDePrueba.Crear();
         // Borrar TODOS los usuarios de prueba que empiezan con apitj- (de cualquier corrida anterior)
-        // Usamos CTEs para evitar problemas con subqueries y asegurar el orden correcto de borrado
+        // Tambien borrar tarjetas emitidas sin activar (perfil_prestador_id IS NULL) que sean de pruebas
+        // Ejecutamos cada DELETE por separado para evitar problemas de sintaxis CTE en PostgreSQL
         await ctx.Database.ExecuteSqlRawAsync(
             """
-            WITH usuarios_test AS (
-                SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%'
-            )
-            DELETE FROM tarjetas
-            WHERE perfil_prestador_id IN (SELECT id FROM perfiles_prestador WHERE usuario_id IN (SELECT id FROM usuarios_test))
+            DELETE FROM tarjetas WHERE perfil_prestador_id IN (SELECT id FROM perfiles_prestador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%'))
                OR (perfil_prestador_id IS NULL AND estado = 'Emitida');
-            WITH usuarios_test AS (
-                SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%'
-            )
-            DELETE FROM perfiles_prestador WHERE usuario_id IN (SELECT id FROM usuarios_test);
-            WITH usuarios_test AS (
-                SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%'
-            )
-            DELETE FROM auditoria WHERE actor_id IN (SELECT id FROM usuarios_test) OR entidad_id IN (SELECT id FROM usuarios_test);
-            WITH usuarios_test AS (
-                SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%'
-            )
-            DELETE FROM notificaciones WHERE destinatario_id IN (SELECT id FROM usuarios_test);
-            WITH usuarios_test AS (
-                SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%'
-            )
-            DELETE FROM sesiones WHERE usuario_id IN (SELECT id FROM usuarios_test);
-            WITH usuarios_test AS (
-                SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%'
-            )
-            DELETE FROM perfiles_buscador WHERE usuario_id IN (SELECT id FROM usuarios_test);
-            WITH usuarios_test AS (
-                SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%'
-            )
-            DELETE FROM usuarios WHERE id IN (SELECT id FROM usuarios_test);
+            """);
+        await ctx.Database.ExecuteSqlRawAsync(
+            """
+            DELETE FROM perfiles_prestador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
+            """);
+        await ctx.Database.ExecuteSqlRawAsync(
+            """
+            DELETE FROM auditoria WHERE actor_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%') OR entidad_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
+            """);
+        await ctx.Database.ExecuteSqlRawAsync(
+            """
+            DELETE FROM notificaciones WHERE destinatario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
+            """);
+        await ctx.Database.ExecuteSqlRawAsync(
+            """
+            DELETE FROM sesiones WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
+            """);
+        await ctx.Database.ExecuteSqlRawAsync(
+            """
+            DELETE FROM perfiles_buscador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
+            """);
+        await ctx.Database.ExecuteSqlRawAsync(
+            """
+            DELETE FROM usuarios WHERE correo ILIKE 'apitj-%';
             """);
     }
 
