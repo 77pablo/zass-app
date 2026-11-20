@@ -141,23 +141,30 @@ public class ApiTarjetasBloqueoAlertaPruebas : IAsyncLifetime
     {
         using var ctx = ContextoDePrueba.Crear();
         // Borrar TODOS los usuarios de prueba que empiezan con apitj- (de cualquier corrida anterior)
-        // Tambien borrar tarjetas emitidas sin activar (perfil_prestador_id IS NULL) que sean de pruebas
-        // Usamos el mismo patrón que ApiTarjetasEmitirActivarPruebas, extendido con tablas adicionales
+        // Usamos un bloque PL/pgSQL para manejar tablas que pueden no existir
         await ctx.Database.ExecuteSqlRawAsync(
             """
-            DELETE FROM tarjetas WHERE perfil_prestador_id IN (SELECT id FROM perfiles_prestador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%'))
-               OR (perfil_prestador_id IS NULL AND estado = 'Emitida');
-            DELETE FROM citas_copia;
-            DELETE FROM citas;
-            DELETE FROM cupos_fundador;
-            DELETE FROM suscripciones;
-            DELETE FROM perfiles_prestador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
-            DELETE FROM auditoria WHERE actor_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%') OR entidad_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
-            DELETE FROM notificaciones WHERE destinatario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
-            DELETE FROM sesiones WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
-            DELETE FROM perfiles_buscador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
-            DELETE FROM trabajos_de_fondo;
-            DELETE FROM usuarios WHERE correo ILIKE 'apitj-%';
+            DO $$
+            DECLARE
+                tablas_borrado TEXT[] := ARRAY[
+                    'tarjetas', 'citas_copia', 'citas', 'cupos_fundador', 'suscripciones',
+                    'perfiles_prestador', 'auditoria', 'notificaciones', 'sesiones',
+                    'perfiles_buscador', 'trabajos_de_fondo', 'usuarios'
+                ];
+                t TEXT;
+            BEGIN
+                -- Tablas con foreign keys: borrar en orden correcto
+                FOREACH t IN ARRAY ARRAY['tarjetas', 'citas_copia', 'citas', 'cupos_fundador', 'suscripciones',
+                                         'perfiles_prestador', 'auditoria', 'notificaciones',
+                                         'sesiones', 'perfiles_buscador', 'trabajos_de_fondo', 'usuarios']
+                LOOP
+                    BEGIN
+                        EXECUTE format('DELETE FROM %I', t);
+                    EXCEPTION WHEN undefined_table THEN
+                        -- ignorar tablas que no existen
+                    END;
+                END LOOP;
+            END $$;
             """);
     }
 
