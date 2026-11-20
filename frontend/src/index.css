@@ -926,7 +926,7 @@ option { background: var(--blanco); color: var(--pizarra); }
   background: var(--celeste-suave); border: 1px solid var(--celeste);
 }
 .agenda-dias { list-style: none; margin: 16px 0 8px; padding: 0; display: grid; gap: 16px; }
-.agenda-dia { margin: 0 0 8px; font-size: 0.9375rem; font-weight: 700; text-transform: capitalize; color: var(--suave); }
+.agenda-dia { margin: 0 0 8px; font-size: 0.9375rem; font-weight: 700; color: var(--suave); }
 .agenda-horas { display: flex; flex-wrap: wrap; gap: 8px; }
 .hora {
   min-width: 68px; min-height: 44px; padding: 0 14px; cursor: pointer; font: inherit; font-weight: 700; font-variant-numeric: tabular-nums;
@@ -954,7 +954,7 @@ option { background: var(--blanco); color: var(--pizarra); }
 /* ---------------------------------------------------------------- mis citas */
 .citas-dias { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 22px; }
 .citas-dia {
-  margin: 0; font-size: 0.9375rem; font-weight: 700; text-transform: capitalize;
+  margin: 0; font-size: 0.9375rem; font-weight: 700;
   color: var(--suave); letter-spacing: 0.01em;
 }
 /* Estilo iPhone: las citas de un dia son una LISTA AGRUPADA (una tarjeta blanca, una celda por cita,
