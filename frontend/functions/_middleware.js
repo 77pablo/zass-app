@@ -78,50 +78,129 @@ function cookieDelPase(cabecera) {
   return null
 }
 
+/*
+ * El icono de la marca, el mismo de public/icono-zass.svg (#100): Z pizarra y el «!» en un sello
+ * ambar. Va ESCRITO aqui y no como <img src="/icono-zass.svg"> porque, con el sitio cerrado, este
+ * middleware tambien contesta /icono-zass.svg... con esta misma pagina. Nada de la pagina puede
+ * venir del propio sitio: lo vigila mantenimiento-guia-v3.prueba.js.
+ */
+const ICONO_Z = 'M120 128H352V184L200 328H352V384H120V328L272 184H120Z'
+const ICONO = `<svg viewBox="0 0 512 512" width="56" height="56" aria-hidden="true" focusable="false">`
+  + '<rect width="512" height="512" rx="112" fill="#00A6FF"/>'
+  + '<g transform="translate(-40 -44)">'
+  + `<path d="${ICONO_Z}" fill="#111827"/>`
+  + '<circle cx="372" cy="372" r="92" fill="#FFB800" stroke="#00A6FF" stroke-width="16"/>'
+  + '<rect x="358" y="314" width="28" height="70" rx="14" fill="#111827"/>'
+  + '<circle cx="372" cy="414" r="15" fill="#111827"/>'
+  + '</g></svg>'
+
+/** El mismo icono como favicon: un data: URI (la CSP permite img-src data:). */
+const FAVICON = `data:image/svg+xml,${encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg"${ICONO.slice(4).replace(' width="56" height="56" aria-hidden="true" focusable="false"', '')}`,
+)}`
+
+/*
+ * La pagina, con la guia v3 (aprobada por Pablo el 17-nov-2026): blanco y pizarra de base, una
+ * franja celeste de identidad con texto pizarra (6,7:1), el ambar solo en el boton del correo
+ * (pizarra encima: 10,2:1) y el pie como escena pizarra. Sin degradados, sin naranja ni rojo.
+ * Primero el celular: todo en una columna, el boton a todo el ancho y de 48 px de alto.
+ * Los colores son los mismos tokens de src/index.css, con el mismo nombre.
+ */
 function paginaDeMantenimiento() {
   return `<!doctype html>
 <html lang="es-CL">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#00A6FF">
+<meta name="color-scheme" content="light">
 <title>${TEXTOS.titulo}</title>
+<link rel="icon" type="image/svg+xml" href="${FAVICON}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700;800&display=swap" rel="stylesheet">
 <style>
-  :root { --amarillo: #F6C81E; --tinta: #1A1A1A; --crema: #FDF8E7; }
+  :root {
+    --blanco: #ffffff; --pizarra: #111827; --suave: #4b5563; --gris: #f3f4f6;
+    --linea-fuerte: #d1d5db; --celeste: #00a6ff; --ambar: #ffb800; --ambar-hondo: #f0ab00;
+    color-scheme: light;
+  }
   * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
   body {
-    margin: 0; min-height: 100vh; display: grid; place-items: center;
-    padding: 24px; background: var(--crema); color: var(--tinta);
-    font-family: Montserrat, "Segoe UI", system-ui, -apple-system, sans-serif;
-    line-height: 1.6;
+    margin: 0; min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column;
+    background: var(--blanco); color: var(--pizarra);
+    font-family: Montserrat, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-weight: 500; line-height: 1.6; -webkit-tap-highlight-color: transparent;
   }
-  main { max-width: 34rem; text-align: center; }
-  .marca {
-    font-size: clamp(2.5rem, 12vw, 4rem); font-weight: 800; letter-spacing: -0.02em;
-    margin: 0 0 8px;
+  .franja {
+    background: var(--celeste); color: var(--pizarra);
+    padding: calc(20px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 20px max(16px, env(safe-area-inset-left));
   }
-  .marca span { color: var(--amarillo); -webkit-text-stroke: 1px var(--tinta); }
-  h1 { font-size: clamp(1.25rem, 5vw, 1.6rem); margin: 0 0 16px; }
+  /* La franja, el texto y el pie arrancan en la misma columna: 34rem de contenido + 16px por lado. */
+  .franja-dentro, .pie-dentro { width: 100%; max-width: 34rem; margin: 0 auto; }
+  main { width: min(100%, calc(34rem + 32px)); margin: 0 auto; }
+  .franja-dentro { display: flex; align-items: center; gap: 12px; }
+  .franja svg { display: block; flex: none; width: 56px; height: 56px; border-radius: 14px; box-shadow: 0 0 0 2px var(--pizarra); }
+  .marca { margin: 0; font-size: 2rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1; display: flex; align-items: center; }
+  .sello {
+    display: inline-grid; place-items: center; width: 1.1em; height: 1.1em; margin-left: 0.06em;
+    border-radius: 50%; background: var(--ambar); color: var(--pizarra); font-size: 0.8em;
+  }
+  main { flex: 1; padding: 32px max(16px, env(safe-area-inset-right)) 40px max(16px, env(safe-area-inset-left)); }
+  h1 { font-size: clamp(1.5rem, 6.4vw, 2rem); font-weight: 800; line-height: 1.2; letter-spacing: -0.01em; margin: 0 0 16px; text-wrap: balance; }
   p { margin: 0 0 16px; }
+  .cuerpo { color: var(--suave); font-size: 1.0625rem; text-wrap: pretty; }
   .destacado {
-    background: #fff; border: 2px solid var(--tinta); border-radius: 14px;
-    padding: 16px 20px; margin-top: 24px; text-align: left;
+    background: var(--gris); border: 1px solid var(--linea-fuerte); border-radius: 16px;
+    padding: 20px; margin-top: 28px;
   }
-  a { color: var(--tinta); font-weight: 700; }
-  footer { margin-top: 28px; font-size: 0.9rem; opacity: 0.75; }
+  .destacado p { text-wrap: pretty; }
+  .correo {
+    display: flex; align-items: center; justify-content: center; min-height: 48px; width: 100%;
+    padding: 12px 20px; border-radius: 12px; background: var(--ambar); color: var(--pizarra);
+    font-weight: 700; text-decoration: none; overflow-wrap: anywhere; text-align: center;
+    touch-action: manipulation; transition: background-color 150ms ease;
+  }
+  .correo:hover { background: var(--ambar-hondo); text-decoration: underline; }
+  .correo:focus-visible { outline: 3px solid var(--pizarra); outline-offset: 3px; }
+  .pie {
+    background: var(--pizarra); color: var(--blanco); font-weight: 700; font-size: 0.9375rem;
+    padding: 20px max(16px, env(safe-area-inset-right)) calc(20px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  }
+  /* En un celular de 320 px el correo no cabe en una linea con 20 px de relleno y se partia en «.c / om». */
+  @media (max-width: 359px) {
+    .destacado { padding: 16px; }
+    .correo { padding-left: 12px; padding-right: 12px; font-size: 0.9375rem; }
+  }
+  @media (min-width: 720px) {
+    .franja { padding-top: calc(32px + env(safe-area-inset-top)); padding-bottom: 32px; }
+    main { padding-top: 56px; padding-bottom: 64px; }
+    h1 { font-size: 2.5rem; }
+    .cuerpo { font-size: 1.125rem; }
+    .destacado { padding: 24px 28px; }
+    .correo { display: inline-flex; width: auto; }
+  }
+  @media (prefers-reduced-motion: reduce) { .correo { transition: none; } }
 </style>
 </head>
 <body>
+<header class="franja">
+  <div class="franja-dentro">
+    ${ICONO}
+    <p class="marca" translate="no">ZASS<span class="sello">!</span></p>
+  </div>
+</header>
 <main>
-  <p class="marca">ZAS<span>S!</span></p>
   <h1>${TEXTOS.encabezado}</h1>
-  <p>${TEXTOS.cuerpo}</p>
+  <p class="cuerpo">${TEXTOS.cuerpo}</p>
   <div class="destacado">
     <p>${TEXTOS.prestadores}</p>
-    <p style="margin:0"><a href="mailto:${TEXTOS.correo}">${TEXTOS.correo}</a></p>
+    <a class="correo" href="mailto:${TEXTOS.correo}" translate="no">${TEXTOS.correo}</a>
   </div>
-  <footer>${TEXTOS.pie}</footer>
 </main>
+<footer class="pie"><div class="pie-dentro">${TEXTOS.pie}</div></footer>
 </body>
 </html>`
 }
