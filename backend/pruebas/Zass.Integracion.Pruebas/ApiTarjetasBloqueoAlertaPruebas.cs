@@ -141,22 +141,43 @@ public class ApiTarjetasBloqueoAlertaPruebas : IAsyncLifetime
     {
         using var ctx = ContextoDePrueba.Crear();
         // Borrar TODOS los usuarios de prueba que empiezan con apitj- (de cualquier corrida anterior)
-        // Usamos DELETE en orden correcto para respetar foreign keys
-        // Incluimos todas las tablas que pueden tener datos de prueba
+        // Usamos un bloque PL/pgSQL para manejar tablas que pueden no existir (ej. citas_copia)
         await ctx.Database.ExecuteSqlRawAsync(
             """
-            DELETE FROM tarjetas WHERE perfil_prestador_id IS NOT NULL;
-            DELETE FROM tarjetas WHERE perfil_prestador_id IS NULL AND estado = 'Emitida';
-            DELETE FROM citas_copia;
-            DELETE FROM citas;
-            DELETE FROM cupos_fundador;
-            DELETE FROM suscripciones;
-            DELETE FROM perfiles_prestador;
-            DELETE FROM auditoria;
-            DELETE FROM notificaciones;
-            DELETE FROM sesiones;
-            DELETE FROM perfiles_buscador;
-            DELETE FROM usuarios;
+            DO $$
+            BEGIN
+                -- Tablas que siempre existen
+                DELETE FROM tarjetas WHERE perfil_prestador_id IS NOT NULL;
+                DELETE FROM tarjetas WHERE perfil_prestador_id IS NULL AND estado = 'Emitida';
+                DELETE FROM citas;
+                DELETE FROM cupos_fundador;
+                DELETE FROM suscripciones;
+                DELETE FROM perfiles_prestador;
+                DELETE FROM auditoria;
+                DELETE FROM notificaciones;
+                DELETE FROM sesiones;
+                DELETE FROM perfiles_buscador;
+                DELETE FROM usuarios;
+                
+                -- Tablas que pueden no existir en algunos entornos
+                BEGIN
+                    DELETE FROM citas_copia;
+                EXCEPTION WHEN undefined_table THEN
+                    NULL; -- ignorar si la tabla no existe
+                END;
+                
+                BEGIN
+                    DELETE FROM trabajos_de_fondo;
+                EXCEPTION WHEN undefined_table THEN
+                    NULL;
+                END;
+                
+                BEGIN
+                    DELETE FROM __EFMigrationsHistory;
+                EXCEPTION WHEN undefined_table THEN
+                    NULL;
+                END;
+            END $$;
             """);
     }
 
