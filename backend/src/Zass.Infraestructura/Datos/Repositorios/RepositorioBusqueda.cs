@@ -208,7 +208,8 @@ public sealed class RepositorioBusquedaEfCore : IRepositorioBusqueda
                     .FirstOrDefault(),
                 _ctx.Credenciales.Any(cr =>
                     cr.PerfilPrestadorId == p.Id
-                    && cr.Estado == Zass.Dominio.Comun.EstadoCredencial.Verificada)))
+                    && cr.Estado == Zass.Dominio.Comun.EstadoCredencial.Verificada),
+                p.UrlFoto))   // JQ-15: la foto publica de JQ-9
             .ToListAsync(ct);
 
         return new ResumenCrudo(total, porZona, porRubro, recientesFilas, porRegion);

@@ -273,7 +273,7 @@ public sealed class ServicioBusqueda : IServicioBusqueda
             crudo.PorZona.Select(z => new PersonasPorZonaDto(z.Id, z.Personas)).ToList(),
             crudo.PorRubro.Select(r => new PersonasPorRubroDto((short)r.Id, r.Personas)).ToList(),
             crudo.Recientes.Select(r => new RecienLlegadoDto(
-                r.Slug, r.NombrePublico, r.RubroNombre, r.ZonaPrincipal, r.Verificada)).ToList(),
+                r.Slug, r.NombrePublico, r.RubroNombre, r.ZonaPrincipal, r.Verificada, r.UrlFoto)).ToList(),
             (crudo.PorRegion ?? Array.Empty<ConteoDeRegion>())
                 .Select(r => new PersonasPorRegionDto(r.Region, r.Personas)).ToList());
     }
