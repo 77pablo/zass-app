@@ -209,11 +209,16 @@ export async function enviar<T>(
    * intencion, y una clave nueva por reintento haria que el servidor la tomara por otra.
    */
   cabeceras: Record<string, string> = {},
+  /**
+   * `keepalive`: que la peticion sobreviva si la pagina se va enseguida (un `tel:` o un
+   * `mailto:` que abre otra aplicacion). Solo lo pide quien lo necesita; por defecto, no.
+   */
+  opciones: { keepalive?: boolean } = {},
 ): Promise<T> {
   const r = await conRenovacion(ruta, async () => {
-    let intento = await unIntento(ruta, cuerpo, metodo, await tokenCsrf(), cabeceras)
+    let intento = await unIntento(ruta, cuerpo, metodo, await tokenCsrf(), cabeceras, opciones)
     if (intento.status === 403) {
-      intento = await unIntento(ruta, cuerpo, metodo, await tokenCsrf(true), cabeceras)
+      intento = await unIntento(ruta, cuerpo, metodo, await tokenCsrf(true), cabeceras, opciones)
     }
     return intento
   })
@@ -224,8 +229,10 @@ export async function enviar<T>(
 function unIntento(
   ruta: string, cuerpo: unknown, metodo: string, token: string,
   cabeceras: Record<string, string> = {},
+  opciones: { keepalive?: boolean } = {},
 ): Promise<Response> {
   return llamar(ruta, {
+    ...(opciones.keepalive ? { keepalive: true } : {}),
     method: metodo,
     credentials: 'include',
     headers: {
