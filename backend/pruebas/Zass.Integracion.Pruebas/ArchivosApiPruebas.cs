@@ -67,8 +67,11 @@ public partial class ApiPruebas
 
     // ================================================================ la foto
 
+    /// <summary>La foto chica que acompaña a la grande: «…/abc.webp» → «…/abc-96.webp».</summary>
+    private static string Chica(string urlGrande) => urlGrande.Replace(".webp", "-96.webp");
+
     [Fact]
-    public async Task La_foto_se_reduce_en_el_servidor_y_se_sirve_con_cache_inmutable()
+    public async Task La_foto_se_guarda_en_dos_cuadrados_webp_de_288_y_96_con_cache_inmutable()
     {
         await UnPrestadorConSesionAsync();
 
@@ -76,16 +79,22 @@ public partial class ApiPruebas
 
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
         var url = await UrlFotoDeAsync(r);
-        Assert.StartsWith("/api/archivos/fotos/", url);
+        Assert.Matches("^/api/archivos/fotos/[0-9a-f]{32}\\.webp$", url);
 
-        var servida = await _cliente.GetAsync(url);
-        Assert.Equal(HttpStatusCode.OK, servida.StatusCode);
-        Assert.Equal("image/jpeg", servida.Content.Headers.ContentType!.MediaType);
-        Assert.Contains("immutable", servida.Headers.CacheControl!.ToString());
+        foreach (var (direccion, lado) in new[] { (url, 288), (Chica(url), 96) })
+        {
+            var servida = await _cliente.GetAsync(direccion);
+            Assert.Equal(HttpStatusCode.OK, servida.StatusCode);
+            Assert.Equal("image/webp", servida.Content.Headers.ContentType!.MediaType);
+            Assert.Contains("immutable", servida.Headers.CacheControl!.ToString());
 
-        var info = Image.Identify(await servida.Content.ReadAsByteArrayAsync());
-        Assert.Equal(800, info.Width);    // el lado mayor quedó en 800
-        Assert.Equal(400, info.Height);   // y la proporción se respeta
+            var bytes = await servida.Content.ReadAsByteArrayAsync();
+            var info = Image.Identify(bytes);
+            Assert.Equal(lado, info.Width);    // una foto apaisada queda en un cuadrado...
+            Assert.Equal(lado, info.Height);   // ...recortado al centro, no aplastado
+            // Una cara de 288 px en WebP no puede pesar como la foto original del celular.
+            Assert.True(bytes.Length < 40_000, $"La foto de {lado} px pesa {bytes.Length} bytes.");
+        }
     }
 
     [Fact]
@@ -97,10 +106,14 @@ public partial class ApiPruebas
         var r = await SubirAsync("/api/mi/foto", UnaImagen(300, 300, marcaEnExif: marca), "con-exif.jpg", "image/jpeg");
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
 
-        var bytes = await (await _cliente.GetAsync(await UrlFotoDeAsync(r))).Content.ReadAsByteArrayAsync();
+        var url = await UrlFotoDeAsync(r);
+        foreach (var direccion in new[] { url, Chica(url) })
+        {
+            var bytes = await (await _cliente.GetAsync(direccion)).Content.ReadAsByteArrayAsync();
 
-        Assert.DoesNotContain(marca, Encoding.ASCII.GetString(bytes));
-        Assert.Null(Image.Identify(bytes).Metadata.ExifProfile);
+            Assert.DoesNotContain(marca, Encoding.ASCII.GetString(bytes));
+            Assert.Null(Image.Identify(bytes).Metadata.ExifProfile);
+        }
     }
 
     [Fact]
@@ -136,11 +149,15 @@ public partial class ApiPruebas
         var segunda = await UrlFotoDeAsync(await SubirAsync("/api/mi/foto", UnaImagen(200, 200, png: true), "b.png", "image/png"));
 
         Assert.NotEqual(primera, segunda);
+        // Una foto son dos archivos: reemplazarla se lleva los dos de la anterior.
         Assert.Equal(HttpStatusCode.NotFound, (await _cliente.GetAsync(primera)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _cliente.GetAsync(Chica(primera))).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await _cliente.GetAsync(segunda)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _cliente.GetAsync(Chica(segunda))).StatusCode);
 
         Assert.Equal(HttpStatusCode.NoContent, (await BorrarConCsrfAsync("/api/mi/foto")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await _cliente.GetAsync(segunda)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _cliente.GetAsync(Chica(segunda))).StatusCode);
     }
 
     [Fact]
@@ -159,6 +176,7 @@ public partial class ApiPruebas
     [InlineData("/api/archivos/fotos/..%2F..%2Fappsettings.json")]
     [InlineData("/api/archivos/fotos/no-es-una-clave.jpg")]
     [InlineData("/api/archivos/fotos/0123456789abcdef0123456789abcdef.pdf")]
+    [InlineData("/api/archivos/fotos/0123456789abcdef0123456789abcdef-288.webp")]
     public async Task Servir_una_foto_con_un_nombre_que_no_armamos_nosotros_responde_404(string url)
     {
         Assert.Equal(HttpStatusCode.NotFound, (await _cliente.GetAsync(url)).StatusCode);

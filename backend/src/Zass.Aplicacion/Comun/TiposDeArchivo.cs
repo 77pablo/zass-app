@@ -70,8 +70,20 @@ public static partial class TiposDeArchivo
     /// </summary>
     public static bool EsClaveValida(string? clave) => clave is not null && FormaDeClave().IsMatch(clave);
 
-    [GeneratedRegex("^(fotos|documentos)/[0-9a-f]{32}\\.(pdf|jpg|png|webp)$", RegexOptions.CultureInvariant)]
+    /// <summary>
+    /// Fotos: WebP, en su tamaño grande o en el chico (sufijo <see cref="SufijoChica"/>).
+    /// Documentos: PDF, JPG o PNG. Nada más tiene forma de clave.
+    /// </summary>
+    [GeneratedRegex("^(fotos/[0-9a-f]{32}(-96)?\\.webp|documentos/[0-9a-f]{32}\\.(pdf|jpg|png))$",
+        RegexOptions.CultureInvariant)]
     private static partial Regex FormaDeClave();
+
+    /// <summary>Lo que distingue la foto chica de la grande en su clave: «fotos/abc…-96.webp».</summary>
+    public const string SufijoChica = "-96";
+
+    /// <summary>La clave de la foto chica que acompaña a una grande.</summary>
+    public static string ClaveChica(string claveGrande) =>
+        claveGrande[..claveGrande.LastIndexOf('.')] + SufijoChica + claveGrande[claveGrande.LastIndexOf('.')..];
 
     /// <summary>
     /// El nombre original, tal como se le muestra a su dueño y al Verificador: sin carpetas, sin

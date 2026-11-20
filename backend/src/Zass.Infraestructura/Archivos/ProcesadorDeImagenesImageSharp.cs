@@ -2,6 +2,7 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats;
 using SixLabors.ImageSharp.Formats.Jpeg;
 using SixLabors.ImageSharp.Formats.Png;
+using SixLabors.ImageSharp.Formats.Webp;
 using SixLabors.ImageSharp.Processing;
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
@@ -28,24 +29,41 @@ public sealed class ProcesadorDeImagenesImageSharp : IProcesadorDeImagenes
 
     private static readonly DecoderOptions Opciones = new() { MaxFrames = 1 };
 
-    public async Task<Resultado<byte[]>> PrepararFotoAsync(
-        Stream imagen, int ladoMaximo, CancellationToken ct = default)
+    /// <summary>
+    /// WebP con perdida y calidad 80: para una cara de 96 a 288 px no se nota la diferencia con el
+    /// original y pesa del orden de 5 a 20 KB. Lo soportan todos los navegadores actuales.
+    /// </summary>
+    private static readonly WebpEncoder CodificadorDeFoto = new()
+    {
+        FileFormat = WebpFileFormatType.Lossy,
+        Quality = 80,
+    };
+
+    public async Task<Resultado<FotoPreparada>> PrepararFotoAsync(
+        Stream imagen, int ladoGrande, int ladoChico, CancellationToken ct = default)
     {
         var cargada = await CargarAsync(imagen, ct);
-        if (!cargada.Exito) return Resultado.Falla<byte[]>(cargada.Codigo!, cargada.Mensaje!);
+        if (!cargada.Exito) return Resultado.Falla<FotoPreparada>(cargada.Codigo!, cargada.Mensaje!);
 
         using var img = cargada.Valor!;
-        img.Mutate(x =>
-        {
-            x.AutoOrient();
-            if (img.Width > ladoMaximo || img.Height > ladoMaximo)
-                x.Resize(new ResizeOptions { Mode = ResizeMode.Max, Size = new Size(ladoMaximo, ladoMaximo) });
-        });
+
+        // Cuadrado centrado del tamaño grande. ResizeMode.Crop llena el cuadrado y recorta lo que
+        // sobra por los lados: es lo mismo que hace object-fit: cover en el circulo, pero hecho una
+        // vez aqui en vez de mandar pixeles que nadie va a ver.
+        img.Mutate(x => x
+            .AutoOrient()
+            .Resize(new ResizeOptions { Mode = ResizeMode.Crop, Size = new Size(ladoGrande, ladoGrande) }));
         QuitarMetadatos(img);
 
-        using var salida = new MemoryStream();
-        await img.SaveAsJpegAsync(salida, new JpegEncoder { Quality = 82 }, ct);
-        return Resultado.Ok(salida.ToArray());
+        using var grande = new MemoryStream();
+        await img.SaveAsWebpAsync(grande, CodificadorDeFoto, ct);
+
+        using var chica = img.Clone(x => x.Resize(ladoChico, ladoChico));
+        QuitarMetadatos(chica);
+        using var salidaChica = new MemoryStream();
+        await chica.SaveAsWebpAsync(salidaChica, CodificadorDeFoto, ct);
+
+        return Resultado.Ok(new FotoPreparada(grande.ToArray(), salidaChica.ToArray()));
     }
 
     public async Task<Resultado<byte[]>> LimpiarImagenAsync(

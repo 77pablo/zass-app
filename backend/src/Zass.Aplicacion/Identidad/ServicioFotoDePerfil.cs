@@ -21,11 +21,17 @@ namespace Zass.Aplicacion.Identidad;
 /// </summary>
 public sealed class ServicioFotoDePerfil
 {
-    /// <summary>Lo maximo que se acepta subir. Lo que se GUARDA es mucho menos: ver <see cref="LadoMaximo"/>.</summary>
+    /// <summary>Lo maximo que se acepta subir. Lo que se GUARDA es mucho menos: ver <see cref="LadoGrande"/>.</summary>
     public const long TamanoMaximo = 10 * 1024 * 1024;
 
-    /// <summary>El lado mayor de la foto guardada, en pixeles. Sobra para una ficha y pesa poco.</summary>
-    public const int LadoMaximo = 800;
+    /// <summary>
+    /// Los dos tamaños que se guardan, en pixeles y cuadrados. En la web la foto se ve, como mucho,
+    /// en un circulo de 96 px (la ficha); 288 = 96 x 3 cubre las pantallas de densidad 3x. La chica
+    /// (96) sirve a las tarjetas y a la busqueda (34 y 44 px, hasta densidad 2x). El navegador elige
+    /// con srcset (ver Monograma.tsx): nunca baja la grande para pintar un circulo de 44 px.
+    /// </summary>
+    public const int LadoGrande = 288;
+    public const int LadoChico = 96;
 
     /// <summary>De donde la sirve la API. Ver EndpointsArchivos.</summary>
     public const string RutaPublica = "/api/archivos/fotos/";
@@ -80,18 +86,33 @@ public sealed class ServicioFotoDePerfil
             return Resultado.Falla<string>(Fallas.TipoDeArchivoNoAceptado, "Usa una foto JPG, PNG o WebP.");
 
         using var entrada = new MemoryStream(bytes, writable: false);
-        var preparada = await _imagenes.PrepararFotoAsync(entrada, LadoMaximo, ct);
+        var preparada = await _imagenes.PrepararFotoAsync(entrada, LadoGrande, LadoChico, ct);
         if (!preparada.Exito || preparada.Valor is null)
             return Resultado.Falla<string>(preparada.Codigo ?? Fallas.TipoDeArchivoNoAceptado,
                 preparada.Mensaje ?? "No pudimos leer esa foto. Prueba con otra.");
 
-        var clave = TiposDeArchivo.NuevaClave(TiposDeArchivo.CarpetaFotos, TipoArchivo.Jpeg);
-        using (var salida = new MemoryStream(preparada.Valor, writable: false))
+        var clave = TiposDeArchivo.NuevaClave(TiposDeArchivo.CarpetaFotos, TipoArchivo.Webp);
+        var claveChica = TiposDeArchivo.ClaveChica(clave);
+        var mime = TiposDeArchivo.Mime(TipoArchivo.Webp);
+
+        // Primero la chica y despues la grande: si la grande falla, se borra la chica y no queda
+        // ninguna a medias. La que manda (la que va en UrlFoto) es la grande.
+        using (var salida = new MemoryStream(preparada.Valor.Chica, writable: false))
         {
-            var guardada = await _almacen.GuardarAsync(clave, salida, TiposDeArchivo.Mime(TipoArchivo.Jpeg), ct);
+            var guardada = await _almacen.GuardarAsync(claveChica, salida, mime, ct);
             if (!guardada.Exito)
                 return Resultado.Falla<string>(Fallas.AlmacenamientoNoDisponible,
                     guardada.Mensaje ?? "No pudimos guardar la foto. Intenta de nuevo.");
+        }
+        using (var salida = new MemoryStream(preparada.Valor.Grande, writable: false))
+        {
+            var guardada = await _almacen.GuardarAsync(clave, salida, mime, ct);
+            if (!guardada.Exito)
+            {
+                await _almacen.BorrarAsync(claveChica, CancellationToken.None);
+                return Resultado.Falla<string>(Fallas.AlmacenamientoNoDisponible,
+                    guardada.Mensaje ?? "No pudimos guardar la foto. Intenta de nuevo.");
+            }
         }
 
         var anterior = ClaveDe(perfil.UrlFoto);
@@ -103,7 +124,7 @@ public sealed class ServicioFotoDePerfil
 
         _auditor.Registrar(Auditar.Entrada(
             anterior is null ? "subir_foto" : "reemplazar_foto", "perfil_prestador", perfil.Id, _reloj.Ahora,
-            actorId: usuarioId, contexto: new { bytes = preparada.Valor.Length }));
+            actorId: usuarioId, contexto: new { bytes = preparada.Valor.Grande.Length + preparada.Valor.Chica.Length }));
 
         try
         {
@@ -112,13 +133,13 @@ public sealed class ServicioFotoDePerfil
         catch
         {
             // CU-05 «el almacenamiento no guarda huérfanos»: si la base no la registró, se borra.
-            await _almacen.BorrarAsync(clave, CancellationToken.None);
+            await BorrarAmbasAsync(clave);
             throw;
         }
 
         // La anterior se borra DESPUÉS de guardar: si se borrara antes y la base fallara, el
         // perfil apuntaría a una foto que ya no existe.
-        if (anterior is not null) await _almacen.BorrarAsync(anterior, CancellationToken.None);
+        if (anterior is not null) await BorrarAmbasAsync(anterior);
 
         return Resultado.Ok(perfil.UrlFoto);
     }
@@ -138,7 +159,14 @@ public sealed class ServicioFotoDePerfil
             "quitar_foto", "perfil_prestador", perfil.Id, _reloj.Ahora, actorId: usuarioId));
         await _unidad.GuardarAsync(ct);
 
-        if (anterior is not null) await _almacen.BorrarAsync(anterior, CancellationToken.None);
+        if (anterior is not null) await BorrarAmbasAsync(anterior);
         return Resultado.Ok();
+    }
+
+    /// <summary>Una foto son dos archivos: el grande y el chico. Se van juntos.</summary>
+    private async Task BorrarAmbasAsync(string claveGrande)
+    {
+        await _almacen.BorrarAsync(claveGrande, CancellationToken.None);
+        await _almacen.BorrarAsync(TiposDeArchivo.ClaveChica(claveGrande), CancellationToken.None);
     }
 }

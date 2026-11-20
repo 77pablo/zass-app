@@ -36,6 +36,9 @@ public interface IAlmacenDeArchivos
     Task<Resultado> BorrarAsync(string clave, CancellationToken ct = default);
 }
 
+/// <summary>Los dos tamaños de una foto de perfil, ya en WebP.</summary>
+public sealed record FotoPreparada(byte[] Grande, byte[] Chica);
+
 /// <summary>Un archivo abierto para leer. El stream es de quien lo pidio.</summary>
 public sealed record ArchivoAbierto(Stream Contenido, string TipoMime, long Largo) : IAsyncDisposable
 {
@@ -55,11 +58,13 @@ public sealed record ArchivoAbierto(Stream Contenido, string TipoMime, long Larg
 public interface IProcesadorDeImagenes
 {
     /// <summary>
-    /// La foto de perfil: endereza segun la orientacion, la reduce para que el lado mayor no pase
-    /// de <paramref name="ladoMaximo"/> y la devuelve como JPEG sin metadatos.
+    /// La foto de perfil, en los DOS tamaños que se sirven: endereza segun la orientacion, la
+    /// recorta en un cuadrado centrado (en ZASS! la foto siempre se ve en un circulo) y la devuelve
+    /// en WebP, sin metadatos, a <paramref name="ladoGrande"/> y a <paramref name="ladoChico"/> pixeles.
     /// Falla con TipoDeArchivoNoAceptado si no se puede leer como imagen.
     /// </summary>
-    Task<Resultado<byte[]>> PrepararFotoAsync(Stream imagen, int ladoMaximo, CancellationToken ct = default);
+    Task<Resultado<FotoPreparada>> PrepararFotoAsync(
+        Stream imagen, int ladoGrande, int ladoChico, CancellationToken ct = default);
 
     /// <summary>
     /// Una imagen que respalda una credencial: se conserva el tamaño (es un documento y se tiene
