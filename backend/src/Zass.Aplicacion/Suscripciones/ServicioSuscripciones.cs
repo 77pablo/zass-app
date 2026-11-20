@@ -438,6 +438,12 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
 
         var mesGratis = _reloj.Ahora.AddDays(DiasDeMesGratis);
 
+        // Quien YA es fundador y vuelve a inscribir su tarjeta (cambia de tarjeta, o apreto
+        // «Quiero mi cupo» otra vez) actualiza el medio de pago y nada mas. Antes la vigencia
+        // pasaba a «hoy + 30» cada vez, y repitiendolo el mes gratis no terminaba nunca
+        // (defecto 2 del informe JQ-7).
+        var yaEraFundador = s.PlanId == plan.Id;
+
         s.PlanId = plan.Id;
         s.Estado = EstadoSuscripcion.Prueba;
         s.CanceladaEn = null;
@@ -456,7 +462,8 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
 
         // RN-S7-07. La fecha mas lejana de las dos: a quien le quedaban 45 dias no se le
         // quitan 15 para dejarlo en 30, y a quien le quedaban 3 no se le suman 30 encima.
-        s.VigenteHasta = s.VigenteHasta > mesGratis ? s.VigenteHasta : mesGratis;
+        if (!yaEraFundador)
+            s.VigenteHasta = s.VigenteHasta > mesGratis ? s.VigenteHasta : mesGratis;
 
         _auditor.Registrar(Auditar.Entrada(
             "suscripcion_a_fundador", "suscripciones", s.Id, _reloj.Ahora,
