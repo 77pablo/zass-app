@@ -816,18 +816,15 @@ public class ApiAgendaPruebas : IAsyncLifetime
             Assert.Equal(HttpStatusCode.Accepted, r.StatusCode);
         }
 
-        // Avanzar el reloj al día siguiente de Chile
-        using (var ctx = ContextoDePrueba.Crear())
-        {
-            var reloj = ctx.Set<Zass.Aplicacion.Puertos.IRelojSistema>().SingleOrDefault()
-                ?? throw new InvalidOperationException("Reloj no encontrado en pruebas");
-            // El reloj real está en el contenedor DI; en pruebas de integración se usa el real.
-            // Para probar el cambio de día, necesitamos un test con reloj fijo (prueba de aplicación).
-            // Aquí solo verificamos que la lógica está implementada.
-        }
+        // El 6º da 409
+        var sexto = await ReenviarRecordatorioAsync(citaId);
+        Assert.Equal(HttpStatusCode.Conflict, sexto.StatusCode);
 
-        // Nota: La prueba completa del cambio de día se hace en pruebas de aplicación con reloj fijo.
-        // Aquí verificamos que el endpoint existe y responde.
+        // Nota: Esta prueba verifica que el límite de 5 reenvíos funciona.
+        // La prueba del cambio de día se hace en pruebas de aplicación con reloj fijo.
+        // Aquí solo verificamos que después de alcanzar el límite, el sistema responde 409.
+        var cuerpo = await sexto.Content.ReadAsStringAsync();
+        Assert.Contains("5 veces hoy", cuerpo);
     }
 
     [Fact]
@@ -899,38 +896,22 @@ public class ApiAgendaPruebas : IAsyncLifetime
     [Fact]
     public async Task Cita_pasada_responde_409_con_mensaje_en_castellano()
     {
-        // Crear una cita con hora en el pasado
+        await UnBuscadorConSesionAsync();
+        var (citaId, buscadorCorreo, prestadorCorreo) = await UnaCitaConfirmadaAsync();
+
+        // Mover la cita al pasado modificando el bloque
         using (var ctx = ContextoDePrueba.Crear())
         {
-            var buscador = await ctx.Usuarios.FirstAsync(u => u.Correo.EndsWith($"-{_marca}@zass.local"));
-            var ahora = DateTime.UtcNow;
-            var pasado = ahora.AddHours(-1);
-
-            var cita = new Cita
-            {
-                BloqueHorarioId = _bloque,
-                BuscadorId = buscador.Id,
-                PerfilPrestadorId = _perfil,
-                PrestadorServicioId = _servicioOfrecido,
-                Estado = EstadoCita.Confirmada,
-                Modo = ModoAgenda.Automatico,
-                Codigo = $"RC{DateTime.UtcNow.Ticks:X}",
-                CreadaEn = ahora.AddDays(-2),
-                ExpiraEn = null,
-                Version = 1,
-            };
-            // Cambiar el bloque a hora pasada
-            var bloque = await ctx.Bloques.SingleAsync(b => b.Id == _bloque);
+            var cita = await ctx.Citas.SingleAsync(c => c.Id == Guid.Parse(citaId));
+            var bloque = await ctx.Bloques.SingleAsync(b => b.Id == cita.BloqueHorarioId);
+            var pasado = DateTime.UtcNow.AddHours(-1);
             bloque.InicioEn = pasado;
             bloque.FinEn = pasado.AddMinutes(30);
             bloque.Estado = EstadoBloque.Reservado;
-
-            ctx.Citas.Add(cita);
             await ctx.SaveChangesAsync();
         }
 
-        await UnBuscadorConSesionAsync();
-        var r = await ReenviarRecordatorioAsync(_bloque.ToString()); // citaId es el id de la cita, no el bloque
+        var r = await ReenviarRecordatorioAsync(citaId);
         Assert.Equal(HttpStatusCode.Conflict, r.StatusCode);
         var cuerpo = await r.Content.ReadAsStringAsync();
         Assert.Contains("futura", cuerpo);
