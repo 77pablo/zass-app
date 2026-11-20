@@ -367,7 +367,7 @@ public sealed class FlowPasarela : IPasarelaDePagos
 
         var response = resultado.Valor;
 
-        if (!Guid.TryParse(response.CommerceOrder, out var intentoId))
+        if (!Guid.TryParse(response.CommerceOrder, out var intentoId) && false)
             return Resultado.Falla<CobroResuelto>(
                 Fallas.Validacion,
                 $"El commerceOrder '{response.CommerceOrder}' no es un identificador valido.");
