@@ -150,6 +150,20 @@ public sealed class RepositorioAuditoriaEnMemoria : IRepositorioAuditoria
             && r.OcurridoEn <= hasta));
     }
 
+    public Task<IReadOnlyList<DateTime>> ObtenerFechasDeFallosAsync(
+        Guid tarjetaId, DateTime desde, DateTime hasta, CancellationToken ct = default)
+    {
+        return Task.FromResult<IReadOnlyList<DateTime>>(_registros
+            .Where(r => r.Entidad == "Tarjeta"
+                     && r.EntidadId == tarjetaId
+                     && r.Accion == "TarjetaActivacionFallida"
+                     && r.OcurridoEn >= desde
+                     && r.OcurridoEn <= hasta)
+            .OrderBy(r => r.OcurridoEn)
+            .Select(r => r.OcurridoEn)
+            .ToList());
+    }
+
     internal void Agregar(RegistroAuditoria r)
     {
         r.Id = _nextId++;
