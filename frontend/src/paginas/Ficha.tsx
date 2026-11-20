@@ -129,7 +129,7 @@ export function Ficha() {
 
       <article className="ficha-rejilla">
           <header className="persona">
-            <Monograma nombre={ficha.nombrePublico} tamano="g" />
+            <Monograma nombre={ficha.nombrePublico} tamano="g" foto={ficha.urlFoto} />
             <div>
               <h1>{ficha.nombrePublico}</h1>
               <p className="persona-detalle">

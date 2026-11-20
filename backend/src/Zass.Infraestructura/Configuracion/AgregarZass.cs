@@ -17,6 +17,7 @@ using Zass.Aplicacion.Suscripciones;
 using Zass.Aplicacion.Resenas;
 using Zass.Aplicacion.Tarjetas;
 using Zass.Aplicacion.Puertos;
+using Zass.Infraestructura.Archivos;
 using Zass.Infraestructura.Correo;
 using Zass.Infraestructura.Fondo;
 using Zass.Infraestructura.Pagos;
@@ -238,6 +239,11 @@ public static class RegistroDeServicios
                 .GetValue(OpcionesVerificacion.ClaveDeConfiguracion, false),
         });
 
+        // --- MOD-08 Archivos (JQ-9): la foto del perfil y los documentos de respaldo ---
+        servicios.AddSingleton<IProcesadorDeImagenes, ProcesadorDeImagenesImageSharp>();
+        servicios.AddSingleton<IAlmacenDeArchivos>(sp => ElegirAlmacen(sp));
+        servicios.AddScoped<ServicioFotoDePerfil>();
+
         // --- MOD-03 Catalogo ---
         servicios.AddScoped<IServicioCatalogo, ServicioCatalogo>();
 
@@ -379,4 +385,53 @@ public static class RegistroDeServicios
 
         return servicios;
     }
+
+    /// <summary>
+    /// MOD-08. Quien guarda los archivos, segun <c>Zass:Archivos:Proveedor</c>:
+    /// <list type="bullet">
+    /// <item>"r2": R2 de Cloudflare. Si falta alguna de sus cuatro claves, la API NO arranca: un
+    /// despliegue que pidio R2 y lo tiene mal escrito tiene que fallar al tiro, no al primer subir.</item>
+    /// <item>"local": una carpeta. En Produccion no se acepta (Render borra el disco en cada
+    /// despliegue, y los archivos se perderian sin aviso).</item>
+    /// <item>vacio: la carpeta local fuera de Produccion; en Produccion, deshabilitado (la API
+    /// arranca y subir responde 503 hasta que Pablo ponga R2).</item>
+    /// </list>
+    /// </summary>
+    private static IAlmacenDeArchivos ElegirAlmacen(IServiceProvider sp)
+    {
+        var opciones = sp.GetRequiredService<IConfiguration>()
+            .GetSection(OpcionesArchivos.Seccion).Get<OpcionesArchivos>() ?? new OpcionesArchivos();
+        var entorno = sp.GetRequiredService<IHostEnvironment>();
+        var proveedor = opciones.Proveedor?.Trim().ToLowerInvariant() ?? "";
+
+        static OptionsValidationException Falla(string mensaje) =>
+            new(OpcionesArchivos.Seccion, typeof(OpcionesArchivos), new[] { mensaje });
+
+        switch (proveedor)
+        {
+            case "r2":
+                if (string.IsNullOrWhiteSpace(opciones.R2CuentaId) || string.IsNullOrWhiteSpace(opciones.R2ClaveAcceso)
+                    || string.IsNullOrWhiteSpace(opciones.R2Secreto) || string.IsNullOrWhiteSpace(opciones.R2Balde))
+                    throw Falla("Zass:Archivos:Proveedor dice 'r2' y falta R2CuentaId, R2ClaveAcceso, R2Secreto o R2Balde.");
+                return new AlmacenR2(opciones, sp.GetRequiredService<ILogger<AlmacenR2>>());
+
+            case "local":
+                if (entorno.IsProduction())
+                    throw Falla("Zass:Archivos:Proveedor 'local' no se permite en Produccion: el disco de Render se borra en cada despliegue.");
+                return new AlmacenLocal(CarpetaLocal(opciones));
+
+            case "":
+                return entorno.IsProduction()
+                    ? new AlmacenDeshabilitado()
+                    : new AlmacenLocal(CarpetaLocal(opciones));
+
+            default:
+                throw Falla($"Zass:Archivos:Proveedor dice '{opciones.Proveedor}' y no hay almacen con ese nombre.");
+        }
+    }
+
+    private static string CarpetaLocal(OpcionesArchivos o) =>
+        string.IsNullOrWhiteSpace(o.CarpetaLocal)
+            ? Path.Combine(Path.GetTempPath(), "zass-archivos")
+            : o.CarpetaLocal;
 }

@@ -49,7 +49,11 @@ public sealed record MiPerfilPrestadorDto(
     decimal? PromedioCalificacion,
     int Version,
     DateTime? PublicadoEn,
-    string[] FaltaParaPublicar);
+    string[] FaltaParaPublicar)
+{
+    /// <summary>JQ-9. La foto, si subió una: una ruta de la propia API (ver ServicioFotoDePerfil).</summary>
+    public string? UrlFoto { get; init; }
+}
 
 /// <summary>
 /// CU-03 y CU-04. Las tablas TBL-05 y TBL-06 son de MOD-01, asi que la edicion y la
@@ -287,5 +291,8 @@ public sealed class ServicioPerfiles
         perfil.PromedioVisible() ? perfil.PromedioCalificacion : null,
         perfil.Version,
         perfil.PublicadoEn,
-        Falta(perfil));
+        Falta(perfil))
+    {
+        UrlFoto = perfil.UrlFoto,
+    };
 }

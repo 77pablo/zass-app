@@ -314,6 +314,8 @@ main:focus { outline: none; }
 .monograma--p { width: 34px; height: 34px; font-size: 0.8rem; }
 .monograma--m { width: 44px; height: 44px; font-size: 1rem; }
 .monograma--g { width: 96px; height: 96px; font-size: 2.1rem; }
+/* JQ-9: la foto ocupa el mismo círculo que las iniciales, recortada al centro sin deformarse. */
+.monograma--foto { display: block; object-fit: cover; }
 
 /* ------------------------------------------------------------ La barra de busqueda
    El campo de busqueda redondeado de iOS, con el boton principal (ambar) adentro. Conserva un borde
@@ -715,6 +717,16 @@ main:focus { outline: none; }
 .credenciales strong { font-weight: 400; overflow-wrap: anywhere; }
 .credenciales small { color: var(--suave); font-weight: 400; font-size: 0.875rem; }
 .credenciales .sello, .credenciales .dato { margin-top: 6px; }
+/* JQ-9: los documentos de respaldo, dentro de su credencial. Anula el «li» de arriba: aquí no
+   hay separador ni el relleno de una fila, es una lista chica dentro de otra. */
+.credenciales .respaldo { margin-top: 6px; display: grid; gap: 2px; justify-self: stretch; }
+.credenciales .respaldo li { padding: 2px 0; border-bottom: 0; align-items: center; gap: 8px; flex-wrap: wrap; }
+.credenciales .respaldo a { color: var(--pizarra); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+/* El selector de archivo va oculto dentro de su etiqueta: la etiqueta ES el botón, y el foco del
+   teclado (que cae en el input) se dibuja en ella. */
+.adjuntar { margin-top: 6px; cursor: pointer; }
+.adjuntar:focus-within { outline: 3px solid var(--pizarra); outline-offset: 3px; border-radius: 6px; }
+.adjuntar--ocupado { opacity: 0.6; cursor: progress; }
 /* Que significan «Verificada» y «Declarada por el usuario». Prosa, no etiqueta: se lee discreta. */
 .credenciales-nota { margin-top: 12px; max-width: 62ch; font-size: 0.8125rem; font-weight: 400; color: var(--suave); }
 .credencial-confirmar { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-weight: 700; font-size: 0.9375rem; }
@@ -1283,3 +1295,7 @@ option { background: var(--blanco); color: var(--pizarra); }
   .barra-inferior, .titulo-compacto { background: var(--blanco); -webkit-backdrop-filter: none; backdrop-filter: none; border-color: var(--borde-campo); }
   .tarjetas-rejilla > li + li::before, .flotante + .flotante::before, .cita + .cita::before, .menu-enlace + .menu-enlace::before { border-top-color: var(--borde-campo); }
 }
+
+/* JQ-9: subir, cambiar o quitar la foto, bajo el nombre en «Mi ficha». */
+.foto-de-perfil { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 6px; }
+.foto-de-perfil .campo-error { flex-basis: 100%; }

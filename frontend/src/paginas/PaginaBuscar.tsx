@@ -360,6 +360,7 @@ export function PaginaBuscar() {
                       verificada: r.tieneCredencialVerificada,
                       detalle: r.totalResenas > 0 ? reputacion(r.promedioCalificacion, r.totalResenas) : null,
                       descripcion: r.descripcion,
+                      foto: r.urlFoto,
                     }} />
                   </li>
                 ))}
