@@ -41,6 +41,12 @@ public sealed class RepositorioCredencialesEnMemoria : IRepositorioCredenciales
     public void Agregar(Credencial credencial) => _base.Credenciales.Add(credencial);
     public void Eliminar(Credencial credencial) => _base.Credenciales.Remove(credencial);
 
+    public void AgregarDocumento(DocumentoCredencial documento) =>
+        _base.Credenciales.Single(c => c.Id == documento.CredencialId).Documentos.Add(documento);
+
+    public void QuitarDocumento(DocumentoCredencial documento) =>
+        _base.Credenciales.Single(c => c.Id == documento.CredencialId).Documentos.Remove(documento);
+
     public Task<EntidadCertificadora?> EntidadActivaPorIdAsync(short id, CancellationToken ct = default) =>
         Task.FromResult(_base.Entidades.FirstOrDefault(e => e.Id == id && e.Activa));
 

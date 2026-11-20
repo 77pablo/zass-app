@@ -31,6 +31,29 @@ comprobado**, **qué no**, y **el siguiente paso exacto**.
 
 ---
 
+## Sesión del 20-nov-2026 — JQ-9: fotos y documentos (rama `archivos/jq9-fotos-documentos`)
+
+**Qué quedó (hecho y comprobado):**
+
+| Pieza | Detalle |
+|---|---|
+| Almacenamiento | Puerto `IAlmacenDeArchivos` con tres implementaciones: carpeta local (desarrollo y pruebas), **R2 de Cloudflare** (balde privado, por la API de S3) y deshabilitado (Producción sin R2: subir responde 503 y la API arranca igual). Se elige con `Zass:Archivos:Proveedor` |
+| Foto de perfil | API-72 (subir/cambiar), API-72-quitar, API-73 (servirla). Se lee el tipo real, se endereza, se recorta en cuadrado y se guarda en **WebP de 288 y 96 px sin metadatos** (el GPS del celular no llega al disco). Pesa ~4 KB y ~1 KB. Caché inmutable; el navegador elige el tamaño con `srcset` |
+| Documentos de respaldo | API-26 (adjuntar), API-26-quitar, API-26-ver (su dueño) y API-74 (el Verificador, **solo con la credencial tomada**, y queda en auditoría). PDF, JPG o PNG, 10 MB, 5 por credencial. Las imágenes se vuelven a codificar. Se sirven con `CSP: sandbox` y `no-store`. Borrar la credencial se lleva sus archivos |
+| Interfaz | Foto en Mi ficha, en la ficha pública y en la búsqueda (`Monograma`); adjuntar, abrir y quitar documentos, y el botón «Enviar a revisión» (el `2ab306c` del 13-nov), en Mis credenciales |
+| Pruebas | Integración: 18 nuevas, y Aplicación 1001/1001, Arquitectura 20/20. Interfaz 720 y más. **Mutaciones: 10 de backend y 4 de interfaz, todas caen** |
+| Navegador | Recorrido en Chrome a 390 px: subir la foto y verla en la ficha y en la búsqueda; adjuntar un PDF, abrirlo en el visor de Chrome (se ve, con la `sandbox` puesta) y quitarlo |
+
+**Decisiones de Pablo pendientes (están en el PR):**
+1. **Antivirus** (CU-05 paso 8 / RN-S2-05): NO está. El documento queda `Disponible` al pasar las validaciones.
+2. **R2:** crear el balde privado y poner en Render `Zass__Archivos__Proveedor=r2` y `Zass__Archivos__R2CuentaId`, `R2ClaveAcceso`, `R2Secreto`, `R2Balde`.
+3. **Licencia de ImageSharp** (Six Labors Split License): gratis bajo US$1 M de facturación anual.
+4. **Los textos nuevos** (están en el cuerpo del PR).
+
+**Encontrado de paso:** el #148 trajo una prueba (`Reenvios_cuentan_por_dia_de_Chile_no_por_dia_UTC`) que deja un prestador publicado en la base de pruebas, y según el orden tumba las 23 de `BusquedaIntegracionPruebas` (ya tumbó el CI del #155 una vez). La corrige la T56h.
+
+---
+
 ## Sesión del 18-nov-2026 — interfaz
 
 **Comprobado con `git` y `gh`, no de memoria.** El plan `zass-tareas\DISENO-INTERFAZ-GUIA-V3.md` está

@@ -40,6 +40,9 @@ public sealed class RepositorioCredencialesEfCore : IRepositorioCredenciales
     public void Agregar(Credencial credencial) => _ctx.Credenciales.Add(credencial);
     public void Eliminar(Credencial credencial) => _ctx.Credenciales.Remove(credencial);
 
+    public void AgregarDocumento(DocumentoCredencial documento) => _ctx.DocumentosCredencial.Add(documento);
+    public void QuitarDocumento(DocumentoCredencial documento) => _ctx.DocumentosCredencial.Remove(documento);
+
     public Task<EntidadCertificadora?> EntidadActivaPorIdAsync(short id, CancellationToken ct = default) =>
         _ctx.EntidadesCertificadoras.FirstOrDefaultAsync(e => e.Id == id && e.Activa, ct);
 
