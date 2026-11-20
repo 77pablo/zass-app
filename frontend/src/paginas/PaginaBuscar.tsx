@@ -275,21 +275,24 @@ export function PaginaBuscar() {
         {punto && (
           <div className="radio-barra" role="group" aria-label="¿Hasta qué distancia?">
             <span className="radio-titulo">¿Hasta qué distancia?</span>
-            {RADIOS.map((km) => (
+            {/* Estilo iPhone: las opciones van juntas en un control segmentado (solo presentacion). */}
+            <span className="segmentado">
+              {RADIOS.map((km) => (
+                <button
+                  key={km} type="button" className="chip chip--radio"
+                  aria-pressed={radio === km}
+                  onClick={() => cambiar({ radio: radio === km ? null : String(km) })}
+                >
+                  {km} km
+                </button>
+              ))}
               <button
-                key={km} type="button" className="chip chip--radio"
-                aria-pressed={radio === km}
-                onClick={() => cambiar({ radio: radio === km ? null : String(km) })}
+                type="button" className="chip chip--radio" aria-pressed={radio === null}
+                onClick={() => cambiar({ radio: null })}
               >
-                {km} km
+                Todo Chile
               </button>
-            ))}
-            <button
-              type="button" className="chip chip--radio" aria-pressed={radio === null}
-              onClick={() => cambiar({ radio: null })}
-            >
-              Todo Chile
-            </button>
+            </span>
           </div>
         )}
 

@@ -17,9 +17,11 @@ public class RegistrarEscaneoPruebas
     private readonly RepositorioTarjetasEnMemoria _repo = new();
     private readonly BaseEnMemoria _base = new();
     private readonly RelojFijo _reloj = new(new DateTime(2026, 11, 12, 15, 30, 0, DateTimeKind.Utc));
+    private readonly SecretosDeterministas _secretos = new();
+    private readonly AuditoriaEnMemoria _auditor = new();
     private readonly ServicioTarjetas _servicio;
 
-    public RegistrarEscaneoPruebas() => _servicio = new ServicioTarjetas(_repo, _base, _reloj);
+    public RegistrarEscaneoPruebas() => _servicio = new ServicioTarjetas(_repo, _base, _reloj, _auditor, _secretos);
 
     private Tarjeta Sembrar(EstadoTarjeta estado, EstadoPerfil? perfil = EstadoPerfil.Publicado)
     {

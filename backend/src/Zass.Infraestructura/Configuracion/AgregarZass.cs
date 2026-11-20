@@ -60,6 +60,13 @@ public sealed class OpcionesZass
     /// </summary>
     public string? SecretoAvisoPagos { get; set; }
 
+    /// <summary>
+    /// Si es true, consulta Have I Been Pwned (rango k-anonimo) antes de aceptar una contrasena
+    /// nueva. En produccion debe ser true; en desarrollo y pruebas false para no salir a internet.
+    /// Por defecto true (se sobreescribe en appsettings.Development.json).
+    /// </summary>
+    public bool RevisarContrasenasFiltradas { get; set; } = true;
+
     public byte[] ClaveDirecciones()
     {
         byte[] clave;
@@ -150,7 +157,7 @@ public static class RegistroDeServicios
         // Las opciones se leen al RESOLVER, no al registrar. Leerlas aqui mismo
         // congelaria la configuracion que existia en este instante, y se perderia
         // cualquier fuente agregada despues: las variables de entorno de Render en
-        // produccion, y los ajustes de las pruebas, que se inyectan luego de que
+        // produccion y los ajustes de las pruebas, que se inyectan luego de que
         // Program.cs llama a este metodo.
         servicios.AddDbContext<ZassDbContext>((sp, o) =>
             o.UseNpgsql(sp.GetRequiredService<IOptions<OpcionesZass>>().Value.CadenaConexion));
@@ -161,6 +168,25 @@ public static class RegistroDeServicios
         servicios.AddSingleton<IGeneradorSecretos, GeneradorSecretos>();
         servicios.AddSingleton<ICifradoDeDatos>(sp => new CifradoAesGcm(
             sp.GetRequiredService<IOptions<OpcionesZass>>().Value.ClaveDirecciones()));
+
+        // IContrasenasFiltradas: adaptador HIBP con HttpClient de 3s, o nulo segun opcion.
+        // Se resuelve al final para leer la opcion ya vinculada.
+        servicios.AddHttpClient<ContrasenasFiltradasHibp>(c =>
+        {
+            c.BaseAddress = new Uri("https://api.pwnedpasswords.com/");
+            c.Timeout = TimeSpan.FromSeconds(3);
+        });
+
+        // Adaptador nulo para cuando RevisarContrasenasFiltradas = false (desarrollo, pruebas).
+        servicios.AddSingleton<ContrasenasFiltradasNunca>();
+
+        servicios.AddScoped<IContrasenasFiltradas>(sp =>
+        {
+            var opciones = sp.GetRequiredService<IOptions<OpcionesZass>>().Value;
+            if (opciones.RevisarContrasenasFiltradas)
+                return sp.GetRequiredService<ContrasenasFiltradasHibp>();
+            return sp.GetRequiredService<ContrasenasFiltradasNunca>();
+        });
 
         // --- Puertos con estado por peticion ---
         servicios.AddScoped<IUnidadDeTrabajo, UnidadDeTrabajoEfCore>();
@@ -177,6 +203,7 @@ public static class RegistroDeServicios
         servicios.AddSingleton<IGeocodificador, GeocodificadorNoDisponible>();
         servicios.AddScoped<INotificaciones, ColaNotificacionesEfCore>();
         servicios.AddScoped<IAuditor, AuditorEfCore>();
+        servicios.AddScoped<IRepositorioAuditoria, RepositorioAuditoriaEfCore>();
 
         // AddLogging aqui y no en quien llama: varios servicios de este modulo escriben en
         // el registro (la sonda de abajo, y los enviadores y el procesador de correo). Sin
