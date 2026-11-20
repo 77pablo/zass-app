@@ -237,10 +237,6 @@ public sealed class RepositorioAgendaEfCore : IRepositorioAgenda
             .OrderBy(c => c.BloqueHorario!.InicioEn).Select(c => c.Id).Take(maximo).ToListAsync(ct);
     }
 
-    /// <summary>
-    /// Rastreada y con el bloque, para poder cambiarle el estado y liberar o vencer la hora
-    /// en la misma transacción. Usa FOR UPDATE en la tabla citas para bloquear la fila (patrón CC-01).
-    /// </summary>
     public Task<Cita?> CitaParaCambioAsync(Guid id, CancellationToken ct = default) =>
         _ctx.Citas
             .Include(c => c.BloqueHorario)
