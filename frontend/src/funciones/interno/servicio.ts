@@ -162,3 +162,35 @@ export function fechaYHora(iso: string): string {
     day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: 'America/Santiago',
   }).format(new Date(iso))
 }
+
+// ---------------------------------------------------------------- JQ-14 · indicadores (API-60)
+
+export interface Indicadores {
+  verificacion: {
+    enCola: number
+    /** `CreadaEn` de la más antigua en cola (el envío a revisión no tiene fecha). */
+    masAntiguaDesde: string | null
+    resueltas: number
+    rechazadas: number
+    /** Entre 0 y 1; nula si no hubo resoluciones en 30 días. */
+    tasaDeRechazo: number | null
+    /** Desde la CREACIÓN de la credencial hasta su resolución, no desde el envío. */
+    horasPromedioDesdeCreacion: number | null
+  }
+  avisos: { correosFallidos: number }
+  reportesAbiertos: number
+  tarjetasEmitidasSinActivar: number
+  calculadoEn: string
+}
+
+export const indicadores = () => obtener<Indicadores>('/api/interno/indicadores')
+
+/** «33 %», redondeado a entero. */
+export const porcentaje = (x: number) => `${Math.round(x * 100)} %`
+
+/** Horas como «14 h» o, desde 48 h, «3,5 días». */
+export function duracion(horas: number): string {
+  if (horas < 48) return `${Math.round(horas)} h`
+  const dias = Math.round((horas / 24) * 10) / 10
+  return `${dias.toLocaleString('es-CL')} días`
+}
