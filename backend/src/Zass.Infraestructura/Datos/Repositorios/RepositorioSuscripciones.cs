@@ -124,6 +124,18 @@ public sealed class RepositorioSuscripcionesEfCore : IRepositorioSuscripciones
         _ctx.PerfilesPrestador.AnyAsync(p => p.Id == perfilPrestadorId, ct);
 
     /// <summary>
+    /// El correo del usuario de ese perfil prestador, o nulo si el perfil no existe.
+    /// UNA consulta que hace JOIN con usuarios. No usa IRepositorioPerfiles ni
+    /// IRepositorioUsuarios: seria depender de puertos de MOD-01 para un SELECT.
+    /// </summary>
+    public Task<string?> CorreoDelUsuarioDePerfilAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default) =>
+        _ctx.PerfilesPrestador
+            .Where(p => p.Id == perfilPrestadorId)
+            .Select(p => p.Usuario.Correo)
+            .FirstOrDefaultAsync(ct);
+
+    /// <summary>
     /// UNA consulta para todos los perfiles. Misma razon que ExistePerfilPrestadorAsync para
     /// no pasar por IRepositorioPerfiles: seria depender de un puerto de MOD-01 para leer una
     /// columna.

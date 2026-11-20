@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ErrorApi } from '../api/cliente'
 import { Icono } from '../marco/Icono'
 import { useMeta } from '../marco/useMeta'
@@ -321,25 +321,56 @@ export function Planes() {
 }
 
 /**
- * La vuelta del pago. NO confirma nada por su cuenta: lo que confirma el cupo es el aviso
- * que la pasarela le manda al servidor. Esta pantalla solo pregunta cómo quedó.
+ * La vuelta del pago (API-75). Esta pantalla NO confirma nada: la API ya le preguntó a la
+ * pasarela con su firma y manda aquí con `?resultado=` y uno de tres valores fijos. Cualquier
+ * otro valor (o ninguno) se trata como «revisar»: nunca se dice «listo» sin que la API lo diga.
+ * (Textos PROPUESTOS: los aprueba Pablo.)
  */
 export function PlanesListo() {
-  useTitulo('Estamos confirmando tu cupo')
+  const [parametros] = useSearchParams()
+  const resultado = parametros.get('resultado')
+  const caso = resultado === 'aprobado' || resultado === 'rechazado' ? resultado : 'revisar'
+
+  const titulo = caso === 'aprobado'
+    ? 'Listo: tu cupo quedó tomado'
+    : caso === 'rechazado'
+      ? 'No pudimos inscribir tu tarjeta'
+      : 'Estamos confirmando tu cupo'
+  useTitulo(titulo)
   // No tiene nada que hacer un buscador aquí: es la vuelta de un pago.
   useMeta({ noindex: true })
 
   return (
     <article className="pagina pagina--angosta">
-      <h1>Estamos confirmando tu cupo</h1>
-      <p className="bloque-texto">
-        Tu medio de pago quedó inscrito y estamos esperando la confirmación. Puede tardar unos
-        segundos.
-      </p>
-      <p className="bloque-texto">
-        Cuando llegue, tu ficha pasa al plan fundador con el primer mes gratis. Lo puedes ver
-        en <Link to="/mi-ficha">Mi ficha</Link>.
-      </p>
+      <h1>{titulo}</h1>
+      {caso === 'aprobado' && (
+        <p className="bloque-texto">
+          Tu medio de pago quedó inscrito y tu ficha pasa al plan fundador, con el primer mes
+          gratis. Lo puedes ver en <Link to="/mi-ficha">Mi ficha</Link>.
+        </p>
+      )}
+      {caso === 'rechazado' && (
+        <>
+          <p className="bloque-texto">
+            La pasarela no aceptó la tarjeta, así que no se cobró nada ni se tomó el cupo.
+            Algunos bancos no permiten guardar la tarjeta para pagos automáticos: prueba con otra.
+          </p>
+          <p className="bloque-texto">
+            <Link className="boton" to="/planes">Volver a intentarlo</Link>
+          </p>
+        </>
+      )}
+      {caso === 'revisar' && (
+        <>
+          <p className="bloque-texto">
+            Estamos esperando la confirmación de la pasarela. Puede tardar unos segundos.
+          </p>
+          <p className="bloque-texto">
+            Cuando llegue, tu ficha pasa al plan fundador con el primer mes gratis. Lo puedes ver
+            en <Link to="/mi-ficha">Mi ficha</Link>.
+          </p>
+        </>
+      )}
     </article>
   )
 }

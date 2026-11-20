@@ -274,12 +274,16 @@ public sealed class ServicioCobros : IServicioCobros
     private async Task<Resultado<IntentoDePagoDto>> PedirElCobroAsync(
         IntentoDePago intento, Plan plan, bool nueva, CancellationToken ct)
     {
+        var correo = await _repo.CorreoDelUsuarioDePerfilAsync(intento.PerfilPrestadorId, ct);
         var cobro = await _pasarela.IniciarCobroAsync(
             new SolicitudDeCobro(
                 IntentoDePagoId: intento.Id,
                 Monto: intento.Monto,
                 Moneda: intento.Moneda,
-                Descripcion: $"ZASS! {plan.Nombre} - {MesesPorCobro} mes"),
+                Descripcion: $"ZASS! {plan.Nombre} - {MesesPorCobro} mes")
+            {
+                CorreoDelPagador = correo,
+            },
             ct);
 
         if (!cobro.Exito || cobro.Valor is null)
@@ -415,10 +419,14 @@ public sealed class ServicioCobros : IServicioCobros
     private async Task<Resultado<IntentoDePagoDto>> PedirLaInscripcionAsync(
         IntentoDePago intento, Plan plan, bool nueva, CancellationToken ct)
     {
+        var correo = await _repo.CorreoDelUsuarioDePerfilAsync(intento.PerfilPrestadorId, ct);
         var inscripcion = await _pasarela.IniciarInscripcionAsync(
             new SolicitudDeInscripcion(
                 IntentoDePagoId: intento.Id,
-                Descripcion: $"ZASS! {plan.Nombre} - inscripcion del medio de pago"),
+                Descripcion: $"ZASS! {plan.Nombre} - inscripcion del medio de pago")
+            {
+                CorreoDelPagador = correo,
+            },
             ct);
 
         if (!inscripcion.Exito || inscripcion.Valor is null)
@@ -649,6 +657,7 @@ public sealed class ServicioCobros : IServicioCobros
             // La salida a internet, FUERA de la transaccion, por lo mismo que en
             // PedirElCobroAsync: una llamada de red con una transaccion abierta deja filas
             // bloqueadas el tiempo que tarde la pasarela en contestar.
+            var correo = await _repo.CorreoDelUsuarioDePerfilAsync(s.PerfilPrestadorId, ct);
             var cobro = await _pasarela.CobrarAsync(
                 new SolicitudDeCobro(
                     IntentoDePagoId: intento.Id,
@@ -657,6 +666,7 @@ public sealed class ServicioCobros : IServicioCobros
                     Descripcion: $"ZASS! {plan.Nombre} - {MesesPorCobro} mes")
                 {
                     MedioInscrito = s.ReferenciaPasarela,
+                    CorreoDelPagador = correo,
                 },
                 ct);
 
