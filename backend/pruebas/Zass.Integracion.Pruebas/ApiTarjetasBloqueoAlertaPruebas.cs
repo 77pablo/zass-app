@@ -160,16 +160,20 @@ public class ApiTarjetasBloqueoAlertaPruebas : IAsyncLifetime
             DELETE FROM tarjetas WHERE perfil_prestador_id IN (SELECT id FROM perfiles_prestador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%'))
                OR (perfil_prestador_id IS NULL AND estado = 'Emitida');
             DELETE FROM tarjetas WHERE perfil_prestador_id IS NULL AND estado = 'Emitida';
+            DELETE FROM citas WHERE perfil_prestador_id IN (SELECT id FROM perfiles_prestador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%'))
+               OR buscador_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
+            DELETE FROM suscripciones WHERE perfil_prestador_id IN (SELECT id FROM perfiles_prestador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%'));
             DELETE FROM perfiles_prestador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
             DELETE FROM auditoria WHERE actor_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%') OR entidad_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
             DELETE FROM notificaciones WHERE destinatario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
             DELETE FROM sesiones WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
             DELETE FROM perfiles_buscador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
             DELETE FROM usuarios WHERE correo ILIKE 'apitj-%';
-            DELETE FROM citas;
-            DELETE FROM cupos_fundador;
-            DELETE FROM suscripciones;
             """);
+        // OJO: aqui habia «DELETE FROM citas; DELETE FROM cupos_fundador; DELETE FROM suscripciones;»
+        // SIN filtro. Borraba los 50 cupos sembrados y los datos de las demas pruebas: 9 pruebas de
+        // cupos caian en CI segun el orden. Lo de estos usuarios ya se borra arriba (antes que el
+        // perfil, por las llaves), y nada de esta clase toca cupos ni suscripciones de otros.
     }
 
     public async Task DisposeAsync()
