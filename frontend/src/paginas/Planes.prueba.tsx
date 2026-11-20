@@ -31,6 +31,9 @@ const PLANES = [
   },
 ]
 
+/** API-69 desde el 20-nov-2026: el cupo tomado, SIN tarjeta y sin pasarela. */
+const CUPO_TOMADO = { numero: 12, mesGratisHasta: '2026-12-20T15:00:00Z', tarjetaInscrita: false }
+
 let cupos: number
 let fallaElCatalogo: boolean
 let llamadas: string[]
@@ -43,11 +46,7 @@ beforeEach(() => {
   fallaElCatalogo = false
   llamadas = []
   claves = []
-  respuestaDelCupo = () => json({
-    id: 'i1', codigoPlan: 'fundador', precioMensual: 0, descuento: 0, total: 0, cupon: null,
-    estado: 'Pendiente', urlParaPagar: '/pago/inscripcion?intento=i1',
-    referenciaPasarela: 'ref_1', nueva: true,
-  })
+  respuestaDelCupo = () => json(CUPO_TOMADO)
   respuestaDeCotizar = () => json({
     codigoPlan: 'mensual', nombrePlan: 'ZASS! Mensual', precioMensual: 7990,
     descuento: 2397, total: 5593, cupon: 'LANZAMIENTO30', porcentajeDescuento: 30,
@@ -149,14 +148,25 @@ describe('Planes', () => {
     expect(await screen.findByText('ZASS! Fundador')).toBeTruthy()
   })
 
-  it('tomar el cupo lleva a inscribir el medio de pago', async () => {
+  it('tomar el cupo lo deja tuyo SIN pedir tarjeta y dice hasta cuándo es gratis', async () => {
     pintar(sesion('dentro', ['prestador']))
 
     await userEvent.click(await screen.findByRole('button', { name: /quiero mi cupo/i }))
 
-    await waitFor(() => {
-      expect(llamadas.filter((r) => r.includes('/api/mi/suscripcion/fundador'))).toHaveLength(1)
-    })
+    expect(await screen.findByText(/el cupo N° 12 es tuyo/)).toBeInTheDocument()
+    expect(screen.getByText(/20 de diciembre de 2026/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Mi ficha' })).toHaveAttribute('href', '/mi-ficha')
+    expect(screen.queryByRole('button', { name: /quiero mi cupo/i })).toBeNull()
+    expect(llamadas.filter((r) => r.includes('/api/mi/suscripcion/fundador'))).toHaveLength(1)
+    // Ni pasarela ni inscripción de tarjeta: eso es después, desde Mi ficha.
+    expect(llamadas.some((r) => r.includes('/pago') || r.includes('/suscripcion/tarjeta'))).toBe(false)
+  })
+
+  it('antes de tomarlo dice que no hace falta tarjeta y qué pasa si no la inscribe', async () => {
+    pintar(sesion('dentro', ['prestador']))
+
+    expect(await screen.findByText(/No necesitas tarjeta para tomarlo/)).toBeInTheDocument()
+    expect(screen.getByText(/el cupo queda libre para otra persona/)).toBeInTheDocument()
   })
 
   it('dos clics seguidos hacen UNA sola llamada', async () => {
@@ -185,11 +195,7 @@ describe('Planes', () => {
     await userEvent.click(boton)
 
     expect(llamadas.filter((r) => r.includes('/api/mi/suscripcion/fundador'))).toHaveLength(1)
-    resolver(json({
-      id: 'i1', codigoPlan: 'fundador', precioMensual: 0, descuento: 0, total: 0, cupon: null,
-      estado: 'Pendiente', urlParaPagar: '/pago/inscripcion?intento=i1',
-      referenciaPasarela: 'ref_1', nueva: true,
-    }))
+    resolver(json(CUPO_TOMADO))
   })
 
   it('si alguien se llevó el último cupo, la pantalla deja de ofrecerlo', async () => {
@@ -218,11 +224,7 @@ describe('Planes', () => {
 
     // Segundo intento del MISMO envío: tiene que llevar la misma clave, o el servidor lo
     // tomará por una intención distinta y podría tomar un segundo cupo.
-    respuestaDelCupo = () => json({
-      id: 'i1', codigoPlan: 'fundador', precioMensual: 0, descuento: 0, total: 0, cupon: null,
-      estado: 'Pendiente', urlParaPagar: '/pago/inscripcion?intento=i1',
-      referenciaPasarela: 'ref_1', nueva: false,
-    })
+    respuestaDelCupo = () => json(CUPO_TOMADO)
     await userEvent.click(boton)
 
     await waitFor(() => { expect(claves).toHaveLength(2) })

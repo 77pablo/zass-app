@@ -105,8 +105,9 @@ public sealed class ServicioIdentidad : IServicioIdentidad
     }
 
     /// <summary>
-    /// Hoy solo detecta la misma cuenta, porque el modelo de datos no guarda nada que
-    /// ligue dos cuentas distintas a una persona (no se pide RUT, por minimizacion).
+    /// Hoy solo detecta la misma cuenta. Desde el 20-nov-2026 el registro pide RUT (unico), asi
+    /// que dos cuentas NUEVAS no pueden ser de la misma persona; las cuentas de antes no lo
+    /// tienen. Usar el RUT aqui queda pendiente.
     /// Devolver falso para dos cuentas de la misma persona es un falso negativo conocido:
     /// deja pasar un conflicto de interes en vez de inventarse uno. Ampliarlo exige
     /// decidir primero QUE dato lo probaria, y esa decision no esta tomada.

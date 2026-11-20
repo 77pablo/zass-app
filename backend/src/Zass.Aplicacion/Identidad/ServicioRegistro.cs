@@ -5,8 +5,19 @@ using Zass.Dominio.Identidad;
 
 namespace Zass.Aplicacion.Identidad;
 
-/// <summary>CU-01 · Registrar cuenta. API-08.</summary>
-public sealed record RegistrarCuentaCmd(string Correo, string Contrasena, string Nombre, string Rol);
+/// <summary>
+/// CU-01 · Registrar cuenta. API-08. Desde el 20-nov-2026 (decision de Pablo) pide ademas el
+/// tipo de cuenta y sus datos: Particular = nombre, apellido, RUT y telefono; Empresa = razon
+/// social, RUT de la empresa, nombre de contacto (en <paramref name="Nombre"/>) y telefono. Y la
+/// casilla «soy mayor de 18»: no se pide la fecha de nacimiento (minimizacion, Ley 21.719).
+///
+/// Los campos nuevos llevan valor por omision para que el caso de uso se pueda llamar sin
+/// ellos desde las pruebas de otras cosas; quien los EXIGE es el validador de la API.
+/// </summary>
+public sealed record RegistrarCuentaCmd(
+    string Correo, string Contrasena, string Nombre, string Rol,
+    string? Tipo = null, string? Apellido = null, string? Rut = null, string? Telefono = null,
+    string? RazonSocial = null, bool MayorDeEdad = false);
 
 public sealed record CuentaCreadaDto(Guid UsuarioId, string Rol);
 
@@ -74,6 +85,16 @@ public sealed class ServicioRegistro
             return Resultado.Falla<CuentaCreadaDto>(Fallas.Conflicto,
                 "Ya existe una cuenta con ese correo.");
 
+        // Una persona o empresa, una cuenta. Igual que el correo: por cortesia, porque la que
+        // manda es el indice unico parcial de la base.
+        var rut = Rut.Normalizar(cmd.Rut);
+        if (rut is not null && await _usuarios.ExisteRutAsync(rut, ct))
+            return Resultado.Falla<CuentaCreadaDto>(Fallas.Conflicto,
+                "Ya existe una cuenta con ese RUT. Si es tuya, entra con tu correo.");
+        var tipo = string.Equals(cmd.Tipo, "empresa", StringComparison.OrdinalIgnoreCase)
+            ? TipoCuenta.Empresa : TipoCuenta.Particular;
+        var razonSocial = tipo == TipoCuenta.Empresa ? Recortar(cmd.RazonSocial) : null;
+
         // P19 (T49): rechazar contrasenas que aparecen en filtraciones conocidas (HIBP).
         if (await _filtradas.EstaFiltradaAsync(cmd.Contrasena, ct))
             return Resultado.Falla<CuentaCreadaDto>(Fallas.Validacion,
@@ -86,6 +107,12 @@ public sealed class ServicioRegistro
         {
             Correo = correo,
             Nombre = nombre,
+            Tipo = tipo,
+            Apellido = tipo == TipoCuenta.Particular ? Recortar(cmd.Apellido) : null,
+            Rut = rut,
+            Telefono = Recortar(cmd.Telefono),
+            RazonSocial = razonSocial,
+            MayorDeEdadConfirmadoEn = cmd.MayorDeEdad ? ahora : null,
             HashContrasena = _hash.Hash(cmd.Contrasena),   // RN-S1-03
             CorreoVerificado = false,
             Estado = EstadoCuenta.PendienteVerificacion,   // RN-S1-02
@@ -98,12 +125,16 @@ public sealed class ServicioRegistro
 
         _usuarios.Agregar(usuario);
 
+        // El nombre con que parte la ficha: el de la empresa, o nombre y apellido. Se cambia
+        // despues en Mi ficha.
+        var nombrePublico = razonSocial
+            ?? (usuario.Apellido is { } apellido ? $"{nombre} {apellido}" : nombre);
         if (rol.Codigo == "prestador")
             _perfiles.Agregar(new PerfilPrestador
             {
                 UsuarioId = usuario.Id,
-                NombrePublico = nombre,
-                Slug = await SlugLibreAsync(nombre, ct),
+                NombrePublico = nombrePublico,
+                Slug = await SlugLibreAsync(nombrePublico, ct),
                 Estado = EstadoPerfil.Borrador,
                 ActualizadoEn = ahora,
             });
@@ -196,4 +227,7 @@ public sealed class ServicioRegistro
         async Task<bool> OcupadoAsync(string slug) =>
             Texto.EsSlugReservado(slug) || await _perfiles.ExisteSlugAsync(slug, ct);
     }
+
+    private static string? Recortar(string? texto) =>
+        string.IsNullOrWhiteSpace(texto) ? null : texto.Trim();
 }

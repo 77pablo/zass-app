@@ -72,6 +72,7 @@ public class CobroAutomaticoPruebas
         var perfil = new PerfilPrestador { Id = Guid.NewGuid(), UsuarioId = Guid.NewGuid() };
         _base.PerfilesPrestador.Add(perfil);
         _suscripciones.IniciarPruebaAsync(perfil.Id).GetAwaiter().GetResult();
+        Assert.True(_suscripciones.TomarCupoFundadorAsync(perfil.Id).GetAwaiter().GetResult().Exito);
 
         var inscripcion = _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "ins-" + perfil.Id)
             .GetAwaiter().GetResult();
