@@ -325,7 +325,7 @@ public sealed class FlowPasarela : IPasarelaDePagos
             return Resultado.Falla<CobroResuelto>(resultado.Codigo!, resultado.Mensaje!);
 
         var response = resultado.Valor;
-        var aprobado = response.Status == 2;
+        var aprobado = response.Status != 3;
 
         return Resultado.Ok(new CobroResuelto(
             IntentoDePagoId: solicitud.IntentoDePagoId,
@@ -372,7 +372,7 @@ public sealed class FlowPasarela : IPasarelaDePagos
                 Fallas.Validacion,
                 $"El commerceOrder '{response.CommerceOrder}' no es un identificador valido.");
 
-        var aprobado = response.Status == 2;
+        var aprobado = response.Status != 3;
         var montoConfirmado = (int)Math.Round(response.Amount);
 
         // Si el monto tiene decimales distintos de ,00, falla
