@@ -4,6 +4,23 @@ using Zass.Aplicacion.Puertos;
 
 namespace Zass.Integracion.Pruebas.Correo;
 
+/// <summary>Doble de IAlertasAdministrador que captura las alertas enviadas para las pruebas.</summary>
+public sealed class AlertasAdministradorFalso : IAlertasAdministrador
+{
+    private readonly object _candado = new();
+    public List<AlertaTarjetaBloqueada> Alertas { get { lock (_candado) return _alertas.ToList(); } }
+    private readonly List<AlertaTarjetaBloqueada> _alertas = new();
+
+    public Task AvisarTarjetaBloqueadaAsync(AlertaTarjetaBloqueada alerta, CancellationToken ct = default)
+    {
+        lock (_candado) _alertas.Add(alerta);
+        return Task.CompletedTask;
+    }
+
+    public int Cuenta { get { lock (_candado) return _alertas.Count; } }
+    public void Limpiar() { lock (_candado) _alertas.Clear(); }
+}
+
 /// <summary>Una petición capturada. El cuerpo se lee en el momento: después el contenido ya se desechó.</summary>
 public sealed record PeticionCapturada(HttpMethod Metodo, Uri Url, Dictionary<string, string> Cabeceras, string Cuerpo);
 
