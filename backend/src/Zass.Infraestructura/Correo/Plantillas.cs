@@ -74,7 +74,8 @@ public static class Plantillas
              or TipoNotificacion.CitaCancelada
              or TipoNotificacion.CitaReprogramada
              or TipoNotificacion.Recordatorio24h
-             or TipoNotificacion.Recordatorio2h;
+             or TipoNotificacion.Recordatorio2h
+             or TipoNotificacion.BorradorPorEliminarse;
 
     /// <summary>
     /// Los que llevan un secreto en la carga. Importa porque de esos el cuerpo se purga en
@@ -102,6 +103,10 @@ public static class Plantillas
                     : PorVencer(nombre, d, EnlaceDelPanel(urlPublica))
                 : null,
         TipoNotificacion.SuscripcionVencida => Vencida(nombre, EnlaceDelPanel(urlPublica)),
+        TipoNotificacion.BorradorPorEliminarse =>
+            CargaDeAviso.LeerCampo(carga, "credencial") is { } credencial
+            && DateOnly.TryParseExact(CargaDeAviso.LeerCampo(carga, "borrarEl"), "yyyy-MM-dd", out var borrarEl)
+                ? BorradorPorEliminarse(nombre, credencial, borrarEl, EnlaceDelPanel(urlPublica)) : null,
         // Con el slug se enlaza su ficha publica, que es lo que querra abrir y compartir. Sin el
         // —los avisos encolados ANTES de que existiera esta plantilla llevan una frase suelta en vez
         // de una carga JSON— se enlaza su panel: sigue siendo util y no se pierde el aviso.
@@ -233,6 +238,32 @@ public static class Plantillas
             "Ver mi suscripción", enlace,
             "Si ya renovaste, ignora este mensaje.");
         return new($"Tu suscripción a ZASS! vence {cuando}", texto, html);
+    }
+
+    /// <summary>
+    /// JQ-16 · CU-05 4D.3. Un borrador de credencial sin actividad en 83 días: se borrará con sus
+    /// archivos. Dice qué credencial, desde qué día, y qué hacer para conservarla. TEXTO PROPUESTO.
+    /// </summary>
+    public static CorreoRenderizado BorradorPorEliminarse(string nombre, string credencial, DateOnly borrarEl, string enlace)
+    {
+        var fecha = borrarEl.ToString("d 'de' MMMM 'de' yyyy", new System.Globalization.CultureInfo("es-CL"));
+        var parrafo =
+            $"Tu borrador de la credencial «{credencial}» lleva casi tres meses sin cambios. Si no lo "
+            + $"retomas, el {fecha} lo eliminaremos junto con los documentos que subiste. Para conservarlo, "
+            + "sube un documento o envíalo a revisión desde tu ficha.";
+        var texto =
+            $"Hola {nombre}:\n\n" +
+            $"{parrafo}\n\n" +
+            $"Tu ficha:\n\n{enlace}\n\n" +
+            "Si ya no necesitas esa credencial, no tienes que hacer nada.\n\n" +
+            "— El equipo de ZASS!";
+        var html = Marco(
+            "Tu borrador se eliminará pronto",
+            $"Hola {H(nombre)}:",
+            parrafo,   // Marco lo escapa: trae el nombre que escribió la persona
+            "Ir a mi ficha", enlace,
+            "Si ya no necesitas esa credencial, no tienes que hacer nada.");
+        return new("Tu borrador de credencial se eliminará pronto", texto, html);
     }
 
     /// <summary>Ya venció: la ficha dejó de aparecer. Se dice sin rodeos y sin culpar a nadie.</summary>

@@ -145,6 +145,10 @@ public sealed class ColaNotificacionesEfCore : INotificaciones
     public Task<bool> ExisteAsync(string claveIdempotencia, CancellationToken ct = default) =>
         _ctx.Notificaciones.AnyAsync(n => n.ClaveIdempotencia == claveIdempotencia, ct);
 
+    public async Task<DateTime?> ProgramadaParaAsync(string claveIdempotencia, CancellationToken ct = default) =>
+        await _ctx.Notificaciones.Where(n => n.ClaveIdempotencia == claveIdempotencia)
+            .Select(n => (DateTime?)n.ProgramadaPara).FirstOrDefaultAsync(ct);
+
     /// <summary>
     /// ExecuteUpdate va directo a la base, pero por la conexion y la transaccion de este mismo
     /// contexto: si quien llama la deshace, la anulacion se deshace con ella.

@@ -56,6 +56,10 @@ public sealed class ColaEnMemoria : INotificaciones
     public Task<bool> ExisteAsync(string claveIdempotencia, CancellationToken ct = default) =>
         Task.FromResult(Encoladas.Any(n => n.ClaveIdempotencia == claveIdempotencia));
 
+    public Task<DateTime?> ProgramadaParaAsync(string claveIdempotencia, CancellationToken ct = default) =>
+        Task.FromResult(Encoladas.Where(n => n.ClaveIdempotencia == claveIdempotencia)
+            .Select(n => (DateTime?)n.ProgramadaPara).FirstOrDefault());
+
     public Task<int> AnularRecordatoriosAsync(Guid citaId, CancellationToken ct = default)
     {
         var vivos = Encoladas.Where(n => n.CitaId == citaId && n.Estado == EstadoEnvio.Programada

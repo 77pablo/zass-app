@@ -354,6 +354,8 @@ public class CorreoUnidadPruebas
             TipoNotificacion.CitaReprogramada,
             // El planificador (A-09), desde JQ-3.
             TipoNotificacion.Recordatorio24h, TipoNotificacion.Recordatorio2h,
+            // ServicioBorradoresAbandonados, desde JQ-16.
+            TipoNotificacion.BorradorPorEliminarse,
         };
         // Ya no queda ninguno pendiente a conciencia: PerfilPublicado era el ultimo y tiene
         // plantilla desde el 13-nov-2026. Si manana se encola un tipo nuevo sin plantilla, esta
