@@ -1307,8 +1307,9 @@ option { background: var(--blanco); color: var(--pizarra); }
 .etiqueta--alerta { border-color: currentColor; }
 .mesa-verificacion fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }
 
-/* JQ-14 · Indicadores: cifras, no gráficos. */
-.cifras { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin: 12px 0 0; }
+/* JQ-14 · Indicadores: cifras, no gráficos. Va con `dl.` porque la portada usa `section.cifras`
+   («ZASS! en cifras») y una regla `.cifras` suelta la aplasta en una columna. */
+dl.cifras { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin: 12px 0 0; }
 .cifra dt { font-size: 0.875rem; color: var(--suave); }
 .cifra dd { margin: 0; }
 .cifra-valor { font-size: 1.75rem; font-weight: 700; font-variant-numeric: tabular-nums; }
