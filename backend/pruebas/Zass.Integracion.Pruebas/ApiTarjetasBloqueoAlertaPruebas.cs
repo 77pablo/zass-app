@@ -141,18 +141,13 @@ public class ApiTarjetasBloqueoAlertaPruebas : IAsyncLifetime
     {
         using var ctx = ContextoDePrueba.Crear();
         // Borrar TODOS los usuarios de prueba que empiezan con apitj- (de cualquier corrida anterior)
-        // Usamos DELETE en orden correcto para respetar foreign keys, ya que TRUNCATE CASCADE
-        // no funciona bien con todas las foreign keys en CI.
+        // Usamos TRUNCATE CASCADE para limpieza más robusta y rápida
+        // Deshabilitamos temporalmente los triggers y constraints para evitar problemas de foreign keys
         await ctx.Database.ExecuteSqlRawAsync(
             """
-            DELETE FROM tarjetas WHERE perfil_prestador_id IS NOT NULL;
-            DELETE FROM tarjetas WHERE perfil_prestador_id IS NULL AND estado = 'Emitida';
-            DELETE FROM perfiles_prestador;
-            DELETE FROM auditoria;
-            DELETE FROM notificaciones;
-            DELETE FROM sesiones;
-            DELETE FROM perfiles_buscador;
-            DELETE FROM usuarios;
+            SET session_replication_role = 'replica';
+            TRUNCATE TABLE tarjetas, perfiles_prestador, auditoria, notificaciones, sesiones, perfiles_buscador, usuarios, suscripciones, cupos_fundador, citas, citas_copia RESTART IDENTITY CASCADE;
+            SET session_replication_role = 'origin';
             """);
     }
 
