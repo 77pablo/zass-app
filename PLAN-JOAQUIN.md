@@ -154,6 +154,16 @@ quietas: la frecuencia del workflow `despertar-api`, probar la restauración de 
 base, las cabeceras de `frontend/public/_headers`, el barrido de textos en inglés que llegan al
 usuario, las rutas estáticas del `sitemap.xml`, y el identificador de petición en el registro.
 
+### Cómo decidir sin esperar a Pablo (agregado el 20-nov)
+
+Lo mismo que vale para Esteban (`PLAN-ESTEBAN.md`, sección 1). En corto:
+
+1. **Si ya hay una decisión escrita, manda esa.** Si dos fuentes se contradicen, gana la decisión de Pablo escrita en el código o en la documentación, no el plan (lo escribe Claude y se puede equivocar). Dilo en el PR.
+2. **Si no hay nada escrito, decide tú** lo más prudente y explícalo en el PR.
+3. **La documentación técnica está fuera del repositorio:** si tu cambio contradice un documento, anótalo en el PR bajo **«Documento que cambia»** y Claude lo actualiza.
+4. **Textos y pantallas:** los propones tú en el PR y los revisa Claude. Desde el 20-nov **la interfaz también es tuya** (Pablo).
+5. **Solo es de Pablo:** precios y cobros, temas legales, secretos y todo lo de producción.
+
 ### Dos reglas duras
 
 1. **Migraciones de EF: una a la vez, y avisas antes.** Hay **tres sin aplicar en producción**
