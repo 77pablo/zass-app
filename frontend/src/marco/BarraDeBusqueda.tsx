@@ -1,7 +1,8 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSugerencias } from '../api/useSugerencias'
-import { Icono } from './Icono'
+import { busquedasRecientes, olvidarBusquedas, recordarBusqueda } from './busquedasRecientes'
+import { Icono, type NombreDeIcono } from './Icono'
 import { Monograma } from './Monograma'
 import { EJEMPLOS, personas } from './texto'
 
@@ -11,6 +12,7 @@ interface Opcion {
   detalle?: string
   nombrePersona?: string
   verificada?: boolean
+  icono?: NombreDeIcono
   alElegir: () => void
 }
 
@@ -39,6 +41,8 @@ export function BarraDeBusqueda({
   const [abierto, setAbierto] = useState(false)
   const [activo, setActivo] = useState(-1)
   const [ejemplo, setEjemplo] = useState(0)
+  // Lo que busco antes en ESTE telefono (busquedasRecientes.ts). Se lee una vez al montar.
+  const [recientes, setRecientes] = useState(busquedasRecientes)
 
   // El ejemplo del campo vacio rota despacio: dice que se puede buscar de todo sin ocupar espacio.
   useEffect(() => {
@@ -52,6 +56,7 @@ export function BarraDeBusqueda({
 
   function enviar(q: string) {
     setAbierto(false)
+    recordarBusqueda(q)
     if (alEnviar) alEnviar(q)
     else navegar(q === '' ? '/buscar' : `/buscar?q=${encodeURIComponent(q)}`)
   }
@@ -76,7 +81,20 @@ export function BarraDeBusqueda({
       alElegir: () => enviar(limpio),
     })
   } else {
-    for (const e of EJEMPLOS.slice(0, 5)) {
+    // Con el campo vacio: primero lo que ya busco (como cualquier app), con la forma de borrarlo;
+    // despues ejemplos, menos si ya hay recientes, para que la lista no crezca de mas.
+    for (const r of recientes) {
+      opciones.push({ clave: `re-${r}`, etiqueta: r, detalle: 'Buscaste antes', icono: 'reloj', alElegir: () => enviar(r) })
+    }
+    if (recientes.length > 0) {
+      opciones.push({
+        clave: '__olvidar', etiqueta: 'Borrar búsquedas recientes', icono: 'cerrar',
+        alElegir: () => { olvidarBusquedas(); setRecientes([]); setActivo(-1) },
+      })
+    }
+    // Un ejemplo que ya esta entre las recientes no se repite.
+    const yaEsta = new Set(recientes.map((r) => r.toLocaleLowerCase('es')))
+    for (const e of EJEMPLOS.filter((x) => !yaEsta.has(x.toLocaleLowerCase('es'))).slice(0, recientes.length > 0 ? 3 : 5)) {
       opciones.push({ clave: `ej-${e}`, etiqueta: e, detalle: 'Probar con este', alElegir: () => enviar(e) })
     }
   }
@@ -96,6 +114,14 @@ export function BarraDeBusqueda({
     } else if (e.key === 'Enter' && abierto && activo >= 0 && activo < opciones.length) {
       e.preventDefault()
       opciones[activo].alElegir()
+    }
+  }
+
+  // En el celular la lista necesita alto: al enfocar, el buscador sube hasta quedar bajo la cabecera,
+  // y asi la lista cabe encima de la barra inferior (index.css; con scroll propio si la pantalla es baja).
+  function subirEnElCelular() {
+    if (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 880px)').matches) {
+      contenedor.current?.scrollIntoView?.({ block: 'start' })
     }
   }
 
@@ -123,7 +149,7 @@ export function BarraDeBusqueda({
           maxLength={80} value={texto}
           placeholder={`Prueba con «${EJEMPLOS[ejemplo]}»`}
           onChange={(e) => { setTexto(e.target.value); setAbierto(true); setActivo(-1) }}
-          onFocus={() => setAbierto(true)} onKeyDown={alTeclear}
+          onFocus={() => { setAbierto(true); subirEnElCelular() }} onKeyDown={alTeclear}
         />
         {texto !== '' && (
           <button type="button" className="barra-limpiar" aria-label="Borrar lo escrito"
@@ -149,7 +175,7 @@ export function BarraDeBusqueda({
               onMouseDown={(e) => { e.preventDefault(); o.alElegir() }}
               onMouseEnter={() => setActivo(i)}
             >
-              {o.nombrePersona ? <Monograma nombre={o.nombrePersona} tamano="p" /> : <Icono nombre={o.clave === '__todos' ? 'flecha' : 'lupa'} />}
+              {o.nombrePersona ? <Monograma nombre={o.nombrePersona} tamano="p" /> : <Icono nombre={o.icono ?? (o.clave === '__todos' ? 'flecha' : 'lupa')} />}
               <span className="barra-opcion-texto">
                 <strong>{o.etiqueta}</strong>
                 {o.detalle && <small>{o.detalle}</small>}

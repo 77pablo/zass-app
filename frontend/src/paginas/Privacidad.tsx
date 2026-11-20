@@ -91,6 +91,17 @@ export function Privacidad() {
           <li><strong>zass_refresco</strong>: permite renovar la sesión sin pedirte la contraseña de nuevo; dura hasta 30 días.</li>
           <li>Las dos son «httpOnly» (el código de la página no puede leerlas), solo viajan por HTTPS y no se envían desde otros sitios.</li>
           <li><strong>zass-sesion</strong> (almacenamiento local): una marca que solo dice «aquí hubo una sesión abierta»; no contiene datos tuyos.</li>
+          {/*
+            PROPUESTO (18-nov-2026), pendiente de Pablo y de su abogado: las busquedas recientes del #98
+            (marco/busquedasRecientes.ts). Hasta 5 textos, solo en localStorage, nunca viajan al servidor;
+            «Borrar búsquedas recientes» los quita (olvidarBusquedas). La frase de arriba («Solo usamos lo
+            estrictamente necesario para que puedas entrar...») ya no cubre esto: queda la pregunta en el PR.
+          */}
+          <li>
+            <strong>zass-busquedas</strong> (almacenamiento local): tus últimas 5 búsquedas, para ofrecértelas de
+            nuevo en el buscador. Se quedan solo en este navegador, no nos llegan, y las borras con «Borrar
+            búsquedas recientes».
+          </li>
         </ul>
         <p>
           <strong>No usamos publicidad ni herramientas de seguimiento o analítica de terceros.</strong> Un detalle
