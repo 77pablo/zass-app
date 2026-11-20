@@ -446,7 +446,7 @@ public static class RegistroDeServicios
     {
         var flow = sp.GetRequiredService<IOptions<OpcionesZass>>().Value.Flow;
         var faltan = new List<string>();
-        if (string.IsNullOrWhiteSpace(flow?.ApiKey)) faltan.Add("Zass:Flow:ApiKey");
+        
         if (string.IsNullOrWhiteSpace(flow?.SecretKey)) faltan.Add("Zass:Flow:SecretKey");
         if (string.IsNullOrWhiteSpace(flow?.UrlAvisos)) faltan.Add("Zass:Flow:UrlAvisos");
         if (faltan.Count > 0)
