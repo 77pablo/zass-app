@@ -88,6 +88,10 @@ Carpeta **fuera del repo y de OneDrive**: `C:\Users\pdani\zass-secretos\`
   `Zass__ProxiesDeConfianza`, `Zass__SaltosDeProxy=3`, `Zass__ExigirHttps=true`, `ASPNETCORE_ENVIRONMENT=Production`,
   `Zass__Correo__Proveedor=Resend`, `Zass__Correo__ApiKey`, `Zass__Correo__Remitente=no-responder@zass.cl`,
   `Zass__Correo__NombreRemitente=ZASS!`, `Zass__UrlPublica=https://zass.cl`.
+- **⚠️ Nueva desde el 19-nov-2026 (#133): `Zass__SecretoAvisoPagos`**, 32 caracteres aleatorios o más. Firma el
+  aviso de pago. **Ponerla en Render ANTES del primer despliegue que incluya el #133**: sin ella la API no arranca
+  en producción (falla al iniciar con «Falta Zass:SecretoAvisoPagos (32 caracteres o mas)»). Guardarla también
+  fuera de Render, como las demás.
 - **Variable en Cloudflare Pages:** `API_ORIGEN=https://zass-api.onrender.com` (guardada como secreto de Pages).
 - Postgres **local** de desarrollo: portable en `herramientas\pgsql`, puerto **5433**, clave en `.clave-pg.txt` (ignorada por git).
 

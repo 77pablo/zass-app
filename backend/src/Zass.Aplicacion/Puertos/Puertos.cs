@@ -826,6 +826,18 @@ public interface IRepositorioTarjetas
     /// <summary>La tarjeta con su perfil, o nulo. Comparacion exacta: el servicio ya normalizo.</summary>
     Task<Tarjeta?> PorUrlEstableAsync(string urlEstable, CancellationToken ct = default);
 
+    /// <summary>
+    /// API-55. Toma la fila de la tarjeta CON BLOQUEO (SELECT ... FOR UPDATE) para activacion.
+    /// Incluye el perfil. Nulo si no existe o no esta en estado Emitida.
+    /// </summary>
+    Task<Tarjeta?> TomarParaActivarAsync(string urlEstable, CancellationToken ct = default);
+
+    /// <summary>
+    /// Comprueba si existe una tarjeta con esa URL estable (cualquier estado).
+    /// Usado para distinguir "no existe" de "ya activada/vencida" sin revelar cual.
+    /// </summary>
+    Task<bool> ExistePorUrlEstableAsync(string urlEstable, CancellationToken ct = default);
+
     /// <summary>Sin identidad del visitante (R-20): la entidad no tiene donde guardarla.</summary>
     void AgregarEscaneo(EscaneoTarjeta escaneo);
 
@@ -840,11 +852,15 @@ public interface IRepositorioTarjetas
 
     /// <summary>
     /// API-58. Una sola consulta agrupada por medio. Un escaneo cuenta en un periodo si
-    /// <c>ocurrido_en &gt;= desde</c>: el borde exacto entra.
+    /// <c>ocurrido_en >= desde</c>: el borde exacto entra.
     /// </summary>
     Task<EscaneosContados> EscaneosPorMedioAsync(
         Guid tarjetaId, DateTime desde7, DateTime desde30, CancellationToken ct = default);
+
+    /// <summary>API-59. Agrega una tarjeta nueva en estado Emitida.</summary>
+    void Agregar(Tarjeta tarjeta);
 }
+
 
 /// <summary>API-58. Lo que el repositorio cuenta, ya agrupado: el servicio no recorre escaneos.</summary>
 public sealed record EscaneosContados(
