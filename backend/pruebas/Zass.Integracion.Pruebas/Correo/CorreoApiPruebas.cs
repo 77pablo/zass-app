@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
 
 namespace Zass.Integracion.Pruebas.Correo;

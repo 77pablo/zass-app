@@ -123,9 +123,14 @@ public class ValidadorOpcionesZassPruebas
     private sealed class EntornoFalso : IHostEnvironment
     {
         private readonly string _entorno;
-        public EntornoFalso(string entorno) => _entorno = entorno;
+        public EntornoFalso(string entorno)
+        {
+            _entorno = entorno;
+            EnvironmentName = entorno;
+        }
         public string ApplicationName { get; set; } = "Zass.Api";
-        public string EnvironmentName => _entorno;
+        public string EnvironmentName { get; set; }
+        public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; } = null!;
         public string ContentRootPath { get; set; } = "";
         public bool IsDevelopment() => _entorno == Environments.Development;
         public bool IsProduction() => _entorno == Environments.Production;
