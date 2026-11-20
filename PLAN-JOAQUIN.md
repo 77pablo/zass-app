@@ -9,6 +9,42 @@ la rama `plan-joaquin`): esas tienen cosas que ya están hechas.
 
 ---
 
+## 0b. JQ-17 — La pantalla de los tres planes (Pablo, 20-nov) · N2
+
+**Decisión de Pablo:** ZASS! tiene tres planes. **El del medio, el Profesional, tiene que ser la elección obvia.**
+Detalle completo en `zass-tareas\postulacion-planes-de-cobro.md` (te lo pasa Pablo en PDF).
+
+| | Esencial | **Profesional** ⭐ | Equipo |
+|---|---|---|---|
+| Precio (IVA incluido) | $7.990 | **$12.990** | $24.990 |
+| Servicios / tarjetas activas | 5 / 1 | 15 / 3 | 15 por profesional / 10 |
+| Estadísticas, fotos de trabajos, verificación prioritaria | — | ✅ | ✅ |
+| Estado | Activo | Activo | **Inactivo: «Próximamente»** |
+
+**Espera a que esté en `main` la T67** (la hacen los modelos gratis): crea el plan `profesional`, deja `mensual` como «ZASS! Esencial»,
+crea `equipo` inactivo y agrega a cada plan `maxFotosTrabajos`, `permiteEstadisticas` y `verificacionPrioritaria`. Hasta entonces
+puedes adelantar el diseño, pero no lo fusiones antes.
+
+**Qué tiene que quedar en `/planes`:**
+
+- **Tres columnas**: Esencial, Profesional y Equipo, en ese orden. **El Profesional al centro, destacado** (más alto o con borde)
+  y con la etiqueta **«El más elegido»**. En el celular, el Profesional va primero.
+- Lo que incluye cada uno, **leído de la API** (`/api/planes`), no escrito a mano en la pantalla. Lo que el plan no tiene se
+  marca como que no lo tiene, para que se note la diferencia.
+- **El Equipo como «Próximamente»**: se ve, pero sin botón de contratar (la API no lo devuelve porque es inactivo; muéstralo con
+  datos fijos solo para ese caso y escribe en el PR por qué).
+- **El Fundador**, mientras queden cupos: un aviso arriba, *«El plan de $12.990, a $5.990 para siempre. Quedan N de 50»*.
+- Debajo de todo: *«Ningún plan compra un mejor lugar en la búsqueda.»*
+- Funciona con tu **#171** (pantallas del pago con estilo): hazlo sobre él o después de fusionarlo.
+
+**Después, en tu JQ-8 (#167):** las estadísticas se muestran solo si el plan tiene `permiteEstadisticas`. A quien no lo tiene,
+muéstrale qué se pierde y un botón para pasarse al Profesional.
+
+**Y cuando la T69 esté en `main`:** la pantalla para subir y ordenar las fotos de trabajos en «Mi ficha», y mostrarlas en la
+ficha pública. Eso será la JQ-18.
+
+---
+
 ## 0a. Los borradores de interfaz que heredas (Pablo, 20-nov) — LÉELA PRIMERO
 
 Desde el 20-nov **la interfaz es tuya**, y Pablo decidió que heredes los 8 borradores de interfaz que tenía Claude.
