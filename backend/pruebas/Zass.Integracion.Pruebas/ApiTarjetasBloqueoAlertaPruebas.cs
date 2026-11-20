@@ -141,29 +141,27 @@ public class ApiTarjetasBloqueoAlertaPruebas : IAsyncLifetime
     {
         using var ctx = ContextoDePrueba.Crear();
         // Borrar TODOS los usuarios de prueba que empiezan con apitj- (de cualquier corrida anterior)
-        // Usamos un bloque PL/pgSQL para manejar tablas que pueden no existir
+        // Usamos un bloque PL/pgSQL para truncar solo tablas que existen
         await ctx.Database.ExecuteSqlRawAsync(
             """
             DO $$
             DECLARE
-                tablas_borrado TEXT[] := ARRAY[
-                    'tarjetas', 'citas_copia', 'citas', 'cupos_fundador', 'suscripciones',
-                    'perfiles_prestador', 'auditoria', 'notificaciones', 'sesiones',
-                    'perfiles_buscador', 'trabajos_de_fondo', 'usuarios'
+                tablas TEXT[] := ARRAY[
+                    'tarjetas', 'perfiles_prestador', 'auditoria', 'notificaciones',
+                    'sesiones', 'perfiles_buscador', 'usuarios', 'suscripciones',
+                    'cupos_fundador', 'citas', 'citas_copia', 'trabajos_de_fondo'
                 ];
                 t TEXT;
             BEGIN
-                -- Tablas con foreign keys: borrar en orden correcto
-                FOREACH t IN ARRAY ARRAY['tarjetas', 'citas_copia', 'citas', 'cupos_fundador', 'suscripciones',
-                                         'perfiles_prestador', 'auditoria', 'notificaciones',
-                                         'sesiones', 'perfiles_buscador', 'trabajos_de_fondo', 'usuarios']
-                LOOP
+                SET session_replication_role = 'replica';
+                FOREACH t IN ARRAY tablas LOOP
                     BEGIN
-                        EXECUTE format('DELETE FROM %I', t);
+                        EXECUTE format('TRUNCATE TABLE %I RESTART IDENTITY CASCADE', t);
                     EXCEPTION WHEN undefined_table THEN
                         -- ignorar tablas que no existen
                     END;
                 END LOOP;
+                SET session_replication_role = 'origin';
             END $$;
             """);
     }
