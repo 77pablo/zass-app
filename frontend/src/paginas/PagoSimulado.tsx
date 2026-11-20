@@ -44,14 +44,19 @@ export function PagoSimulado() {
     setEnviando(true)
     setError(null)
     try {
-      await enviar('/api/pagos/aviso', {
+      const confirmacion = await enviar<{ aprobado?: boolean } | undefined>('/api/pagos/aviso', {
         intento,
         monto,
         estado: aprobado ? 'aprobado' : 'rechazado',
         referencia,
         firma,
       })
-      navegar('/planes/listo')
+      // Lo que se muestra al volver lo decide la RESPUESTA de la API, no el botón que se apretó:
+      // antes un rechazo terminaba en «Tu medio de pago quedó inscrito» (defecto 3 de JQ-7).
+      const resultado = confirmacion?.aprobado === true ? 'aprobado'
+        : confirmacion?.aprobado === false ? 'rechazado'
+          : 'revisar'
+      navegar(`/planes/listo?resultado=${resultado}`)
     } catch {
       setError('La pasarela de prueba no pudo avisar. Vuelve a intentarlo.')
     } finally {
