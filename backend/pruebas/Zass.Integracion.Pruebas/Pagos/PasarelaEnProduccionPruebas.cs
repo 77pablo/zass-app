@@ -47,6 +47,7 @@ public class PasarelaEnProduccionPruebas
             ["Zass:ClaveDireccionesBase64"] =
                 Convert.ToBase64String(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray()),
             ["Zass:SecretoAvisoPagos"] = SecretoAvisoValido,
+            ["Zass:CorreoAlertasAdmin"] = "alertas@ejemplo.test",
         };
         if (pasarela is not null) ajustes[RegistroDeServicios.ClavePasarela] = pasarela;
 
