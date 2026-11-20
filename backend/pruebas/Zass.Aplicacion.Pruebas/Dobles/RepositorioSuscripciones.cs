@@ -117,6 +117,13 @@ public sealed class RepositorioSuscripcionesEnMemoria : IRepositorioSuscripcione
         Guid perfilPrestadorId, CancellationToken ct = default) =>
         Task.FromResult(_base.PerfilesPrestador.Any(p => p.Id == perfilPrestadorId));
 
+    public Task<string?> CorreoDelUsuarioDePerfilAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        var usuarioId = _base.PerfilesPrestador.FirstOrDefault(p => p.Id == perfilPrestadorId)?.UsuarioId;
+        return Task.FromResult(_base.Usuarios.FirstOrDefault(u => u.Id == usuarioId)?.Correo);
+    }
+
     public Task<IReadOnlyDictionary<Guid, Guid>> UsuariosDePerfilesAsync(
         IReadOnlyCollection<Guid> perfilPrestadorIds, CancellationToken ct = default)
     {
