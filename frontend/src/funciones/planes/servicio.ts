@@ -73,10 +73,26 @@ export function iniciarCobro(
     '/api/mi/cobros', { codigoPlan, codigoCupon }, 'POST', { 'Idempotency-Key': clave })
 }
 
-/** API-69. Toma el cupo inscribiendo el medio de pago. Sin cuerpo: no hay nada que elegir. */
-export function tomarCupoFundador(clave: string): Promise<IntentoDePago> {
-  return enviar<IntentoDePago>(
+/** API-69. El cupo recién tomado y hasta cuándo corre el mes gratis. */
+export interface CupoTomado {
+  numero: number
+  mesGratisHasta: string
+  tarjetaInscrita: boolean
+}
+
+/**
+ * API-69. Toma el cupo SIN tarjeta (decisión de Pablo, 20-nov-2026): queda tuyo al tiro y
+ * arranca el mes gratis. Sin cuerpo: no hay nada que elegir.
+ */
+export function tomarCupoFundador(clave: string): Promise<CupoTomado> {
+  return enviar<CupoTomado>(
     '/api/mi/suscripcion/fundador', undefined, 'POST', { 'Idempotency-Key': clave })
+}
+
+/** API-76. Inscribe la tarjeta de quien ya tiene su cupo. Devuelve a dónde ir a inscribirla. */
+export function inscribirTarjeta(clave: string): Promise<IntentoDePago> {
+  return enviar<IntentoDePago>(
+    '/api/mi/suscripcion/tarjeta', undefined, 'POST', { 'Idempotency-Key': clave })
 }
 
 /** Pesos chilenos, como se escriben en Chile: $5.990. */

@@ -217,6 +217,12 @@ public interface IRepositorioSuscripciones
     Task<bool> ExistePerfilPrestadorAsync(Guid perfilPrestadorId, CancellationToken ct = default);
 
     /// <summary>
+    /// El correo del usuario de ese perfil prestador, o nulo si el perfil no existe.
+    /// Se usa para enviar el correo a Flow.cl al iniciar un cobro o una inscripcion.
+    /// </summary>
+    Task<string?> CorreoDelUsuarioDePerfilAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+
+    /// <summary>
     /// A quien pertenece cada perfil, para poder avisarle. UNA consulta, por el mismo motivo
     /// que <see cref="VigentesEntreAsync"/>: el trabajo diario puede tener cientos de
     /// suscripciones por vencer y preguntar una por una serian cientos de idas a la base.

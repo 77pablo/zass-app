@@ -2476,6 +2476,10 @@ public partial class ApiPruebas : IAsyncLifetime
             // terminacion `b` significa «el mismo recurso, el metodo que faltaba», y esto es otro
             // recurso y otra operacion. Documentado en api-rest.md seccion 11.
             "API-71",
+            // La vuelta del navegador desde la pasarela (fase 2 de Flow). Otro recurso que el aviso.
+            "API-75",
+            // Cupo sin tarjeta (20-nov-2026): API-69 toma el cupo y API-76 inscribe la tarjeta.
+            "API-76",
 
             // JQ-9: la foto del perfil (subir, quitar, servirla) y el documento que abre el
             // Verificador con la credencial tomada.

@@ -138,12 +138,31 @@ public static class EndpointsSuscripciones
             .RequireRateLimiting(Tasa.Sensible)
             .WithName("API-68");
 
-        // API-69 - Toma un cupo fundador inscribiendo el medio de pago (RN-S7-01).
+        // API-69 - Toma un cupo fundador, SIN tarjeta (decision de Pablo, 20-nov-2026). Lo deja
+        // definitivo y arranca el mes gratis; la tarjeta se inscribe despues con API-76.
         //
-        // Sin cuerpo a proposito: no hay nada que elegir. El plan es el fundador, el monto
-        // es cero y el perfil sale de la sesion. Lo unico que viaja es la clave de
-        // idempotencia, para que el doble clic no tome dos cupos.
+        // Sin cuerpo a proposito: no hay nada que elegir. El perfil sale de la sesion. La clave
+        // de idempotencia se sigue pidiendo; ademas tomar es idempotente por perfil.
         grupo.MapPost("/suscripcion/fundador", async (
+                HttpContext http, IServicioSuscripciones suscripciones,
+                ServicioPerfiles perfiles, ClaimsPrincipal quien) =>
+            {
+                if (http.ClaveIdempotencia() is null) return FaltaLaClave();
+
+                var mio = await MiPerfil(perfiles, quien);
+                if (!mio.Exito) return Respuestas.Problema(mio);
+
+                return Respuestas.DeResultado(
+                    await suscripciones.TomarCupoFundadorAsync(mio.Valor!.Id));
+            })
+            .AddEndpointFilter<FiltroIdempotencia>()
+            .RequireRateLimiting(Tasa.Sensible)
+            .WithName("API-69");
+
+        // API-76 - Inscribe la tarjeta de quien YA tiene su cupo fundador (RN-S7-01). Monto
+        // cero: no se cobra nada, se autoriza el cobro de cuando termine el mes gratis.
+        // Devuelve a donde mandar a la persona (la pasarela).
+        grupo.MapPost("/suscripcion/tarjeta", async (
                 HttpContext http, IServicioCobros cobros,
                 ServicioPerfiles perfiles, ClaimsPrincipal quien) =>
             {
@@ -157,7 +176,7 @@ public static class EndpointsSuscripciones
             })
             .AddEndpointFilter<FiltroIdempotencia>()
             .RequireRateLimiting(Tasa.Sensible)
-            .WithName("API-69");
+            .WithName("API-76");
     }
 
     private static void MapearAvisos(RouteGroupBuilder grupo)
@@ -182,6 +201,35 @@ public static class EndpointsSuscripciones
             })
             .RequireRateLimiting(Tasa.General)
             .WithName("API-70");
+
+        // API-75 - La VUELTA del navegador desde la pasarela (fase 2 de Flow).
+        //
+        // Flow devuelve a la persona aqui con el token, por POST de formulario (o GET). En la
+        // inscripcion de tarjeta es el UNICO aviso que hay: customer/register no avisa al
+        // servidor. Por eso esta vuelta confirma igual que API-70 —el adaptador consulta a la
+        // pasarela con nuestra firma, y repetir no extiende nada dos veces— y despues manda a
+        // la persona a una pantalla, en vez de dejarla mirando un JSON.
+        //
+        // Sin sesion y sin CSRF, por lo mismo que API-70: el POST viene de flow.cl. Y la
+        // redireccion va SIEMPRE a /planes/listo de nuestro sitio, con un resultado de tres
+        // valores fijos: nada de lo que trae la peticion decide a donde se va (sin redirector
+        // abierto).
+        grupo.MapMethods("/vuelta", new[] { HttpMethods.Get, HttpMethods.Post }, async (
+                HttpRequest peticion, IServicioCobros cobros,
+                Microsoft.Extensions.Options.IOptions<Zass.Infraestructura.Configuracion.OpcionesZass> opciones) =>
+            {
+                var campos = await CamposDelAviso(peticion);
+                var resultado = campos is null
+                    ? ResultadoDeLaVuelta.Revisar
+                    : ResultadoDeLaVuelta.De(await cobros.ConfirmarAsync(new AvisoDePasarela(campos)));
+
+                // 302: el navegador llega por POST y sigue la redireccion con un GET.
+                var raiz = (opciones.Value.UrlPublica ?? "").TrimEnd('/');
+                return Results.Redirect($"{raiz}/planes/listo?resultado={resultado}",
+                    permanent: false, preserveMethod: false);
+            })
+            .RequireRateLimiting(Tasa.General)
+            .WithName("API-75");
     }
 
     /// <summary>
@@ -244,4 +292,25 @@ public static class EndpointsSuscripciones
         title: "Falta la clave de idempotencia",
         detail: $"Manda la cabecera {FiltroIdempotencia.Cabecera} con cada intento del mismo envío.",
         statusCode: StatusCodes.Status400BadRequest);
+}
+
+/// <summary>
+/// API-75. Lo que la pantalla de vuelta necesita saber, en tres palabras fijas. Nunca el motivo
+/// ni el estado interno: la URL queda en el historial del navegador.
+/// </summary>
+public static class ResultadoDeLaVuelta
+{
+    public const string Aprobado = "aprobado";
+    public const string Rechazado = "rechazado";
+
+    /// <summary>
+    /// No se pudo confirmar ahora (aviso ilegible, intento desconocido, la pasarela no contesto).
+    /// La pantalla dice que se esta confirmando: si el pago entro, el aviso del servidor lo cierra.
+    /// </summary>
+    public const string Revisar = "revisar";
+
+    public static string De(Resultado<ConfirmacionDto> confirmacion) =>
+        !confirmacion.Exito || confirmacion.Valor is null ? Revisar
+        : confirmacion.Valor.Aprobado ? Aprobado
+        : Rechazado;
 }
