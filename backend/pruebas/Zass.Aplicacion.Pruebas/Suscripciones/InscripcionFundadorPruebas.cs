@@ -353,4 +353,57 @@ public class InscripcionFundadorPruebas
         Assert.NotNull(CupoDe(perfil.Id)!.ReservadoHasta);   // sigue siendo solo una reserva
         Assert.Equal((short)1, SuscripcionDe(perfil.Id).PlanId);
     }
+
+    // ------------------------------------------------- Informe JQ-7 de Joaquín (PR #151)
+
+    /// <summary>
+    /// Defecto 1: la reserva de esta persona vencio, otra tomo ESE cupo y lo confirmo, y
+    /// despues llega el aviso de la primera. No puede quedar como fundadora sin cupo.
+    /// </summary>
+    [Fact]
+    public async Task Un_aviso_tardio_cuando_el_cupo_ya_es_de_otra_persona_no_crea_un_fundador_sin_cupo()
+    {
+        var tarde = UnPrestadorConSuscripcion();
+        await _cobros.IniciarInscripcionFundadorAsync(tarde.Id, "k1");
+        var intento = ElIntento();
+        var cupo = CupoDe(tarde.Id)!;
+
+        // Otra persona se queda con ESE cupo, confirmado.
+        var otra = Guid.NewGuid();
+        cupo.PerfilPrestadorId = otra;
+        cupo.ReservadoHasta = null;
+
+        LaPasarelaResponde(intento);
+        var r = await _cobros.ConfirmarAsync(UnAviso());
+
+        Assert.True(r.Exito);                       // 200: la pasarela no tiene que reintentar
+        Assert.False(r.Valor!.Aprobado);
+        Assert.Equal(EstadoIntentoPago.Fallido, intento.Estado);
+
+        var s = SuscripcionDe(tarde.Id);
+        Assert.NotEqual("fundador", _base.Planes.Single(p => p.Id == s.PlanId).Codigo);
+        Assert.Null(CupoDe(tarde.Id));               // no tiene cupo, y nadie le inventa uno
+        Assert.Equal(otra, cupo.PerfilPrestadorId);  // y el de la otra persona no se toca
+    }
+
+    /// <summary>Defecto 2: volver a inscribir la tarjeta no regala otros 30 días.</summary>
+    [Fact]
+    public async Task Volver_a_inscribirse_siendo_fundador_no_corre_el_mes_gratis()
+    {
+        var perfil = UnPrestadorConSuscripcion();
+        await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
+        LaPasarelaResponde(ElIntento());
+        await _cobros.ConfirmarAsync(UnAviso());
+        var vigencia = SuscripcionDe(perfil.Id).VigenteHasta;   // Ahora + 30
+
+        _reloj.Avanzar(TimeSpan.FromDays(10));
+        await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k2");
+        var segunda = _base.IntentosDePago.Last();
+        _pasarela.Veredicto = new CobroResuelto(segunda.Id, "ref_2", true, 0, null);
+        var r = await _cobros.ConfirmarAsync(UnAviso());
+
+        Assert.True(r.Exito);
+        Assert.Equal(vigencia, SuscripcionDe(perfil.Id).VigenteHasta);   // no pasa a «hoy + 30»
+        Assert.Equal("ref_2", SuscripcionDe(perfil.Id).ReferenciaPasarela); // la tarjeta nueva sí queda
+    }
 }

@@ -778,15 +778,39 @@ public sealed class ServicioCobros : IServicioCobros
                     "El monto confirmado no coincide con el del cobro. No se registró nada.");
             }
 
+            // RN-S7-01 y «al cupo 50 se cierra» (decisión de Pablo, 12-nov): una inscripcion solo
+            // hace fundador a quien TODAVIA tiene su cupo. Si la reserva vencio y el cupo lo tomo
+            // otra persona, el aviso puede llegar igual (la persona inscribio la tarjeta tarde):
+            // antes se ignoraba el resultado de confirmar y quedaba un fundador SIN cupo, y se
+            // podian pasar de 50 (defecto 1 del informe JQ-7). Se mira ANTES de marcar pagado.
+            if (intento.Tipo == TipoDeIntento.Inscripcion)
+            {
+                var cupo = await _suscripciones.ConfirmarCupoFundadorAsync(intento.PerfilPrestadorId, t);
+                if (!cupo.Exito)
+                {
+                    const string sinCupo = "El cupo que habías reservado venció y ya lo tomó otra persona.";
+                    intento.MarcarFallido(_reloj.Ahora, sinCupo);
+                    _auditor.Registrar(Auditar.Entrada(
+                        "inscripcion_sin_cupo", "intentos_de_pago", intento.Id, _reloj.Ahora,
+                        contexto: new { perfil = intento.PerfilPrestadorId }));
+                    await _trabajo.GuardarAsync(t);
+
+                    // Exito del caso de uso y no del cupo, igual que un rechazo de la tarjeta:
+                    // la pasarela no tiene que reintentar, y la pantalla lo cuenta con calma.
+                    return Resultado.Ok(new ConfirmacionDto(
+                        intento.Id, Aprobado: false, intento.Estado.ToString(), null,
+                        sinCupo + " No se cobró nada.", Nueva: true));
+                }
+            }
+
             intento.MarcarPagado(_reloj.Ahora);
             if (r.ReferenciaPasarela is not null) intento.ReferenciaPasarela = r.ReferenciaPasarela;
 
             // RN-S7-01: una INSCRIPCION no extiende un mes pagado ni crea fila de pago,
-            // porque no se cobro nada. Lo que hace es dejar el cupo definitivo y arrancar
-            // el mes gratis.
+            // porque no se cobro nada. Lo que hace es dejar el cupo definitivo (ya hecho
+            // arriba) y arrancar el mes gratis.
             if (intento.Tipo == TipoDeIntento.Inscripcion)
             {
-                await _suscripciones.ConfirmarCupoFundadorAsync(intento.PerfilPrestadorId, t);
 
                 var cambio = await _suscripciones.PasarAFundadorConMesGratisAsync(
                     intento.SuscripcionId, intento.ReferenciaPasarela, t);
