@@ -1321,101 +1321,27 @@ public class ApiAgendaPruebas : IAsyncLifetime
             BaseAddress = new Uri("https://localhost"),
         });
 
-        // Registrar prestador
-        var marca = Guid.NewGuid().ToString("N")[..12];
-        var prestadorCorreo = $"apicl-{marca}@zass.local";
-        var prestadorReg = await cliente.PostAsJsonAsync("/api/auth/registro", new
+        Guid perfilId = Guid.Empty;
+        int servicioCatalogoId = 0;
+        string marca = "";
+
+        try
         {
-            correo = prestadorCorreo, contrasena = "contrasena-larga-1",
-            nombre = "Pablo Espinoza", rol = "prestador",
-        });
-        Assert.Equal(HttpStatusCode.Created, prestadorReg.StatusCode);
-
-        // Verificar correo del prestador
-        using (var ctxPrest = ContextoDePrueba.Crear())
-        {
-            var usuario = await ctxPrest.Usuarios.SingleAsync(u => u.Correo == prestadorCorreo);
-            var aviso = await ctxPrest.Notificaciones
-                .Where(n => n.DestinatarioId == usuario.Id
-                            && n.Tipo == TipoNotificacion.CorreoVerificacion)
-                .OrderByDescending(n => n.ProgramadaPara).FirstAsync();
-            var token = Zass.Aplicacion.Puertos.CargaDeAviso.LeerToken(aviso.Cuerpo)!;
-            Assert.Equal(HttpStatusCode.NoContent,
-                (await cliente.PostAsJsonAsync("/api/auth/correo/verificar", new { token })).StatusCode);
-        }
-
-        // Crear perfil, servicio, disponibilidad, bloque, suscripción
-        using (var ctx = ContextoDePrueba.Crear())
-        {
-            await ctx.Database.ExecuteSqlRawAsync("TRUNCATE TABLE notificaciones RESTART IDENTITY CASCADE");
-            
-            var prestador = await ctx.Usuarios.SingleAsync(u => u.Correo == prestadorCorreo);
-            var perfil = await ctx.PerfilesPrestador.SingleAsync(p => p.UsuarioId == prestador.Id);
-            perfil.RubroId = (await ctx.Rubros.FirstAsync(r => r.Activo)).Id;
-            perfil.Slug = $"apicl-{marca}";
-            perfil.NombrePublico = "Estudio de prueba";
-            perfil.Estado = EstadoPerfil.Publicado;
-            perfil.PublicadoEn = inicioUtc.AddDays(-2);
-
-            var servicio = new Servicio
+            // Registrar prestador
+            marca = Guid.NewGuid().ToString("N")[..12];
+            var prestadorCorreo = $"apicl-{marca}@zass.local";
+            var prestadorReg = await cliente.PostAsJsonAsync("/api/auth/registro", new
             {
-                RubroId = (short)perfil.RubroId!, Nombre = $"Consulta {marca}",
-                NombreNormalizado = $"consulta {marca}", EsCatalogo = false,
-            };
-            ctx.Servicios.Add(servicio);
-            await ctx.SaveChangesAsync();
-
-            var ofrecido = new PrestadorServicio
-            {
-                PerfilPrestadorId = perfil.Id, ServicioId = servicio.Id,
-                DuracionMinutos = 30, ModoAgenda = ModoAgenda.Automatico, Activo = true,
-            };
-            ctx.PrestadorServicios.Add(ofrecido);
-
-            var plan = await ctx.Planes.FirstAsync(p => p.Codigo == "prueba");
-            ctx.Suscripciones.Add(new Suscripcion
-            {
-                PerfilPrestadorId = perfil.Id, PlanId = plan.Id,
-                Estado = EstadoSuscripcion.Activa,
-                IniciaEn = inicioUtc.AddDays(-2), VigenteHasta = inicioUtc.AddDays(28),
+                correo = prestadorCorreo, contrasena = "contrasena-larga-1",
+                nombre = "Pablo Espinoza", rol = "prestador",
             });
+            Assert.Equal(HttpStatusCode.Created, prestadorReg.StatusCode);
 
-            // La cita tiene que ser futura: bloque para mañana en hora de Chile
-            // 2026-12-11 10:00 America/Santiago = 2026-12-11 13:00 UTC
-            var bloqueChile = new DateTime(2026, 12, 11, 10, 0, 0, DateTimeKind.Unspecified);
-            var bloqueUtc = TimeZoneInfo.ConvertTimeToUtc(bloqueChile, TimeZoneInfo.FindSystemTimeZoneById("America/Santiago"));
-            
-            var regla = new Disponibilidad
+            // Verificar correo del prestador
+            using (var ctxPrest = ContextoDePrueba.Crear())
             {
-                PerfilPrestadorId = perfil.Id, PrestadorServicioId = ofrecido.Id,
-                DiaSemana = (short)(((int)bloqueChile.DayOfWeek + 6) % 7 + 1),
-                HoraInicio = TimeOnly.FromDateTime(bloqueChile),
-                HoraFin = TimeOnly.FromDateTime(bloqueChile).AddMinutes(30),
-                DuracionBloqueMin = 30, VigenteDesde = DateOnly.FromDateTime(bloqueChile),
-            };
-            ctx.Disponibilidades.Add(regla);
-            await ctx.SaveChangesAsync();
-
-            var bloque = new BloqueHorario
-            {
-                DisponibilidadId = regla.Id, PerfilPrestadorId = perfil.Id,
-                PrestadorServicioId = ofrecido.Id,
-                InicioEn = bloqueUtc, FinEn = bloqueUtc.AddMinutes(30), Estado = EstadoBloque.Libre,
-            };
-            ctx.Bloques.Add(bloque);
-            await ctx.SaveChangesAsync();
-
-            var buscadorCorreo = $"apicl-b-{marca}@zass.local";
-            var buscadorReg = await cliente.PostAsJsonAsync("/api/auth/registro", new
-            {
-                correo = buscadorCorreo, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
-            });
-            Assert.Equal(HttpStatusCode.Created, buscadorReg.StatusCode);
-
-            using (var ctx2 = ContextoDePrueba.Crear())
-            {
-                var usuario = await ctx2.Usuarios.SingleAsync(u => u.Correo == buscadorCorreo);
-                var aviso = await ctx2.Notificaciones
+                var usuario = await ctxPrest.Usuarios.SingleAsync(u => u.Correo == prestadorCorreo);
+                var aviso = await ctxPrest.Notificaciones
                     .Where(n => n.DestinatarioId == usuario.Id
                                 && n.Tipo == TipoNotificacion.CorreoVerificacion)
                     .OrderByDescending(n => n.ProgramadaPara).FirstAsync();
@@ -1424,66 +1350,198 @@ public class ApiAgendaPruebas : IAsyncLifetime
                     (await cliente.PostAsJsonAsync("/api/auth/correo/verificar", new { token })).StatusCode);
             }
 
-            Assert.Equal(HttpStatusCode.OK, (await cliente.PostAsJsonAsync("/api/auth/sesion", new
+            // Crear perfil, servicio, disponibilidad, bloque, suscripción
+            using (var ctx = ContextoDePrueba.Crear())
             {
-                correo = buscadorCorreo, contrasena = "contrasena-larga-1",
-            })).StatusCode);
+                await ctx.Database.ExecuteSqlRawAsync("TRUNCATE TABLE notificaciones RESTART IDENTITY CASCADE");
+                
+                var prestador = await ctx.Usuarios.SingleAsync(u => u.Correo == prestadorCorreo);
+                var perfil = await ctx.PerfilesPrestador.SingleAsync(p => p.UsuarioId == prestador.Id);
+                perfil.RubroId = (await ctx.Rubros.FirstAsync(r => r.Activo)).Id;
+                perfil.Slug = $"apicl-{marca}";
+                perfil.NombrePublico = "Estudio de prueba";
+                perfil.Estado = EstadoPerfil.Publicado;
+                perfil.PublicadoEn = inicioUtc.AddDays(-2);
 
-            // Agendar la cita (modo automatico -> Confirmada)
-            var csrfResp = await cliente.GetAsync("/api/auth/csrf");
-            var csrfJson = await csrfResp.Content.ReadFromJsonAsync<JsonDocument>();
-            var csrf = csrfJson!.RootElement.GetProperty("token").GetString()!;
-            var agendar = new HttpRequestMessage(HttpMethod.Post, "/api/citas")
-            {
-                Content = JsonContent.Create(new { bloqueId = bloque.Id, notaBuscador = (string?)null }),
-            };
-            agendar.Headers.Add("X-CSRF-Token", csrf);
-            agendar.Headers.Add("Idempotency-Key", $"c-{Guid.NewGuid():N}");
-            var rAgendar = await cliente.SendAsync(agendar);
-            Assert.Equal(HttpStatusCode.Created, rAgendar.StatusCode);
-            var citaJson = (await rAgendar.Content.ReadFromJsonAsync<JsonDocument>())!.RootElement;
-            var citaId = citaJson.GetProperty("id").GetString()!;
-
-            // Funcion helper para reenviar recordatorio
-            async Task<HttpResponseMessage> ReenviarAsync()
-            {
-                var csrfResp2 = await cliente.GetAsync("/api/auth/csrf");
-                var csrfJson2 = await csrfResp2.Content.ReadFromJsonAsync<JsonDocument>();
-                var csrf2 = csrfJson2!.RootElement.GetProperty("token").GetString()!;
-                var p = new HttpRequestMessage(HttpMethod.Post, $"/api/citas/{citaId}/recordatorio")
+                var servicio = new Servicio
                 {
-                    Content = JsonContent.Create(new { }),
+                    RubroId = (short)perfil.RubroId!, Nombre = $"Consulta {marca}",
+                    NombreNormalizado = $"consulta {marca}", EsCatalogo = false,
                 };
-                p.Headers.Add("X-CSRF-Token", csrf2);
-                return await cliente.SendAsync(p);
-            }
+                ctx.Servicios.Add(servicio);
+                await ctx.SaveChangesAsync();
 
-            // 1. A las 22:30 hora de Chile (ya es 11-dic 01:30 UTC): 5 reenvios OK
-            for (int i = 1; i <= 5; i++)
+                var ofrecido = new PrestadorServicio
+                {
+                    PerfilPrestadorId = perfil.Id, ServicioId = servicio.Id,
+                    DuracionMinutos = 30, ModoAgenda = ModoAgenda.Automatico, Activo = true,
+                };
+                ctx.PrestadorServicios.Add(ofrecido);
+
+                var plan = await ctx.Planes.FirstAsync(p => p.Codigo == "prueba");
+                ctx.Suscripciones.Add(new Suscripcion
+                {
+                    PerfilPrestadorId = perfil.Id, PlanId = plan.Id,
+                    Estado = EstadoSuscripcion.Activa,
+                    IniciaEn = inicioUtc.AddDays(-2), VigenteHasta = inicioUtc.AddDays(28),
+                });
+
+                // La cita tiene que ser futura: bloque para mañana en hora de Chile
+                // 2026-12-11 10:00 America/Santiago = 2026-12-11 13:00 UTC
+                var bloqueChile = new DateTime(2026, 12, 11, 10, 0, 0, DateTimeKind.Unspecified);
+                var bloqueUtc = TimeZoneInfo.ConvertTimeToUtc(bloqueChile, TimeZoneInfo.FindSystemTimeZoneById("America/Santiago"));
+                
+                var regla = new Disponibilidad
+                {
+                    PerfilPrestadorId = perfil.Id, PrestadorServicioId = ofrecido.Id,
+                    DiaSemana = (short)(((int)bloqueChile.DayOfWeek + 6) % 7 + 1),
+                    HoraInicio = TimeOnly.FromDateTime(bloqueChile),
+                    HoraFin = TimeOnly.FromDateTime(bloqueChile).AddMinutes(30),
+                    DuracionBloqueMin = 30, VigenteDesde = DateOnly.FromDateTime(bloqueChile),
+                };
+                ctx.Disponibilidades.Add(regla);
+                await ctx.SaveChangesAsync();
+
+                var bloque = new BloqueHorario
+                {
+                    DisponibilidadId = regla.Id, PerfilPrestadorId = perfil.Id,
+                    PrestadorServicioId = ofrecido.Id,
+                    InicioEn = bloqueUtc, FinEn = bloqueUtc.AddMinutes(30), Estado = EstadoBloque.Libre,
+                };
+                ctx.Bloques.Add(bloque);
+                await ctx.SaveChangesAsync();
+
+                // Guardar IDs para la limpieza en finally
+                perfilId = perfil.Id;
+                servicioCatalogoId = servicio.Id;
+
+                var buscadorCorreo = $"apicl-b-{marca}@zass.local";
+                var buscadorReg = await cliente.PostAsJsonAsync("/api/auth/registro", new
+                {
+                    correo = buscadorCorreo, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
+                });
+                Assert.Equal(HttpStatusCode.Created, buscadorReg.StatusCode);
+
+                using (var ctx2 = ContextoDePrueba.Crear())
+                {
+                    var usuario = await ctx2.Usuarios.SingleAsync(u => u.Correo == buscadorCorreo);
+                    var aviso = await ctx2.Notificaciones
+                        .Where(n => n.DestinatarioId == usuario.Id
+                                    && n.Tipo == TipoNotificacion.CorreoVerificacion)
+                        .OrderByDescending(n => n.ProgramadaPara).FirstAsync();
+                    var token = Zass.Aplicacion.Puertos.CargaDeAviso.LeerToken(aviso.Cuerpo)!;
+                    Assert.Equal(HttpStatusCode.NoContent,
+                        (await cliente.PostAsJsonAsync("/api/auth/correo/verificar", new { token })).StatusCode);
+                }
+
+                Assert.Equal(HttpStatusCode.OK, (await cliente.PostAsJsonAsync("/api/auth/sesion", new
+                {
+                    correo = buscadorCorreo, contrasena = "contrasena-larga-1",
+                })).StatusCode);
+
+                // Agendar la cita (modo automatico -> Confirmada)
+                var csrfResp = await cliente.GetAsync("/api/auth/csrf");
+                var csrfJson = await csrfResp.Content.ReadFromJsonAsync<JsonDocument>();
+                var csrf = csrfJson!.RootElement.GetProperty("token").GetString()!;
+                var agendar = new HttpRequestMessage(HttpMethod.Post, "/api/citas")
+                {
+                    Content = JsonContent.Create(new { bloqueId = bloque.Id, notaBuscador = (string?)null }),
+                };
+                agendar.Headers.Add("X-CSRF-Token", csrf);
+                agendar.Headers.Add("Idempotency-Key", $"c-{Guid.NewGuid():N}");
+                var rAgendar = await cliente.SendAsync(agendar);
+                Assert.Equal(HttpStatusCode.Created, rAgendar.StatusCode);
+                var citaJson = (await rAgendar.Content.ReadFromJsonAsync<JsonDocument>())!.RootElement;
+                var citaId = citaJson.GetProperty("id").GetString()!;
+
+                // Funcion helper para reenviar recordatorio
+                async Task<HttpResponseMessage> ReenviarAsync()
+                {
+                    var csrfResp2 = await cliente.GetAsync("/api/auth/csrf");
+                    var csrfJson2 = await csrfResp2.Content.ReadFromJsonAsync<JsonDocument>();
+                    var csrf2 = csrfJson2!.RootElement.GetProperty("token").GetString()!;
+                    var p = new HttpRequestMessage(HttpMethod.Post, $"/api/citas/{citaId}/recordatorio")
+                    {
+                        Content = JsonContent.Create(new { }),
+                    };
+                    p.Headers.Add("X-CSRF-Token", csrf2);
+                    return await cliente.SendAsync(p);
+                }
+
+                // 1. A las 22:30 hora de Chile (ya es 11-dic 01:30 UTC): 5 reenvios OK
+                for (int i = 1; i <= 5; i++)
+                {
+                    var r = await ReenviarAsync();
+                    Assert.Equal(HttpStatusCode.Accepted, r.StatusCode);
+                }
+
+                // 2. A las 23:30 del MISMO dia de Chile (11-dic 02:30 UTC): el 6.o da 409
+                reloj.Avanzar(TimeSpan.FromHours(1)); // 22:30 -> 23:30 Chile (UTC+1h)
+                var sexto = await ReenviarAsync();
+                Assert.Equal(HttpStatusCode.Conflict, sexto.StatusCode);
+                var cuerpo = await sexto.Content.ReadAsStringAsync();
+                Assert.Contains("5 veces hoy", cuerpo);
+
+                // 3. A las 00:10 del dia siguiente de Chile (11-dic 03:10 UTC -> 12-dic 00:10 Chile): 202 OK
+                reloj.Avanzar(TimeSpan.FromMinutes(40)); // 23:30 -> 00:10 Chile (UTC+40min)
+                var septimo = await ReenviarAsync();
+                Assert.Equal(HttpStatusCode.Accepted, septimo.StatusCode);
+
+                // Verificar que se encolaron 12 notificaciones (6 reenvíos × 2 correos)
+                using var ctxFinal = ContextoDePrueba.Crear();
+                var total = await ctxFinal.Notificaciones.CountAsync(n =>
+                    n.CitaId == Guid.Parse(citaId)
+                    && n.Tipo == TipoNotificacion.Recordatorio24h
+                    && n.ClaveIdempotencia.StartsWith("recordatorio-reenviado:"));
+                Assert.Equal(12, total);
+            }
+        }
+        finally
+        {
+            // Limpieza en el mismo orden que DisposeAsync
+            if (perfilId != Guid.Empty)
             {
-                var r = await ReenviarAsync();
-                Assert.Equal(HttpStatusCode.Accepted, r.StatusCode);
+                using (var ctx = ContextoDePrueba.Crear())
+                {
+                    await ctx.Database.ExecuteSqlRawAsync(
+                        """
+                        DELETE FROM bloqueos_agenda WHERE perfil_prestador_id = {0};
+                        DELETE FROM contactos    WHERE perfil_prestador_id = {0};
+                        DELETE FROM cambios_cita WHERE cita_id IN (SELECT id FROM citas WHERE perfil_prestador_id = {0});
+                        DELETE FROM citas        WHERE perfil_prestador_id = {0};
+                        DELETE FROM bloques      WHERE perfil_prestador_id = {0};
+                        DELETE FROM bloqueos_agenda WHERE perfil_prestador_id = {0};
+                        DELETE FROM disponibilidades WHERE perfil_prestador_id = {0};
+                        DELETE FROM suscripciones WHERE perfil_prestador_id = {0};
+                        DELETE FROM prestador_servicios WHERE perfil_prestador_id = {0};
+                        DELETE FROM servicios    WHERE id = {1};
+                        DELETE FROM perfiles_prestador WHERE id = {0};
+                        """, perfilId, servicioCatalogoId);
+                }
             }
 
-            // 2. A las 23:30 del MISMO dia de Chile (11-dic 02:30 UTC): el 6.o da 409
-            reloj.Avanzar(TimeSpan.FromHours(1)); // 22:30 -> 23:30 Chile (UTC+1h)
-            var sexto = await ReenviarAsync();
-            Assert.Equal(HttpStatusCode.Conflict, sexto.StatusCode);
-            var cuerpo = await sexto.Content.ReadAsStringAsync();
-            Assert.Contains("5 veces hoy", cuerpo);
+            // Borrar usuarios apicl-%{marca}@zass.local con su auditoria, notificaciones y sesiones
+            if (!string.IsNullOrEmpty(marca))
+            {
+                using (var ctx = ContextoDePrueba.Crear())
+                {
+                    var usuarios = await ctx.Usuarios
+                        .Where(u => u.Correo.EndsWith($"-{marca}@zass.local")).ToListAsync();
+                    foreach (var u in usuarios)
+                    {
+                        ctx.Auditoria.RemoveRange(
+                            ctx.Auditoria.Where(a => a.ActorId == u.Id || a.EntidadId == u.Id));
+                        ctx.Notificaciones.RemoveRange(
+                            ctx.Notificaciones.Where(n => n.DestinatarioId == u.Id));
+                        ctx.Sesiones.RemoveRange(ctx.Sesiones.Where(s => s.UsuarioId == u.Id));
+                    }
+                    ctx.Usuarios.RemoveRange(usuarios);
+                    await ctx.SaveChangesAsync();
+                }
+            }
 
-            // 3. A las 00:10 del dia siguiente de Chile (11-dic 03:10 UTC -> 12-dic 00:10 Chile): 202 OK
-            reloj.Avanzar(TimeSpan.FromMinutes(40)); // 23:30 -> 00:10 Chile (UTC+40min)
-            var septimo = await ReenviarAsync();
-            Assert.Equal(HttpStatusCode.Accepted, septimo.StatusCode);
-
-            // Verificar que se encolaron 12 notificaciones (6 reenvíos × 2 correos)
-            using var ctxFinal = ContextoDePrueba.Crear();
-            var total = await ctxFinal.Notificaciones.CountAsync(n =>
-                n.CitaId == Guid.Parse(citaId)
-                && n.Tipo == TipoNotificacion.Recordatorio24h
-                && n.ClaveIdempotencia.StartsWith("recordatorio-reenviado:"));
-            Assert.Equal(12, total);
+            cliente.Dispose();
+            app.Dispose();
         }
     }
 }

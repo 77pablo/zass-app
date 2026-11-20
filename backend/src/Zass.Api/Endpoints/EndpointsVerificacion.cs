@@ -56,6 +56,21 @@ public static class EndpointsVerificacion
             .RequireRateLimiting(Tasa.Sensible)
             .WithName("API-31");
 
+        // API-74 - Abre un documento de una credencial que ESTE verificador tiene tomada (CC-03).
+        // Sin la reserva vigente responde 404 igual que un documento inexistente.
+        grupo.MapGet("/credenciales/{id:guid}/documentos/{documentoId:guid}", async (
+                Guid id, Guid documentoId, HttpContext http,
+                IServicioVerificacion verificacion, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+
+                var r = await verificacion.AbrirDocumentoAsync(usuarioId.Value, id, documentoId);
+                return r.Exito ? EndpointsArchivos.ServirDocumento(r.Valor!, http) : Respuestas.Problema(r);
+            })
+            .RequireRateLimiting(Tasa.Sensible)
+            .WithName("API-74");
+
         return app;
     }
 }

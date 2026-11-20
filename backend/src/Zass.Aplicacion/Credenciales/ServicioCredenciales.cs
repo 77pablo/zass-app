@@ -19,22 +19,41 @@ public sealed class ServicioCredenciales : IServicioCredenciales
     /// </summary>
     public const int MaximoPorPrestador = 25;
 
+    /// <summary>API-26: tope por archivo (CU-05 paso 6).</summary>
+    public const long TamanoMaximoDocumento = 10 * 1024 * 1024;
+
+    /// <summary>API-26: cuántos documentos puede tener una credencial (E-409).</summary>
+    public const int MaximoDocumentosPorCredencial = 5;
+
     private readonly IRepositorioCredenciales _repo;
     private readonly IUnidadDeTrabajo _trabajo;
     private readonly IRelojSistema _reloj;
     private readonly IAuditor _auditor;
     private readonly OpcionesVerificacion _opciones;
+    private readonly IAlmacenDeArchivos? _almacen;
+    private readonly IProcesadorDeImagenes? _imagenes;
 
+    /// <summary>
+    /// El almacén y el procesador son opcionales para no obligar a las pruebas que no tocan
+    /// archivos a fabricarlos. En la aplicación de verdad siempre están (AgregarZass); si faltan,
+    /// subir un documento responde AlmacenamientoNoDisponible en vez de romperse.
+    /// </summary>
     public ServicioCredenciales(
         IRepositorioCredenciales repo, IUnidadDeTrabajo trabajo,
-        IRelojSistema reloj, IAuditor auditor, OpcionesVerificacion? opciones = null)
+        IRelojSistema reloj, IAuditor auditor, OpcionesVerificacion? opciones = null,
+        IAlmacenDeArchivos? almacen = null, IProcesadorDeImagenes? imagenes = null)
     {
         _opciones = opciones ?? new OpcionesVerificacion();
         _repo = repo;
         _trabajo = trabajo;
         _reloj = reloj;
         _auditor = auditor;
+        _almacen = almacen;
+        _imagenes = imagenes;
     }
+
+    internal static MiDocumentoDto ADto(DocumentoCredencial d) =>
+        new(d.Id, d.NombreOriginal, d.TipoMime, d.TamanoBytes, d.Estado, d.SubidoEn);
 
     // ------------------------------------------------------------- API-24
 
@@ -47,7 +66,10 @@ public sealed class ServicioCredenciales : IServicioCredenciales
             c.EntidadCertificadora?.Nombre,
             c.EntidadCertificadora?.Catalogada,
             c.ObtenidaEn, c.VenceEn, c.Estado,
-            c.TieneRespaldo(), c.Documentos.Count)).ToList();
+            c.TieneRespaldo(), c.Documentos.Count)
+        {
+            Respaldo = c.Documentos.OrderBy(d => d.SubidoEn).Select(ADto).ToList(),
+        }).ToList();
     }
 
     // ------------------------------------------------------------- API-25
@@ -140,15 +162,179 @@ public sealed class ServicioCredenciales : IServicioCredenciales
             return Resultado.Falla(Fallas.NoEncontrado, "No encontramos esa credencial.");
 
         var teniaSello = credencial.Estado == EstadoCredencial.Verificada;
+        var archivos = credencial.Documentos.Select(d => d.ClaveAlmacenamiento).ToList();
         _repo.Eliminar(credencial);
 
         // 4F.4: queda constancia de que existió y fue eliminada, sin su contenido.
         _auditor.Registrar(Auditar.Entrada(
             "eliminar_credencial", "credencial", credencial.Id, _reloj.Ahora,
-            contexto: new { teniaSello }));
+            contexto: new { teniaSello, documentos = archivos.Count }));
 
         await _trabajo.GuardarAsync(ct);
+
+        // 4F.3: los archivos se van DESPUÉS de que la base confirmó. Al revés, una base que
+        // fallara dejaría filas apuntando a documentos borrados; así, lo peor es un huérfano.
+        await BorrarArchivosAsync(archivos);
         return Resultado.Ok();
+    }
+
+    private async Task BorrarArchivosAsync(IEnumerable<string> claves)
+    {
+        if (_almacen is null) return;
+        foreach (var clave in claves)
+            await _almacen.BorrarAsync(clave, CancellationToken.None);
+    }
+
+    // ------------------------------------------------------------- API-26
+
+    /// <summary>
+    /// <para>
+    /// Lo que NO hace, a sabiendas: el análisis antivirus de CU-05 paso 8 (RN-S2-05). El diseño lo
+    /// apoyaba en Defender for Storage de Azure, que no se desplegó; con R2 no hay un equivalente
+    /// incluido. Mientras Pablo no decida cómo, el documento queda <c>Disponible</c> al pasar las
+    /// validaciones de aquí, y lo que reduce el riesgo es: el tipo real leído por dentro, las
+    /// imágenes vueltas a codificar (lo guardado son píxeles nuestros), y que un PDF solo lo abre el
+    /// Verificador, servido con <c>Content-Security-Policy: sandbox</c>.
+    /// </para>
+    /// </summary>
+    public async Task<Resultado<MiDocumentoDto>> SubirDocumentoAsync(
+        SubirDocumentoCmd cmd, CancellationToken ct = default)
+    {
+        var credencial = await _repo.PorIdAsync(cmd.CredencialId, ct);
+        if (credencial is null || credencial.PerfilPrestadorId != cmd.PerfilPrestadorId)
+            return Resultado.Falla<MiDocumentoDto>(Fallas.NoEncontrado, "No encontramos esa credencial.");
+
+        // Cambiar el respaldo de una credencial con sello cambiaría lo que el Verificador aprobó.
+        if (credencial.Estado is EstadoCredencial.Verificada)
+            return Resultado.Falla<MiDocumentoDto>(Fallas.ReglaDeNegocio,
+                "Esta credencial ya está verificada. Para cambiar sus documentos, crea una nueva.");
+
+        if (credencial.Documentos.Count >= MaximoDocumentosPorCredencial)
+            return Resultado.Falla<MiDocumentoDto>(Fallas.Conflicto,
+                $"Máximo {MaximoDocumentosPorCredencial} documentos por credencial.");
+
+        if (cmd.LargoDeclarado > TamanoMaximoDocumento)
+            return Resultado.Falla<MiDocumentoDto>(Fallas.ArchivoDemasiadoGrande,
+                $"El archivo pesa {LecturaAcotada.Megas(cmd.LargoDeclarado)} y el máximo es {LecturaAcotada.Megas(TamanoMaximoDocumento)}.");
+
+        var bytes = await LecturaAcotada.LeerAsync(cmd.Contenido, TamanoMaximoDocumento, ct);
+        if (bytes is null)
+            return Resultado.Falla<MiDocumentoDto>(Fallas.ArchivoDemasiadoGrande,
+                $"El archivo pesa más de {LecturaAcotada.Megas(TamanoMaximoDocumento)}, que es el máximo.");
+        if (bytes.Length == 0)
+            return Resultado.Falla<MiDocumentoDto>(Fallas.Validacion, "No llegó ningún archivo.");
+
+        var tipo = TiposDeArchivo.Detectar(bytes.AsSpan(0, Math.Min(bytes.Length, TiposDeArchivo.BytesParaDetectar)));
+        if (tipo is not (TipoArchivo.Pdf or TipoArchivo.Jpeg or TipoArchivo.Png))
+            return Resultado.Falla<MiDocumentoDto>(Fallas.TipoDeArchivoNoAceptado, "Usa PDF, JPG o PNG.");
+
+        if (_almacen is null || _imagenes is null)
+            return Resultado.Falla<MiDocumentoDto>(Fallas.AlmacenamientoNoDisponible,
+                "Subir documentos todavía no está disponible.");
+
+        var aGuardar = bytes;
+        if (tipo is TipoArchivo.Jpeg or TipoArchivo.Png)
+        {
+            using var imagen = new MemoryStream(bytes, writable: false);
+            var limpia = await _imagenes.LimpiarImagenAsync(imagen, tipo.Value, ct);
+            if (!limpia.Exito || limpia.Valor is null)
+                return Resultado.Falla<MiDocumentoDto>(limpia.Codigo ?? Fallas.TipoDeArchivoNoAceptado,
+                    limpia.Mensaje ?? "No pudimos leer esa imagen. Prueba con otra.");
+            aGuardar = limpia.Valor;
+        }
+
+        var clave = TiposDeArchivo.NuevaClave(TiposDeArchivo.CarpetaDocumentos, tipo.Value);
+        using (var salida = new MemoryStream(aGuardar, writable: false))
+        {
+            var guardado = await _almacen.GuardarAsync(clave, salida, TiposDeArchivo.Mime(tipo.Value), ct);
+            if (!guardado.Exito)
+                return Resultado.Falla<MiDocumentoDto>(Fallas.AlmacenamientoNoDisponible,
+                    "No pudimos guardar el archivo. Intenta de nuevo.");
+        }
+
+        var documento = new DocumentoCredencial
+        {
+            CredencialId = credencial.Id,
+            ClaveAlmacenamiento = clave,
+            NombreOriginal = TiposDeArchivo.NombreParaMostrar(cmd.NombreOriginal, tipo.Value),
+            TipoMime = TiposDeArchivo.Mime(tipo.Value),
+            TamanoBytes = aGuardar.Length,
+            Estado = EstadoDocumento.Disponible,
+            SubidoEn = _reloj.Ahora,
+        };
+        _repo.AgregarDocumento(documento);
+
+        // RN-S2-08: quién, qué y cuándo. Sin el nombre del archivo ni su contenido.
+        _auditor.Registrar(Auditar.Entrada(
+            "subir_documento", "credencial", credencial.Id, _reloj.Ahora,
+            contexto: new { documento = documento.Id, tipo = tipo.Value.ToString(), bytes = aGuardar.Length }));
+
+        try
+        {
+            await _trabajo.GuardarAsync(ct);
+        }
+        catch
+        {
+            // E-507 y «el almacenamiento no guarda huérfanos»: sin fila, tampoco archivo.
+            await _almacen.BorrarAsync(clave, CancellationToken.None);
+            throw;
+        }
+
+        return Resultado.Ok(ADto(documento));
+    }
+
+    public async Task<Resultado> QuitarDocumentoAsync(
+        Guid perfilPrestadorId, Guid credencialId, Guid documentoId, CancellationToken ct = default)
+    {
+        var credencial = await _repo.PorIdAsync(credencialId, ct);
+        if (credencial is null || credencial.PerfilPrestadorId != perfilPrestadorId)
+            return Resultado.Falla(Fallas.NoEncontrado, "No encontramos ese documento.");
+
+        var documento = credencial.Documentos.FirstOrDefault(d => d.Id == documentoId);
+        if (documento is null)
+            return Resultado.Falla(Fallas.NoEncontrado, "No encontramos ese documento.");
+
+        if (credencial.Estado is EstadoCredencial.Verificada)
+            return Resultado.Falla(Fallas.ReglaDeNegocio,
+                "Esta credencial ya está verificada: su respaldo no se puede quitar.");
+
+        var clave = documento.ClaveAlmacenamiento;
+        _repo.QuitarDocumento(documento);
+        _auditor.Registrar(Auditar.Entrada(
+            "quitar_documento", "credencial", credencial.Id, _reloj.Ahora,
+            contexto: new { documento = documento.Id }));
+        await _trabajo.GuardarAsync(ct);
+
+        await BorrarArchivosAsync(new[] { clave });
+        return Resultado.Ok();
+    }
+
+    public async Task<Resultado<DocumentoParaVer>> AbrirDocumentoAsync(
+        Guid perfilPrestadorId, Guid credencialId, Guid documentoId, CancellationToken ct = default)
+    {
+        var credencial = await _repo.PorIdAsync(credencialId, ct);
+        var documento = credencial is not null && credencial.PerfilPrestadorId == perfilPrestadorId
+            ? credencial.Documentos.FirstOrDefault(d => d.Id == documentoId)
+            : null;
+        if (documento is null)
+            return Resultado.Falla<DocumentoParaVer>(Fallas.NoEncontrado, "No encontramos ese documento.");
+
+        return await AbrirAsync(_almacen, documento, ct);
+    }
+
+    /// <summary>Compartido con el Verificador: abrir el archivo de un documento ya autorizado.</summary>
+    internal static async Task<Resultado<DocumentoParaVer>> AbrirAsync(
+        IAlmacenDeArchivos? almacen, DocumentoCredencial documento, CancellationToken ct)
+    {
+        if (almacen is null)
+            return Resultado.Falla<DocumentoParaVer>(Fallas.AlmacenamientoNoDisponible,
+                "Los documentos no están disponibles en este momento.");
+
+        var archivo = await almacen.AbrirAsync(documento.ClaveAlmacenamiento, ct);
+        if (archivo is null)
+            return Resultado.Falla<DocumentoParaVer>(Fallas.NoEncontrado, "No encontramos ese documento.");
+
+        return Resultado.Ok(new DocumentoParaVer(archivo, documento.NombreOriginal));
     }
 
     // ------------------------------------------------------------- API-27
