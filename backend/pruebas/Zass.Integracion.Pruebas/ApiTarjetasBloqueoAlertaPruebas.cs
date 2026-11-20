@@ -9,6 +9,7 @@ using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
 using Zass.Dominio.Identidad;
 using Zass.Dominio.Tarjetas;
+using Zass.Infraestructura.Datos;
 using Zass.Integracion.Pruebas.Correo;
 
 namespace Zass.Integracion.Pruebas;
