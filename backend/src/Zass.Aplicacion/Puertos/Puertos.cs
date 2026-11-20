@@ -89,6 +89,14 @@ public interface IRepositorioAuditoria
     /// </summary>
     Task<int> ContarActivacionesFallidasAsync(
         Guid tarjetaId, DateTime desde, DateTime hasta, CancellationToken ct = default);
+
+    /// <summary>
+    /// Trae solo las fechas (OcurridoEn) de los intentos fallidos de activacion de una tarjeta
+    /// entre dos instantes, con filtro en SQL y ordenadas por fecha.
+    /// Usado para verificar la ventana de 15 minutos del bloqueo 4B.5 sin traer todo el registro.
+    /// </summary>
+    Task<IReadOnlyList<DateTime>> ObtenerFechasDeFallosAsync(
+        Guid tarjetaId, DateTime desde, DateTime hasta, CancellationToken ct = default);
 }
 
 /// <summary>

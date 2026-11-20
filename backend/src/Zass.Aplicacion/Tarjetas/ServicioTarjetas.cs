@@ -303,6 +303,7 @@ public sealed class ServicioTarjetas : IServicioTarjetas
     /// entre F-15min y F hay 5 o mas intentos fallidos de ESA tarjeta.
     /// El bloqueo dura 1 hora desde ese intento F (el 5.o fallo).
     /// D4: Esta funcion reemplaza a las antiguas EstaBloqueadaAsync y EsQuintoFalloEnVentanaAsync.
+    /// D2: Usa ObtenerFechasDeFallosAsync con filtro en SQL en vez de ConsultarAsync + filtro en memoria.
     /// </summary>
     private async Task<(bool Bloqueada, DateTime? FinBloqueo)> EstaBloqueadaAsync(Guid tarjetaId, CancellationToken ct)
     {
@@ -313,34 +314,25 @@ public sealed class ServicioTarjetas : IServicioTarjetas
         var totalFallos60Min = await _auditoria.ContarActivacionesFallidasAsync(tarjetaId, ventana60Min, ahora, ct);
         if (totalFallos60Min < 5) return (false, null);
 
-        // Obtener los fallos para verificar la ventana de 15 min (necesitamos las fechas)
-        var intentosFallidos = await _auditoria.ConsultarAsync(
-            entidad: "Tarjeta",
-            entidadId: tarjetaId,
-            actorId: null,
-            antesDe: null,
-            antesDeId: null,
-            limite: 100,
-            ct);
+        // Obtener solo las fechas de los fallos (filtro en SQL, D2)
+        var fechasDeFallos = await _auditoria.ObtenerFechasDeFallosAsync(tarjetaId, ventana60Min, ahora, ct);
 
-        // Filtrar solo los de activacion fallida y en la ventana de 60 min
-        var fallos = intentosFallidos
-            .Where(r => r.Accion == "TarjetaActivacionFallida" && r.OcurridoEn >= ventana60Min && r.OcurridoEn <= ahora)
-            .OrderBy(r => r.OcurridoEn)
-            .ToList();
-
-        if (fallos.Count < 5) return (false, null);
+        if (fechasDeFallos.Count < 5) return (false, null);
 
         // Para cada fallo F, contar cuantos hay en [F-15min, F]
-        foreach (var fallo in fallos)
+        for (int i = 0; i < fechasDeFallos.Count; i++)
         {
-            var inicioVentana = fallo.OcurridoEn.AddMinutes(-15);
-            var cuentaEnVentana = fallos.Count(f => f.OcurridoEn >= inicioVentana && f.OcurridoEn <= fallo.OcurridoEn);
+            var fallo = fechasDeFallos[i];
+            var inicioVentana = fallo.AddMinutes(-15);
+            
+            // Contar cuantos fallos hay en [F-15min, F]
+            // Como la lista ya viene ordenada, podemos contar desde el inicio hasta i
+            var cuentaEnVentana = fechasDeFallos.Take(i + 1).Count(f => f >= inicioVentana && f <= fallo);
 
             if (cuentaEnVentana >= 5)
             {
                 // Este fallo F es el que disparó el bloqueo (el 5.o en su ventana de 15 min)
-                var finBloqueo = fallo.OcurridoEn.AddHours(1);
+                var finBloqueo = fallo.AddHours(1);
                 if (ahora < finBloqueo)
                 {
                     return (true, finBloqueo);
