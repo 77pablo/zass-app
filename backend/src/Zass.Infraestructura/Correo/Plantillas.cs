@@ -97,7 +97,10 @@ public static class Plantillas
             CargaDeAviso.LeerToken(carga) is { } t ? Recuperacion(nombre, EnlaceDeRecuperacion(urlPublica, t)) : null,
         TipoNotificacion.SuscripcionPorVencer =>
             int.TryParse(CargaDeAviso.LeerCampo(carga, "dias"), out var d)
-                ? PorVencer(nombre, d, EnlaceDelPanel(urlPublica)) : null,
+                ? CargaDeAviso.LeerCampo(carga, "sinTarjeta") == "si"
+                    ? MesGratisSinTarjeta(nombre, d, EnlaceDelPanel(urlPublica))
+                    : PorVencer(nombre, d, EnlaceDelPanel(urlPublica))
+                : null,
         TipoNotificacion.SuscripcionVencida => Vencida(nombre, EnlaceDelPanel(urlPublica)),
         // Con el slug se enlaza su ficha publica, que es lo que querra abrir y compartir. Sin el
         // —los avisos encolados ANTES de que existiera esta plantilla llevan una frase suelta en vez
@@ -183,6 +186,33 @@ public static class Plantillas
     /// RN-S3-09 apaga el perfil al dejar de pagar. Este aviso existe para que eso no ocurra
     /// por sorpresa: sin el, el prestador se enteraria porque dejan de llamarlo.
     /// </summary>
+    /// <summary>
+    /// Fundador en su mes gratis y sin tarjeta (20-nov-2026). Lo que importa decirle: que si no
+    /// la inscribe pierde el cupo, y que inscribirla hoy no cobra nada.
+    /// </summary>
+    public static CorreoRenderizado MesGratisSinTarjeta(string nombre, int dias, string enlace)
+    {
+        var cuando = dias <= 1 ? "mañana" : $"en {dias} días";
+        var parrafo =
+            $"Tu mes gratis de fundador en ZASS! termina {cuando} y todavía no inscribes tu tarjeta. "
+            + "Inscríbela antes para mantener tu cupo y tu precio congelado: hoy no se te cobra nada. "
+            + "Si el mes termina sin tarjeta, el cupo queda libre para otra persona y tu ficha deja de "
+            + "aparecer en las búsquedas.";
+        var texto =
+            $"Hola {nombre}:\n\n" +
+            $"{parrafo}\n\n" +
+            $"Puedes inscribirla aquí:\n\n{enlace}\n\n" +
+            "Si ya la inscribiste, ignora este mensaje.\n\n" +
+            "— El equipo de ZASS!";
+        var html = Marco(
+            $"Tu mes gratis termina {cuando}",
+            $"Hola {H(nombre)}:",
+            parrafo,
+            "Inscribir mi tarjeta", enlace,
+            "Si ya la inscribiste, ignora este mensaje.");
+        return new($"Tu mes gratis de ZASS! termina {cuando}", texto, html);
+    }
+
     public static CorreoRenderizado PorVencer(string nombre, int dias, string enlace)
     {
         var cuando = dias <= 1 ? "mañana" : $"en {dias} días";
