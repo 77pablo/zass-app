@@ -6,6 +6,7 @@ import {
   urlDeDocumentoInterno,
   type CredencialEnCola, type MotivoDeRechazo, type ResultadoDeVerificacion,
 } from '../funciones/interno/servicio'
+import { fechaYHora } from '../funciones/interno/servicio'
 import * as T from '../funciones/interno/textos'
 import { PaginaCargando } from '../marco/PaginaCargando'
 import { useTitulo } from '../marco/useTitulo'
@@ -280,11 +281,4 @@ function mensajeDeError(e: unknown): string {
     return campos.length > 0 ? campos.join(' ') : e.paraMostrar
   }
   return 'No se pudo completar la operación.'
-}
-
-/** «19 de noviembre, 14:05», en hora de Chile. */
-function fechaYHora(iso: string): string {
-  return new Intl.DateTimeFormat('es-CL', {
-    day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: 'America/Santiago',
-  }).format(new Date(iso))
 }
