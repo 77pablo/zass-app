@@ -358,7 +358,8 @@ public class InscripcionFundadorPruebas
 
     /// <summary>
     /// Defecto 1: la reserva de esta persona vencio, otra tomo ESE cupo y lo confirmo, y
-    /// despues llega el aviso de la primera. No puede quedar como fundadora sin cupo.
+    /// despues llega el aviso de la primera. Con los 50 tomados no puede quedar como
+    /// fundadora sin cupo.
     /// </summary>
     [Fact]
     public async Task Un_aviso_tardio_cuando_el_cupo_ya_es_de_otra_persona_no_crea_un_fundador_sin_cupo()
@@ -368,10 +369,12 @@ public class InscripcionFundadorPruebas
         var intento = ElIntento();
         var cupo = CupoDe(tarde.Id)!;
 
-        // Otra persona se queda con ESE cupo, confirmado.
+        // Otra persona se queda con ESE cupo, confirmado, y los demas tambien estan tomados.
         var otra = Guid.NewGuid();
         cupo.PerfilPrestadorId = otra;
         cupo.ReservadoHasta = null;
+        foreach (var c in _base.CuposFundador.Where(c => c.PerfilPrestadorId is null))
+            c.PerfilPrestadorId = Guid.NewGuid();
 
         LaPasarelaResponde(intento);
         var r = await _cobros.ConfirmarAsync(UnAviso());
@@ -384,6 +387,37 @@ public class InscripcionFundadorPruebas
         Assert.NotEqual("fundador", _base.Planes.Single(p => p.Id == s.PlanId).Codigo);
         Assert.Null(CupoDe(tarde.Id));               // no tiene cupo, y nadie le inventa uno
         Assert.Equal(otra, cupo.PerfilPrestadorId);  // y el de la otra persona no se toca
+    }
+
+    /// <summary>
+    /// Igual que la anterior, pero quedan cupos libres: se le da uno de esos (decisión de
+    /// Pablo, 20-nov) y queda como fundadora, sin tocar el cupo de la otra persona.
+    /// </summary>
+    [Fact]
+    public async Task Un_aviso_tardio_con_cupos_libres_le_da_otro_cupo()
+    {
+        var tarde = UnPrestadorConSuscripcion();
+        await _cobros.IniciarInscripcionFundadorAsync(tarde.Id, "k1");
+        var intento = ElIntento();
+        var cupo = CupoDe(tarde.Id)!;
+        var numeroPerdido = cupo.Numero;
+
+        var otra = Guid.NewGuid();
+        cupo.PerfilPrestadorId = otra;
+        cupo.ReservadoHasta = null;
+
+        LaPasarelaResponde(intento);
+        var r = await _cobros.ConfirmarAsync(UnAviso());
+
+        Assert.True(r.Exito);
+        Assert.True(r.Valor!.Aprobado);
+        var nuevo = CupoDe(tarde.Id);
+        Assert.NotNull(nuevo);
+        Assert.NotEqual(numeroPerdido, nuevo!.Numero);
+        Assert.Null(nuevo.ReservadoHasta);                 // confirmado, no solo reservado
+        Assert.Equal(otra, cupo.PerfilPrestadorId);        // el de la otra persona no se toca
+        var s = SuscripcionDe(tarde.Id);
+        Assert.Equal("fundador", _base.Planes.Single(p => p.Id == s.PlanId).Codigo);
     }
 
     /// <summary>Defecto 2: volver a inscribir la tarjeta no regala otros 30 días.</summary>

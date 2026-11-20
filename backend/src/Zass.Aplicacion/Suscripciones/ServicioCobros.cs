@@ -779,16 +779,27 @@ public sealed class ServicioCobros : IServicioCobros
             }
 
             // RN-S7-01 y «al cupo 50 se cierra» (decisión de Pablo, 12-nov): una inscripcion solo
-            // hace fundador a quien TODAVIA tiene su cupo. Si la reserva vencio y el cupo lo tomo
-            // otra persona, el aviso puede llegar igual (la persona inscribio la tarjeta tarde):
+            // hace fundador a quien tiene un cupo. Si la reserva vencio y el cupo lo tomo otra
+            // persona, el aviso puede llegar igual (la persona inscribio la tarjeta tarde):
             // antes se ignoraba el resultado de confirmar y quedaba un fundador SIN cupo, y se
             // podian pasar de 50 (defecto 1 del informe JQ-7). Se mira ANTES de marcar pagado.
+            //
+            // Si todavia queda un cupo libre, se le da ese (decisión de Pablo, 20-nov): rechazar
+            // a alguien que ya inscribio su tarjeta mientras sobran cupos no protege nada. Solo
+            // con los 50 tomados se le dice que no alcanzo.
             if (intento.Tipo == TipoDeIntento.Inscripcion)
             {
                 var cupo = await _suscripciones.ConfirmarCupoFundadorAsync(intento.PerfilPrestadorId, t);
                 if (!cupo.Exito)
                 {
-                    const string sinCupo = "El cupo que habías reservado venció y ya lo tomó otra persona.";
+                    var otro = await _suscripciones.ReservarCupoFundadorAsync(intento.PerfilPrestadorId, ct: t);
+                    if (otro.Exito)
+                        cupo = await _suscripciones.ConfirmarCupoFundadorAsync(intento.PerfilPrestadorId, t);
+                }
+                if (!cupo.Exito)
+                {
+                    const string sinCupo =
+                        "El cupo que habías reservado venció y mientras tanto se tomaron todos los del plan fundador.";
                     intento.MarcarFallido(_reloj.Ahora, sinCupo);
                     _auditor.Registrar(Auditar.Entrada(
                         "inscripcion_sin_cupo", "intentos_de_pago", intento.Id, _reloj.Ahora,
