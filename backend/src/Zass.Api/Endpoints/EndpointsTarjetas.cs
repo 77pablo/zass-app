@@ -7,6 +7,9 @@ using Zass.Dominio.Tarjetas;
 
 namespace Zass.Api.Endpoints;
 
+/// <summary>Request para API-55: codigo de activacion de 12 caracteres.</summary>
+public sealed record ActivarRequest(string Codigo);
+
 /// <summary>
 /// API-54 · <c>GET /t/{segmento}</c> (CS-18, incluye CU-09). La URL impresa en la tarjeta.
 ///
@@ -46,9 +49,58 @@ public static class EndpointsTarjetas
             .RequireRateLimiting(Tasa.Publico)
             .WithName("API-54");
 
+        // API-55 POST /t/{segmento}/activar - Activar con codigo de un solo uso (CU-19, CC-05)
+        // Fuera de /api a proposito: la ruta que figura en api-rest.md y el QR impreso.
+        // Tasa A (Autenticacion): 5 por IP cada 15 min. Requiere sesion prestador con perfil publicado.
+        app.MapPost("/t/{segmento}/activar", async (
+                string segmento,
+                ActivarRequest request,
+                IServicioTarjetas tarjetas,
+                ServicioPerfiles perfiles,
+                ClaimsPrincipal quien,
+                HttpContext http) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+
+                var mio = await perfiles.MiPerfilPrestadorAsync(usuarioId.Value);
+                if (!mio.Exito) return Respuestas.Problema(mio);
+
+                // Verificar que el perfil esta publicado (CU-19 4E)
+                if (mio.Valor!.Estado != EstadoPerfil.Publicado)
+                    return Respuestas.Problema(Resultado.Falla(Fallas.ReglaDeNegocio, "El perfil debe estar publicado para activar la tarjeta."));
+
+                var ip = http.Connection.RemoteIpAddress?.ToString();
+                var r = await tarjetas.ActivarAsync(segmento, request.Codigo, mio.Valor.Id, ip, http.RequestAborted);
+                return r.Exito ? Results.Ok(r.Valor) : Respuestas.Problema(r);
+            })
+            .RequireRateLimiting(Tasa.Autenticacion)
+            .WithName("API-55");
+
         MapearMisTarjetas(app);
+        MapearInternoTarjetas(app);
 
         return app;
+    }
+
+    /// <summary>
+    /// API-59 POST /api/interno/tarjetas - Emite una tarjeta y su codigo (CU-19, CU-20).
+    /// Tasa S (Sensible): 10 por IP cada 15 min. Requiere rol Administrador.
+    /// </summary>
+    private static void MapearInternoTarjetas(IEndpointRouteBuilder app)
+    {
+        var grupo = app.MapGroup("/api/interno");
+        grupo.RequireAuthorization(Politicas.Administrador);
+        grupo.AddEndpointFilter<FiltroCsrf>();
+
+        grupo.MapPost("/tarjetas", async (
+                IServicioTarjetas tarjetas, HttpContext http) =>
+            {
+                var r = await tarjetas.EmitirAsync(http.RequestAborted);
+                return r.Exito ? Results.Created($"/api/interno/tarjetas/{r.Valor!.Segmento}", r.Valor) : Respuestas.Problema(r);
+            })
+            .RequireRateLimiting(Tasa.Sensible)
+            .WithName("API-59");
     }
 
     /// <summary>

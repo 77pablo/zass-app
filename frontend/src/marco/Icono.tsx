@@ -8,6 +8,8 @@ const TRAZOS = {
   pin: 'M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21zM12 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z',
   sello: 'M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6l7-3zM8.5 12l2.5 2.5L16 9.5',
   flecha: 'M5 12h14M13 6l6 6-6 6',
+  // El «›» de las celdas de iOS: dice «esto abre otra pantalla» sin la flecha larga.
+  chevron: 'M9.5 5.5L16 12l-6.5 6.5',
   check: 'M5 12.5l4.5 4.5L19 7.5',
   mas: 'M12 5v14M5 12h14',
   menu: 'M4 7h16M4 12h16M4 17h16',

@@ -108,7 +108,7 @@ export function Ficha() {
   return (
     <div className="contenedor ficha-pagina">
       <Link to="/buscar" className="volver">
-        <Icono nombre="flecha" />Seguir buscando
+        <Icono nombre="chevron" />Seguir buscando
       </Link>
 
       <article className="ficha-rejilla">

@@ -20,6 +20,10 @@ services:
         sync: false         # formato Npgsql de Neon, con SSL Mode=Require
       - key: Zass__ClaveDireccionesBase64
         sync: false         # 32 bytes en Base64; GUÁRDALA fuera de Render también
+      # Firma del aviso de pago (#133, P16). OBLIGATORIA desde el 19-nov-2026: sin ella, o con
+      # menos de 32 caracteres, la API NO ARRANCA en produccion. Valor aleatorio, 32+ caracteres.
+      - key: Zass__SecretoAvisoPagos
+        sync: false
       # --- Configuración no secreta pero que depende de tu cuenta ---
       - key: Zass__ProxiesDeConfianza
         sync: false         # rangos de Cloudflare + red del balanceador de Render (ver guía)

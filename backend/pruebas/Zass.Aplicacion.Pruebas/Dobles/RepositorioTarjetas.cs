@@ -45,4 +45,16 @@ public sealed class RepositorioTarjetasEnMemoria : IRepositorioTarjetas
             Contar(MedioEscaneo.Nfc, desde30), Contar(MedioEscaneo.Qr, desde30),
             Contar(MedioEscaneo.Nfc, null), Contar(MedioEscaneo.Qr, null)));
     }
+
+    /// <summary>En memoria no hay bloqueo real; devuelve si esta en Emitida.</summary>
+    public Task<Tarjeta?> TomarParaActivarAsync(string urlEstable, CancellationToken ct = default)
+    {
+        var t = Tarjetas.FirstOrDefault(x => x.UrlEstable == urlEstable && x.Estado == EstadoTarjeta.Emitida);
+        return Task.FromResult(t);
+    }
+
+    public Task<bool> ExistePorUrlEstableAsync(string urlEstable, CancellationToken ct = default) =>
+        Task.FromResult(Tarjetas.Any(t => t.UrlEstable == urlEstable));
+
+    public void Agregar(Tarjeta tarjeta) => Tarjetas.Add(tarjeta);
 }
