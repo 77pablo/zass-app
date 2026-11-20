@@ -121,7 +121,8 @@ app.MapearGeografia();
 app.MapearBusqueda();
 app.MapearMapaDelSitio();
 app.MapearCredenciales();
-app.MapearSalud();                                    // /api/salud/lista (readiness)
+app.MapearArchivos();                                  // API-72, API-72-quitar, API-73 (JQ-9)
+app.MapearSalud();                                   // /api/salud/lista (readiness)
 
 app.MapearAgenda();                                    // ANCLAJE MOD-06 Agenda
 

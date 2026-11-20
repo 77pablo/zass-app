@@ -17,3 +17,6 @@
 c91c7811e95378c044c6ece94cf7fea72bc28d0a:backend/pruebas/Zass.Integracion.Pruebas/ProduccionPruebas.cs:generic-api-key:366
 c91c7811e95378c044c6ece94cf7fea72bc28d0a:backend/pruebas/Zass.Integracion.Pruebas/ProduccionPruebas.cs:generic-api-key:468
 c91c7811e95378c044c6ece94cf7fea72bc28d0a:backend/pruebas/Zass.Integracion.Pruebas/ProduccionPruebas.cs:generic-api-key:517
+
+# FlowPasarelaPruebas.cs - ApiKey ficticia de las pruebas del adaptador de Flow (rama pagos/flow-adaptador, PR #162)
+ad047446a534de8f9300a5c309fe55a5a5c1eddf:backend/pruebas/Zass.Integracion.Pruebas/Pagos/FlowPasarelaPruebas.cs:generic-api-key:20

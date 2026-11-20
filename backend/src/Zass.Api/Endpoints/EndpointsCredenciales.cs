@@ -91,6 +91,65 @@ public static class EndpointsCredenciales
             .RequireRateLimiting(Tasa.General)
             .WithName("API-27");
 
+        // API-26 - Adjunta un documento de respaldo (multipart, campo "archivo"). Grupo S:
+        // toca datos personales sensibles (api-rest.md, nota de la sección 4).
+        grupo.MapPost("/credenciales/{id:guid}/documentos", async (
+                Guid id, IFormFile? archivo,
+                IServicioCredenciales credenciales, ServicioPerfiles perfiles, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+                if (archivo is null) return EndpointsArchivos.SinArchivo();
+
+                var mio = await perfiles.MiPerfilPrestadorAsync(usuarioId.Value);
+                if (!mio.Exito) return Respuestas.Problema(mio);
+
+                await using var contenido = archivo.OpenReadStream();
+                var r = await credenciales.SubirDocumentoAsync(new SubirDocumentoCmd(
+                    mio.Valor!.Id, id, contenido, archivo.Length, archivo.FileName));
+
+                return r.Exito
+                    ? Results.Created($"/api/mi/credenciales/{id}/documentos/{r.Valor!.Id}", r.Valor)
+                    : Respuestas.Problema(r);
+            })
+            .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(EndpointsArchivos.LimiteDeLaPeticion))
+            .RequireRateLimiting(Tasa.Sensible)
+            .WithName("API-26");
+
+        // API-26-quitar - Quita un documento de una credencial propia sin sello.
+        grupo.MapDelete("/credenciales/{id:guid}/documentos/{documentoId:guid}", async (
+                Guid id, Guid documentoId,
+                IServicioCredenciales credenciales, ServicioPerfiles perfiles, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+
+                var mio = await perfiles.MiPerfilPrestadorAsync(usuarioId.Value);
+                if (!mio.Exito) return Respuestas.Problema(mio);
+
+                return Respuestas.DeResultado(
+                    await credenciales.QuitarDocumentoAsync(mio.Valor!.Id, id, documentoId));
+            })
+            .RequireRateLimiting(Tasa.General)
+            .WithName("API-26-quitar");
+
+        // API-26-ver - El dueño abre su propio documento. Ajeno o inexistente: 404 igual.
+        grupo.MapGet("/credenciales/{id:guid}/documentos/{documentoId:guid}", async (
+                Guid id, Guid documentoId, HttpContext http,
+                IServicioCredenciales credenciales, ServicioPerfiles perfiles, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+
+                var mio = await perfiles.MiPerfilPrestadorAsync(usuarioId.Value);
+                if (!mio.Exito) return Respuestas.Problema(mio);
+
+                var r = await credenciales.AbrirDocumentoAsync(mio.Valor!.Id, id, documentoId);
+                return r.Exito ? EndpointsArchivos.ServirDocumento(r.Valor!, http) : Respuestas.Problema(r);
+            })
+            .RequireRateLimiting(Tasa.Sensible)
+            .WithName("API-26-ver");
+
         return app;
     }
 }

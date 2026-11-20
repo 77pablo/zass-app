@@ -20,16 +20,19 @@ public sealed class ServicioVerificacion : IServicioVerificacion
     private readonly IRelojSistema _reloj;
     private readonly IAuditor _auditor;
     private readonly OpcionesVerificacion _opciones;
+    private readonly IAlmacenDeArchivos? _almacen;
 
     public ServicioVerificacion(
         IRepositorioCredenciales repo, IUnidadDeTrabajo trabajo,
-        IRelojSistema reloj, IAuditor auditor, OpcionesVerificacion opciones)
+        IRelojSistema reloj, IAuditor auditor, OpcionesVerificacion opciones,
+        IAlmacenDeArchivos? almacen = null)
     {
         _repo = repo;
         _trabajo = trabajo;
         _reloj = reloj;
         _auditor = auditor;
         _opciones = opciones;
+        _almacen = almacen;
     }
 
     // ------------------------------------------------------------- API-29
@@ -238,6 +241,40 @@ public sealed class ServicioVerificacion : IServicioVerificacion
             !c.TieneRespaldo(),
             c.CreadaEn,
             mia,
-            mia ? c.ReservadaHasta : null);
+            mia ? c.ReservadaHasta : null)
+        {
+            Respaldo = mia
+                ? c.Documentos.OrderBy(d => d.SubidoEn).Select(ServicioCredenciales.ADto).ToList()
+                : Array.Empty<MiDocumentoDto>(),
+        };
+    }
+
+    // ------------------------------------------------------------- JQ-9
+
+    public async Task<Resultado<DocumentoParaVer>> AbrirDocumentoAsync(
+        Guid verificadorId, Guid credencialId, Guid documentoId, CancellationToken ct = default)
+    {
+        var ahora = _reloj.Ahora;
+        var credencial = await _repo.PorIdParaRevisionAsync(credencialId, ct);
+
+        // Todo lo que no sea "la tengo tomada yo, ahora" responde igual que un documento que no
+        // existe: no se le confirma a nadie que ese título está ahí.
+        var documento = credencial is not null
+                        && credencial.Estado == EstadoCredencial.EnRevision
+                        && credencial.ReservadaPor == verificadorId
+                        && !credencial.ReservaVencida(ahora)
+                        && credencial.PerfilPrestador?.UsuarioId != verificadorId
+            ? credencial.Documentos.FirstOrDefault(d => d.Id == documentoId)
+            : null;
+
+        if (documento is null)
+            return Resultado.Falla<DocumentoParaVer>(Fallas.NoEncontrado, "No encontramos ese documento.");
+
+        _auditor.Registrar(Auditar.Entrada(
+            "ver_documento", "credencial", credencialId, ahora,
+            actorId: verificadorId, contexto: new { documento = documentoId }));
+        await _trabajo.GuardarAsync(ct);
+
+        return await ServicioCredenciales.AbrirAsync(_almacen, documento, ct);
     }
 }
