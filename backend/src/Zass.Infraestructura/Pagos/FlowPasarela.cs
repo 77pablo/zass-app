@@ -331,7 +331,7 @@ public sealed class FlowPasarela : IPasarelaDePagos
             IntentoDePagoId: solicitud.IntentoDePagoId,
             ReferenciaPasarela: response.FlowOrder.ToString(),
             Aprobado: aprobado,
-            MontoConfirmado: (int)Math.Round(response.Amount),
+            MontoConfirmado: solicitud.Monto,
             MotivoFallo: aprobado ? null : "Flow rechazo el cobro con la tarjeta inscrita."));
     }
 
