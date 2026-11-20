@@ -10,7 +10,9 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
+using Zass.Infraestructura.Configuracion;
 
 namespace Zass.Integracion.Pruebas;
 
@@ -22,10 +24,11 @@ namespace Zass.Integracion.Pruebas;
 public sealed class Aplicacion : WebApplicationFactory<Program>
 {
     private readonly Dictionary<string, string?> _ajustes;
+    private readonly IRelojSistema? _reloj;
 
     public Aplicacion(
         int? limiteAutenticacion = null, bool permitirSinDocumentos = true, int? limiteSensible = null,
-        int? limitePublico = null)
+        int? limitePublico = null, IRelojSistema? reloj = null)
     {
         _ajustes = new Dictionary<string, string?>
         {
@@ -54,14 +57,32 @@ public sealed class Aplicacion : WebApplicationFactory<Program>
 
             // P19 (T49): en pruebas no consultamos HIBP para no salir a internet
             ["Zass:RevisarContrasenasFiltradas"] = "false",
+
+            // JQ-9: los archivos de las pruebas en su propia carpeta, nunca en la de desarrollo.
+            ["Zass:Archivos:Proveedor"] = "local",
+            ["Zass:Archivos:CarpetaLocal"] = CarpetaDeArchivos,
         };
+        _reloj = reloj;
     }
+
+    /// <summary>Donde guardan los archivos las pruebas (JQ-9). Se puede vaciar sin perder nada.</summary>
+    public static readonly string CarpetaDeArchivos =
+        Path.Combine(Path.GetTempPath(), "zass-archivos-pruebas");
 
     protected override void ConfigureWebHost(IWebHostBuilder constructor)
     {
         constructor.UseEnvironment(Environments.Development);
         constructor.ConfigureAppConfiguration(
             (_, config) => config.AddInMemoryCollection(_ajustes));
+        if (_reloj is not null)
+        {
+            constructor.ConfigureServices(s =>
+            {
+                var descriptor = s.SingleOrDefault(d => d.ServiceType == typeof(IRelojSistema));
+                if (descriptor is not null) s.Remove(descriptor);
+                s.AddSingleton(_reloj);
+            });
+        }
     }
 }
 
@@ -2335,6 +2356,11 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-23",
             "API-24",
             "API-25",
+            // JQ-9: los documentos de respaldo. API-26 es el del documento; quitar y ver son el
+            // mismo recurso con el metodo que faltaba.
+            "API-26",
+            "API-26-quitar",
+            "API-26-ver",
             "API-27",
             "API-28",
             "API-29",
@@ -2354,6 +2380,7 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-41",
             "API-42",
             "API-42b",
+            "API-44",
             "API-46",
             "API-47",
             "API-48",
@@ -2387,6 +2414,13 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-71",
             // La vuelta del navegador desde la pasarela (fase 2 de Flow). Otro recurso que el aviso.
             "API-75",
+
+            // JQ-9: la foto del perfil (subir, quitar, servirla) y el documento que abre el
+            // Verificador con la credencial tomada.
+            "API-72",
+            "API-72-quitar",
+            "API-73",
+            "API-74",
 
             "API-resenas-publicas",
             "CS-02b",
