@@ -797,6 +797,20 @@ public interface IRepositorioAgenda
     /// </summary>
     Task<Cita?> CitaParaCambioAsync(Guid id, CancellationToken ct = default);
 
+    /// <summary>
+    /// Para reenviar recordatorio: con FOR UPDATE (patrón CC-01), igual que TomarBloqueAsync.
+    /// </summary>
+    Task<Cita?> CitaParaReenviarAsync(Guid id, CancellationToken ct = default);
+
+    // ------------------------------------------------------- CS-13: reenviar recordatorio
+
+    /// <summary>
+    /// Cuenta cuántos reenvios de recordatorio se han hecho hoy para una cita.
+    /// Busca por prefijo de clave idempotencia: "recordatorio-reenviado:<citaId>:<rol>:<fechaChile>:<n>".
+    /// </summary>
+    Task<int> ContarReenviosRecordatorioAsync(
+        Guid citaId, string prefijoHoy, CancellationToken ct = default);
+
     // ------------------------------------------------------- CC-06: el abrazo mortal
 
     /// <summary>
