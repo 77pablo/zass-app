@@ -165,11 +165,18 @@ public class PlanificadorRecuperaDiasPerdidosPruebas : IAsyncLifetime
             Assert.Equal(1, intentos); // Solo UN intento, no dos
         }
 
-        // El resumen de la segunda corrida debería mostrar 0 cobradas, 1 ya intentada
+        // ES-1 (20-nov-2026): antes la segunda corrida contaba «ya intentada», porque un rechazo
+        // no se reintentaba nunca. Ahora el primer intento fue RECHAZADO (esta pasarela rechaza
+        // todo) y la suscripcion sigue antes del vencimiento: hay gracia y el dia 4 se reintenta
+        // UNA vez con su propia clave (…:reintento:2026-11-22, hora de Chile). La clave del
+        // PERIODO sigue teniendo un solo intento (arriba): eso es lo que esta prueba vigila.
         Assert.Equal(0, resumen2.Cobradas);
-        Assert.Equal(1, resumen2.YaIntentadas);
-        // Rechazadas puede ser 0 o 1 según si el intento pendiente se rechaza en la segunda corrida
-        // Lo importante es YaIntentadas = 1 (idempotencia por clave)
+        Assert.Equal(1, resumen2.Rechazadas);
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var reintento = ServicioCobros.ClaveDeReintento(claveEsperada, new DateOnly(2026, 11, 22));
+            Assert.Equal(1, await ctx.IntentosDePago.CountAsync(i => i.ClaveIdempotencia == reintento));
+        }
     }
 
     /// <summary>
@@ -290,10 +297,17 @@ public class PlanificadorRecuperaDiasPerdidosPruebas : IAsyncLifetime
         Assert.Equal(0, resumen4.YaIntentadas);
         Assert.Equal(1, resumen4.Cobradas + resumen4.Rechazadas);
 
-        // DÍA 5: Tercera corrida (mismo día, debe ser idempotente)
+        // DÍA 5: tercera corrida. ES-1 (20-nov-2026): el dia 4 fue rechazado y sigue antes del
+        // vencimiento, asi que el dia 5 se reintenta una vez (antes contaba «ya intentada»).
         var resumen5 = await CorrerTrabajoDiarioAsync(BaseUtc.AddDays(5));
+        Assert.Equal(1, resumen5.Rechazadas);
 
-        // Verificar: sigue habiendo 1 intento
+        // Y otra corrida el MISMO dia 5 ya no sale a la pasarela: un reintento por dia.
+        var resumen5Bis = await CorrerTrabajoDiarioAsync(BaseUtc.AddDays(5).AddHours(2));
+        Assert.Equal(1, resumen5Bis.YaIntentadas);
+        Assert.Equal(0, resumen5Bis.Cobradas + resumen5Bis.Rechazadas);
+
+        // La clave del PERIODO sigue con un solo intento: no se cobra dos veces el mismo mes.
         using (var ctx = ContextoDePrueba.Crear())
         {
             var intentosDia5 = await ctx.IntentosDePago
@@ -301,9 +315,6 @@ public class PlanificadorRecuperaDiasPerdidosPruebas : IAsyncLifetime
                 .CountAsync();
             Assert.Equal(1, intentosDia5);
         }
-
-        // Resumen: YaIntentadas == 1 (ya se intentó en la corrida anterior)
-        Assert.Equal(1, resumen5.YaIntentadas);
     }
 
     /// <summary>

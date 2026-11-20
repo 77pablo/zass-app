@@ -126,13 +126,18 @@ public class GraciaCobroIntegracionPruebas : IDisposable
     public async Task ES1_dos_procesos_reintentando_el_mismo_dia_a_la_vez_dejan_UN_intento()
     {
         var (s, _) = await UnFundadorEnGraciaAsync();
-        var delPeriodo = ServicioCobros.ClaveDeCobroAutomatico(s.Id, s.VigenteHasta);
-        var reintento = ServicioCobros.ClaveDeReintento(delPeriodo, new DateOnly(2026, 12, 17));
+        var dia = new DateOnly(2026, 12, 17);
+        var reintento = ServicioCobros.ClaveDeReintento(
+            ServicioCobros.ClaveDeCobroAutomatico(s.Id, s.VigenteHasta), dia);
 
+        // Cada proceso arma SU clave, como cada replica del planificador: si la clave dejara de
+        // salir igual de los mismos datos, los dos insertarian y esta prueba lo diria.
         async Task<bool> Inserta()
         {
+            var suClave = ServicioCobros.ClaveDeReintento(
+                ServicioCobros.ClaveDeCobroAutomatico(s.Id, s.VigenteHasta), dia);
             using var ctx = ContextoDePrueba.Crear();
-            ctx.IntentosDePago.Add(Intento(s, reintento, EstadoIntentoPago.Pendiente, DateTime.UtcNow));
+            ctx.IntentosDePago.Add(Intento(s, suClave, EstadoIntentoPago.Pendiente, DateTime.UtcNow));
             try
             {
                 await ctx.SaveChangesAsync();
@@ -151,6 +156,7 @@ public class GraciaCobroIntegracionPruebas : IDisposable
         Assert.Single(resultados, ganó => ganó);
 
         using var comprobacion = ContextoDePrueba.Crear();
+        Assert.Equal(1, await comprobacion.IntentosDePago.CountAsync(i => i.SuscripcionId == s.Id));
         Assert.Equal(1, await comprobacion.IntentosDePago.CountAsync(i => i.ClaveIdempotencia == reintento));
     }
 
