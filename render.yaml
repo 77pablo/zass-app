@@ -7,7 +7,11 @@ services:
   - type: web
     name: zass-api
     runtime: docker
-    plan: free              # verifica el plan gratuito vigente en la página de Render
+    # Plan pagado desde el 20-nov-2026 (Pablo): 0.5 CPU / 512 MB, US$ 7 al mes. En el plan free la
+    # API se dormia a los ~15 min sin trafico, y con ella el Planificador (cobros) y el envio de
+    # correos. NO volver a `free`: el servicio es «Blueprint managed» y este valor manda.
+    # `0.5c-512mb` es el nombre nuevo del antiguo `starter` (Render, ago-2026).
+    plan: 0.5c-512mb
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     healthCheckPath: /api/salud/lista

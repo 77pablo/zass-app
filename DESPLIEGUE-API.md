@@ -24,7 +24,7 @@ Visitante ──► Cloudflare Pages (zass.cl)
 | Validación de configuración al arrancar | `ValidacionDeArranque.cs` |
 | Migraciones como paso explícito | `dotnet Zass.Api.dll --migrar` |
 | Copia periódica de la base | `.github/workflows/copia-base-de-datos.yml` |
-| Despertador de la API (el plan gratis de Render la duerme tras ~15 min) | `.github/workflows/despertar-api.yml`, cada 10 min |
+| Despertador de la API | `.github/workflows/despertar-api.yml`. **Desactivado desde el 20-nov-2026:** la API pasó al plan pagado `0.5c-512mb` y ya no se duerme. Solo servía mientras estuvo en el plan gratis |
 
 ## 2. Variables de entorno
 
