@@ -201,6 +201,24 @@ public static class EndpointsIdentidad
             .RequireRateLimiting(Tasa.Sensible)
             .WithName("API-17");
 
+        // ES-2 - Completa los datos del registro completo (RUT, telefono, mayoria de edad) en una
+        // cuenta creada antes del 20-nov-2026. Mismas validaciones que API-08. Es uno de los pocos
+        // endpoints que el filtro de datos pendientes deja pasar (FiltroDatosDeCuenta).
+        // Limite de autenticacion y no el general: responde si un RUT ya esta usado, igual que
+        // el registro, y no puede servir para recorrer RUTs.
+        grupo.MapPut("/cuenta/datos", async (
+                CompletarDatosCuentaCmd cmd, ServicioRegistro registro, HttpContext http, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+
+                return Respuestas.DeResultado(
+                    await registro.CompletarDatosAsync(usuarioId.Value, cmd, Ip(http)));
+            })
+            .ConValidacion<CompletarDatosCuentaCmd>()
+            .RequireRateLimiting(Tasa.Autenticacion)
+            .WithName(FiltroDatosDeCuenta.EndpointCompletar);
+
         // «Ofrecer mis servicios»: agrega el rol de prestador a la cuenta que ya existe. Los roles viajan en la
         // cookie de acceso, asi que se renueva la sesion para que la persona los vea de inmediato.
         grupo.MapPost("/activar-prestador", async (

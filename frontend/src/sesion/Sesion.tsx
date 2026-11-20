@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { ErrorApi } from '../api/cliente'
+import { ErrorApi, EVENTO_DATOS_PENDIENTES } from '../api/cliente'
 import { cerrarSesion, miCuenta } from '../funciones/identidad/servicio'
 import { Contexto, type EstadoDeSesion, type Usuario } from './contexto'
 import { hayMarcaDeSesion, ponerMarcaDeSesion, quitarMarcaDeSesion } from './marca'
@@ -39,6 +39,14 @@ export function ProveedorDeSesion({ children }: { children: ReactNode }) {
       })
     return () => { vigente = false }
   }, [])
+
+  // ES-2: si la API dice que faltan datos (428), se vuelve a preguntar por la cuenta y el
+  // marco muestra la pantalla para completarlos.
+  useEffect(() => {
+    const alFaltarDatos = () => { void recargar() }
+    window.addEventListener(EVENTO_DATOS_PENDIENTES, alFaltarDatos)
+    return () => window.removeEventListener(EVENTO_DATOS_PENDIENTES, alFaltarDatos)
+  }, [recargar])
 
   const salir = useCallback(async () => {
     try {

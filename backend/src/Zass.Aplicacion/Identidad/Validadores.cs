@@ -61,7 +61,27 @@ public sealed class ValidadorRegistrarCuenta : AbstractValidator<RegistrarCuenta
             .Must(n => !string.IsNullOrWhiteSpace(n)).WithMessage("Falta el nombre.")
             .MaximumLength(Limites.NombreMaximo);
 
-        // Registro completo (decision de Pablo, 20-nov-2026).
+        // Registro completo (decision de Pablo, 20-nov-2026). Las reglas de los datos de la
+        // cuenta viven en ValidadorDatosDeCuenta: las usa tambien ES-2 (completarlos en una
+        // cuenta antigua) y tienen que ser LAS MISMAS, no una copia que se desincronice.
+        Include(new ValidadorDatosDeCuenta());
+
+        // RN-S1-08, otra vez y en la puerta: ni siquiera llega al caso de uso.
+        RuleFor(x => x.Rol)
+            .Must(r => ServicioRegistro.RolesPublicos.Contains(r))
+            .WithMessage("Al registrarse se elige entre buscador y prestador.");
+    }
+}
+
+/// <summary>
+/// Los datos de la cuenta (decision de Pablo, 20-nov-2026): tipo, apellido o razon social,
+/// RUT, telefono y la casilla «soy mayor de 18». Una sola definicion para el registro (API-08)
+/// y para completar los datos de una cuenta antigua (ES-2).
+/// </summary>
+public sealed class ValidadorDatosDeCuenta : AbstractValidator<IDatosDeCuenta>
+{
+    public ValidadorDatosDeCuenta()
+    {
         RuleFor(x => x.Tipo)
             .Must(t => t is "particular" or "empresa")
             .WithMessage("Elige si la cuenta es de un particular o de una empresa.");
@@ -89,12 +109,13 @@ public sealed class ValidadorRegistrarCuenta : AbstractValidator<RegistrarCuenta
 
         RuleFor(x => x.MayorDeEdad)
             .Equal(true).WithMessage("Para crear una cuenta tienes que ser mayor de 18 años.");
-
-        // RN-S1-08, otra vez y en la puerta: ni siquiera llega al caso de uso.
-        RuleFor(x => x.Rol)
-            .Must(r => ServicioRegistro.RolesPublicos.Contains(r))
-            .WithMessage("Al registrarse se elige entre buscador y prestador.");
     }
+}
+
+/// <summary>ES-2. Completar los datos de una cuenta creada antes del registro completo.</summary>
+public sealed class ValidadorCompletarDatosCuenta : AbstractValidator<CompletarDatosCuentaCmd>
+{
+    public ValidadorCompletarDatosCuenta() => Include(new ValidadorDatosDeCuenta());
 }
 
 public sealed class ValidadorIniciarSesion : AbstractValidator<IniciarSesionCmd>

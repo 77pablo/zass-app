@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { ErrorApi } from '../../api/cliente'
 import { registrarse, type RolPublico, type TipoDeCuenta } from './servicio'
-import { esTelefonoChileno, normalizarRut } from './rut'
+import { APELLIDO_MAXIMO, RAZON_SOCIAL_MAXIMA, revisarDatosDeCuenta } from './datosDeCuenta'
 import { Campo } from '../../componentes/Campo'
 import { Aviso } from '../../componentes/Aviso'
 import '../../legal.css'
@@ -11,8 +11,6 @@ const CONTRASENA_MINIMA = 10
 const CONTRASENA_MAXIMA = 128
 const CORREO_MAXIMO = 254
 const NOMBRE_MAXIMO = 150
-const APELLIDO_MAXIMO = 100
-const RAZON_SOCIAL_MAXIMA = 200
 
 /*
  * Registro completo (decisión de Pablo, 20-nov-2026): además de correo y contraseña, se elige
@@ -44,21 +42,15 @@ export function Registrarse({
   const empresa = tipo === 'empresa'
 
   function revisar(): Record<string, string> {
-    const malos: Record<string, string> = {}
-    if (empresa && razonSocial.trim() === '') malos.razonsocial = 'Escribe la razón social.'
+    // Los datos de la cuenta se revisan con la MISMA función que «Completa tus datos» (ES-2).
+    const malos = revisarDatosDeCuenta({ empresa, razonSocial, apellido, rut, telefono, mayorDeEdad })
     if (nombre.trim() === '') malos.nombre = empresa ? 'Escribe el nombre de la persona de contacto.' : 'Escribe tu nombre.'
-    if (!empresa && apellido.trim() === '') malos.apellido = 'Escribe tu apellido.'
-    if (rut.trim() === '') malos.rut = 'Escribe el RUT.'
-    else if (normalizarRut(rut) === null) malos.rut = 'Ese RUT no es válido. Revisa el número y el dígito verificador.'
-    if (telefono.trim() === '') malos.telefono = 'Escribe un teléfono.'
-    else if (!esTelefonoChileno(telefono)) malos.telefono = 'Escribe un teléfono chileno de 9 dígitos, por ejemplo +56 9 1234 5678.'
     if (correo.trim() === '') malos.correo = 'Escribe tu correo.'
     else if (!correo.includes('@')) malos.correo = 'Ese correo no parece válido.'
     // El minimo SI se dice aqui: sin saberlo no hay forma de cumplirlo. Al
     // ingresar se calla, porque ahi solo serviria para orientar a un atacante.
     if (contrasena.length < CONTRASENA_MINIMA)
       malos.contrasena = `Usa al menos ${CONTRASENA_MINIMA} caracteres.`
-    if (!mayorDeEdad) malos.mayordeedad = 'Para crear una cuenta tienes que ser mayor de 18 años.'
     return malos
   }
 

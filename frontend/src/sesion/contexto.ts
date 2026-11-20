@@ -7,6 +7,12 @@ export interface Usuario {
   nombre: string
   correoVerificado: boolean
   roles: string[]
+  /**
+   * ES-2. Lo que le falta a la cuenta del registro completo: 'rut', 'telefono', 'mayorDeEdad'.
+   * Mientras no esté vacío, la app pide completarlo y no deja seguir. Opcional: una API vieja
+   * no lo manda.
+   */
+  datosPendientes?: string[]
 }
 
 /**
