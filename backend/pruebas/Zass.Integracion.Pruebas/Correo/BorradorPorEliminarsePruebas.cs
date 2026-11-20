@@ -20,6 +20,9 @@ public class BorradorPorEliminarsePruebas
         Assert.Contains("«Curso de gasfitería»", correo!.Texto);
         Assert.Contains("1 de abril de 2026", correo.Texto);
         Assert.Contains("https://zass.cl/mi-ficha", correo.Texto);
+        // La versión de texto dice lo mismo que la de HTML, también la nota final.
+        Assert.Contains("Si ya no necesitas esa credencial, no tienes que hacer nada.", correo.Texto);
+        Assert.Contains("Si ya no necesitas esa credencial, no tienes que hacer nada.", correo.Html);
         Assert.False(Plantillas.LlevaToken(TipoNotificacion.BorradorPorEliminarse));
     }
 

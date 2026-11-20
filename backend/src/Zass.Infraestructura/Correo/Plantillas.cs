@@ -210,7 +210,6 @@ public static class Plantillas
         return new($"Tu suscripción a ZASS! vence {cuando}", texto, html);
     }
 
-    /// <summary>Ya venció: la ficha dejó de aparecer. Se dice sin rodeos y sin culpar a nadie.</summary>
     /// <summary>
     /// JQ-16 · CU-05 4D.3. Un borrador de credencial sin actividad en 83 días: se borrará con sus
     /// archivos. Dice qué credencial, desde qué día, y qué hacer para conservarla. TEXTO PROPUESTO.
@@ -226,6 +225,7 @@ public static class Plantillas
             $"Hola {nombre}:\n\n" +
             $"{parrafo}\n\n" +
             $"Tu ficha:\n\n{enlace}\n\n" +
+            "Si ya no necesitas esa credencial, no tienes que hacer nada.\n\n" +
             "— El equipo de ZASS!";
         var html = Marco(
             "Tu borrador se eliminará pronto",
@@ -236,6 +236,7 @@ public static class Plantillas
         return new("Tu borrador de credencial se eliminará pronto", texto, html);
     }
 
+    /// <summary>Ya venció: la ficha dejó de aparecer. Se dice sin rodeos y sin culpar a nadie.</summary>
     public static CorreoRenderizado Vencida(string nombre, string enlace)
     {
         const string parrafo =
