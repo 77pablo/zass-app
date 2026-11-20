@@ -14,6 +14,7 @@ namespace Zass.Integracion.Pruebas.Correo;
 public sealed class AplicacionConCorreo : WebApplicationFactory<Program>
 {
     private readonly Dictionary<string, string?> _ajustes;
+    private IAlertasAdministrador? _alertasFalso;
 
     public AplicacionConCorreo(params (string Clave, string? Valor)[] extra)
     {
@@ -28,10 +29,23 @@ public sealed class AplicacionConCorreo : WebApplicationFactory<Program>
         foreach (var (clave, valor) in extra) _ajustes[clave] = valor;
     }
 
+    public void ConfigurarAlertasFalsas(AlertasAdministradorFalso alertasFalso)
+    {
+        _alertasFalso = alertasFalso;
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder constructor)
     {
         constructor.UseEnvironment(Environments.Development);
         constructor.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(_ajustes));
+        
+        if (_alertasFalso is not null)
+        {
+            constructor.ConfigureTestServices(services =>
+            {
+                services.AddSingleton<IAlertasAdministrador>(_alertasFalso);
+            });
+        }
     }
 }
 
