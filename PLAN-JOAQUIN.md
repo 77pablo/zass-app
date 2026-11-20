@@ -140,8 +140,10 @@ elija Flow, Transbank o Mercado Pago. No es tuyo todavía.
 
 ## 2. Tu carril, y de qué no tienes que pedir permiso
 
-**Mientras estés en tu carril, decides, escribes, commiteas, pusheas y abres tu PR.** Lo único de
-Pablo es apretar el botón de mergear.
+**Mientras estés en tu carril, decides, escribes, commiteas, pusheas y abres tu PR.** Para que tu PR se
+fusione no tienes que pedirle nada a nadie: ver «Quién fusiona», abajo.
+
+**Quién fusiona (Pablo, 20-nov-2026):** cuando tu PR tenga el CI en verde y esté listo (no en borrador), **Claude lo revisa y lo fusiona**. No tienes que avisarle a Pablo ni pedirle nada. Si la revisión encuentra algo, Claude lo comenta en el PR y lo corriges. Claude solo le consulta a Pablo si el PR cambia precios o cobros de forma distinta a lo ya decidido, toca temas legales o necesita algo de producción. **Publicar en producción** sigue siendo de Pablo.
 
 | Es tuyo | No lo toques |
 |---|---|
@@ -162,7 +164,7 @@ Lo mismo que vale para Esteban (`PLAN-ESTEBAN.md`, sección 1). En corto:
 2. **Si no hay nada escrito, decide tú** lo más prudente y explícalo en el PR.
 3. **La documentación técnica está fuera del repositorio:** si tu cambio contradice un documento, anótalo en el PR bajo **«Documento que cambia»** y Claude lo actualiza.
 4. **Textos y pantallas:** los propones tú en el PR y los revisa Claude. Desde el 20-nov **la interfaz también es tuya** (Pablo).
-5. **Solo es de Pablo:** precios y cobros, temas legales, secretos y todo lo de producción.
+5. **Solo es de Pablo** (y te lo consulta Claude, no tú): precios y cobros, temas legales, secretos y todo lo de producción.
 
 ### Dos reglas duras
 

@@ -35,8 +35,10 @@ paquete NuGet**, y 20 pruebas de arquitectura lo vigilan.
 
 ## 1. Tu carril, y quién tiene lo demás
 
-**Mientras estés en tu carril, decides, escribes, commiteas, pusheas y abres tu PR.** Lo único de
-Pablo es apretar el botón de fusionar.
+**Mientras estés en tu carril, decides, escribes, commiteas, pusheas y abres tu PR.** Para que tu PR se
+fusione no tienes que pedirle nada a nadie: ver «Quién fusiona», abajo.
+
+**Quién fusiona (Pablo, 20-nov-2026):** cuando tu PR tenga el CI en verde y esté listo (no en borrador), **Claude lo revisa y lo fusiona**. No tienes que avisarle a Pablo ni pedirle nada. Si la revisión encuentra algo, Claude lo comenta en el PR y lo corriges. Claude solo le consulta a Pablo si el PR cambia precios o cobros de forma distinta a lo ya decidido, toca temas legales o necesita algo de producción. **Publicar en producción** sigue siendo de Pablo.
 
 | Es tuyo | Es de otro (no lo toques) |
 |---|---|
@@ -64,7 +66,7 @@ No tienes que preguntarle a Pablo para avanzar. Cuando te surja una duda, resué
 4. **Los textos que ve el usuario** (correos, avisos, botones) los propones tú en el PR. Los revisa
    Claude en la revisión del PR, contra el tono del sitio: en español de Chile, claros, sin
    tecnicismos y sin culpar al usuario. No esperes a Pablo para eso.
-5. **Solo es de Pablo:** cambiar precios o lo que se cobra, decisiones legales, secretos y claves,
+5. **Solo es de Pablo** (y te lo consulta Claude, no tú): cambiar precios o lo que se cobra, decisiones legales, secretos y claves,
    y todo lo que se hace en producción (Neon, Render, Cloudflare). Si tu tarea necesita una de esas
    cosas, déjala anotada en el PR y sigue con lo demás.
 
