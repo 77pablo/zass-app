@@ -8,7 +8,7 @@ import type { MotivoDeRechazo, ResultadoDeVerificacion, TipoDeCredencialInterna 
 export const ENLACE_MENU = 'Panel interno'
 
 export const TITULO_PANEL = 'Panel interno'
-export const INTRO_PANEL = 'Herramientas para operar ZASS!. Lo que hagas aquí queda registrado.'
+export const INTRO_PANEL = 'Herramientas para operar ZASS! Todo lo que hagas aquí queda registrado.'
 export const SECCION_VERIFICACION = 'Verificación de credenciales'
 export const SECCION_VERIFICACION_BAJADA = 'Revisa los títulos y certificados que mandan los prestadores.'
 
@@ -18,7 +18,7 @@ export const REINTENTAR = 'Reintentar'
 export const COLA_VACIA = 'No hay credenciales esperando revisión.'
 export const VOLVER_AL_PANEL = 'Volver al panel'
 
-export const ETIQUETA_EN_COLA_DESDE = 'En cola desde'
+export const ETIQUETA_EN_COLA_DESDE = 'Creada el'
 export const ETIQUETA_ENTIDAD = 'Entidad'
 export const SIN_ENTIDAD = 'Sin entidad'
 export const ENTIDAD_NO_RECONOCIDA = 'Entidad no reconocida'
@@ -39,7 +39,7 @@ export const TITULO_DOCUMENTOS = 'Documentos de respaldo'
 export const SIN_DOCUMENTOS_DETALLE =
   'Esta credencial llegó sin documentos. Si la verificas, explica cómo la comprobaste.'
 export const DOCUMENTOS_NO_LLEGARON =
-  'La credencial tiene documentos, pero no llegaron en la respuesta. Revisa que esté al día la versión de la API.'
+  'No pudimos cargar los documentos. Recarga la página y, si sigue igual, avisa al equipo técnico.'
 export const ABRIR_DOCUMENTO = 'Abrir'
 export const ABRE_EN_PESTANA = '(se abre en una pestaña nueva)'
 
