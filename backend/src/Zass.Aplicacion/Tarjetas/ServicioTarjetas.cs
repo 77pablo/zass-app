@@ -20,7 +20,7 @@ public sealed class ServicioTarjetas : IServicioTarjetas
     public static readonly TimeSpan VentanaDeIntentos = TimeSpan.FromMinutes(15);
 
     /// <summary>CU-19 4B.5: duracion del bloqueo (1 hora) tras alcanzar el limite.</summary>
-    public static readonly TimeSpan DuracionDelBloqueo = TimeSpan.FromHours(1);
+    public static readonly TimeSpan DuracionDelBloqueo = TimeSpan.FromMinutes(1);
 
     /// <summary>
     /// La forma de <see cref="Tarjeta.GenerarUrlEstable"/>: 4+4 del alfabeto sin I, L, O, 0 ni 1.
