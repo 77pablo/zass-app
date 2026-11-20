@@ -41,6 +41,7 @@ public sealed class ServicioTarjetas : IServicioTarjetas
     private readonly IAuditor _auditor;
     private readonly IGeneradorSecretos _secretos;
     private readonly IRepositorioAuditoria _auditoria;
+    private readonly IAlertasAdministrador _alertas;
 
     public ServicioTarjetas(
         IRepositorioTarjetas repo,
@@ -48,7 +49,8 @@ public sealed class ServicioTarjetas : IServicioTarjetas
         IRelojSistema reloj,
         IAuditor auditor,
         IGeneradorSecretos secretos,
-        IRepositorioAuditoria auditoria)
+        IRepositorioAuditoria auditoria,
+        IAlertasAdministrador alertas)
     {
         _repo = repo;
         _trabajo = trabajo;
@@ -56,6 +58,7 @@ public sealed class ServicioTarjetas : IServicioTarjetas
         _auditor = auditor;
         _secretos = secretos;
         _auditoria = auditoria;
+        _alertas = alertas;
     }
 
     public async Task<EscaneoResuelto> RegistrarEscaneoAsync(
@@ -203,7 +206,25 @@ public sealed class ServicioTarjetas : IServicioTarjetas
         if (urlEstable.Length != 9 || !FormaDeUrlEstable.IsMatch(urlEstable))
             return Resultado.Falla<ActivarTarjetaResultado>(Fallas.NoEncontrado, "Tarjeta no válida.");
 
-        // Ejecutar todo en una transaccion explicita para que el FOR UPDATE bloquee bien (CC-05)
+        // Ejecutar la transaccion y devolver si hay que alertar
+        var (resultado, alerta) = await TransaccionDeActivarAsync(urlEstable, codigoNorm, perfilPrestadorId, ipOrigen, ct);
+
+        // FUERA de la transaccion: enviar la alerta si corresponde (solo una vez por bloqueo)
+        if (alerta is not null)
+        {
+            await _alertas.AvisarTarjetaBloqueadaAsync(alerta, ct);
+        }
+
+        return resultado;
+    }
+
+    /// <summary>
+    /// Ejecuta la transaccion de activacion y devuelve el resultado y si hay que alertar.
+    /// La alerta se envia FUERA de la transaccion (despues del commit).
+    /// </summary>
+    private async Task<(Resultado<ActivarTarjetaResultado> Resultado, AlertaTarjetaBloqueada? Alerta)> TransaccionDeActivarAsync(
+        string urlEstable, string codigoNorm, Guid perfilPrestadorId, string? ipOrigen, CancellationToken ct)
+    {
         return await _trabajo.EnTransaccionAsync(async ct =>
         {
             // Tomar la fila CON BLOQUEO (CC-05) - solo si esta en estado Emitida
@@ -217,10 +238,10 @@ public sealed class ServicioTarjetas : IServicioTarjetas
                 {
                     // La tarjeta existe pero ya no esta en Emitida (ya activada, vencida, etc.)
                     // Mismo mensaje que codigo incorrecto (no revelar cual)
-                    return Resultado.Falla<ActivarTarjetaResultado>(Fallas.ReglaDeNegocio, "El código no es válido.");
+                    return (Resultado.Falla<ActivarTarjetaResultado>(Fallas.ReglaDeNegocio, "El código no es válido."), default(AlertaTarjetaBloqueada?));
                 }
                 // Tarjeta no existe
-                return Resultado.Falla<ActivarTarjetaResultado>(Fallas.NoEncontrado, "Tarjeta no válida.");
+                return (Resultado.Falla<ActivarTarjetaResultado>(Fallas.NoEncontrado, "Tarjeta no válida."), default(AlertaTarjetaBloqueada?));
             }
 
             // 4B.5: Verificar si la tarjeta esta bloqueada ANTES de validar el codigo
@@ -230,7 +251,7 @@ public sealed class ServicioTarjetas : IServicioTarjetas
             {
                 // Mientras este bloqueada, cualquier intento (incluso con codigo CORRECTO)
                 // responde IGUAL que un codigo incorrecto y no consume el codigo
-                return Resultado.Falla<ActivarTarjetaResultado>(Fallas.ReglaDeNegocio, "El código no es válido.");
+                return (Resultado.Falla<ActivarTarjetaResultado>(Fallas.ReglaDeNegocio, "El código no es válido."), default(AlertaTarjetaBloqueada?));
             }
 
             // Verificar vigencia del codigo (30 dias)
@@ -265,18 +286,35 @@ public sealed class ServicioTarjetas : IServicioTarjetas
                 var ventana15Min = ahora - VentanaDeIntentos;
                 var cantidadFallos = await _auditoria.ContarActivacionesFallidasAsync(tarjeta.Id, ventana15Min, ahora, ct);
                 
+                AlertaTarjetaBloqueada? alerta = null;
                 if (cantidadFallos >= IntentosParaBloquear)
                 {
-                    // Aviso al Administrador (idempotente por clave "tarjeta-bloqueada:<tarjeta>:<hora del 5.o fallo>")
-                    // La hora del 5.o fallo es la del fallo actual (ahora)
-                    await NotificarAdministradorBloqueoAsync(tarjeta.Id, ahora, ct);
+                    // Preparar la alerta (se envia FUERA de la transaccion)
+                    alerta = new AlertaTarjetaBloqueada(tarjeta.UrlEstable, ahora, ahora + DuracionDelBloqueo);
+
+                    // Registrar el aviso de bloqueo en auditoria (dentro de la transaccion)
+                    _auditor.Registrar(new RegistroAuditoria
+                    {
+                        ActorId = null, // Sistema
+                        Accion = "TarjetaBloqueadaPorIntentos",
+                        Entidad = "Tarjeta",
+                        EntidadId = tarjeta.Id,
+                        Contexto = JsonSerializer.Serialize(new
+                        {
+                            Motivo = $"{IntentosParaBloquear} intentos fallidos en {VentanaDeIntentos.TotalMinutes} minutos",
+                            BloqueadaHasta = ahora + DuracionDelBloqueo,
+                            UrlEstable = tarjeta.UrlEstable
+                        }),
+                        IpOrigen = null,
+                        OcurridoEn = ahora,
+                    });
 
                     // Guardar el aviso de bloqueo en la misma transaccion
                     await _trabajo.GuardarAsync(ct);
                 }
 
                 // MISMO mensaje que codigo incorrecto (no revelar cual)
-                return Resultado.Falla<ActivarTarjetaResultado>(Fallas.ReglaDeNegocio, "El código no es válido.");
+                return (Resultado.Falla<ActivarTarjetaResultado>(Fallas.ReglaDeNegocio, "El código no es válido."), alerta);
             }
 
             // Codigo correcto y no vencido: consumir y activar
@@ -302,7 +340,7 @@ public sealed class ServicioTarjetas : IServicioTarjetas
             // Notificacion (A-08) - pendiente en otra tarea
             // var slug = tarjeta.PerfilPrestador?.Slug; // necesitamos el slug
 
-            return Resultado.Ok(new ActivarTarjetaResultado("Tarjeta activada", $"/prestadores/{tarjeta.PerfilPrestador!.Slug}"));
+            return (Resultado.Ok(new ActivarTarjetaResultado("Tarjeta activada", $"/prestadores/{tarjeta.PerfilPrestador!.Slug}")), default(AlertaTarjetaBloqueada?));
         }, ct);
     }
 
@@ -352,42 +390,5 @@ public sealed class ServicioTarjetas : IServicioTarjetas
         }
 
         return (false, null);
-    }
-
-    /// <summary>
-    /// Notifica al administrador cuando se alcanza el {IntentosParaBloquear}.o fallo (bloqueo).
-    /// Usa clave de idempotencia "tarjeta-bloqueada:<tarjeta>:<hora del {IntentosParaBloquear}.o fallo>".
-    /// D5: La hora del {IntentosParaBloquear}.o fallo se pasa como parametro para que la clave sea unica por bloqueo.
-    /// Si no hay forma de notificar administradores, lo registra en auditoria y continua.
-    /// </summary>
-    private async Task NotificarAdministradorBloqueoAsync(Guid tarjetaId, DateTime horaQuintoFallo, CancellationToken ct)
-    {
-        // La clave usa la hora del {IntentosParaBloquear}.o fallo, no la hora actual (D5)
-        var claveIdempotencia = $"tarjeta-bloqueada:{tarjetaId}:{horaQuintoFallo:yyyyMMddTHHmmss}";
-
-        // Buscar si ya existe un administrador para notificar
-        // NOTA: No hay un metodo directo en IRepositorioUsuarios para buscar por rol.
-        // La notificacion a administradores queda pendiente (ver informe).
-        // Se registra en auditoria para trazabilidad.
-
-        _auditor.Registrar(new RegistroAuditoria
-        {
-            ActorId = null, // Sistema
-            Accion = "TarjetaBloqueadaPorIntentos",
-            Entidad = "Tarjeta",
-            EntidadId = tarjetaId,
-            Contexto = JsonSerializer.Serialize(new
-            {
-                Motivo = $"{IntentosParaBloquear} intentos fallidos en {VentanaDeIntentos.TotalMinutes} minutos",
-                BloqueadaHasta = horaQuintoFallo + DuracionDelBloqueo,
-                ClaveIdempotencia = claveIdempotencia,
-                Nota = "Notificacion a administrador pendiente: no hay consulta de usuarios por rol en IRepositorioUsuarios"
-            }),
-            IpOrigen = null,
-            OcurridoEn = horaQuintoFallo,
-        });
-
-        // TODO: Cuando exista forma de notificar administradores (ej. INotificaciones para rol),
-        // usar: _avisos.Encolar(new Notificacion { ..., ClaveIdempotencia = claveIdempotencia, ... });
     }
 }
