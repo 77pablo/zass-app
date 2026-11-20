@@ -48,7 +48,7 @@ public sealed class RepositorioAuditoriaEfCore : IRepositorioAuditoria
     {
         return await _ctx.Auditoria
             .Where(r => r.Entidad == "Tarjeta"
-                     && r.EntidadId == tarjetaId
+                     // M4: quitar filtro por tarjetaId (contar de TODAS las tarjetas)
                      && r.Accion == "TarjetaActivacionFallida"
                      && r.OcurridoEn >= desde
                      && r.OcurridoEn <= hasta)
@@ -60,7 +60,7 @@ public sealed class RepositorioAuditoriaEfCore : IRepositorioAuditoria
     {
         return await _ctx.Auditoria
             .Where(r => r.Entidad == "Tarjeta"
-                     && r.EntidadId == tarjetaId
+                     // M4: quitar filtro por tarjetaId (contar de TODAS las tarjetas)
                      && r.Accion == "TarjetaActivacionFallida"
                      && r.OcurridoEn >= desde
                      && r.OcurridoEn <= hasta)

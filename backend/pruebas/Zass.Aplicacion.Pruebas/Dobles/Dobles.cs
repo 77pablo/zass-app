@@ -144,7 +144,7 @@ public sealed class RepositorioAuditoriaEnMemoria : IRepositorioAuditoria
     {
         return Task.FromResult(_registros.Count(r =>
             r.Entidad == "Tarjeta"
-            && r.EntidadId == tarjetaId
+            // M4: quitar filtro por tarjetaId (contar de TODAS las tarjetas)
             && r.Accion == "TarjetaActivacionFallida"
             && r.OcurridoEn >= desde
             && r.OcurridoEn <= hasta));
@@ -155,7 +155,7 @@ public sealed class RepositorioAuditoriaEnMemoria : IRepositorioAuditoria
     {
         return Task.FromResult<IReadOnlyList<DateTime>>(_registros
             .Where(r => r.Entidad == "Tarjeta"
-                     && r.EntidadId == tarjetaId
+                     // M4: quitar filtro por tarjetaId (contar de TODAS las tarjetas)
                      && r.Accion == "TarjetaActivacionFallida"
                      && r.OcurridoEn >= desde
                      && r.OcurridoEn <= hasta)
