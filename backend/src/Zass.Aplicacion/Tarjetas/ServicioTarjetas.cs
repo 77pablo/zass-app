@@ -261,6 +261,9 @@ public sealed class ServicioTarjetas : IServicioTarjetas
                     // Aviso al Administrador (idempotente por clave "tarjeta-bloqueada:<tarjeta>:<hora del 5.o fallo>")
                     // La hora del 5.o fallo es la del fallo actual (ahora)
                     await NotificarAdministradorBloqueoAsync(tarjeta.Id, ahora, ct);
+
+                    // Guardar el aviso de bloqueo en la misma transaccion
+                    await _trabajo.GuardarAsync(ct);
                 }
 
                 // MISMO mensaje que codigo incorrecto (no revelar cual)
