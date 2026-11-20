@@ -219,7 +219,7 @@ export function Portada() {
                   <Aparece orden={i % 3}>
                     <TarjetaPersona p={{
                       slug: r.slug, nombre: r.nombrePublico, rubro: r.rubro,
-                      zona: r.zona, verificada: r.verificada,
+                      zona: r.zona, verificada: r.verificada, foto: r.urlFoto,
                     }} />
                   </Aparece>
                 </li>

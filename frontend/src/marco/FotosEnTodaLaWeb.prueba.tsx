@@ -54,6 +54,14 @@ describe('JQ-15: la portada muestra la foto de los recién llegados', () => {
     const luis = within(flotantes).getByText('Luis Catrileo').closest('a')!
     expect(luis.querySelector('img')).toBeNull()
     expect(luis.querySelector('.monograma')).toHaveTextContent('LC')
+
+    // Y la rejilla «Se sumaron hace poco», más abajo: la misma regla.
+    const rejilla = screen.getByRole('heading', { name: 'Se sumaron hace poco' }).closest('section')!
+    const rosaAbajo = within(rejilla).getByText('Rosa Millán').closest('li')!
+    expect(rosaAbajo.querySelector('img.monograma--foto')).toHaveAttribute('src', FOTO)
+    const luisAbajo = within(rejilla).getByText('Luis Catrileo').closest('li')!
+    expect(luisAbajo.querySelector('img')).toBeNull()
+    expect(luisAbajo.querySelector('.monograma')).toHaveTextContent('LC')
   })
 })
 
