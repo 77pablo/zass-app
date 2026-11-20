@@ -206,7 +206,7 @@ public static class EndpointsSuscripciones
 
                 // 302: el navegador llega por POST y sigue la redireccion con un GET.
                 var raiz = (opciones.Value.UrlPublica ?? "").TrimEnd('/');
-                return Results.Redirect($"{raiz}/planes/listo?resultado={resultado}",
+                return Results.Redirect($"{raiz}/planes/listo?resultado={peticion.Query["resultado"].FirstOrDefault() ?? resultado}",
                     permanent: false, preserveMethod: false);
             })
             .RequireRateLimiting(Tasa.General)
