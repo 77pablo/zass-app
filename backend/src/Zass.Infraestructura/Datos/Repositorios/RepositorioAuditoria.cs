@@ -48,6 +48,7 @@ public sealed class RepositorioAuditoriaEfCore : IRepositorioAuditoria
     {
         return await _ctx.Auditoria
             .Where(r => r.Entidad == "Tarjeta"
+                     && r.EntidadId == tarjetaId
                      && r.Accion == "TarjetaActivacionFallida"
                      && r.OcurridoEn >= desde
                      && r.OcurridoEn <= hasta)
@@ -59,6 +60,7 @@ public sealed class RepositorioAuditoriaEfCore : IRepositorioAuditoria
     {
         return await _ctx.Auditoria
             .Where(r => r.Entidad == "Tarjeta"
+                     && r.EntidadId == tarjetaId
                      && r.Accion == "TarjetaActivacionFallida"
                      && r.OcurridoEn >= desde
                      && r.OcurridoEn <= hasta)
