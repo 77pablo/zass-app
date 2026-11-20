@@ -69,8 +69,13 @@ if (!TextosEnCastellano.FijarIdiomaDeValidacion())
     app.Logger.LogWarning(
         "Sin datos de idioma (globalizacion invariante): los mensajes de validacion saldran en ingles.");
 
+// Registrar el resolvedor de nombres en castellano para FluentValidation.
+TextosEnCastellano.ConfigurarResolvedor();
+
 // Se valida DESPUES de Build y con app.Configuration: ahi ya estan todas las fuentes
-// (variables de entorno, Key Vault, y los ajustes que inyectan las pruebas). Falla antes de
+// (variables de entorno de Render, y los ajustes que inyectan las pruebas). Falla antes de
+// *Diseño original: Key Vault con identidad administrada. Desplegado: variables de entorno
+// de Render, porque no documentado.
 // abrir ningun puerto. Todo lo que no sea Development se trata como produccion.
 ValidacionDeArranque.Exigir(app.Configuration, esProductivo: !app.Environment.IsDevelopment());
 
@@ -124,6 +129,7 @@ app.MapearResenas();
 app.MapearSuscripciones();                               // API-66 a API-70 (S7 suscripciones y pagos)
 
 app.MapearVerificacion();
+app.MapearAuditoria();
 
 app.MapearTarjetas();                                  // API-54 /t/{segmento} (CS-18)
 

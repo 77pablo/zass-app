@@ -15,8 +15,14 @@ const RAIZ = resolve(import.meta.dirname, '..', '..')
 const publico = (nombre) => resolve(RAIZ, 'public', nombre)
 const texto = (ruta) => readFileSync(ruta, 'utf8')
 
-const AMARILLO = '#F6C81E'
-const TINTA = '#1A1A1A'
+// Los colores de la guia v3 (18-nov-2026), los mismos de index.css.
+const CELESTE = '#00A6FF'
+const PIZARRA = '#111827'
+const AMBAR = '#FFB800'
+/** La marca anterior: no puede quedar en ningun icono. */
+const VIEJOS = ['#F6C81E', '#1A1A1A']
+/** El fondo del sitio con la guia v3: la pantalla de arranque tiene que coincidir. */
+const BLANCO = '#FFFFFF'
 
 const RUTA_MANIFIESTO = '/manifest.webmanifest'
 const manifiesto = JSON.parse(texto(publico('manifest.webmanifest')))
@@ -48,12 +54,12 @@ describe('manifiesto web (PWA instalable)', () => {
     expect(manifiesto.lang).toBe('es-CL')
   })
 
-  // El sitio es oscuro. Si la pantalla de arranque fuera crema, al abrir desde el icono se veria
-  // un fogonazo claro antes de la aplicacion: por eso las dos van en tinta, y el crema de la marca
-  // se queda fuera del manifiesto (se usa en superficies claras del sitio, no aqui).
-  it('usa los colores de la marca y no inventa otros', () => {
-    expect(manifiesto.theme_color.toUpperCase()).toBe(TINTA)
-    expect(manifiesto.background_color.toUpperCase()).toBe(TINTA)
+  // Desde la guia v3 (17-nov-2026) el sitio es claro: fondo blanco. La pantalla de arranque va del
+  // MISMO color que el sitio, para que al abrir desde el icono no haya un fogonazo de otro color
+  // antes de la aplicacion. (Antes el sitio era oscuro y las dos iban en tinta, por la misma razon.)
+  it('arranca del mismo color que el sitio, sin fogonazo', () => {
+    expect(manifiesto.theme_color.toUpperCase()).toBe(BLANCO)
+    expect(manifiesto.background_color.toUpperCase()).toBe(BLANCO)
   })
 
   it('declara 192, 512 y el maskable, y los archivos miden lo que dicen', () => {
@@ -67,12 +73,27 @@ describe('manifiesto web (PWA instalable)', () => {
     }
   })
 
-  it('el icono nace del amarillo de la marca que ya estaba en el repo, no de una marca nueva', () => {
-    for (const fuente of ['icono-zass.svg', 'icono-zass-maskable.svg']) {
+  it('los iconos usan la guia v3 (celeste, pizarra y el «!» ambar) y nada de la marca anterior', () => {
+    for (const fuente of ['icono-zass.svg', 'icono-zass-maskable.svg', 'favicon.svg']) {
       const svg = texto(publico(fuente)).toUpperCase()
-      expect(svg).toContain(AMARILLO)
-      expect(svg).toContain(TINTA)
+      expect(svg, fuente).toContain(CELESTE)
+      expect(svg, fuente).toContain(PIZARRA)
+      expect(svg, fuente).toContain(AMBAR)
+      for (const viejo of VIEJOS) expect(svg, `${fuente} todavia trae ${viejo}`).not.toContain(viejo)
     }
+  })
+
+  // La Z y el «!» son formas: si fueran texto, un telefono sin Montserrat dibujaria otra letra.
+  it('el dibujo no depende de una fuente', () => {
+    for (const fuente of ['icono-zass.svg', 'icono-zass-maskable.svg', 'favicon.svg']) {
+      expect(texto(publico(fuente)), fuente).not.toMatch(/<text[\s>]/)
+    }
+  })
+
+  // El maskable se recorta con cualquier forma: el dibujo tiene que caber en el circulo central
+  // del 80 %. Si alguien quita el `scale`, el sello queda fuera y se corta.
+  it('el maskable achica el dibujo para la zona segura', () => {
+    expect(texto(publico('icono-zass-maskable.svg'))).toMatch(/scale\(0\.7\d?\)/)
   })
 })
 

@@ -17,7 +17,7 @@ public static class Texto
     /// local se creo con locale C, y ahi <c>lower()</c> solo plega ASCII: lower('Ó')
     /// sigue siendo 'Ó', asi que un indice unico sobre lower(nombre) dejaba entrar
     /// "TASACION COMERCIAL" junto a "Tasacion comercial". Con esta columna la igualdad
-    /// es exacta y no depende del locale del servidor, que es distinto en Azure.
+    /// es exacta y no depende del locale del servidor (Render / Neon, locale C).
     ///
     /// De paso resuelve las tildes: "tasacion" escrito a mano encuentra "Tasación".
     /// </summary>

@@ -48,9 +48,14 @@ public interface IServicioSuscripciones
     /// unico parcial: si llegara una segunda confirmacion del mismo intento, la base la
     /// rechaza aunque fallara toda comprobacion anterior.
     /// </param>
+    /// <param name="esCobroAutomatico">
+    /// True si es un cobro automatico (incluye cobro tardio). En ese caso, la extension
+    /// se calcula desde el VigenteHasta de la suscripcion TAL COMO ESTA (VencerExpiradasAsync
+    /// solo cambia Estado, no VigenteHasta). False para pagos manuales: desde hoy si ya vencio.
+    /// </param>
     Task<Resultado<Guid>> RegistrarPeriodoPagadoAsync(
         Guid suscripcionId, int meses = 1, int montoPagado = 0, string? referencia = null,
-        Guid? intentoDePagoId = null, CancellationToken ct = default);
+        Guid? intentoDePagoId = null, bool esCobroAutomatico = false, CancellationToken ct = default);
 
     /// <summary>El prestador deja de pagar por voluntad propia. Sale de la busqueda de inmediato.</summary>
     Task<Resultado> CancelarAsync(Guid suscripcionId, CancellationToken ct = default);

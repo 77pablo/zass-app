@@ -228,7 +228,7 @@ public class ZassDbContext : DbContext
             // y eso NO es un detalle: este cluster se creo con locale C, donde lower()
             // solo plega ASCII. Un indice sobre lower(nombre) aceptaba
             // "TASACION COMERCIAL" al lado de "Tasacion comercial", y lo hacia depender
-            // del locale del servidor, que en Azure sera otro. Lo encontro una prueba
+            // del locale del servidor, que en Render sera otro. Lo encontro una prueba
             // de integracion que esperaba el rechazo y no lo obtuvo.
             e.HasIndex(x => new { x.RubroId, x.NombreNormalizado })
                 .IsUnique()
@@ -471,6 +471,8 @@ public class ZassDbContext : DbContext
             e.ToTable(t => t.HasCheckConstraint("ck_bloque_rango", "fin_en > inicio_en"));
             e.HasIndex(x => new { x.PerfilPrestadorId, x.InicioEn });
             e.HasIndex(x => new { x.PrestadorServicioId, x.InicioEn, x.Estado });
+            // Índice para acelerar el borrado masivo de bloques libres
+            e.HasIndex(x => new { x.DisponibilidadId, x.Estado, x.InicioEn }, "ix_bloque_disponibilidad_estado_inicio");
             e.HasOne(x => x.PerfilPrestador).WithMany()
                 .HasForeignKey(x => x.PerfilPrestadorId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.PrestadorServicio).WithMany()

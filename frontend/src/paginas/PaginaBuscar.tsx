@@ -6,6 +6,7 @@ import {
   buscarTexto, type CriteriosDeTexto, type OrdenDeTexto, type PaginaDeTexto, type ResultadoDeTexto,
 } from '../funciones/busqueda/servicio'
 import { BarraDeBusqueda } from '../marco/BarraDeBusqueda'
+import { ResultadosEsqueleto } from '../marco/Esqueleto'
 import { Icono } from '../marco/Icono'
 import { TarjetaPersona } from '../marco/TarjetaPersona'
 import { capitalizar, personas, reputacion } from '../marco/texto'
@@ -274,21 +275,24 @@ export function PaginaBuscar() {
         {punto && (
           <div className="radio-barra" role="group" aria-label="¿Hasta qué distancia?">
             <span className="radio-titulo">¿Hasta qué distancia?</span>
-            {RADIOS.map((km) => (
+            {/* Estilo iPhone: las opciones van juntas en un control segmentado (solo presentacion). */}
+            <span className="segmentado">
+              {RADIOS.map((km) => (
+                <button
+                  key={km} type="button" className="chip chip--radio"
+                  aria-pressed={radio === km}
+                  onClick={() => cambiar({ radio: radio === km ? null : String(km) })}
+                >
+                  {km} km
+                </button>
+              ))}
               <button
-                key={km} type="button" className="chip chip--radio"
-                aria-pressed={radio === km}
-                onClick={() => cambiar({ radio: radio === km ? null : String(km) })}
+                type="button" className="chip chip--radio" aria-pressed={radio === null}
+                onClick={() => cambiar({ radio: null })}
               >
-                {km} km
+                Todo Chile
               </button>
-            ))}
-            <button
-              type="button" className="chip chip--radio" aria-pressed={radio === null}
-              onClick={() => cambiar({ radio: null })}
-            >
-              Todo Chile
-            </button>
+            </span>
           </div>
         )}
 
@@ -305,7 +309,9 @@ export function PaginaBuscar() {
             que anunciar es el recuento, y `aria-live` esta ahi; los avisos y errores ya traen su
             propio `role` de estado o de alerta. */}
         <div>
-          {cargando && <p className="cargando-linea" role="status"><span className="pulso" aria-hidden="true" />Buscando…</p>}
+          {/* Guia v3: mientras busca se VEN tarjetas-esqueleto con la forma de los resultados (no
+              salta nada al llegar); el lector de pantalla sigue oyendo «Buscando…». */}
+          {cargando && <><p className="solo-lector" role="status">Buscando…</p><ResultadosEsqueleto /></>}
           {actual?.error && <p className="aviso-linea" role="alert">{actual.error}</p>}
           {actual?.aviso && <p className="aviso-linea" role="status">{actual.aviso}</p>}
 

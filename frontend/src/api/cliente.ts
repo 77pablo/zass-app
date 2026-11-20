@@ -9,7 +9,7 @@
 export class ErrorApi extends Error {
   /** Codigo HTTP. Vale 0 cuando ni siquiera hubo respuesta (sin conexion). */
   readonly estado: number
-  /** Texto listo para mostrarle a una persona. */
+  /** Texto base del error (sin el codigo de peticion). */
   readonly mensaje: string
   /** Errores por campo de una validacion, con el nombre del campo en minuscula. */
   readonly campos: Record<string, string>
@@ -19,10 +19,16 @@ export class ErrorApi extends Error {
    * señala los fragmentos del comentario que parecen datos personales. Vacio si no hubo cuerpo.
    */
   readonly datos: Record<string, unknown>
+  /**
+   * Identificador de la peticion (16 caracteres hexadecimales). Viene en el cuerpo del error
+   * como `idPeticion` y en la cabecera `X-Id-Peticion`. Sirve para que el usuario lo dicte
+   * a soporte y el equipo lo busque en los registros de Render.
+   */
+  readonly idPeticion: string | undefined
 
   constructor(
     estado: number, mensaje: string, campos: Record<string, string> = {},
-    datos: Record<string, unknown> = {},
+    datos: Record<string, unknown> = {}, idPeticion?: string,
   ) {
     super(mensaje)
     this.name = 'ErrorApi'
@@ -30,6 +36,19 @@ export class ErrorApi extends Error {
     this.mensaje = mensaje
     this.campos = campos
     this.datos = datos
+    this.idPeticion = idPeticion
+  }
+
+  /**
+   * Mensaje listo para mostrar en pantalla. Incluye el codigo de peticion como linea
+   * secundaria SOLO cuando hay idPeticion (errores inesperados: 5xx, 429, sin conexion, etc.).
+   * En errores de validacion (400 con campos) NO se incluye, porque el usuario ya sabe
+   * que corregir y el codigo solo anadiria ruido.
+   * Texto decidido por Pablo, 17-nov: «Código para soporte: <idPeticion>» (opción 1 de la DECISIÓN T4).
+   */
+  get paraMostrar(): string {
+    if (!this.idPeticion) return this.mensaje
+    return `${this.mensaje}\nCódigo para soporte: ${this.idPeticion}`
   }
 }
 
@@ -82,6 +101,14 @@ async function fallo(r: Response): Promise<ErrorApi> {
     }
   }
 
+  // idPeticion: SOLO en errores inesperados (5xx, 429, error de red, etc.).
+  // NO en errores de validacion (400 con errores por campo), porque ahi el usuario
+  // ya sabe que corregir y el codigo solo anadiria ruido.
+  const esValidacion = Object.keys(campos).length > 0
+  const idPeticion = esValidacion
+    ? undefined
+    : (cuerpo.idPeticion as string | undefined) ?? r.headers.get('X-Id-Peticion') ?? undefined
+
   // El `title` de un 5xx no lo escribe nadie de este proyecto: lo pone ASP.NET y viene en
   // ingles de fabrica ("An error occurred while processing your request."). Mostrarlo tal cual
   // deja texto en ingles delante de una persona en una pantalla que es toda en castellano, y
@@ -92,7 +119,7 @@ async function fallo(r: Response): Promise<ErrorApi> {
     (r.status >= 500 ? undefined : (cuerpo.title as string | undefined)) ??
     generico(r.status)
 
-  return new ErrorApi(r.status, mensaje, campos, cuerpo)
+  return new ErrorApi(r.status, mensaje, campos, cuerpo, idPeticion)
 }
 
 function generico(estado: number): string {

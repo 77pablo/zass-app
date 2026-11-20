@@ -1,4 +1,3 @@
-import type { PointerEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Icono } from './Icono'
 import { Monograma } from './Monograma'
@@ -21,22 +20,13 @@ export interface DatosDeTarjeta {
 }
 
 /**
- * Un foco de luz que sigue al puntero por la tarjeta: la posicion se guarda en dos variables CSS y el
- * fondo la usa. Es solo adorno, asi que no pasa nada si el dispositivo no tiene puntero.
- */
-function seguirPuntero(e: PointerEvent<HTMLElement>) {
-  const r = e.currentTarget.getBoundingClientRect()
-  e.currentTarget.style.setProperty('--x', `${e.clientX - r.left}px`)
-  e.currentTarget.style.setProperty('--y', `${e.clientY - r.top}px`)
-}
-
-/**
  * Una persona de la comunidad. Toda la tarjeta es el enlace a su ficha: el objetivo es grande y el lector
  * de pantalla oye un solo enlace con el nombre, no cinco.
+ * (Tenia un foco de luz que seguia al puntero; la guia v3 lo quito: era adorno «tecnologico».)
  */
 export function TarjetaPersona({ p }: { p: DatosDeTarjeta }) {
   return (
-    <Link to={`/prestadores/${p.slug}`} className="tarjeta-persona" onPointerMove={seguirPuntero}>
+    <Link to={`/prestadores/${p.slug}`} className="tarjeta-persona">
       <div className="tarjeta-cabeza">
         <Monograma nombre={p.nombre} />
         <div>
@@ -59,7 +49,7 @@ export function TarjetaPersona({ p }: { p: DatosDeTarjeta }) {
         {p.precioDesde != null
           ? <span className="tarjeta-precio">desde <strong>{pesos(p.precioDesde)}</strong></span>
           : <span className="tarjeta-precio tarjeta-precio--vacio">Precio a convenir</span>}
-        <span className="tarjeta-ir">Ver ficha<Icono nombre="flecha" /></span>
+        <span className="tarjeta-ir">Ver ficha<Icono nombre="chevron" /></span>
       </span>
     </Link>
   )

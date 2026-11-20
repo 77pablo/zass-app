@@ -210,6 +210,72 @@ describe('errores', () => {
     expect(fallo).toBeInstanceOf(ErrorApi)
     expect(fallo.estado).toBe(500)
   })
+
+  // idPeticion - extraido del cuerpo o de la cabecera X-Id-Peticion
+  it('extrae idPeticion del cuerpo del error (clave idPeticion)', async () => {
+    fetchFalso.mockResolvedValueOnce(
+      respuesta(500, { title: 'Error', idPeticion: '3b5f157aace8dec1' }, 'application/problem+json'))
+
+    const fallo = await fallaDe(obtener('/api/algo'))
+
+    expect(fallo.idPeticion).toBe('3b5f157aace8dec1')
+  })
+
+  it('extrae idPeticion de la cabecera X-Id-Peticion si no viene en el cuerpo', async () => {
+    const r = new Response(JSON.stringify({ title: 'Error' }), {
+      status: 500,
+      headers: { 'content-type': 'application/problem+json', 'X-Id-Peticion': 'a1b2c3d4e5f67890' },
+    })
+    fetchFalso.mockResolvedValueOnce(r)
+
+    const fallo = await fallaDe(obtener('/api/algo'))
+
+    expect(fallo.idPeticion).toBe('a1b2c3d4e5f67890')
+  })
+
+  it('prefiere el idPeticion del cuerpo sobre la cabecera', async () => {
+    const r = new Response(JSON.stringify({ title: 'Error', idPeticion: 'del-cuerpo' }), {
+      status: 500,
+      headers: { 'content-type': 'application/problem+json', 'X-Id-Peticion': 'de-la-cabecera' },
+    })
+    fetchFalso.mockResolvedValueOnce(r)
+
+    const fallo = await fallaDe(obtener('/api/algo'))
+
+    expect(fallo.idPeticion).toBe('del-cuerpo')
+  })
+
+  it('idPeticion es undefined en error de validacion 400 (el usuario ya sabe que corregir)', async () => {
+    fetchFalso.mockResolvedValueOnce(
+      respuesta(400, {
+        title: 'Datos invalidos',
+        errors: { Contrasena: ['Usa al menos 10 caracteres.'] },
+        idPeticion: 'deberia-no-aparecer',
+      }, 'application/problem+json'))
+
+    const fallo = await fallaDe(obtener('/api/algo'))
+
+    expect(fallo.idPeticion).toBeUndefined()
+  })
+
+  it('idPeticion es undefined en error de red (sin respuesta del servidor)', async () => {
+    fetchFalso.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+
+    const fallo = await fallaDe(obtener('/api/algo'))
+
+    expect(fallo.idPeticion).toBeUndefined()
+    expect(fallo.estado).toBe(0)
+  })
+
+  it('idPeticion se incluye en un 429 (rate limit)', async () => {
+    fetchFalso.mockResolvedValueOnce(
+      respuesta(429, { title: 'Demasiadas peticiones', idPeticion: 'rate-limit-id' }, 'application/problem+json'))
+
+    const fallo = await fallaDe(obtener('/api/algo'))
+
+    expect(fallo.idPeticion).toBe('rate-limit-id')
+    expect(fallo.estado).toBe(429)
+  })
 })
 
 describe('renovar la sesion ante un 401', () => {
