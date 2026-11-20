@@ -88,7 +88,10 @@ try {
   await sinRol.goto(`${BASE}/interno/verificacion`, { waitUntil: 'networkidle' })
   comprobar('sin el rol, /interno/verificacion dice que la página no existe',
     await sinRol.getByRole('heading', { level: 1, name: 'Esta página no existe.' }).isVisible())
+  await sinRol.screenshot({ path: resolve(carpeta, 'jq11-sin-rol.png'), fullPage: true })
   await sinRol.getByRole('button', { name: 'Más' }).click()
+  await sinRol.waitForTimeout(800)   // el menú se abre con una transición
+  await sinRol.screenshot({ path: resolve(carpeta, 'jq11-sin-rol-mas.png') })
   comprobar('sin el rol, «Más» no tiene «Panel interno»',
     (await sinRol.getByRole('link', { name: /Panel interno/ }).count()) === 0)
   await sinRol.context().close()
@@ -123,6 +126,8 @@ try {
        ON CONFLICT DO NOTHING`)
   const mesa = await entrar(VERIFICADORA)
   await mesa.getByRole('button', { name: 'Más' }).click()
+  await mesa.waitForTimeout(800)   // el menú se abre con una transición
+  await mesa.screenshot({ path: resolve(carpeta, 'jq11-con-rol-mas.png') })
   await mesa.getByRole('link', { name: /Panel interno/ }).click()
   await mesa.getByRole('link', { name: /Verificación de credenciales/ }).click()
   await mesa.waitForURL('**/interno/verificacion')
@@ -139,11 +144,13 @@ try {
 
   // 4. Abrir el documento en una pestaña nueva (solo con JQ-9).
   if (conDocumento) {
-    const [pestana] = await Promise.all([
+    // La respuesta se espera en el contexto y ANTES del clic: si se espera en la pestaña nueva,
+    // el PDF puede haber llegado antes de que exista el oyente y la espera no termina nunca.
+    const [pestana, respuesta] = await Promise.all([
       mesa.context().waitForEvent('page'),
+      mesa.context().waitForEvent('response', (r) => r.url().includes('/documentos/')),
       mesa.getByRole('link', { name: /Abrir certificado\.pdf/ }).click(),
     ])
-    const respuesta = await pestana.waitForEvent('response', (r) => r.url().includes('/documentos/'))
     comprobar(`el documento se abre en otra pestaña (${respuesta.status()})`, respuesta.status() === 200)
     await pestana.close()
   } else {
