@@ -1103,9 +1103,12 @@ public sealed class ServicioAgenda : IServicioAgenda
                     $"Ya se reenvió el recordatorio 5 veces hoy. Se puede volver a enviar mañana {manana}.");
             }
 
-            // 5. Encolar SOLO el aviso del buscador (mutación M4)
+            // 5. Encolar DOS avisos con claves DISTINTAS
             var n = hechos + 1;
             var claveBuscador = prefijo + "buscador:" + n;
+            var clavePrestador = prefijo + "prestador:" + n;
+            var prestadorUsuarioId = cita.PerfilPrestador?.UsuarioId
+                ?? throw new InvalidOperationException("La cita llegó sin su perfil de prestador.");
 
             _avisos.Encolar(new Notificacion
             {
@@ -1115,6 +1118,17 @@ public sealed class ServicioAgenda : IServicioAgenda
                 ClaveIdempotencia = claveBuscador,
                 Asunto = "Recordatorio: tienes una hora en ZASS!",
                 Cuerpo = CargaDeAviso.ConCampos((AvisosDeCita.CampoRol, AvisosDeCita.RolBuscador)),
+                ProgramadaPara = ahora,
+            });
+
+            _avisos.Encolar(new Notificacion
+            {
+                DestinatarioId = prestadorUsuarioId,
+                CitaId = citaId,
+                Tipo = TipoNotificacion.Recordatorio24h,
+                ClaveIdempotencia = clavePrestador,
+                Asunto = "Recordatorio: tienes una hora agendada en ZASS!",
+                Cuerpo = CargaDeAviso.ConCampos((AvisosDeCita.CampoRol, AvisosDeCita.RolPrestador)),
                 ProgramadaPara = ahora,
             });
 
@@ -1129,7 +1143,7 @@ public sealed class ServicioAgenda : IServicioAgenda
 
             await _trabajo.GuardarAsync(t);
 
-            return Resultado<string>.Ok("Recordatorio reenviado al buscador.");
+            return Resultado<string>.Ok("Recordatorio reenviado a ambas partes.");
         }, ct);
     }
 
