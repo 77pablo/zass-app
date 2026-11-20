@@ -13,6 +13,16 @@ using Zass.Integracion.Pruebas.Correo;
 namespace Zass.Integracion.Pruebas;
 
 /// <summary>
+/// Colección para pruebas de tarjetas: deshabilita paralelización para evitar conflictos
+/// en la base de datos de pruebas.
+/// </summary>
+[CollectionDefinition(Nombre, DisableParallelization = true)]
+public sealed class ColeccionTarjetas
+{
+    public const string Nombre = "Tarjetas";
+}
+
+/// <summary>
 /// T62c - Pruebas del aviso al administrador del bloqueo 4B.5 de tarjetas (CU-19).
 /// Q1: 5 fallos -> exactamente 1 alerta; 3 intentos mas durante el bloqueo -> sigue 1.
 /// Q2: 4 fallos -> 0 alertas.
@@ -20,6 +30,7 @@ namespace Zass.Integracion.Pruebas;
 /// Q4: La hora de fin del bloqueo es 1 hora despues del 5.o fallo.
 /// Q5: Si el enviador falla, la respuesta sigue siendo 422 y la tarjeta queda bloqueada.
 /// </summary>
+[Collection(ColeccionTarjetas.Nombre)]
 public class ApiTarjetasBloqueoAlertaPruebas : IAsyncLifetime
 {
     private readonly AlertasAdministradorFalso _alertasFalso = new();
