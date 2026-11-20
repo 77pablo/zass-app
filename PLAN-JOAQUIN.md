@@ -9,6 +9,65 @@ la rama `plan-joaquin`): esas tienen cosas que ya están hechas.
 
 ---
 
+## 0b. JQ-17 — La pantalla de los tres planes (Pablo, 20-nov) · N2
+
+**Decisión de Pablo:** ZASS! tiene tres planes. **El del medio, el Profesional, tiene que ser la elección obvia.**
+Detalle completo en `zass-tareas/postulacion/07-planes-de-cobro.md` (te lo pasa Pablo en PDF).
+
+| | Esencial | **Profesional** ⭐ | Equipo |
+|---|---|---|---|
+| Precio (IVA incluido) | $7.990 | **$12.990** | $24.990 |
+| Servicios / tarjetas activas | 5 / 1 | 15 / 3 | 15 por profesional / 10 |
+| Estadísticas, fotos de trabajos, verificación prioritaria | — | ✅ | ✅ |
+| Estado | Activo | Activo | **Inactivo: «Próximamente»** |
+
+**Espera a que esté en `main` la T67** (la hacen los modelos gratis): crea el plan `profesional`, deja `mensual` como «ZASS! Esencial»,
+crea `equipo` inactivo y agrega a cada plan `maxFotosTrabajos`, `permiteEstadisticas` y `verificacionPrioritaria`. Hasta entonces
+puedes adelantar el diseño, pero no lo fusiones antes.
+
+**Qué tiene que quedar en `/planes`:**
+
+- **Tres columnas**: Esencial, Profesional y Equipo, en ese orden. **El Profesional al centro, destacado** (más alto o con borde)
+  y con la etiqueta **«El más elegido»**. En el celular, el Profesional va primero.
+- Lo que incluye cada uno, **leído de la API** (`/api/planes`), no escrito a mano en la pantalla. Lo que el plan no tiene se
+  marca como que no lo tiene, para que se note la diferencia.
+- **El Equipo como «Próximamente»**: se ve, pero sin botón de contratar (la API no lo devuelve porque es inactivo; muéstralo con
+  datos fijos solo para ese caso y escribe en el PR por qué).
+- **El Fundador**, mientras queden cupos: un aviso arriba, *«El plan de $12.990, a $5.990 para siempre. Quedan N de 50»*.
+- Debajo de todo: *«Ningún plan compra un mejor lugar en la búsqueda.»*
+- Funciona con tu **#171** (pantallas del pago con estilo): hazlo sobre él o después de fusionarlo.
+
+**Después, en tu JQ-8 (#167):** las estadísticas se muestran solo si el plan tiene `permiteEstadisticas`. A quien no lo tiene,
+muéstrale qué se pierde y un botón para pasarse al Profesional.
+
+**Y cuando la T69 esté en `main`:** la pantalla para subir y ordenar las fotos de trabajos en «Mi ficha», y mostrarlas en la
+ficha pública. Eso será la JQ-18.
+
+---
+
+## 0a. Los borradores de interfaz que heredas (Pablo, 20-nov) — LÉELA PRIMERO
+
+Desde el 20-nov **la interfaz es tuya**, y Pablo decidió que heredes los 8 borradores de interfaz que tenía Claude.
+Todos tenían el CI en verde el 20-nov, pero se escribieron antes de varias fusiones grandes: **actualiza cada uno con `main`
+antes de tocarlo**, porque pueden traer choques. Trabajas **en la misma rama del PR** (eres colaborador: puedes hacer push ahí).
+
+| Orden | PR | Qué trae | Ojo |
+|---|---|---|---|
+| 1 | **#171** | Las pantallas del pago con estilo: `/planes`, `/pago/inscripcion`, `/planes/listo` (defectos 4 y 5 de tu JQ-7) | Es lo que más se ve: hoy `/planes` sale sin estilo. Solo `index.css` |
+| 2 | **#130** | Fechas en castellano: «21 de noviembre», no «21 De Noviembre» | Chico |
+| 3 | **#106** | «Mis citas» enlaza la ficha y la reseña; la tarjeta muestra comuna y distancia; `/buscar` con descripción propia | |
+| 4 | **#107** | Menú del teléfono: Escape lo cierra y devuelve el foco; un oficio vacío invita a ofrecerlo | Accesibilidad |
+| 5 | **#98** | Compartir una ficha y búsquedas recientes | |
+| 6 | **#103** | Guías de interfaz de Vercel aplicadas a ZASS! | Toca muchos archivos: déjalo para cuando los demás estén fusionados |
+| 7 | **#128** | La página de mantenimiento con la guía v3 | Es la página que hoy se ve en `zass.cl`: pruébala bien |
+| 8 | **#76** | Eliminar mi cuenta: pantalla, contraseña, y cancelar citas y suscripción (CS-04) | **N3: trae una migración**, escrita antes del registro completo (#174). Avisa en el PR antes de rehacerla; es el último |
+
+**Cómo se cierra cada uno:** actualízalo con `main`, revísalo en el navegador a 390 px y a 1280 px, quita el estado de borrador
+(«Ready for review») y anota en el PR qué cambiaste. Claude lo revisa y lo fusiona (regla del 20-nov). Si un borrador ya no
+tiene sentido, ciérralo y explica por qué en el PR.
+
+---
+
 ## 0. Actualización del 20 de noviembre — LÉELA PRIMERO
 
 **JQ-9 ya no es tuya: la está programando Claude** (rama `archivos/jq9-fotos-documentos`). No la
@@ -22,7 +81,7 @@ empieces. Tu **JQ-7** está en el **PR #151**: si te piden cambios ahí, eso va 
 | La pasarela Flow (`Pagos/`, `Pasarela.cs`) | Claude |
 | El bloqueo de tarjetas tras 5 intentos (PR #149, `ServicioTarjetas.ActivarAsync`) | Otra IA |
 | La limpieza de la prueba del día de Chile (`ApiAgendaPruebas.cs`) | Otra IA |
-| Los borradores de interfaz #98, #103, #106, #107, #128, #130 y el #76 (eliminar cuenta) | Claude |
+| ~~Los borradores de interfaz #98, #103, #106, #107, #128, #130 y el #76~~ **Ahora son tuyos** (ver «Los borradores de interfaz que heredas», abajo) | ~~Claude~~ **Joaquín** |
 | **Desde el 20-nov, Esteban (`lazyctm`)**: la gracia de 7 días del cobro fundador, completar los datos de las cuentas antiguas, y las notificaciones push con API-43 y API-45. Ver `PLAN-ESTEBAN.md` | Esteban |
 
 **Por qué esta cola:** el backend de todo lo INTERNO ya existe y está probado: la cola del
@@ -140,8 +199,10 @@ elija Flow, Transbank o Mercado Pago. No es tuyo todavía.
 
 ## 2. Tu carril, y de qué no tienes que pedir permiso
 
-**Mientras estés en tu carril, decides, escribes, commiteas, pusheas y abres tu PR.** Lo único de
-Pablo es apretar el botón de mergear.
+**Mientras estés en tu carril, decides, escribes, commiteas, pusheas y abres tu PR.** Para que tu PR se
+fusione no tienes que pedirle nada a nadie: ver «Quién fusiona», abajo.
+
+**Quién fusiona (Pablo, 20-nov-2026):** cuando tu PR tenga el CI en verde y esté listo (no en borrador), **Claude lo revisa y lo fusiona**. No tienes que avisarle a Pablo ni pedirle nada. Si la revisión encuentra algo, Claude lo comenta en el PR y lo corriges. Claude solo le consulta a Pablo si el PR cambia precios o cobros de forma distinta a lo ya decidido, toca temas legales o necesita algo de producción. **Publicar en producción** sigue siendo de Pablo.
 
 | Es tuyo | No lo toques |
 |---|---|
@@ -162,7 +223,7 @@ Lo mismo que vale para Esteban (`PLAN-ESTEBAN.md`, sección 1). En corto:
 2. **Si no hay nada escrito, decide tú** lo más prudente y explícalo en el PR.
 3. **La documentación técnica está fuera del repositorio:** si tu cambio contradice un documento, anótalo en el PR bajo **«Documento que cambia»** y Claude lo actualiza.
 4. **Textos y pantallas:** los propones tú en el PR y los revisa Claude. Desde el 20-nov **la interfaz también es tuya** (Pablo).
-5. **Solo es de Pablo:** precios y cobros, temas legales, secretos y todo lo de producción.
+5. **Solo es de Pablo** (y te lo consulta Claude, no tú): precios y cobros, temas legales, secretos y todo lo de producción.
 
 ### Dos reglas duras
 
