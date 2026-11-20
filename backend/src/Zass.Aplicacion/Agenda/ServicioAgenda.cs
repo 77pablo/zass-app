@@ -1078,12 +1078,6 @@ public sealed class ServicioAgenda : IServicioAgenda
             if (cita is null)
                 return Resultado.Falla<string>(Fallas.NoEncontrado, "La cita no existe.");
 
-            // 2. Verificar que el usuario es parte de la cita (buscador o prestador)
-            var esBuscador = cita.BuscadorId == usuarioId;
-            var esPrestador = cita.PerfilPrestadorId == perfilPrestadorId;
-            if (!esBuscador && !esPrestador)
-                return Resultado.Falla<string>(Fallas.NoEncontrado, "La cita no existe.");
-
             // 3. Solo cita CONFIRMADA y FUTURA (la hora de inicio todavía no llega)
             if (cita.Estado != EstadoCita.Confirmada)
                 return Resultado.Falla<string>(Fallas.Conflicto,
