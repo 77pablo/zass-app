@@ -1,4 +1,6 @@
 import { NavLink } from 'react-router-dom'
+import { puedeEntrarAlPanel } from '../funciones/interno/servicio'
+import { ENLACE_MENU as ENLACE_PANEL_INTERNO } from '../funciones/interno/textos'
 import { useSesion } from '../sesion/contexto'
 import { Icono } from './Icono'
 import { useMenuMovil } from './menuMovil'
@@ -26,6 +28,8 @@ export function Cabecera() {
   const { abierto } = useMenuMovil()
 
   const esPrestador = usuario?.roles.includes('prestador') ?? false
+  // JQ-11: el enlace al panel solo existe para quien puede entrar; para el resto, no hay panel.
+  const vePanel = estado === 'dentro' && puedeEntrarAlPanel(usuario)
 
   return (
     <header className="cabecera" aria-label="ZASS!">
@@ -64,6 +68,11 @@ export function Cabecera() {
           {estado === 'dentro' && !esPrestador && (
             <NavLink to="/ofrecer-servicios" className="menu-enlace">
               Ofrecer mis servicios<Icono nombre="chevron" />
+            </NavLink>
+          )}
+          {vePanel && (
+            <NavLink to="/interno" className="menu-enlace">
+              {ENLACE_PANEL_INTERNO}<Icono nombre="chevron" />
             </NavLink>
           )}
           {estado === 'dentro' && (
