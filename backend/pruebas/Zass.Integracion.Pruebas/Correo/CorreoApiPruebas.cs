@@ -88,7 +88,7 @@ public class CorreoApiPruebas : IAsyncLifetime
         var existente = Correo();
         var alta = await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo = existente, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo = existente, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
         });
         Assert.Equal(HttpStatusCode.Created, alta.StatusCode);
 
@@ -118,7 +118,7 @@ public class CorreoApiPruebas : IAsyncLifetime
         var correo = Correo();
         await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
         });
 
         using var ctx = ContextoDePrueba.Crear();
@@ -165,7 +165,7 @@ public class CorreoApiPruebas : IAsyncLifetime
         var correo = Correo();
         await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
         });
         await Task.Delay(300);   // si hubiera un trabajo enviando, ya habría tocado la fila
 

@@ -78,7 +78,7 @@ public class ApiTarjetasBloqueoAlertaPruebas : IAsyncLifetime
 
         var reg = client.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo, contrasena, nombre = "Usuario " + sufijo, rol = rolRegistro
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo, contrasena, nombre = "Usuario " + sufijo, rol = rolRegistro
         }).Result;
         reg.EnsureSuccessStatusCode();
 

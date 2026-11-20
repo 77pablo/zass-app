@@ -19,11 +19,26 @@ export async function iniciarSesion(correo: string, contrasena: string): Promise
   return sesion
 }
 
+export type TipoDeCuenta = 'particular' | 'empresa'
+
+/** Lo que pide API-08 desde el 20-nov-2026 (registro completo). */
+export interface DatosDeRegistro {
+  correo: string
+  contrasena: string
+  /** De pila si es particular; el de la persona de contacto si es empresa. */
+  nombre: string
+  rol: RolPublico
+  tipo: TipoDeCuenta
+  apellido?: string
+  razonSocial?: string
+  rut: string
+  telefono: string
+  mayorDeEdad: boolean
+}
+
 /** API-08. Crea la cuenta y dispara el correo de verificacion. */
-export async function registrarse(
-  correo: string, contrasena: string, nombre: string, rol: RolPublico,
-): Promise<void> {
-  await enviar('/api/auth/registro', { correo, contrasena, nombre, rol })
+export async function registrarse(datos: DatosDeRegistro): Promise<void> {
+  await enviar('/api/auth/registro', datos)
 }
 
 /** CS-04. «Ofrecer mis servicios»: agrega el rol de prestador a la cuenta que ya tienes. */

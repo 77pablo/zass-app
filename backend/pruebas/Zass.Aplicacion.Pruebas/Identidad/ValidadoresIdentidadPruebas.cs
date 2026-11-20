@@ -19,8 +19,15 @@ public class ValidadoresIdentidadPruebas
     private static RegistrarCuentaCmd Registro(
         string correo = "pablo@correo.cl",
         string contrasena = "contrasena-larga-1",
-        string nombre = "Pablo Espinoza",
-        string rol = "buscador") => new(correo, contrasena, nombre, rol);
+        string nombre = "Pablo",
+        string rol = "buscador",
+        string? tipo = "particular",
+        string? apellido = "Espinoza",
+        string? rut = "11.111.111-1",
+        string? telefono = "+56 9 1234 5678",
+        string? razonSocial = null,
+        bool mayorDeEdad = true) =>
+        new(correo, contrasena, nombre, rol, tipo, apellido, rut, telefono, razonSocial, mayorDeEdad);
 
     private static IniciarSesionCmd Sesion(
         string correo = "pablo@correo.cl",

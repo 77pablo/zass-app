@@ -147,7 +147,7 @@ public class AutorizacionIntegracionPruebas : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.Created, (await http.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo = cuenta.Correo, contrasena = "contrasena-larga-1",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo = cuenta.Correo, contrasena = "contrasena-larga-1",
             nombre = rol == "prestador" ? "Pablo Espinoza" : "Ana Pérez", rol,
         })).StatusCode);
 

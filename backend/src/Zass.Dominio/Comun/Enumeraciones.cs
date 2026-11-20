@@ -4,6 +4,9 @@ namespace Zass.Dominio.Comun;
 
 public enum EstadoCuenta { PendienteVerificacion, Activa, Suspendida, Eliminada }
 
+/// <summary>Quien abre la cuenta: una persona o una empresa (decision de Pablo, 20-nov-2026).</summary>
+public enum TipoCuenta { Particular, Empresa }
+
 public enum EstadoPerfil { Borrador, Publicado, Despublicado }
 
 public enum ModoAgenda { Automatico, Manual }

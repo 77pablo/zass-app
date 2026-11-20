@@ -158,6 +158,8 @@ public interface IRepositorioUsuarios
     Task<Usuario?> PorTokenVerificacionAsync(string hashToken, CancellationToken ct = default);
     Task<Usuario?> PorTokenRecuperacionAsync(string hashToken, CancellationToken ct = default);
     Task<bool> ExisteCorreoAsync(string correo, CancellationToken ct = default);
+    /// <summary>El RUT ya normalizado («12345678-K»).</summary>
+    Task<bool> ExisteRutAsync(string rut, CancellationToken ct = default);
     Task<Rol?> RolPorCodigoAsync(string codigo, CancellationToken ct = default);
     void Agregar(Usuario usuario);
 }

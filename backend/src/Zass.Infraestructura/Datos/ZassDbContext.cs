@@ -101,6 +101,15 @@ public class ZassDbContext : DbContext
             e.HasIndex(x => x.Correo).IsUnique();
             e.Property(x => x.Nombre).HasMaxLength(150).IsRequired();
             e.Property(x => x.Estado).HasConversion<string>().HasMaxLength(30);
+            // Registro completo (20-nov-2026). Todas opcionales en la base: las cuentas de antes
+            // no las tienen; lo que las exige al registrarse es el validador de API-08.
+            e.Property(x => x.Tipo).HasConversion<string>().HasMaxLength(20)
+                .HasDefaultValue(TipoCuenta.Particular).HasSentinel(TipoCuenta.Particular);
+            e.Property(x => x.Apellido).HasMaxLength(100);
+            e.Property(x => x.Rut).HasMaxLength(12);
+            e.HasIndex(x => x.Rut).IsUnique().HasFilter("rut IS NOT NULL");
+            e.Property(x => x.Telefono).HasMaxLength(20);
+            e.Property(x => x.RazonSocial).HasMaxLength(200);
             e.HasIndex(x => x.TokenVerificacion);
             e.HasIndex(x => x.TokenRecuperacion);
         });
