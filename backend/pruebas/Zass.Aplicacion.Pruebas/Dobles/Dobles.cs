@@ -101,6 +101,17 @@ public sealed class ContrasenasFiltradasNunca : IContrasenasFiltradas
         => Task.FromResult(false);
 }
 
+/// <summary>Doble de IAlertasAdministrador que captura las alertas para las pruebas.</summary>
+public sealed class AlertasAdministradorEnMemoria : IAlertasAdministrador
+{
+    public List<AlertaTarjetaBloqueada> Alertas { get; } = new();
+    public Task AvisarTarjetaBloqueadaAsync(AlertaTarjetaBloqueada alerta, CancellationToken ct = default)
+    {
+        Alertas.Add(alerta);
+        return Task.CompletedTask;
+    }
+}
+
 /// <summary>Repositorio de auditoria en memoria para pruebas.</summary>
 public sealed class RepositorioAuditoriaEnMemoria : IRepositorioAuditoria
 {

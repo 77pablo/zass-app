@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Zass.Aplicacion.Puertos;
@@ -42,7 +43,7 @@ public sealed class AplicacionConCorreo : WebApplicationFactory<Program>
         
         if (_alertasFalso is not null)
         {
-            constructor.ConfigureTestServices(services =>
+            constructor.ConfigureServices(services =>
             {
                 services.AddSingleton<IAlertasAdministrador>(_alertasFalso);
             });

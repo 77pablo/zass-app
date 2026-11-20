@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
@@ -27,7 +29,7 @@ public class ApiTarjetasBloqueoAlertaPruebas : IAsyncLifetime
     private string _marca = "";
     private Guid _perfilPrestadorId;
 
-    public Task InitializeAsync()
+    public async Task InitializeAsync()
     {
         _app.ConfigurarAlertasFalsas(_alertasFalso);
         
@@ -43,14 +45,12 @@ public class ApiTarjetasBloqueoAlertaPruebas : IAsyncLifetime
             BaseAddress = new Uri("https://localhost"),
         });
 
-        LimpiarDatosPrueba();
+        await LimpiarTodosDatosPruebaAsync();
         _marca = Guid.NewGuid().ToString("N")[..12];
 
         CrearYAutenticar("admin", "administrador");
         CrearYAutenticar("prestador");
         _perfilPrestadorId = ObtenerPerfilId($"apitj-prestador-{_marca}@zass.local").Value;
-
-        return Task.CompletedTask;
     }
 
     private void CrearYAutenticar(string sufijo, string rol = "prestador")
@@ -126,12 +126,15 @@ public class ApiTarjetasBloqueoAlertaPruebas : IAsyncLifetime
         return perfil?.Id;
     }
 
-    private void LimpiarDatosPrueba()
+    private async Task LimpiarTodosDatosPruebaAsync()
     {
         using var ctx = ContextoDePrueba.Crear();
-        ctx.Database.ExecuteSqlRaw(
+        // Borrar TODOS los usuarios de prueba que empiezan con apitj- (de cualquier corrida anterior)
+        // Tambien borrar tarjetas emitidas sin activar (perfil_prestador_id IS NULL) que sean de pruebas
+        await ctx.Database.ExecuteSqlRawAsync(
             """
             DELETE FROM tarjetas WHERE perfil_prestador_id IN (SELECT id FROM perfiles_prestador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo LIKE 'apitj-%'));
+            DELETE FROM tarjetas WHERE perfil_prestador_id IS NULL AND estado = 'Emitida';
             DELETE FROM perfiles_prestador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo LIKE 'apitj-%');
             DELETE FROM auditoria WHERE actor_id IN (SELECT id FROM usuarios WHERE correo LIKE 'apitj-%') OR entidad_id IN (SELECT id FROM usuarios WHERE correo LIKE 'apitj-%');
             DELETE FROM notificaciones WHERE destinatario_id IN (SELECT id FROM usuarios WHERE correo LIKE 'apitj-%');
@@ -143,11 +146,10 @@ public class ApiTarjetasBloqueoAlertaPruebas : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
-        LimpiarDatosPrueba();
+        await LimpiarTodosDatosPruebaAsync();
         _admin.Dispose();
         _prestador.Dispose();
         _app.Dispose();
-        await Task.CompletedTask;
     }
 
     private static async Task<string> ObtenerCsrfAsync(HttpClient client)

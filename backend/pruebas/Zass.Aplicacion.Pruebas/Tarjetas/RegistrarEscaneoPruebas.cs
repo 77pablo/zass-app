@@ -20,9 +20,10 @@ public class RegistrarEscaneoPruebas
     private readonly SecretosDeterministas _secretos = new();
     private readonly AuditoriaEnMemoria _auditor = new();
     private readonly RepositorioAuditoriaEnMemoria _auditoria = new();
+    private readonly AlertasAdministradorEnMemoria _alertas = new();
     private readonly ServicioTarjetas _servicio;
 
-    public RegistrarEscaneoPruebas() => _servicio = new ServicioTarjetas(_repo, _base, _reloj, _auditor, _secretos, _auditoria);
+    public RegistrarEscaneoPruebas() => _servicio = new ServicioTarjetas(_repo, _base, _reloj, _auditor, _secretos, _auditoria, _alertas);
 
     private Tarjeta Sembrar(EstadoTarjeta estado, EstadoPerfil? perfil = EstadoPerfil.Publicado)
     {
