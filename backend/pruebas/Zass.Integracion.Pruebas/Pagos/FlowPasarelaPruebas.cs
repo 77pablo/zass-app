@@ -144,7 +144,7 @@ public class FlowPasarelaPruebas
         Assert.Single(handler.Peticiones);
         var peticion = handler.Peticiones[0];
         Assert.Equal(HttpMethod.Post, peticion.Method);
-        Assert.Equal("/payment/create", peticion.RequestUri!.AbsolutePath);
+        Assert.Equal("/api/payment/create", peticion.RequestUri!.AbsolutePath);
 
         // Leer los parametros form-urlencoded
         var contenido = await peticion.Content!.ReadAsStringAsync();
@@ -157,7 +157,8 @@ public class FlowPasarelaPruebas
         Assert.Equal("CLP", formData["currency"]);
         Assert.Equal("prestador@zass.cl", formData["email"]);
         Assert.Equal($"{UrlAvisosPrueba}?flow=pago", formData["urlConfirmation"]);
-        Assert.Equal($"{UrlPublicaPrueba}/pago/resultado", formData["urlReturn"]);
+        // La vuelta del navegador pasa por la API (API-75), no por el sitio estatico.
+        Assert.Equal("https://api.zass.cl/api/pagos/vuelta?flow=pago", formData["urlReturn"]);
         Assert.Equal(ApiKeyPrueba, formData["apiKey"]);
 
         // Verificar la firma
@@ -184,7 +185,7 @@ public class FlowPasarelaPruebas
         handler.Responder = req =>
         {
             // Simular payment/getStatus
-            if (req.RequestUri!.AbsolutePath == "/payment/getStatus")
+            if (req.RequestUri!.AbsolutePath == "/api/payment/getStatus")
             {
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
                 {
@@ -234,7 +235,7 @@ public class FlowPasarelaPruebas
 
         handler.Responder = req =>
         {
-            if (req.RequestUri!.AbsolutePath == "/payment/getStatus")
+            if (req.RequestUri!.AbsolutePath == "/api/payment/getStatus")
             {
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
                 {
@@ -279,7 +280,7 @@ public class FlowPasarelaPruebas
 
         handler.Responder = req =>
         {
-            if (req.RequestUri!.AbsolutePath == "/payment/getStatus")
+            if (req.RequestUri!.AbsolutePath == "/api/payment/getStatus")
             {
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
                 {
@@ -372,7 +373,7 @@ public class FlowPasarelaPruebas
 
         handler.Responder = req =>
         {
-            if (req.RequestUri!.AbsolutePath == "/customer/create")
+            if (req.RequestUri!.AbsolutePath == "/api/customer/create")
             {
                 // Verificar que externalId es el intento
                 var contenido = req.Content!.ReadAsStringAsync().Result;
@@ -384,7 +385,7 @@ public class FlowPasarelaPruebas
                     Content = new StringContent(JsonSerializer.Serialize(new { customerId }), Encoding.UTF8, "application/json"),
                 });
             }
-            if (req.RequestUri!.AbsolutePath == "/customer/register")
+            if (req.RequestUri!.AbsolutePath == "/api/customer/register")
             {
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
                 {
@@ -408,8 +409,8 @@ public class FlowPasarelaPruebas
 
         // Verificar el orden de las peticiones
         Assert.Equal(2, handler.Peticiones.Count);
-        Assert.Equal("/customer/create", handler.Peticiones[0].RequestUri!.AbsolutePath);
-        Assert.Equal("/customer/register", handler.Peticiones[1].RequestUri!.AbsolutePath);
+        Assert.Equal("/api/customer/create", handler.Peticiones[0].RequestUri!.AbsolutePath);
+        Assert.Equal("/api/customer/register", handler.Peticiones[1].RequestUri!.AbsolutePath);
     }
 
     // ========================================== P8: LeerConfirmacion de inscripcion
@@ -430,7 +431,7 @@ public class FlowPasarelaPruebas
 
         handler.Responder = req =>
         {
-            if (req.RequestUri!.AbsolutePath == "/customer/getRegisterStatus")
+            if (req.RequestUri!.AbsolutePath == "/api/customer/getRegisterStatus")
             {
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
                 {
@@ -443,7 +444,7 @@ public class FlowPasarelaPruebas
                     }), Encoding.UTF8, "application/json"),
                 });
             }
-            if (req.RequestUri!.AbsolutePath == "/customer/get")
+            if (req.RequestUri!.AbsolutePath == "/api/customer/get")
             {
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
                 {
@@ -483,7 +484,7 @@ public class FlowPasarelaPruebas
 
         handler.Responder = req =>
         {
-            if (req.RequestUri!.AbsolutePath == "/customer/getRegisterStatus")
+            if (req.RequestUri!.AbsolutePath == "/api/customer/getRegisterStatus")
             {
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
                 {
@@ -496,7 +497,7 @@ public class FlowPasarelaPruebas
                     }), Encoding.UTF8, "application/json"),
                 });
             }
-            if (req.RequestUri!.AbsolutePath == "/customer/get")
+            if (req.RequestUri!.AbsolutePath == "/api/customer/get")
             {
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
                 {
@@ -557,7 +558,7 @@ public class FlowPasarelaPruebas
 
         handler.Responder = req =>
         {
-            if (req.RequestUri!.AbsolutePath == "/customer/charge")
+            if (req.RequestUri!.AbsolutePath == "/api/customer/charge")
             {
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
                 {
@@ -691,4 +692,22 @@ public class FlowPasarelaPruebas
 
     // P12 (Pasarela "flow" sin claves): vive en PasarelaEnProduccionPruebas, donde se arma el
     // contenedor de verdad con AgregarZass. La version de aqui solo probaba su propio if.
+
+    // ========================================== Fase 2: a donde vuelve el navegador (API-75)
+
+    [Theory]
+    [InlineData(null, "https://api.zass.cl/api/pagos/aviso", "https://api.zass.cl/api/pagos/vuelta")]
+    [InlineData(null, "https://api.zass.cl/api/pagos/aviso/", "https://api.zass.cl/api/pagos/vuelta")]
+    [InlineData("https://otra.zass.cl/v/", "https://api.zass.cl/api/pagos/aviso", "https://otra.zass.cl/v")]
+    public void La_vuelta_sale_del_aviso_o_de_la_configuracion(string? configurada, string aviso, string esperada)
+    {
+        Assert.Equal(esperada, FlowPasarela.UrlDeLaVuelta(configurada, aviso));
+    }
+
+    [Fact]
+    public void Si_el_aviso_no_termina_en_aviso_hay_que_configurar_la_vuelta_a_mano()
+    {
+        Assert.Throws<OptionsValidationException>(
+            () => FlowPasarela.UrlDeLaVuelta(null, "https://api.zass.cl/otra-cosa"));
+    }
 }

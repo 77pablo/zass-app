@@ -45,6 +45,7 @@ public sealed class FlowPasarela : IPasarelaDePagos
     private readonly ILogger<FlowPasarela> _log;
     private readonly string _urlBase;
     private readonly string _urlAvisos;
+    private readonly string _urlVuelta;
 
     public FlowPasarela(
         HttpClient http,
@@ -61,6 +62,22 @@ public sealed class FlowPasarela : IPasarelaDePagos
             ?? throw new OptionsValidationException(
                 OpcionesZass.Seccion, typeof(OpcionesZass),
                 new[] { "Falta Zass:Flow:UrlAvisos (la URL PUBLICA que recibe el aviso)." });
+        _urlVuelta = UrlDeLaVuelta(flow!.UrlVuelta, _urlAvisos);
+    }
+
+    /// <summary>
+    /// A donde vuelve el NAVEGADOR (API-75), que no es a donde avisa el servidor (API-70). Si no
+    /// se configura aparte, sale del aviso: «…/api/pagos/aviso» → «…/api/pagos/vuelta».
+    /// </summary>
+    internal static string UrlDeLaVuelta(string? configurada, string urlAvisos)
+    {
+        if (!string.IsNullOrWhiteSpace(configurada)) return configurada.TrimEnd('/');
+        var aviso = urlAvisos.TrimEnd('/');
+        if (aviso.EndsWith("/aviso", StringComparison.Ordinal))
+            return aviso[..^"/aviso".Length] + "/vuelta";
+        throw new OptionsValidationException(
+            OpcionesZass.Seccion, typeof(OpcionesZass),
+            new[] { "Zass:Flow:UrlAvisos no termina en /aviso: pon Zass:Flow:UrlVuelta a mano." });
     }
 
     /// <summary>
@@ -207,7 +224,6 @@ public sealed class FlowPasarela : IPasarelaDePagos
                 OpcionesZass.Seccion, typeof(OpcionesZass),
                 new[] { "Falta Zass:Flow:ApiKey." });
 
-        var urlPublica = (_opciones.Value.UrlPublica ?? "").TrimEnd('/');
 
         var formData = new Dictionary<string, string>
         {
@@ -217,7 +233,9 @@ public sealed class FlowPasarela : IPasarelaDePagos
             ["currency"] = solicitud.Moneda,
             ["email"] = solicitud.CorreoDelPagador!,
             ["urlConfirmation"] = $"{_urlAvisos}?flow=pago",
-            ["urlReturn"] = $"{urlPublica}/planes/listo",
+            // La vuelta pasa por la API (API-75), que confirma y despues redirige a /planes/listo:
+            // Flow devuelve al navegador con un POST, y el sitio estatico no puede recibirlo.
+            ["urlReturn"] = $"{_urlVuelta}?flow=pago",
         };
 
         var resultado = await PostAsync<PaymentCreateResponse>("payment/create", formData, ct);
@@ -269,7 +287,9 @@ public sealed class FlowPasarela : IPasarelaDePagos
         var registerData = new Dictionary<string, string>
         {
             ["customerId"] = customerId,
-            ["url_return"] = $"{_urlAvisos}?flow=inscripcion",
+            // customer/register NO avisa al servidor: esta vuelta (API-75) es la unica
+            // confirmacion de la inscripcion, y confirma consultando getRegisterStatus.
+            ["url_return"] = $"{_urlVuelta}?flow=inscripcion",
         };
 
         var registerResult = await PostAsync<CustomerRegisterResponse>("customer/register", registerData, ct);

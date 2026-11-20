@@ -120,6 +120,12 @@ public sealed class OpcionesFlow
     /// URL PUBLICA de la API que recibe los avisos de Flow (ej: https://api.zass.cl/api/pagos/aviso).
     /// </summary>
     public string? UrlAvisos { get; set; }
+
+    /// <summary>
+    /// A donde vuelve el navegador despues de pagar o inscribir la tarjeta (API-75). Opcional: si
+    /// falta, sale de UrlAvisos cambiando «/aviso» por «/vuelta».
+    /// </summary>
+    public string? UrlVuelta { get; set; }
 }
 
 /// <summary>

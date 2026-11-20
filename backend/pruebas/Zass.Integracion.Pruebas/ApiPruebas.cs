@@ -2385,6 +2385,8 @@ public partial class ApiPruebas : IAsyncLifetime
             // terminacion `b` significa «el mismo recurso, el metodo que faltaba», y esto es otro
             // recurso y otra operacion. Documentado en api-rest.md seccion 11.
             "API-71",
+            // La vuelta del navegador desde la pasarela (fase 2 de Flow). Otro recurso que el aviso.
+            "API-75",
 
             "API-resenas-publicas",
             "CS-02b",
