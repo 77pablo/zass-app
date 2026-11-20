@@ -141,10 +141,10 @@ public class ApiTarjetasBloqueoAlertaPruebas : IAsyncLifetime
     {
         using var ctx = ContextoDePrueba.Crear();
         // Borrar TODOS los usuarios de prueba que empiezan con apitj- (de cualquier corrida anterior)
-        // Usamos un bloque PL/pgSQL para manejar tablas que pueden no existir
+        // Usamos un bloque PL/pgSQL con delimitador $cleanup$ para evitar conflictos con verbatim strings C#
         await ctx.Database.ExecuteSqlRawAsync(
             """
-            DO $$
+            DO $cleanup$
             BEGIN
                 -- Tablas que siempre existen: borrar solo datos de prueba (correo ILIKE 'apitj-%')
                 DELETE FROM tarjetas WHERE perfil_prestador_id IN (SELECT id FROM perfiles_prestador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%'))
@@ -178,6 +178,7 @@ public class ApiTarjetasBloqueoAlertaPruebas : IAsyncLifetime
                     NULL;
                 END;
             END;
+            $cleanup$;
             """);
     }
 
