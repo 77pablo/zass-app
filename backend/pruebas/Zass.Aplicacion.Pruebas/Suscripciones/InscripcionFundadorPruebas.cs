@@ -571,8 +571,14 @@ public class InscripcionFundadorPruebas
         Assert.Null(CupoDe(perfil.Id));
     }
 
+    /// <summary>
+    /// ES-1 (decision de Pablo, 20-nov-2026). Antes esta prueba decia lo contrario
+    /// («con tarjeta inscrita el vencimiento no le quita el cupo»). Ahora la tarjeta sola no
+    /// basta: llegar al vencimiento sin que se haya podido cobrar le quita el cupo igual que
+    /// a quien nunca la inscribio. A quien SI se le cobro no le llega el vencimiento.
+    /// </summary>
     [Fact]
-    public async Task Con_tarjeta_inscrita_el_vencimiento_no_le_quita_el_cupo()
+    public async Task Con_tarjeta_inscrita_pero_sin_pago_el_vencimiento_tambien_le_quita_el_cupo()
     {
         var perfil = await UnFundadorSinTarjeta(vigenteHasta: Ahora.AddDays(3));
         await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
@@ -582,8 +588,8 @@ public class InscripcionFundadorPruebas
         _reloj.Avanzar(TimeSpan.FromDays(31));
         await _suscripciones.CorrerDiarioAsync();
 
-        Assert.NotNull(CupoDe(perfil.Id));
-        Assert.Equal(49, await _suscripciones.CuposFundadorDisponiblesAsync());
+        Assert.Null(CupoDe(perfil.Id));
+        Assert.Equal(50, await _suscripciones.CuposFundadorDisponiblesAsync());
     }
 
     [Fact]

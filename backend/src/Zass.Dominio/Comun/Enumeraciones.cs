@@ -56,7 +56,9 @@ public enum TipoNotificacion
     CitaSolicitada, CitaConfirmada, CitaRechazada, CitaCancelada, CitaReprogramada,
     Recordatorio24h, Recordatorio2h,
     ResenaNueva, ResenaRespondida, CredencialResuelta, TarjetaActivada,
-    SuscripcionPorVencer, SuscripcionVencida
+    SuscripcionPorVencer, SuscripcionVencida,
+    // ES-1: el cobro automatico de la mensualidad fue rechazado. Uno por periodo.
+    CobroRechazado
 }
 
 public enum CanalNotificacion { Correo, Push }

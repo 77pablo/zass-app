@@ -297,6 +297,14 @@ public interface IRepositorioSuscripciones
     Task<IntentoDePago?> IntentoPorClaveAsync(string clave, CancellationToken ct = default);
 
     /// <summary>
+    /// ES-1. Todos los intentos cuya clave empieza por <paramref name="prefijo"/>: el cobro
+    /// automatico de un periodo y sus reintentos diarios comparten el prefijo
+    /// <c>cobro-automatico:{suscripcion}:{periodo}</c>, y la gracia se decide mirandolos juntos.
+    /// </summary>
+    Task<IReadOnlyList<IntentoDePago>> IntentosPorPrefijoDeClaveAsync(
+        string prefijo, CancellationToken ct = default);
+
+    /// <summary>
     /// <c>SELECT ... FOR UPDATE</c> sobre la fila del intento, igual que
     /// <see cref="IRepositorioAgenda.TomarBloqueAsync"/>. La segunda confirmacion de la
     /// MISMA pasarela espera aqui y, cuando entra, lee el estado ya cambiado.

@@ -124,6 +124,19 @@ describe('mi ficha (prestador)', () => {
     expect(screen.getByRole('button', { name: 'Inscribir mi tarjeta' })).toBeInTheDocument()
   })
 
+  it('ES-1: fundador con tarjeta rechazada ve los días de gracia y puede cambiarla', async () => {
+    alPedirSuscripcion = () => json(suscripcionDe({
+      plan: 'ZASS! Fundador', esFundador: true, tarjetaInscrita: true, diasDeGracia: 4,
+    }))
+    pintar()
+    await cargada()
+
+    expect(screen.getByRole('heading', { name: 'No pudimos cobrar tu suscripción' })).toBeInTheDocument()
+    expect(screen.getByText('en 4 días')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Actualizar mi tarjeta' })).toBeInTheDocument()
+    expect(screen.queryByText('Inscribe tu tarjeta para mantener tu cupo')).toBeNull()
+  })
+
   it('fundador con tarjeta, o quien no es fundador, no ve el aviso de la tarjeta', async () => {
     alPedirSuscripcion = () => json(suscripcionDe({ esFundador: true, tarjetaInscrita: true }))
     const { unmount } = pintar()
