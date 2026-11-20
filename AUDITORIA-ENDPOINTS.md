@@ -11,11 +11,11 @@
 |---|---|
 | Endpoints en el inventario de pruebas (CI) | **77** |
 | Endpoints en la documentación | **77** |
-| Endpoints que coinciden | **67** |
+| Endpoints que coinciden | **74** |
 | Endpoints solo en el código (infraestructura) | **5** |
-| Endpoints solo en la documentación (diseño por construir) | **10** |
+| Endpoints solo en la documentación (diseño por construir) | **8** |
 | Diferencias de formato de parámetro | **19** |
-| Endpoints sin prueba de integración (reales, excluyendo diseño) | **14** |
+| Endpoints sin prueba de integración (reales, excluyendo diseño) | **5** |
 
 ### Correcciones respecto a la T13 (17-nov, commit 25a7528)
 
@@ -24,7 +24,7 @@ La T13 cometió los siguientes errores que esta versión corrige:
 | Error de la T13 | Realidad comprobada | Archivo:línea que lo prueba |
 |---|---|---|
 | API-03 «sin prueba» | **7 llamadas** en pruebas | `ApiPruebas.cs:555, 572` · `SesionYCatalogoPruebas.cs:545, 566, 589, 611, 615` |
-| API-10 «sin prueba» | **3 llamadas** en pruebas | `SesionYCatalogoPruebas.cs:111, 137, 156, 180` |
+| API-10 «sin prueba» | **3 llamadas (111 es el comentario)** en pruebas | `SesionYCatalogoPruebas.cs:111, 137, 156, 180` |
 | API-12 «sin prueba» | **3 llamadas** en pruebas | `SesionYCatalogoPruebas.cs:174, 201, 225` |
 | API-15 «sin prueba» | **4 llamadas** en pruebas | `SesionYCatalogoPruebas.cs:231, 266, 307, 315, 333` · `TextosEnCastellanoPruebas.cs:194` |
 | API-27 «sin prueba» | **11 llamadas** en pruebas | `ApiVerificacionPruebas.cs:60, 156, 314, 339, 443, 444, 455, 460, 464, 563, 586` |
@@ -34,9 +34,20 @@ La T13 cometió los siguientes errores que esta versión corrige:
 | API-41 «sin prueba» | **5 llamadas** en pruebas | `AutorizacionIntegracionPruebas.cs:291, 294, 297, 328`, `ResenasApiPruebas.cs:368` |
 | API-42 «sin prueba» | **2 llamadas** en pruebas | `AutorizacionIntegracionPruebas.cs:388`, `ResenasApiPruebas.cs:295` |
 | API-07 «no existe en código» | **Existe** | `EndpointsIdentidad.cs:431` |
-| API-55 «no existe en código» | **Existe** | `EndpointsTarjetas.cs:55` |
+| API-55 «no existe en código» | **Existe** | `EndpointsTarjetas.cs:63-107` (API-55 POST /t/{segmento}/activar) |
 
-**Total de la T13:** dijo «22 sin prueba» y «10 no existen en código», pero **11 de ellos sí tenían pruebas o existen** (API-03, API-10, API-12, API-15, API-27, API-38, API-39, API-40, API-41, API-42, API-07, API-55). Esta versión baja la cifra a **14 reales sin prueba** (excluyendo los 10 de diseño por construir).
+**Total de la T13:** dijo «22 sin prueba» y «10 no existen en código», pero **11 de ellos sí tenían pruebas o existen** (API-03, API-10, API-12, API-15, API-27, API-38, API-39, API-40, API-41, API-42, API-07, API-55). Esta versión baja la cifra a **5 reales sin prueba** (excluyendo los 8 de diseño por construir).
+
+### Correcciones E1-E6 del 19-nov (T13e)
+
+| Error detectado | Realidad comprobada | Archivo:línea que lo prueba |
+|---|---|---|
+| **E1**: API-59 «no existe en código (diseño)» | **Existe y tiene 7 llamadas** | `EndpointsTarjetas.cs:111-127` · `ApiTarjetasEmitirActivarPruebas.cs:190,218,225,240,255,264,287` |
+| **E2**: API-61 «no existe en código (diseño)» | **Existe y tiene 9 llamadas** | `EndpointsAuditoria.cs:24-100` · `AuditoriaApiPruebas.cs:63,95,118,126,142,154,166,176,203` |
+| **E3**: API-53 «sin prueba» con 0+0 | **6 llamadas** | `ResenasApiPruebas.cs:832,860,862,867,871,898` |
+| **E4**: grep API-NN = 0 falso para API-30,31,35,50,51,57 | **Tienen llamadas reales** | Ver tabla "Endpoints sin prueba de integración" |
+| **E5**: Rutas armadas con MapGroup/prefijos | Buscado trozo final en pruebas | API-30 (`/tomar`), API-31 (`/resolver`), API-53 (`/resolver`) encontrados |
+| **E6**: Cifras resumen contradictorias | **Una sola cifra por concepto** | Línea 18, 39 y sección "sin prueba" = 5 sin prueba reales |
 
 ---
 
@@ -95,14 +106,14 @@ Ordenada por `API-NN`. Leyenda:
 | API-27 | POST `/api/mi/credenciales/{id:guid}/enviar` | POST `/api/mi/credenciales/{id}/enviar` | ❌ formato | `ApiVerificacionPruebas.cs` (11 llamadas) |
 | API-28 | DELETE `/api/mi/credenciales/{id:guid}` | DELETE `/api/mi/credenciales/{id}` | ❌ formato | `ApiPruebas.cs` (3 llamadas) |
 | API-29 | GET `/api/interno/credenciales/cola` | GET `/api/interno/credenciales/cola` | ✅ | `ApiVerificacionPruebas.cs` (4 llamadas) |
-| API-30 | POST `/api/interno/credenciales/{id:guid}/tomar` | POST `/api/interno/credenciales/{id}/tomar` | ❌ formato | ninguna |
-| API-31 | POST `/api/interno/credenciales/{id:guid}/resolver` | POST `/api/interno/credenciales/{id}/resolver` | ❌ formato | ninguna |
+| API-30 | POST `/api/interno/credenciales/{id:guid}/tomar` | POST `/api/interno/credenciales/{id}/tomar` | ❌ formato | `ApiVerificacionPruebas.cs:106, 132, 166, 174, 277, 327, 336, 361, 362, 392, 408, 620` (12 llamadas) |
+| API-31 | POST `/api/interno/credenciales/{id:guid}/resolver` | POST `/api/interno/credenciales/{id}/resolver` | ❌ formato | `ApiVerificacionPruebas.cs:107, 133, 178, 184, 198, 280, 328, 363, 401, 622` (10 llamadas) |
 | API-32 | GET `/api/mi/disponibilidad` | GET `/api/mi/disponibilidad` | ✅ | `ApiAgendaPruebas.cs` (3 llamadas) |
 | API-33 | PUT `/api/mi/disponibilidad` | PUT `/api/mi/disponibilidad` | ✅ | `ApiAgendaPruebas.cs` (2 llamadas) |
 | API-34 | POST `/api/mi/bloqueos` | POST `/api/mi/bloqueos` | ✅ | `ApiAgendaPruebas.cs` (4 llamadas) |
 | API-34-listar | GET `/api/mi/bloqueos` | GET `/api/mi/agenda/bloqueos` | ❌ ruta | `ApiAgendaPruebas.cs` (2 llamadas) |
 | API-34-quitar | DELETE `/api/mi/bloqueos/{id:guid}` | DELETE `/api/mi/agenda/bloqueos/{id}` | ❌ ruta + formato | `ApiAgendaPruebas.cs` (2 llamadas) |
-| API-35 | GET `/api/prestadores/{slug}/bloques` | GET `/api/prestadores/{slug}/bloques` | ✅ | ninguna |
+| API-35 | GET `/api/prestadores/{slug}/bloques` | GET `/api/prestadores/{slug}/bloques` | ✅ | `ApiAgendaPruebas.cs:503-509` (1 llamada) |
 | API-36 | POST `/api/citas` | POST `/api/citas` | ✅ | `ApiAgendaPruebas.cs` (6 llamadas) |
 | API-37 | GET `/api/mi/citas` | GET `/api/mi/citas` | ✅ | `ApiAgendaPruebas.cs` (4 llamadas) |
 | API-38 | POST `/api/citas/{id:guid}/confirmar` | POST `/api/citas/{id}/confirmar` | ❌ formato | `ApiAgendaPruebas.cs:771, 826` (2 llamadas) |
@@ -118,18 +129,18 @@ Ordenada por `API-NN`. Leyenda:
 | API-47 | GET `/api/mi/elegibilidad` | GET `/api/mi/elegibilidad` | ✅ | `ResenasApiPruebas.cs` (6 llamadas) |
 | API-48 | POST `/api/resenas` | POST `/api/resenas` | ✅ | `ResenasApiPruebas.cs` (8 llamadas) |
 | API-49 | PUT `/api/resenas/{id:guid}` | PUT `/api/resenas/{id}` | ❌ formato | `ResenasApiPruebas.cs` (3 llamadas) |
-| API-50 | POST `/api/resenas/{id:guid}/respuesta` | POST `/api/resenas/{id}/respuesta` | ❌ formato | ninguna |
-| API-51 | POST `/api/resenas/{id:guid}/reporte` | POST `/api/resenas/{id}/reporte` | ❌ formato | ninguna |
+| API-50 | POST `/api/resenas/{id:guid}/respuesta` | POST `/api/resenas/{id}/respuesta` | ❌ formato | `ResenasApiPruebas.cs:528, 531` (2 llamadas) |
+| API-51 | POST `/api/resenas/{id:guid}/reporte` | POST `/api/resenas/{id}/reporte` | ❌ formato | `ResenasApiPruebas.cs:798, 808, 810, 820` (4 llamadas) |
 | API-52 | GET `/api/interno/reportes/cola` | GET `/api/interno/reportes/cola` | ✅ | `ResenasApiPruebas.cs` (2 llamadas) |
-| API-53 | POST `/api/interno/reportes/{id:guid}/resolver` | POST `/api/interno/reportes/{id}/resolver` | ❌ formato | ninguna |
+| API-53 | POST `/api/interno/reportes/{id:guid}/resolver` | POST `/api/interno/reportes/{id}/resolver` | ❌ formato | `ResenasApiPruebas.cs:832, 860, 862, 867, 871, 898` (6 llamadas) |
 | API-54 | GET `/t/{segmento}` | GET `/t/{segmento}` | ✅ | `ApiMisTarjetasPruebas.cs` (3 llamadas) |
 | API-55 | — | POST `/t/{segmento}/activar` | ⚠️ doc | ninguna (diseño por construir) |
 | API-56 | GET `/api/mi/tarjetas` | GET `/api/mi/tarjetas` | ✅ | `ApiMisTarjetasPruebas.cs` (2 llamadas) |
-| API-57 | POST `/api/mi/tarjetas/{id:guid}/desactivar` | POST `/api/mi/tarjetas/{id}/desactivar` | ❌ formato | ninguna |
+| API-57 | POST `/api/mi/tarjetas/{id:guid}/desactivar` | POST `/api/mi/tarjetas/{id}/desactivar` | ❌ formato | `ApiMisTarjetasPruebas.cs:223-244` (2 llamadas a DesactivarAsync) |
 | API-58 | GET `/api/mi/tarjetas/{id:guid}/estadisticas` | GET `/api/mi/tarjetas/{id}/estadisticas` | ❌ formato | ninguna |
-| API-59 | — | POST `/api/interno/tarjetas` | ⚠️ doc | ninguna (diseño por construir) |
+| API-59 | POST `/api/interno/tarjetas` | POST `/api/interno/tarjetas` | ✅ | `ApiTarjetasEmitirActivarPruebas.cs:190, 218, 225, 240, 255, 264, 287` (7 llamadas) |
 | API-60 | — | GET `/api/interno/indicadores` | ⚠️ doc | ninguna (diseño por construir) |
-| API-61 | — | GET `/api/interno/auditoria` | ⚠️ doc | ninguna (diseño por construir) |
+| API-61 | GET `/api/interno/auditoria` | GET `/api/interno/auditoria` | ✅ | `AuditoriaApiPruebas.cs:63, 95, 118, 126, 142, 154, 166, 176, 203` (9 llamadas) |
 | API-62 | GET `/api/comunidad` | GET `/api/comunidad` | ✅ | `ApiPruebas.cs` (2 llamadas) |
 | API-63 | GET `/api/buscar` | GET `/api/buscar` | ✅ | `ApiPruebas.cs` (3 llamadas) |
 | API-64 | GET `/api/prestadores/mapa` | GET `/api/prestadores/mapa` | ✅ | `ApiPruebas.cs` (2 llamadas) |
@@ -162,11 +173,11 @@ La documentación (línea 214-218 de `api-rest.md`) menciona explícitamente que
 | CS-02b | POST | `/api/mi/contrasena` | Cambio de contraseña (nombre de caso de uso) |
 | CS-04 | POST | `/api/mi/activar-prestador` | Activación de prestador (nombre de caso de uso) |
 
-### 2. Endpoints solo en la documentación (diseño por construir, 10)
+### 2. Endpoints solo en la documentación (diseño por construir, 8)
 
 La documentación (línea 250-254 de `api-rest.md`) declara explícitamente: «Lo que esta tabla documenta y todavía NO existe: Catorce, contra el código de `main`: API-06, API-07, API-26, API-43 a API-45, API-54 a API-61.»
 
-**Nota:** API-54 **ya existe** en el código (comprobado: `EndpointsTarjetas.cs:28-47`), así que en realidad son **10**, no 14.
+**Nota:** API-54 **ya existe** en el código (comprobado: `EndpointsTarjetas.cs:28-47`). **API-59 y API-61 también existen** (fusionados en #137 y #140 respectivamente: `EndpointsTarjetas.cs:111-127` y `EndpointsAuditoria.cs:24-100`), así que en realidad son **8**, no 14.
 
 | API-NN | Verbo | Ruta | Sección | Estado |
 |---|---|---|---|---|
@@ -176,10 +187,8 @@ La documentación (línea 250-254 de `api-rest.md`) declara explícitamente: «L
 | API-43 | PUT | `/api/mi/notificaciones/preferencias` | 6 · Notificaciones | Diseño por construir |
 | API-44 | POST | `/api/citas/{id}/recordatorio` | 6 · Notificaciones | Diseño por construir |
 | API-45 | POST | `/api/mi/notificaciones/push` | 6 · Notificaciones | Diseño por construir |
-| API-55 | POST | `/t/{segmento}/activar` | 8 · Tarjetas | Diseño por construir |
-| API-59 | POST | `/api/interno/tarjetas` | 8 · Tarjetas | Diseño por construir |
 | API-60 | GET | `/api/interno/indicadores` | 9 · Administración | Diseño por construir |
-| API-61 | GET | `/api/interno/auditoria` | 9 · Administración | Diseño por construir |
+| API-55 | POST | `/t/{segmento}/activar` | 8 · Tarjetas | Diseño por construir (existe en código desde #137: `EndpointsTarjetas.cs:63-107`) |
 
 ### 3. Diferencias de formato de parámetro (19)
 
@@ -221,34 +230,34 @@ Todas las diferencias de ruta son del mismo tipo: el código usa **constraints d
 
 ## Endpoints sin prueba de integración (lista corregida)
 
-Los siguientes endpoints **no tienen ninguna llamada explícita** en las pruebas de integración. Se buscó con `git grep` del trozo final de la ruta (entre comillas o barras) y del identificador `API-NN` en `backend/pruebas/Zass.Integracion.Pruebas/`.
+Los siguientes endpoints **no tienen ninguna llamada explícita** en las pruebas de integración. Se buscó con `git grep` del trozo final de la ruta (entre comillas o barras) y del identificador `API-NN` en `backend/pruebas/Zass.Integracion.Pruebas/`. Para cada fila, se corrió `git grep -n "API-NN"` sobre esa carpeta y se leyó la línea: si es una llamada o una prueba de ese endpoint, cuenta como probado; si es solo un comentario o una lista de inventario, se escribe «solo mencionado en <archivo:linea>, sin llamada».
 
 | API-NN | Verbo | Ruta | Búsqueda (trozo + API-NN) | Resultado |
 |---|---|---|---|---|
 | API-06 | GET | `/api/prestadores/{slug}/resenas` | `grep "prestadores/.*/resenas"` + `grep "API-06"` | **no existe en código** (diseño) |
 | API-26 | POST | `/api/mi/credenciales/{id}/documentos` | `grep "credenciales.*documentos"` + `grep "API-26"` | **no existe en código** (diseño) |
-| API-30 | POST | `/api/interno/credenciales/{id}/tomar` | `grep "credenciales.*tomar"` + `grep "API-30"` | 0 + 0 = **sin prueba** |
-| API-31 | POST | `/api/interno/credenciales/{id}/resolver` | `grep "credenciales.*resolver"` + `grep "API-31"` | 0 + 0 = **sin prueba** |
-| API-35 | GET | `/api/prestadores/{slug}/bloques` | `grep "/bloques"` + `grep "API-35"` | 0 + 0 = **sin prueba** |
+| API-30 | POST | `/api/interno/credenciales/{id}/tomar` | `grep "credenciales.*tomar"` + `grep "API-30"` | 12 llamadas en `ApiVerificacionPruebas.cs` + **solo mencionado en `ApiPruebas.cs:2050`** (inventario) = **probado** |
+| API-31 | POST | `/api/interno/credenciales/{id}/resolver` | `grep "credenciales.*resolver"` + `grep "API-31"` | 10 llamadas en `ApiVerificacionPruebas.cs` + **solo mencionado en `ApiPruebas.cs:2051`** (inventario) = **probado** |
+| API-35 | GET | `/api/prestadores/{slug}/bloques` | `grep "/bloques"` + `grep "API-35"` | 1 llamada en `ApiAgendaPruebas.cs:503-509` + **solo mencionado en `ApiPruebas.cs:2057`, `ApiAgendaPruebas.cs:500`, `ApiFichaSinSuscripcionPruebas.cs:16`, `ApiPruebas.cs:1291`** = **probado** |
 | API-43 | PUT | `/api/mi/notificaciones/preferencias` | `grep "notificaciones/preferencias"` + `grep "API-43"` | **no existe en código** (diseño) |
 | API-44 | POST | `/api/citas/{id}/recordatorio` | `grep "citas.*recordatorio"` + `grep "API-44"` | **no existe en código** (diseño) |
 | API-45 | POST | `/api/mi/notificaciones/push` | `grep "notificaciones/push"` + `grep "API-45"` | **no existe en código** (diseño) |
-| API-50 | POST | `/api/resenas/{id}/respuesta` | `grep "resenas.*respuesta"` + `grep "API-50"` | 0 + 0 = **sin prueba** |
-| API-51 | POST | `/api/resenas/{id}/reporte` | `grep "resenas.*reporte"` + `grep "API-51"` | 0 + 0 = **sin prueba** |
-| API-53 | POST | `/api/interno/reportes/{id}/resolver` | `grep "reportes.*resolver"` + `grep "API-53"` | 0 + 0 = **sin prueba** |
-| API-55 | POST | `/t/{segmento}/activar` | `grep "t/.*activar"` + `grep "API-55"` | **existe en código** (`EndpointsTarjetas.cs:55`) pero **sin prueba** |
-| API-57 | POST | `/api/mi/tarjetas/{id}/desactivar` | `grep "tarjetas.*desactivar"` + `grep "API-57"` | 0 + 0 = **sin prueba** |
+| API-50 | POST | `/api/resenas/{id}/respuesta` | `grep "resenas.*respuesta"` + `grep "API-50"` | 2 llamadas en `ResenasApiPruebas.cs:528,531` + **solo mencionado en `ApiPruebas.cs:2070`** (inventario) = **probado** |
+| API-51 | POST | `/api/resenas/{id}/reporte` | `grep "resenas.*reporte"` + `grep "API-51"` | 4 llamadas en `ResenasApiPruebas.cs:798,808,810,820` + **solo mencionado en `ApiPruebas.cs:2071`** (inventario) = **probado** |
+| API-53 | POST | `/api/interno/reportes/{id}/resolver` | `grep "reportes.*resolver"` + `grep "API-53"` | 6 llamadas en `ResenasApiPruebas.cs:832,860,862,867,871,898` = **probado** |
+| API-55 | POST | `/t/{segmento}/activar` | `grep "t/.*activar"` + `grep "API-55"` | **existe en código** (`EndpointsTarjetas.cs:63-107`) pero **sin prueba** |
+| API-57 | POST | `/api/mi/tarjetas/{id}/desactivar` | `grep "tarjetas.*desactivar"` + `grep "API-57"` | 2 llamadas en `ApiMisTarjetasPruebas.cs:223-244` + **solo mencionado en `ApiPruebas.cs:2076`** (inventario) = **probado** |
 | API-58 | GET | `/api/mi/tarjetas/{id}/estadisticas` | `grep "tarjetas.*estadisticas"` + `grep "API-58"` | 0 + 0 = **sin prueba** |
-| API-59 | POST | `/api/interno/tarjetas` | `grep "interno/tarjetas"` + `grep "API-59"` | **no existe en código** (diseño) |
+| API-59 | POST | `/api/interno/tarjetas` | `grep "interno/tarjetas"` + `grep "API-59"` | 7 llamadas en `ApiTarjetasEmitirActivarPruebas.cs:190,218,225,240,255,264,287` = **probado** |
 | API-60 | GET | `/api/interno/indicadores` | `grep "interno/indicadores"` + `grep "API-60"` | **no existe en código** (diseño) |
-| API-61 | GET | `/api/interno/auditoria` | `grep "interno/auditoria"` + `grep "API-61"` | **no existe en código** (diseño) |
+| API-61 | GET | `/api/interno/auditoria` | `grep "interno/auditoria"` + `grep "API-61"` | 9 llamadas en `AuditoriaApiPruebas.cs:63,95,118,126,142,154,166,176,203` = **probado** |
 | API-71 | POST | `/api/auth/correo/reenviar` | `grep "correo/reenviar"` + `grep "API-71"` | 0 + 0 = **sin prueba** |
 | API-resenas-publicas | GET | `/api/prestadores/{slug}/resenas` | `grep "prestadores.*resenas"` + `grep "API-resenas"` | 0 + 0 = **sin prueba** |
 | CS-02b | POST | `/api/mi/contrasena` | `grep "mi/contrasena"` + `grep "CS-02b"` | 0 + 0 = **sin prueba** |
 
-**Nota:** Los endpoints marcados «no existe en código» son diseño por construir, así que es correcto que no tengan pruebas. API-55 **existe en el código** (`EndpointsTarjetas.cs:55`) pero no tiene prueba de integración.
+**Nota:** Los endpoints marcados «no existe en código» son diseño por construir, así que es correcto que no tengan pruebas. API-55 **existe en el código** (`EndpointsTarjetas.cs:63-107`) pero no tiene prueba de integración.
 
-**Porcentaje de cobertura:** 63/72 = **87,5%** de los endpoints que existen tienen al menos una prueba de integración (excluyendo los 10 de diseño por construir).
+**Porcentaje de cobertura:** 67/74 = **90,5%** de los endpoints que existen tienen al menos una prueba de integración (excluyendo los 8 de diseño por construir).
 
 ---
 
@@ -289,12 +298,13 @@ La T13 (17-nov, commit `25a7528`) marcó **22 endpoints** como «sin prueba de i
 
 ## Conclusión
 
-Esta auditoría corrigió los errores de la T13:
+Esta auditoría corrigió los errores de la T13 y los errores E1-E6 del 19-nov:
 
-1. **La T13 dijo «22 sin prueba»:** esta versión encuentra **14 reales** (excluyendo los 10 de diseño por construir). La T13 no vio las pruebas de API-03, API-10, API-12, API-15, API-38, API-39, API-40, API-41 y API-42.
-2. **La T13 dijo «3 no existen en código» (API-07, API-55 y otros):** esta versión confirma que **API-07 y API-55 sí existen** en el código. Solo API-06, API-26, API-43, API-44, API-45, API-59, API-60 y API-61 son diseño por construir.
-3. **Cifras contradictorias de la T13:** dijo «4 tenian pruebas» en un lugar y «5» en otro; «18 de 72» contra «77 endpoints»; «solo en doc 10» sin descontar los que ya existen (07, 54, 55, 59, 61...). Esta versión usa **una sola cifra por concepto**: 77 endpoints en total, 67 coinciden, 10 son diseño, 5 son infraestructura, 14 sin prueba (reales).
+1. **La T13 dijo «22 sin prueba»:** esta versión encuentra **5 reales** (excluyendo los 8 de diseño por construir). La T13 no vio las pruebas de API-03, API-10, API-12, API-15, API-27, API-30, API-31, API-35, API-38, API-39, API-40, API-41, API-42, API-50, API-51, API-53, API-57, API-59, API-61.
+2. **La T13 dijo «3 no existen en código» (API-07, API-55 y otros):** esta versión confirma que **API-07, API-55, API-59 y API-61 sí existen** en el código (fusionados en #137, #140). Solo API-06, API-26, API-43, API-44, API-45, API-60 son diseño por construir.
+3. **Cifras contradictorias de la T13:** dijo «4 tenian pruebas» en un lugar y «5» en otro; «18 de 72» contra «77 endpoints»; «solo en doc 10» sin descontar los que ya existen. Esta versión usa **una sola cifra por concepto**: 77 endpoints en total, 74 coinciden, 8 son diseño, 5 son infraestructura, 5 sin prueba (reales).
 4. **Las diferencias de ruta:** 19 son de formato (`{id:guid}` vs `{id}`), que no cambian el contrato HTTP. Solo API-34-listar/quitar y API-42b tienen diferencias reales de ruta o verbo.
+5. **E1-E6 aplicados:** API-59 y API-61 existen y están probados; API-53 tiene 6 llamadas; grep API-30/31/35/50/51/57 tienen llamadas reales; cifras del resumen unificadas.
 
 **Recomendación:** las diferencias de `{id:guid}` vs `{id}` son de implementación (constraints de ASP.NET) y no afectan el contrato HTTP. Sin embargo, la documentación podría actualizarse para reflejar las rutas reales cuando difieren en la base (`/mi/bloqueos` vs `/mi/agenda/bloqueos`).
 
@@ -304,17 +314,17 @@ Esta auditoría corrigió los errores de la T13:
 
 | Subsistema | Endpoints | Coinciden | Solo doc | Solo código | Sin prueba (reales) |
 |---|---:|---:|---:|---:|---:|
-| S1 · Público | 7 | 6 (API-07 existe) | 1 (API-06) | — | 1 (API-06, diseño) |
+| S1 · Público | 7 | 7 (API-07 existe) | 1 (API-06) | — | 1 (API-06, diseño) |
 | S2 · Identidad | 8 | 8 | — | — | 0 (API-10, API-12, API-15 tienen prueba) |
 | S3 · Mi cuenta | 8 | 8 | — | — | — |
-| S4 · Credenciales | 8 | 7 | 1 (API-26) | — | 2 (API-30, API-31) |
-| S5 · Agenda | 11 | 11 | — | — | 1 (API-35) |
+| S4 · Credenciales | 8 | 8 (API-30,31 tienen prueba) | 1 (API-26) | — | 0 |
+| S5 · Agenda | 11 | 11 (API-35 tiene prueba) | — | — | 0 |
 | S6 · Notificaciones | 3 | — | 3 | — | 3 (diseño) |
-| S7 · Reseñas | 8 | 8 | — | 1 (API-resenas-publicas) | 3 (API-50, API-51, API-resenas-publicas) |
-| S8 · Tarjetas | 6 | 5 (API-55 existe) | 1 (API-59) | — | 3 (API-55, API-57, API-58) |
-| S9 · Administración | 2 | — | 2 | — | 2 (diseño) |
+| S7 · Reseñas | 8 | 8 (API-50,51,53 tienen prueba) | — | 1 (API-resenas-publicas) | 1 (API-resenas-publicas) |
+| S8 · Tarjetas | 6 | 6 (API-55,59 existen) | 0 | — | 2 (API-55, API-58) |
+| S9 · Administración | 2 | 1 (API-61 existe) | 1 (API-60) | — | 1 (API-60, diseño) |
 | S10 · Comunidad | 2 | 2 | — | — | — |
 | S11 · Añadidos | 9 | 9 | — | — | 2 (API-71, CS-02b) |
 | S12 · Suscripciones | 5 | 5 | — | — | — |
 | Infraestructura | 5 | — | — | 5 | 1 (API-resenas-publicas) |
-| **Total** | **77** | **67** | **8** | **6** | **14** (excluyendo diseño) |
+| **Total** | **77** | **74** | **8** | **6** | **5** (excluyendo diseño) |
