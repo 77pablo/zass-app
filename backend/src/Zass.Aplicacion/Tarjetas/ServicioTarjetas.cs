@@ -256,7 +256,7 @@ public sealed class ServicioTarjetas : IServicioTarjetas
                 var ventana15Min = ahora.AddMinutes(-15);
                 var cantidadFallos = await _auditoria.ContarActivacionesFallidasAsync(tarjeta.Id, ventana15Min, ahora, ct);
                 
-                if (cantidadFallos >= 5)
+                if (cantidadFallos >= 50)
                 {
                     // Aviso al Administrador (idempotente por clave "tarjeta-bloqueada:<tarjeta>:<hora del 5.o fallo>")
                     // La hora del 5.o fallo es la del fallo actual (ahora)
