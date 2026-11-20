@@ -332,7 +332,7 @@ public sealed class ServicioTarjetas : IServicioTarjetas
             if (cuentaEnVentana >= 5)
             {
                 // Este fallo F es el que disparó el bloqueo (el 5.o en su ventana de 15 min)
-                var finBloqueo = fallo.AddHours(1);
+                var finBloqueo = fallo.AddMinutes(1);
                 if (ahora < finBloqueo)
                 {
                     return (true, finBloqueo);
