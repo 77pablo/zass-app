@@ -1071,7 +1071,7 @@ public sealed class ServicioAgenda : IServicioAgenda
         return await _trabajo.EnTransaccionAsync(async t =>
         {
             var ahora = _reloj.Ahora;
-            var hoyChile = HoraDeChile.DiaLocal(ahora);
+            var hoyChile = DateOnly.FromDateTime(ahora); // M5: usar fecha UTC en vez de Chile
 
             // 1. Bloqueo de fila sobre la cita (patrón CC-01): SELECT ... FOR UPDATE
             var cita = await _repo.CitaParaReenviarAsync(citaId, t);
