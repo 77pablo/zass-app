@@ -27,7 +27,7 @@ public sealed class ConsultaIndicadoresEfCore : IConsultaIndicadores
 
         // Las resueltas dentro de la ventana, con la creación de su credencial para el tiempo.
         var resueltas = await _ctx.Verificaciones.AsNoTracking()
-            .Where(v => v.ResueltaEn <= ahora)
+            .Where(v => v.ResueltaEn >= desdeVerificacion && v.ResueltaEn <= ahora)
             .Select(v => new { v.Resultado, v.ResueltaEn, CreadaEn = v.Credencial!.CreadaEn })
             .ToListAsync(ct);
 
