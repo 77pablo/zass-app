@@ -347,7 +347,7 @@ public static class EndpointsAgenda
                 var perfilId = await identidad.PerfilPrestadorIdAsync(usuarioId.Value);
                 var r = await agenda.ReenviarRecordatorioAsync(id, usuarioId.Value, perfilId);
                 return r.Exito
-                    ? Results.Accepted("", new { mensaje = r.Mensaje })
+                    ? Results.Accepted("", new { mensaje = r.Valor })
                     : Respuestas.Problema(r);
             })
             .RequireRateLimiting(Tasa.General)
