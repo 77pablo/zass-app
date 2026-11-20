@@ -598,6 +598,15 @@ public interface IRepositorioCredenciales
     void Agregar(Credencial credencial);
     void Eliminar(Credencial credencial);
 
+    /// <summary>
+    /// JQ-9. Un documento nuevo de una credencial ya guardada. Va por aquí y no por
+    /// <c>credencial.Documentos.Add</c>: con el id ya puesto, el seguimiento de cambios lo tomaría
+    /// por una fila existente e intentaría actualizarla.
+    /// </summary>
+    void AgregarDocumento(DocumentoCredencial documento);
+
+    void QuitarDocumento(DocumentoCredencial documento);
+
     Task<EntidadCertificadora?> EntidadActivaPorIdAsync(short id, CancellationToken ct = default);
 
     /// <summary>Por nombre sin distinguir mayusculas: "Universidad de la Frontera" y "universidad de la frontera" son la misma.</summary>
