@@ -175,7 +175,7 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
 
     public async Task<Resultado<Guid>> RegistrarPeriodoPagadoAsync(
         Guid suscripcionId, int meses = 1, int montoPagado = 0, string? referencia = null,
-        Guid? intentoDePagoId = null, CancellationToken ct = default)
+        Guid? intentoDePagoId = null, bool esCobroAutomatico = false, CancellationToken ct = default)
     {
         var ahora = _reloj.Ahora;
         var s = await _repo.PorIdAsync(suscripcionId, ct);
@@ -186,11 +186,20 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
             return Resultado.Falla<Guid>(
                 Fallas.Validacion, "Un periodo pagado es de un mes o más.");
 
-        var desde = s.VigenteHasta > ahora ? s.VigenteHasta : ahora;
-
         // Lo hace la entidad, no este servicio: quien paga el dia 25 de un mes de 30
         // no puede perder los 5 que le quedaban, y esa regla pertenece al dominio.
-        s.RegistrarPeriodoPagado(ahora, meses);
+        // Si es cobro automatico (cobro tardio incluido), se extiende desde el
+        // VigenteHasta de la suscripcion TAL COMO ESTA (VencerExpiradasAsync solo cambia
+        // Estado, no VigenteHasta). Si es pago manual, la logica de siempre:
+        // desde hoy si ya vencio.
+        s.RegistrarPeriodoPagado(ahora, meses, esCobroAutomatico);
+
+        // PeriodoDesde para el registro de pago: si es cobro automatico, el periodo
+        // empieza en el VigenteHasta original; si es manual, en la base que se usara
+        // para la extension (vigencia si futuro, hoy si pasado).
+        var periodoDesde = esCobroAutomatico
+            ? s.VigenteHasta.AddMonths(-meses) // VigenteHasta ya se actualizo, restamos los meses
+            : (s.VigenteHasta > ahora ? s.VigenteHasta.AddMonths(-meses) : ahora);
 
         var pago = new Pago
         {
@@ -198,7 +207,7 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
             Monto = montoPagado,
             Moneda = "CLP",
             Estado = EstadoPago.Pagado,
-            PeriodoDesde = desde,
+            PeriodoDesde = periodoDesde,
             PeriodoHasta = s.VigenteHasta,
             ReferenciaPasarela = referencia,
             IntentoDePagoId = intentoDePagoId,
@@ -209,7 +218,7 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
 
         _auditor.Registrar(Auditar.Entrada(
             "suscripcion_pagada", "suscripciones", s.Id, ahora,
-            contexto: new { meses, vigenteHasta = s.VigenteHasta }));
+            contexto: new { meses, vigenteHasta = s.VigenteHasta, cobro_tardio = esCobroAutomatico }));
 
         await _trabajo.GuardarAsync(ct);
         return Resultado.Ok(pago.Id);

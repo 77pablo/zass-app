@@ -209,11 +209,16 @@ export async function enviar<T>(
    * intencion, y una clave nueva por reintento haria que el servidor la tomara por otra.
    */
   cabeceras: Record<string, string> = {},
+  /**
+   * `keepalive`: que la peticion sobreviva si la pagina se va enseguida (un `tel:` o un
+   * `mailto:` que abre otra aplicacion). Solo lo pide quien lo necesita; por defecto, no.
+   */
+  opciones: { keepalive?: boolean } = {},
 ): Promise<T> {
   const r = await conRenovacion(ruta, async () => {
-    let intento = await unIntento(ruta, cuerpo, metodo, await tokenCsrf(), cabeceras)
+    let intento = await unIntento(ruta, cuerpo, metodo, await tokenCsrf(), cabeceras, opciones)
     if (intento.status === 403) {
-      intento = await unIntento(ruta, cuerpo, metodo, await tokenCsrf(true), cabeceras)
+      intento = await unIntento(ruta, cuerpo, metodo, await tokenCsrf(true), cabeceras, opciones)
     }
     return intento
   })
@@ -221,20 +226,36 @@ export async function enviar<T>(
   return leer<T>(r)
 }
 
+/**
+ * JQ-9. Sube UN archivo (multipart, campo «archivo»): la foto del perfil o un documento de
+ * respaldo. Mismo token CSRF y mismos reintentos que `enviar`, porque es la misma clase de
+ * peticion; lo unico distinto es el cuerpo.
+ */
+export async function subirArchivo<T>(ruta: string, archivo: File): Promise<T> {
+  const formulario = new FormData()
+  formulario.append('archivo', archivo, archivo.name)
+  return enviar<T>(ruta, formulario)
+}
+
 function unIntento(
   ruta: string, cuerpo: unknown, metodo: string, token: string,
   cabeceras: Record<string, string> = {},
+  opciones: { keepalive?: boolean } = {},
 ): Promise<Response> {
+  // Un FormData lleva su propio Content-Type con el separador de partes: si se pusiera
+  // 'application/json' a mano, el servidor no encontraria el archivo.
+  const esFormulario = cuerpo instanceof FormData
   return llamar(ruta, {
+    ...(opciones.keepalive ? { keepalive: true } : {}),
     method: metodo,
     credentials: 'include',
     headers: {
       Accept: 'application/json',
-      'Content-Type': 'application/json',
+      ...(esFormulario ? {} : { 'Content-Type': 'application/json' }),
       // Antes que las propias: nadie puede pisar el token CSRF desde fuera.
       ...cabeceras,
       'X-CSRF-Token': token,
     },
-    ...(cuerpo === undefined ? {} : { body: JSON.stringify(cuerpo) }),
+    ...(cuerpo === undefined ? {} : { body: esFormulario ? cuerpo : JSON.stringify(cuerpo) }),
   })
 }

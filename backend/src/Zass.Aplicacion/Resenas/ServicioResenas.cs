@@ -76,33 +76,45 @@ public sealed class ServicioResenas : IServicioResenas
             var laCita = await _repo.CitaAsync(cita, ct);
             if (laCita is null || laCita.BuscadorId != buscadorId || laCita.PerfilPrestadorId != perfilPrestadorId)
                 return Resultado.Falla<Guid>(Fallas.NoEncontrado, "No encontramos esa cita.");
-
-            // Una cita, un contacto: dos contactos darían dos reseñas por la misma cita (RN-S5-02).
-            var ligado = await _repo.ContactoDeCitaAsync(cita, ct);
-            if (ligado is not null) return Resultado.Ok(ligado.Id);
-        }
-        else
-        {
-            // Un solo contacto abierto a la vez, y el reloj de los 7 días corre desde el PRIMERO.
-            // Si cada clic en "llamar" abriera otro, repetir el gesto no adelantaría nada, pero
-            // llenaría la tabla; y si reiniciara el reloj, sería un castigo por insistir.
-            var abierto = (await _repo.ContactosSinResenaAsync(buscadorId, perfilPrestadorId, ct))
-                .FirstOrDefault(c => c.CitaId is null);
-            if (abierto is not null) return Resultado.Ok(abierto.Id);
         }
 
-        var contacto = new Contacto
+        // Mirar si ya hay contacto y crear el nuevo va DENTRO del cerrojo del prestador. Sin él,
+        // dos toques casi a la vez (WhatsApp y enseguida "llamar") leían los dos "no hay ninguno"
+        // y dejaban dos filas. No daba una reseña de más (PublicarAsync revalida con el mismo
+        // cerrojo), pero ensuciaba la tabla y cualquier conteo de contactos.
+        return await _repo.EnTransaccionAsync(async () =>
         {
-            BuscadorId = buscadorId,
-            PerfilPrestadorId = perfilPrestadorId,
-            CitaId = citaId,
-            Origen = origen,
-            Canal = canal,
-            OcurridoEn = _reloj.Ahora,
-        };
-        _repo.Agregar(contacto);
-        await _trabajo.GuardarAsync(ct);
-        return Resultado.Ok(contacto.Id);
+            await _repo.BloquearPerfilAsync(perfilPrestadorId, ct);
+
+            if (citaId is { } laCitaId)
+            {
+                // Una cita, un contacto: dos contactos darían dos reseñas por la misma cita (RN-S5-02).
+                var ligado = await _repo.ContactoDeCitaAsync(laCitaId, ct);
+                if (ligado is not null) return Resultado.Ok(ligado.Id);
+            }
+            else
+            {
+                // Un solo contacto abierto a la vez, y el reloj de los 7 días corre desde el PRIMERO.
+                // Si cada clic en "llamar" abriera otro, repetir el gesto no adelantaría nada, pero
+                // llenaría la tabla; y si reiniciara el reloj, sería un castigo por insistir.
+                var abierto = (await _repo.ContactosSinResenaAsync(buscadorId, perfilPrestadorId, ct))
+                    .FirstOrDefault(c => c.CitaId is null);
+                if (abierto is not null) return Resultado.Ok(abierto.Id);
+            }
+
+            var contacto = new Contacto
+            {
+                BuscadorId = buscadorId,
+                PerfilPrestadorId = perfilPrestadorId,
+                CitaId = citaId,
+                Origen = origen,
+                Canal = canal,
+                OcurridoEn = _reloj.Ahora,
+            };
+            _repo.Agregar(contacto);
+            await _trabajo.GuardarAsync(ct);
+            return Resultado.Ok(contacto.Id);
+        }, r => r.Exito, ct);
     }
 
     // ------------------------------------------------------------- API-47

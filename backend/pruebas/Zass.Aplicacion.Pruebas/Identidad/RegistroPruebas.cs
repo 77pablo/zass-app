@@ -20,7 +20,7 @@ public class RegistroPruebas
         _servicio = new ServicioRegistro(
             new RepositorioUsuariosEnMemoria(_base),
             new RepositorioPerfilesEnMemoria(_base),
-            _base, _hash, _secretos, _reloj, _cola, _auditoria);
+            _base, _hash, _secretos, _reloj, _cola, _auditoria, new ContrasenasFiltradasNunca());
     }
 
     private static RegistrarCuentaCmd Cmd(

@@ -1,4 +1,4 @@
-# Plan de trabajo de Joaquín — al 14 de noviembre de 2026 (tarde)
+# Plan de trabajo de Joaquín — al 20 de noviembre de 2026
 
 ZASS! abre el **lunes 23**. Este archivo es tu cola y tu permiso para avanzar. Manda sobre
 cualquier lista anterior (`TRASPASO.md`, `TRASPASO-12-NOV.md`, la versión vieja de este archivo en
@@ -6,6 +6,122 @@ la rama `plan-joaquin`): esas tienen cosas que ya están hechas.
 
 **Si retomas desde cero, dile a Claude: «sigue con plan-joaquin de zass».** Él lee esto,
 `ESTADO.md` y `CONTRIBUIR.md`, y sigue por la primera tanda sin terminar.
+
+---
+
+## 0. Actualización del 20 de noviembre — LÉELA PRIMERO
+
+**JQ-9 ya no es tuya: la está programando Claude** (rama `archivos/jq9-fotos-documentos`). No la
+empieces. Tu **JQ-7** está en el **PR #151**: si te piden cambios ahí, eso va antes que lo nuevo.
+
+**Lo que hoy tiene dueño, y no tienes que tocar:**
+
+| Qué | Quién |
+|---|---|
+| JQ-9: fotos y documentos (`IAlmacenDeArchivos`, `EndpointsArchivos.cs`, `FotoDePerfil.tsx`, la sección de documentos de `MisCredenciales.tsx`) | Claude |
+| La pasarela Flow (`Pagos/`, `Pasarela.cs`) | Claude |
+| El bloqueo de tarjetas tras 5 intentos (PR #149, `ServicioTarjetas.ActivarAsync`) | Otra IA |
+| La limpieza de la prueba del día de Chile (`ApiAgendaPruebas.cs`) | Otra IA |
+| Los borradores de interfaz #98, #103, #106, #107, #128, #130 y el #76 (eliminar cuenta) | Claude |
+
+**Por qué esta cola:** el backend de todo lo INTERNO ya existe y está probado: la cola del
+Verificador (API-29, 30, 31), la moderación de reseñas (API-52, 53), emitir tarjetas (API-59) y la
+auditoría (API-61). **Pero ninguna pantalla usa `/api/interno`.** Hoy, para verificar un título o
+retirar una reseña ofensiva, alguien tendría que tocar la base a mano. Sin estas pantallas, ZASS!
+no se puede operar el día que abra.
+
+Las reglas de siempre siguen valiendo (sección 2 y sección 4): mutación anotada en cada PR, CI en
+verde, una migración a la vez y avisada. Un PR por tarea.
+
+### JQ-11 — El panel interno y la mesa del Verificador · N3 · la base de las demás
+
+1. **La puerta:** una sección `/interno` en el frontend, que solo se ve con el rol `verificador` o
+   `administrador` (`usuario.roles`, igual que `MiFicha` mira `prestador`). Sin el rol, la ruta
+   responde como una página que no existe, no como «prohibido»: no se anuncia que hay un panel. Con
+   el rol, un enlace en el menú «Más». Fuera del índice de Google (`useMeta({ noindex: true })`).
+2. **La mesa de verificación** (`/interno/verificacion`), con lo que ya existe:
+   - la cola (API-29), la más antigua primero, con el prestador, la credencial, la entidad, si la
+     entidad no está reconocida y si viene **sin documentos**;
+   - **tomar** (API-30): muestra cuánto queda de la reserva de 30 minutos. Si otro la tomó, dilo
+     claro (409);
+   - los **documentos de respaldo**: la lista viene en `respaldo` de la credencial tomada, y cada
+     uno se abre en una pestaña nueva con `GET /api/interno/credenciales/{id}/documentos/{doc}`
+     (API-74). **API-74 llega con JQ-9**: construye contra ese contrato, y si JQ-9 no está en
+     `main` cuando abras el PR, dilo en el PR;
+   - **resolver** (API-31): verificar, rechazar (el motivo es obligatorio: los del enum
+     `MotivoRechazo`, más el texto) o pedir antecedentes. Si viene sin documentos y se verifica,
+     el texto mínimo es de 20 caracteres (lo exige la API: muestra su mensaje tal cual).
+3. Pruebas de interfaz de todo lo anterior, y **una de navegador** (`frontend/pruebas-navegador/`)
+   que recorra cola → tomar → abrir un documento → verificar, con un usuario con el rol puesto por
+   base.
+
+**Mutación mínima:** mostrar el panel sin el rol, y resolver un rechazo sin motivo.
+
+### JQ-12 — Moderación de reseñas · N2
+
+En el mismo panel, `/interno/reportes`: la cola de reportes abiertos (API-52, «sin los propios») y
+resolver cada uno (API-53): **mantener o retirar, con motivo**. Muestra la reseña completa, quién
+reportó (sin su correo) y el motivo del reporte. Después de resolver, sale de la cola sin recargar
+la página. Pruebas, y la mutación: que se pueda mandar sin motivo.
+
+### JQ-13 — Emitir tarjetas y consultar la auditoría · N3
+
+Dos pantallas del panel, solo para `administrador`:
+
+1. **Emitir tarjetas** (API-59): emite una tarjeta y **muestra el código de activación UNA sola
+   vez**, con su QR y un botón para imprimir la etiqueta que va en el sobre. Una recarga NO lo
+   vuelve a mostrar: la API no lo devuelve dos veces, y la pantalla tiene que dejarlo claro antes
+   de cerrar («anótalo o imprímelo ahora»). Para el QR ya existe `componentes/tarjetas/matrizQr.ts`
+   (sobre `qrcode-generator`): reúsalo, no agregues otra biblioteca.
+2. **Auditoría** (API-61): buscar el rastro por entidad o por actor, paginado hacia atrás con el
+   cursor que ya da la API. Solo se muestra lo que la API devuelve: nada de pedir columnas que no
+   están.
+
+**Mutación mínima:** que la pantalla de emitir guarde el código en `localStorage` (no tiene que
+estar en ningún lado después de cerrar), y que un `verificador` sin `administrador` vea estas
+pantallas.
+
+### JQ-14 — Indicadores de la operación (API-60) · N2 · backend + pantalla
+
+`GET /api/interno/indicadores` **no existe**: está en `api-rest.md` («tiempos de revisión, tasa de
+rechazo, avisos fallidos»). Constrúyelo **sin migración**: todo sale de tablas que ya existen
+(los `DbSet` `Verificaciones`, `Credenciales`, `Notificaciones`, `ReportesResena` y `Tarjetas`
+de `ZassDbContext`).
+
+- Mínimo: credenciales en cola y la más antigua; tiempo medio entre enviar a revisión y resolver
+  en los últimos 30 días; tasa de rechazo; avisos (correos) fallidos en los últimos 7 días;
+  reportes abiertos; tarjetas emitidas sin activar.
+- Grupo de tasa **S**, solo para `administrador`, y su nombre en el inventario
+  (`El_inventario_de_endpoints_es_el_que_esta_documentado`) y en `api-rest.md`.
+- Pantalla `/interno/indicadores` con esos números: cifras, no gráficos.
+- Pruebas de integración con datos armados a mano, donde cada cifra se pueda calcular de cabeza.
+  **Mutación:** contar los rechazos de más de 30 días.
+
+### JQ-15 — La foto en toda la web · N2 · chica · DESPUÉS de que JQ-9 esté en `main`
+
+JQ-9 pone la foto en la ficha, en la búsqueda y en «Mi ficha». Quedan sin foto:
+
+- **«Recién llegados» de la portada:** `/api/comunidad` no trae `urlFoto`. Agrégalo al DTO y pásalo
+  a `<Monograma foto=…>`.
+- **Las sugerencias de la barra de búsqueda** (`BarraDeBusqueda.tsx`, el `Monograma` de tamaño `p`).
+
+Pruebas, y mirarlo en un navegador con una persona con foto y otra sin foto.
+
+### JQ-16 — Borradores de credenciales abandonados (CU-05 4D.3) · N2 · DESPUÉS de JQ-9
+
+«Un borrador sin actividad por 90 días se elimina junto con sus archivos, tras un aviso a los 83
+días.» Hoy nadie lo hace, y con JQ-9 un borrador ya puede tener documentos guardados.
+
+- Un trabajo del planificador (`Zass.Infraestructura/Fondo/`, mira cómo corren los que ya existen):
+  a los 83 días encola el aviso (idempotente por clave: el mismo borrador no se avisa dos veces);
+  a los 90 borra la credencial **y sus archivos** con `IAlmacenDeArchivos.BorrarAsync`, después
+  de que la base confirmó (igual que `ServicioCredenciales.EliminarAsync`).
+- «Actividad» = creación o último documento subido. Si eso no alcanza para decidirlo bien sin
+  migración, **dilo en el PR y espera**.
+- Pruebas con el reloj de prueba (día 82: nada; 83: un aviso; 84: el mismo aviso, no otro; 90:
+  borrada y sin archivos en disco). **Mutación:** borrar sin pasar por el aviso.
+
+Después de estas seis sigue **JQ-8** (métricas del prestador), como estaba.
 
 ---
 
@@ -129,6 +245,8 @@ vez ha encontrado nueve defectos de una sentada.
 
 ### JQ-9 — Subir fotos y documentos · N3 (es la que más vale de todas)
 
+> **TOMADA POR CLAUDE (Pablo, 20-nov).** No la hagas: ver la sección 0.
+
 Hoy **no se puede subir ni un archivo**. `MiFicha` lo dice con todas sus letras: «Por ahora no
 puedes subir tu foto, tus títulos ni tu dirección», y `UrlFoto` **nunca se escribe en ninguna
 capa**. Dos consecuencias: un directorio de profesionales sin caras se ve abandonado, y la
@@ -180,6 +298,12 @@ Cuántas veces vieron su ficha, cuántos escaneos tuvo su tarjeta y cuántos con
 **después** de JQ-4 y JQ-5, porque vive de lo que esas dos registran.
 
 ### JQ-10 — Rescate: la comuna que desaparece cuando hay distancia · N2 · chica (agregada el 17-nov)
+
+> **✅ CUBIERTA, no la hagas (Pablo, 18-nov).** El mismo arreglo entró en el **PR #106**
+> (`web/buscador-citas`, cambio «B3»): la comuna se ve siempre y primero, y la distancia al lado. Tiene su
+> prueba en `TarjetaPersona.prueba.tsx` y su mutación (volver a `p.zona && !p.distancia`) cae. No hagas el
+> `cherry-pick` de `b0e7b8d`: chocaría con el #106. Si al revisar el #106 ves algo distinto de lo que
+> pedía esta tarea (por ejemplo, el pin repetido), coméntalo en ese PR.
 
 **Ya está hecho y con pruebas, pero nunca llegó a `main`.** Lo dejó un agente el 13-nov y quedó en
 una rama que nadie fusionó. Pablo decidió el 17-nov que va a tu carril, porque es búsqueda.

@@ -69,6 +69,9 @@ if (!TextosEnCastellano.FijarIdiomaDeValidacion())
     app.Logger.LogWarning(
         "Sin datos de idioma (globalizacion invariante): los mensajes de validacion saldran en ingles.");
 
+// Registrar el resolvedor de nombres en castellano para FluentValidation.
+TextosEnCastellano.ConfigurarResolvedor();
+
 // Se valida DESPUES de Build y con app.Configuration: ahi ya estan todas las fuentes
 // (variables de entorno de Render, y los ajustes que inyectan las pruebas). Falla antes de
 // *Diseño original: Key Vault con identidad administrada. Desplegado: variables de entorno
@@ -118,7 +121,8 @@ app.MapearGeografia();
 app.MapearBusqueda();
 app.MapearMapaDelSitio();
 app.MapearCredenciales();
-app.MapearSalud();                                    // /api/salud/lista (readiness)
+app.MapearArchivos();                                  // API-72, API-72-quitar, API-73 (JQ-9)
+app.MapearSalud();                                   // /api/salud/lista (readiness)
 
 app.MapearAgenda();                                    // ANCLAJE MOD-06 Agenda
 
@@ -126,6 +130,7 @@ app.MapearResenas();
 app.MapearSuscripciones();                               // API-66 a API-70 (S7 suscripciones y pagos)
 
 app.MapearVerificacion();
+app.MapearAuditoria();
 
 app.MapearTarjetas();                                  // API-54 /t/{segmento} (CS-18)
 

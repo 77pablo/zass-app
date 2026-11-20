@@ -28,9 +28,10 @@ public class PerfilPruebas
     {
         var usuarios = new RepositorioUsuariosEnMemoria(_base);
         var repoPerfiles = new RepositorioPerfilesEnMemoria(_base);
+        var filtradas = new ContrasenasFiltradasNunca();
 
         _registro = new ServicioRegistro(
-            usuarios, repoPerfiles, _base, _hash, _secretos, _reloj, _cola, _auditoria);
+            usuarios, repoPerfiles, _base, _hash, _secretos, _reloj, _cola, _auditoria, filtradas);
         _perfiles = new ServicioPerfiles(
             usuarios, repoPerfiles, _base, _reloj, _cifrado, _cola, _auditoria);
 

@@ -253,4 +253,56 @@ public class ConfirmarCobroPruebas
         Assert.Null(cupo.ReservadoHasta);     // sin fecha = confirmado
         Assert.Equal(49, await _suscripciones.CuposFundadorDisponiblesAsync());
     }
+
+    /// <summary>
+    /// RN-S7-16 / Mutación 2. El pago manual de una suscripción vencida extiende DESDE HOY,
+    /// no desde el vencimiento original. Esto protege contra la mutación que haría extender
+    /// desde el vencimiento original incluso en pagos manuales.
+    ///
+    /// Escenario: suscripción vencida hace 3 días -> pago manual (clave NO es "cobro-automatico:")
+    /// -> VigenteHasta nuevo = hoy + 1 mes, NO vencimiento + 1 mes.
+    /// </summary>
+    [Fact]
+    public async Task Pago_manual_suscripcion_vencida_extiende_desde_hoy_no_desde_fecha_vieja()
+    {
+        // Una suscripción que venció hace 3 días
+        var perfil = UnPrestador();
+        var vencimiento = Ahora.AddDays(-3);
+        var suscripcion = new Suscripcion
+        {
+            Id = Guid.NewGuid(),
+            PerfilPrestadorId = perfil.Id,
+            PlanId = 2, // mensual
+            Estado = EstadoSuscripcion.Vencida,
+            VigenteHasta = vencimiento,
+            ReferenciaPasarela = "medio_inscrito_ref",
+        };
+        _base.PerfilesPrestador.Add(perfil);
+        _base.Suscripciones.Add(suscripcion);
+
+        // Iniciar un cobro MANUAL (sin clave de cobro automático)
+        var cmd = new IniciarCobroCmd(perfil.Id, "mensual", null, "clave-manual-123");
+        var iniciar = await _cobros.IniciarAsync(cmd);
+        Assert.True(iniciar.Exito, "Falló al iniciar el cobro manual: " + iniciar.Mensaje);
+
+        var intento = _base.IntentosDePago.Single();
+        // Confirmar que NO es cobro automático
+        Assert.False(intento.ClaveIdempotencia?.StartsWith("cobro-automatico:") == true, "La clave no debería ser de cobro automático");
+
+        // Simular el cobro aprobado
+        _pasarela.Veredicto = new CobroResuelto(intento.Id, "ref_pago", true, intento.Monto, null);
+        var confirmar = await _cobros.ConfirmarAsync(UnAviso());
+
+        Assert.True(confirmar.Exito);
+        Assert.True(confirmar.Valor!.Aprobado);
+
+        // La suscripción debe quedar vigente desde HOY + 1 mes, NO desde el vencimiento + 1 mes
+        var s = _base.Suscripciones.Single(x => x.Id == suscripcion.Id);
+        var esperadoDesdeHoy = Ahora.AddMonths(1);
+        var erroneoDesdeVencimiento = vencimiento.AddMonths(1);
+
+        // Debe extender desde hoy, no desde el vencimiento original
+        Assert.Equal(esperadoDesdeHoy, s.VigenteHasta);
+        Assert.NotEqual(erroneoDesdeVencimiento, s.VigenteHasta);
+    }
 }
