@@ -47,4 +47,7 @@ public static class Trabajos
     /// asistencia» las que ya ocurrieron y asumir realizadas las que nadie marcó en 72 h.
     /// </summary>
     public const string Citas = "citas-periodico";
+
+    /// <summary>JQ-16 (CU-05 4D.3): avisar y borrar los borradores de credencial abandonados.</summary>
+    public const string Borradores = "borradores-abandonados";
 }

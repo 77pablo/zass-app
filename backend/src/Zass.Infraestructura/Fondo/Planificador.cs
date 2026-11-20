@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Zass.Aplicacion.Agenda;
+using Zass.Aplicacion.Credenciales;
 using Zass.Aplicacion.Puertos;
 using Zass.Aplicacion.Suscripciones;
 using Zass.Dominio.Comun;
@@ -57,6 +58,11 @@ public sealed class Planificador : BackgroundService
         new(Trabajos.Citas, o => TimeSpan.FromMinutes(o.CitasCadaMinutos),
             async (sp, ct) =>
                 (await sp.GetRequiredService<IServicioAgenda>().AvanzarPorElTiempoAsync(ct)).ToString()),
+
+        // JQ-16 · CU-05 4D.3. Al ritmo de la tarea diaria: los plazos son de días (83, 90 y 7).
+        new(Trabajos.Borradores, o => TimeSpan.FromHours(o.IntervaloHoras),
+            async (sp, ct) =>
+                await sp.GetRequiredService<ServicioBorradoresAbandonados>().CorrerAsync(ct)),
     };
 
     private readonly IServiceScopeFactory _ambitos;

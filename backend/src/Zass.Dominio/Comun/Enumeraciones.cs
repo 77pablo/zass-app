@@ -53,7 +53,9 @@ public enum TipoNotificacion
     CitaSolicitada, CitaConfirmada, CitaRechazada, CitaCancelada, CitaReprogramada,
     Recordatorio24h, Recordatorio2h,
     ResenaNueva, ResenaRespondida, CredencialResuelta, TarjetaActivada,
-    SuscripcionPorVencer, SuscripcionVencida
+    SuscripcionPorVencer, SuscripcionVencida,
+    /// <summary>JQ-16 · CU-05 4D.3: el borrador de una credencial se borrará por inactividad.</summary>
+    BorradorPorEliminarse
 }
 
 public enum CanalNotificacion { Correo, Push }

@@ -205,6 +205,7 @@ public static class RegistroDeServicios
         servicios.AddScoped<INotificaciones, ColaNotificacionesEfCore>();
         servicios.AddScoped<IAuditor, AuditorEfCore>();
         servicios.AddScoped<IRepositorioAuditoria, RepositorioAuditoriaEfCore>();
+        servicios.AddScoped<IRepositorioBorradores, RepositorioBorradoresEfCore>();   // JQ-16
 
         // AddLogging aqui y no en quien llama: varios servicios de este modulo escriben en
         // el registro (la sonda de abajo, y los enviadores y el procesador de correo). Sin
@@ -228,6 +229,7 @@ public static class RegistroDeServicios
         // --- MOD-02 Credenciales ---
         servicios.AddScoped<IRepositorioCredenciales, RepositorioCredencialesEfCore>();
         servicios.AddScoped<IServicioCredenciales, ServicioCredenciales>();
+        servicios.AddScoped<ServicioBorradoresAbandonados>();   // JQ-16, lo corre el planificador
         servicios.AddScoped<IServicioVerificacion, ServicioVerificacion>();
 
         // DECISION DE PRODUCTO REVISABLE (etapa de lanzamiento, sin MOD-08): permite enviar a
