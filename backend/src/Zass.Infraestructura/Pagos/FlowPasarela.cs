@@ -296,7 +296,7 @@ public sealed class FlowPasarela : IPasarelaDePagos
             return Resultado.Falla<CobroIniciado>(registerResult.Codigo!, registerResult.Mensaje!);
 
         var urlParaPagar = $"{registerResult.Valor.Url}?token={registerResult.Valor.Token}";
-        return Resultado.Ok(new CobroIniciado(customerId, urlParaPagar));
+        return Resultado.Ok(new CobroIniciado(registerResult.Valor.Token, urlParaPagar));
     }
 
     public async Task<Resultado<CobroResuelto>> CobrarAsync(
