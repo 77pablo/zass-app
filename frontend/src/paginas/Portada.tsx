@@ -30,7 +30,7 @@ function Cifra({ valor, etiqueta }: { valor: number; etiqueta: string }) {
 /**
  * Lo que la portada tiene que decir mientras no hay datos.
  *
- * Casi todas sus secciones viven tras un `&&` (el mapa, la cinta, las cifras, los recien
+ * Casi todas sus secciones viven tras un `&&` (el mapa, las cifras, los recien
  * llegados): sin datos no se ven, y sin esto desaparecian SIN UNA PALABRA. La API duerme
  * (Render, plan gratis, ~15 min), asi que la primera visita del dia veia media portada muda.
  * Mismo patron que /oficios y /comunas: que esta cargando, que fallo, y como reintentar.
@@ -63,8 +63,6 @@ function EstadoDeLaPortada({ cargas }: { cargas: Cargado<unknown>[] }) {
 
   return null
 }
-
-const OFICIOS_EN_CINTA = ['abogado', 'contador', 'gasfiter', 'arquitecto', 'electricista', 'corredor', 'pintor', 'tasador', 'ingeniero', 'técnico']
 
 /**
  * La portada es corta a proposito: dice que es ZASS!, deja buscar en una barra, muestra la ciudad y la gente real
@@ -148,21 +146,6 @@ export function Portada() {
           )}
         </div>
       </section>
-
-      {rubros.length > 0 && (
-        <div className="cinta" aria-hidden="true">
-          <div className="cinta-pista">
-            {[...rubros, ...rubros].map((r, i) => (
-              <span key={`${r.id}-${i}`} className="cinta-item">{r.nombre}<i /></span>
-            ))}
-          </div>
-          <div className="cinta-pista cinta-pista--inversa">
-            {[...OFICIOS_EN_CINTA, ...OFICIOS_EN_CINTA, ...OFICIOS_EN_CINTA].map((o, i) => (
-              <span key={`${o}-${i}`} className="cinta-chip">{o}</span>
-            ))}
-          </div>
-        </div>
-      )}
 
       {total > 0 && (
         <section className="cifras" aria-label="ZASS! en cifras">
