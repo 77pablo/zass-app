@@ -12,7 +12,7 @@ la rama `plan-joaquin`): esas tienen cosas que ya están hechas.
 ## 0b. JQ-17 — La pantalla de los tres planes (Pablo, 20-nov) · N2
 
 **Decisión de Pablo:** ZASS! tiene tres planes. **El del medio, el Profesional, tiene que ser la elección obvia.**
-Detalle completo en `zass-tareas\postulacion-planes-de-cobro.md` (te lo pasa Pablo en PDF).
+Detalle completo en `zass-tareas/postulacion/07-planes-de-cobro.md` (te lo pasa Pablo en PDF).
 
 | | Esencial | **Profesional** ⭐ | Equipo |
 |---|---|---|---|
