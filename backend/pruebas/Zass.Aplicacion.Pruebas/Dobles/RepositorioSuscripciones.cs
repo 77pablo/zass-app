@@ -213,6 +213,13 @@ public sealed class RepositorioSuscripcionesEnMemoria : IRepositorioSuscripcione
         string clave, CancellationToken ct = default) =>
         Task.FromResult(_base.IntentosDePago.FirstOrDefault(i => i.ClaveIdempotencia == clave));
 
+    public Task<IReadOnlyList<IntentoDePago>> IntentosPorPrefijoDeClaveAsync(
+        string prefijo, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<IntentoDePago>>(_base.IntentosDePago
+            .Where(i => i.ClaveIdempotencia.StartsWith(prefijo, StringComparison.Ordinal))
+            .OrderBy(i => i.CreadoEn)
+            .ToList());
+
     /// <summary>
     /// En memoria no hay <c>FOR UPDATE</c>: devuelve el mismo objeto. Que la segunda
     /// confirmacion ESPERE de verdad en el bloqueo de fila solo lo puede probar

@@ -97,6 +97,9 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
                 EnPrueba: false, VigenteHasta: null, DiasRestantes: 0,
                 RenovacionAutomatica: false));
 
+        var esFundador = s.Plan?.Codigo == PlanFundador;
+        var tarjeta = !string.IsNullOrWhiteSpace(s.ReferenciaPasarela);
+
         return Resultado.Ok(new SuscripcionDto(
             Plan: s.Plan?.Nombre ?? "desconocido",
             Estado: s.Estado.ToString(),
@@ -105,8 +108,25 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
             VigenteHasta: s.VigenteHasta,
             DiasRestantes: s.EstaVigente(ahora) ? s.DiasRestantes(ahora) : 0,
             RenovacionAutomatica: s.RenovacionAutomatica,
-            EsFundador: s.Plan?.Codigo == PlanFundador,
-            TarjetaInscrita: !string.IsNullOrWhiteSpace(s.ReferenciaPasarela)));
+            EsFundador: esFundador,
+            TarjetaInscrita: tarjeta,
+            DiasDeGracia: esFundador && tarjeta && s.EstaVigente(ahora)
+                && await EnGraciaAsync(s, ct)
+                ? Math.Max(1, s.DiasRestantes(ahora))
+                : null));
+    }
+
+    /// <summary>
+    /// ES-1. En gracia = el cobro automatico de ESTE periodo se intento, ninguno de sus
+    /// intentos esta pagado ni en curso, y el ultimo fue rechazado. Se deduce de los intentos
+    /// que ya existen: no hace falta una columna que pueda desincronizarse de ellos.
+    /// </summary>
+    private async Task<bool> EnGraciaAsync(Suscripcion s, CancellationToken ct)
+    {
+        var intentos = await _repo.IntentosPorPrefijoDeClaveAsync(
+            ServicioCobros.ClaveDeCobroAutomatico(s.Id, s.VigenteHasta), ct);
+        return intentos.Count > 0
+            && intentos.All(i => i.Estado == EstadoIntentoPago.Fallido);
     }
 
     public async Task<IReadOnlyList<PlanDto>> PlanesActivosAsync(CancellationToken ct = default)
@@ -261,14 +281,19 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
                 "suscripcion_vencida", "suscripciones", s.Id, ahora,
                 contexto: new { vencioEn = s.VigenteHasta }));
 
-            // Decision de Pablo (20-nov-2026): el cupo se toma sin tarjeta y la tarjeta se pide
-            // al terminar el mes gratis. Si termino sin tarjeta, el cupo vuelve a quedar libre
-            // para otra persona. Con tarjeta no se toca: el cobro tiene sus propias reglas.
+            // Decisiones de Pablo (20-nov-2026): el cupo se toma sin tarjeta y la tarjeta se
+            // pide al terminar el mes gratis; y si la tarjeta falla, hay 7 dias de gracia (ES-1).
+            // Llegar aqui es haber vencido sin pagar, con o sin tarjeta: en los dos casos el
+            // cupo vuelve a quedar libre para otra persona. A quien SI pago no le llega este
+            // camino, porque el cobro le movio VigenteHasta antes (corre primero en la misma
+            // tarea del planificador).
             if (fundador is not null && s.PlanId == fundador.Id
-                && string.IsNullOrWhiteSpace(s.ReferenciaPasarela)
                 && await _repo.LiberarCupoFundadorAsync(s.PerfilPrestadorId, ct))
                 _auditor.Registrar(Auditar.Entrada(
-                    "cupo_fundador_liberado_sin_tarjeta", "perfiles_prestador", s.PerfilPrestadorId, ahora));
+                    string.IsNullOrWhiteSpace(s.ReferenciaPasarela)
+                        ? "cupo_fundador_liberado_sin_tarjeta"
+                        : "cupo_fundador_liberado_sin_pago",
+                    "perfiles_prestador", s.PerfilPrestadorId, ahora));
 
             // Quien pierde la visibilidad tiene derecho a saberlo. Si el perfil ya no tiene
             // dueno (cuenta eliminada) no hay a quien avisarle, y vencer sigue siendo correcto.
@@ -286,6 +311,40 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
 
         await _trabajo.GuardarAsync(ct);
         return expiradas.Count;
+    }
+
+    public async Task AvisarCobroRechazadoAsync(
+        Guid perfilPrestadorId, Guid suscripcionId, DateTime vigenteHasta,
+        CancellationToken ct = default)
+    {
+        var clave = $"CobroRechazado:{suscripcionId:D}:{vigenteHasta:yyyy-MM-dd}";
+
+        // El reintento del dia siguiente tambien puede ser rechazado: el que encuentra la
+        // clave no encola nada. Si dos procesos llegaran a la vez, el unico de TBL-27 (R-18)
+        // es la garantia; esto evita llegar hasta el.
+        if (await _avisos.ExisteAsync(clave, ct)) return;
+
+        var duenos = await _repo.UsuariosDePerfilesAsync(new[] { perfilPrestadorId }, ct);
+        if (!duenos.TryGetValue(perfilPrestadorId, out var usuarioId)) return;
+
+        var ahora = _reloj.Ahora;
+        var s = await _repo.PorIdAsync(suscripcionId, ct);
+        if (s is null) return;
+        var dias = Math.Max(1, s.DiasRestantes(ahora));
+        var fundador = (await _repo.PlanPorIdAsync(s.PlanId, ct))?.Codigo == PlanFundador;
+
+        _avisos.Encolar(new Notificacion
+        {
+            DestinatarioId = usuarioId,
+            Tipo = TipoNotificacion.CobroRechazado,
+            ClaveIdempotencia = clave,
+            Asunto = "No pudimos cobrar tu suscripción a ZASS!",
+            Cuerpo = fundador
+                ? CargaDeAviso.ConCampos(("dias", dias.ToString()), ("fundador", "si"))
+                : CargaDeAviso.ConCampos(("dias", dias.ToString())),
+            ProgramadaPara = ahora,
+        });
+        await _trabajo.GuardarAsync(ct);
     }
 
     /// <summary>

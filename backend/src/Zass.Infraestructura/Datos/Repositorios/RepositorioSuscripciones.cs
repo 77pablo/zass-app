@@ -163,6 +163,15 @@ public sealed class RepositorioSuscripcionesEfCore : IRepositorioSuscripciones
         string clave, CancellationToken ct = default) =>
         _ctx.IntentosDePago.FirstOrDefaultAsync(i => i.ClaveIdempotencia == clave, ct);
 
+    public async Task<IReadOnlyList<IntentoDePago>> IntentosPorPrefijoDeClaveAsync(
+        string prefijo, CancellationToken ct = default) =>
+        // StartsWith se traduce a LIKE 'prefijo%' con los comodines escapados, y usa el
+        // indice unico de la clave.
+        await _ctx.IntentosDePago
+            .Where(i => i.ClaveIdempotencia.StartsWith(prefijo))
+            .OrderBy(i => i.CreadoEn)
+            .ToListAsync(ct);
+
     /// <summary>
     /// <c>SELECT ... FOR UPDATE</c> sobre la fila, igual que TomarBloqueAsync en MOD-06.
     /// Dos confirmaciones del mismo cobro llegando a la vez se ponen en fila aqui, y la
