@@ -671,7 +671,7 @@ public class ApiTarjetasBloqueoIntentosPruebas : IAsyncLifetime
         // Registrar siempre como "prestador" (RolesPublicos solo permite buscador/prestador)
         var reg = await client.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo,
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo,
             contrasena,
             nombre = "Usuario " + sufijo,
             rol = "prestador"
