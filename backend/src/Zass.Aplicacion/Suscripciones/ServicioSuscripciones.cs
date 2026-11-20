@@ -104,7 +104,9 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
             EnPrueba: s.EnPrueba(ahora),
             VigenteHasta: s.VigenteHasta,
             DiasRestantes: s.EstaVigente(ahora) ? s.DiasRestantes(ahora) : 0,
-            RenovacionAutomatica: s.RenovacionAutomatica));
+            RenovacionAutomatica: s.RenovacionAutomatica,
+            EsFundador: s.Plan?.Codigo == PlanFundador,
+            TarjetaInscrita: !string.IsNullOrWhiteSpace(s.ReferenciaPasarela)));
     }
 
     public async Task<IReadOnlyList<PlanDto>> PlanesActivosAsync(CancellationToken ct = default)
@@ -250,6 +252,7 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
 
         var duenos = await _repo.UsuariosDePerfilesAsync(
             expiradas.Select(s => s.PerfilPrestadorId).Distinct().ToList(), ct);
+        var fundador = await _repo.PlanPorCodigoAsync(PlanFundador, ct);
 
         foreach (var s in expiradas)
         {
@@ -257,6 +260,15 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
             _auditor.Registrar(Auditar.Entrada(
                 "suscripcion_vencida", "suscripciones", s.Id, ahora,
                 contexto: new { vencioEn = s.VigenteHasta }));
+
+            // Decision de Pablo (20-nov-2026): el cupo se toma sin tarjeta y la tarjeta se pide
+            // al terminar el mes gratis. Si termino sin tarjeta, el cupo vuelve a quedar libre
+            // para otra persona. Con tarjeta no se toca: el cobro tiene sus propias reglas.
+            if (fundador is not null && s.PlanId == fundador.Id
+                && string.IsNullOrWhiteSpace(s.ReferenciaPasarela)
+                && await _repo.LiberarCupoFundadorAsync(s.PerfilPrestadorId, ct))
+                _auditor.Registrar(Auditar.Entrada(
+                    "cupo_fundador_liberado_sin_tarjeta", "perfiles_prestador", s.PerfilPrestadorId, ahora));
 
             // Quien pierde la visibilidad tiene derecho a saberlo. Si el perfil ya no tiene
             // dueno (cuenta eliminada) no hay a quien avisarle, y vencer sigue siendo correcto.
@@ -308,7 +320,10 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
                 Tipo = TipoNotificacion.SuscripcionPorVencer,
                 ClaveIdempotencia = $"SuscripcionPorVencer:{s.SuscripcionId}:{umbral}",
                 Asunto = "Tu suscripción a ZASS! está por vencer",
-                Cuerpo = CargaDeAviso.ConCampos(("dias", Math.Max(1, s.DiasRestantes).ToString())),
+                Cuerpo = s.FundadorSinTarjeta
+                    ? CargaDeAviso.ConCampos(
+                        ("dias", Math.Max(1, s.DiasRestantes).ToString()), ("sinTarjeta", "si"))
+                    : CargaDeAviso.ConCampos(("dias", Math.Max(1, s.DiasRestantes).ToString())),
                 ProgramadaPara = _reloj.Ahora,
             });
             encolados++;
@@ -397,6 +412,65 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
         return Resultado.Ok(numero.Value);
     }
 
+    public async Task<Resultado<CupoTomadoDto>> TomarCupoFundadorAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        var s = await _repo.UltimaDePrestadorAsync(perfilPrestadorId, ct);
+        if (s is null)
+            return Resultado.Falla<CupoTomadoDto>(
+                Fallas.Conflicto,
+                "Publica tu perfil antes de tomar tu cupo: la suscripción nace al publicarlo.");
+
+        var plan = await _repo.PlanPorCodigoAsync(PlanFundador, ct);
+        if (plan is null || !plan.Activo)
+            return Resultado.Falla<CupoTomadoDto>(
+                Fallas.ReglaDeNegocio, "El plan fundador no esta disponible.");
+
+        // Idempotente: quien ya tiene su cupo (doble clic, o vuelve a la pantalla) recibe el
+        // mismo, sin otro mes gratis.
+        if (s.PlanId == plan.Id && await _repo.CupoFundadorDeAsync(perfilPrestadorId, ct) is { } propio)
+            return Resultado.Ok(new CupoTomadoDto(
+                propio, s.VigenteHasta, !string.IsNullOrWhiteSpace(s.ReferenciaPasarela)));
+
+        // Ya fue fundador y perdio el cupo porque el mes gratis termino sin tarjeta: el mes
+        // gratis es uno solo. Sin esto, tomar, no inscribir, perder y volver a tomar daria
+        // un mes gratis tras otro.
+        if (s.PlanId == plan.Id)
+            return Resultado.Falla<CupoTomadoDto>(
+                Fallas.Conflicto,
+                "Tu mes gratis de fundador ya terminó sin una tarjeta inscrita y el cupo se liberó. "
+                + "Puedes suscribirte al plan mensual.");
+
+        var tomado = await _trabajo.EnTransaccionAsync(async t =>
+        {
+            var numero = await _repo.IntentarReservarCupoFundadorAsync(
+                perfilPrestadorId, _reloj.Ahora, _reloj.Ahora.Add(DuracionReservaPorDefecto), t);
+            if (numero is null) return (short?)null;
+            await _repo.ConfirmarCupoFundadorAsync(perfilPrestadorId, t);
+
+            var mes = await PasarAFundadorConMesGratisAsync(s.Id, medioInscrito: null, t);
+            if (!mes.Exito) throw new InvalidOperationException(mes.Mensaje);
+
+            _auditor.Registrar(Auditar.Entrada(
+                "cupo_fundador_tomado", "perfiles_prestador", perfilPrestadorId, _reloj.Ahora,
+                contexto: new { cupo = numero.Value, sinTarjeta = true }));
+            await _trabajo.GuardarAsync(t);
+            return numero;
+        }, ct);
+
+        if (tomado is null)
+        {
+            var estado = await EstadoDelPlanFundadorAsync(ct);
+            return Resultado.Falla<CupoTomadoDto>(
+                Fallas.Conflicto,
+                (estado.Valor?.Mensaje ?? "El plan fundador está cerrado.")
+                + " Puedes suscribirte al plan mensual.");
+        }
+
+        return Resultado.Ok(new CupoTomadoDto(
+            tomado.Value, s.VigenteHasta, !string.IsNullOrWhiteSpace(s.ReferenciaPasarela)));
+    }
+
     public async Task<Resultado> ConfirmarCupoFundadorAsync(
         Guid perfilPrestadorId, CancellationToken ct = default)
     {
@@ -438,6 +512,12 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
 
         var mesGratis = _reloj.Ahora.AddDays(DiasDeMesGratis);
 
+        // Quien YA es fundador y vuelve a inscribir su tarjeta (cambia de tarjeta, o apreto
+        // «Quiero mi cupo» otra vez) actualiza el medio de pago y nada mas. Antes la vigencia
+        // pasaba a «hoy + 30» cada vez, y repitiendolo el mes gratis no terminaba nunca
+        // (defecto 2 del informe JQ-7).
+        var yaEraFundador = s.PlanId == plan.Id;
+
         s.PlanId = plan.Id;
         s.Estado = EstadoSuscripcion.Prueba;
         s.CanceladaEn = null;
@@ -456,7 +536,8 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
 
         // RN-S7-07. La fecha mas lejana de las dos: a quien le quedaban 45 dias no se le
         // quitan 15 para dejarlo en 30, y a quien le quedaban 3 no se le suman 30 encima.
-        s.VigenteHasta = s.VigenteHasta > mesGratis ? s.VigenteHasta : mesGratis;
+        if (!yaEraFundador)
+            s.VigenteHasta = s.VigenteHasta > mesGratis ? s.VigenteHasta : mesGratis;
 
         _auditor.Registrar(Auditar.Entrada(
             "suscripcion_a_fundador", "suscripciones", s.Id, _reloj.Ahora,
@@ -470,10 +551,13 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
         var ahora = _reloj.Ahora;
         var hasta = ahora.AddDays(dentroDeDias);
         var cercanas = await _repo.VigentesQueVencenAntesDeAsync(ahora, hasta, ct);
+        var fundador = cercanas.Count == 0 ? null : await _repo.PlanPorCodigoAsync(PlanFundador, ct);
 
         return cercanas
             .Select(s => new SuscripcionPorVencer(
-                s.Id, s.PerfilPrestadorId, s.VigenteHasta, s.DiasRestantes(ahora)))
+                s.Id, s.PerfilPrestadorId, s.VigenteHasta, s.DiasRestantes(ahora),
+                FundadorSinTarjeta: fundador is not null && s.PlanId == fundador.Id
+                                    && string.IsNullOrWhiteSpace(s.ReferenciaPasarela)))
             .ToList();
     }
 }

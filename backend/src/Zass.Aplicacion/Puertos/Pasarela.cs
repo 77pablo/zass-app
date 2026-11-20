@@ -120,9 +120,9 @@ public interface IPasarelaDePagos
 }
 
 /// <summary>
-/// Lo que la pasarela necesita saber para cobrar, y nada mas. Sin datos de la persona a
-/// proposito: ninguna de las tres los exige para un cobro web, y mandarlos seria
-/// entregar la lista de prestadores a un tercero sin necesidad.
+/// Lo que la pasarela necesita saber para cobrar. Flow exige el correo de quien paga, y es
+/// el UNICO dato personal que sale de ZASS! hacia la pasarela. Las demas pasarelas podrian
+/// no exigirlos, pero el puerto lo incluye como opcional para no romperse con Flow.
 /// </summary>
 /// <param name="IntentoDePagoId">
 /// NUESTRO identificador. El adaptador lo manda como su propio numero de orden
@@ -161,6 +161,15 @@ public sealed record SolicitudDeCobro(
     /// </para>
     /// </summary>
     public string? MedioInscrito { get; init; }
+
+    /// <summary>
+    /// El correo de quien paga. Flow lo exige para crear el cobro y la inscripcion de
+    /// tarjeta. Es el UNICO dato personal que sale de ZASS! hacia la pasarela.
+    /// Opcional: las demas pasarelas podrian no exigirlo, y las pruebas unitarias lo
+    /// pueden omitir. Va como propiedad init y no como parametro posicional para no
+    /// romper el codigo que ya crea solicitudes de cobro.
+    /// </summary>
+    public string? CorreoDelPagador { get; init; }
 }
 
 /// <summary>
@@ -171,10 +180,25 @@ public sealed record SolicitudDeCobro(
 /// cobrar un peso para validar la tarjeta (algunas pasarelas lo hacen y lo devuelven), eso
 /// es un detalle del adaptador y se resuelve ahi, no en el puerto.
 /// </para>
+///
+/// <para>
+/// Flow exige el correo de quien paga. Las demas pasarelas podrian no exigirlo, pero el
+/// puerto lo incluye como opcional para no romperse con Flow.
+/// </para>
 /// </summary>
 public sealed record SolicitudDeInscripcion(
     Guid IntentoDePagoId,
-    string Descripcion);
+    string Descripcion)
+{
+    /// <summary>
+    /// El correo de quien paga. Flow lo exige para crear la inscripcion de tarjeta. Es el
+    /// UNICO dato personal que sale de ZASS! hacia la pasarela. Opcional: las demas
+    /// pasarelas podrian no exigirlo, y las pruebas unitarias lo pueden omitir. Va como
+    /// propiedad init y no como parametro posicional para no romper el codigo que ya crea
+    /// solicitudes de inscripcion.
+    /// </summary>
+    public string? CorreoDelPagador { get; init; }
+}
 
 /// <summary>El cobro ya creado en la pasarela.</summary>
 public sealed record CobroIniciado(string ReferenciaPasarela, string? UrlParaPagar);

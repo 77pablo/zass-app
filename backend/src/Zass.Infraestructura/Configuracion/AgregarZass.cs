@@ -17,6 +17,7 @@ using Zass.Aplicacion.Suscripciones;
 using Zass.Aplicacion.Resenas;
 using Zass.Aplicacion.Tarjetas;
 using Zass.Aplicacion.Puertos;
+using Zass.Infraestructura.Archivos;
 using Zass.Infraestructura.Correo;
 using Zass.Infraestructura.Fondo;
 using Zass.Infraestructura.Pagos;
@@ -74,6 +75,11 @@ public sealed class OpcionesZass
     /// </summary>
     public string? CorreoAlertasAdmin { get; set; }
 
+    /// <summary>
+    /// Opciones de Flow.cl (la pasarela de pagos real). Se usan solo si Zass:Pasarela = "flow".
+    /// </summary>
+    public OpcionesFlow? Flow { get; set; }
+
     public byte[] ClaveDirecciones()
     {
         byte[] clave;
@@ -95,6 +101,39 @@ public sealed class OpcionesZass
 
         return clave;
     }
+}
+
+/// <summary>
+/// Opciones de Flow.cl. Se leen de Zass:Flow en appsettings.json o variables de entorno.
+/// </summary>
+public sealed class OpcionesFlow
+{
+    /// <summary>
+    /// API Key de Flow (publica, se incluye en cada peticion).
+    /// </summary>
+    public string? ApiKey { get; set; }
+
+    /// <summary>
+    /// Secret Key para firmar las peticiones (HMAC-SHA256). Nunca se envia, solo firma.
+    /// </summary>
+    public string? SecretKey { get; set; }
+
+    /// <summary>
+    /// URL base de Flow. Por defecto https://sandbox.flow.cl/api; en produccion
+    /// https://www.flow.cl/api.
+    /// </summary>
+    public string? UrlBase { get; set; }
+
+    /// <summary>
+    /// URL PUBLICA de la API que recibe los avisos de Flow (ej: https://api.zass.cl/api/pagos/aviso).
+    /// </summary>
+    public string? UrlAvisos { get; set; }
+
+    /// <summary>
+    /// A donde vuelve el navegador despues de pagar o inscribir la tarjeta (API-75). Opcional: si
+    /// falta, sale de UrlAvisos cambiando «/aviso» por «/vuelta».
+    /// </summary>
+    public string? UrlVuelta { get; set; }
 }
 
 /// <summary>
@@ -196,6 +235,11 @@ public static class RegistroDeServicios
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        // Las opciones de Flow NO se validan al arrancar: Zass:Flow solo existe donde se eligio
+        // Zass:Pasarela=flow, y exigirlas siempre dejaria sin arrancar a produccion con la
+        // simulada, a desarrollo y a todas las pruebas. Se exigen al resolver la pasarela
+        // (el caso "flow" del switch de abajo). Se leen como parte de OpcionesZass.Flow.
+
         // Las opciones se leen al RESOLVER, no al registrar. Leerlas aqui mismo
         // congelaria la configuracion que existia en este instante, y se perderia
         // cualquier fuente agregada despues: las variables de entorno de Render en
@@ -228,6 +272,12 @@ public static class RegistroDeServicios
             if (opciones.RevisarContrasenasFiltradas)
                 return sp.GetRequiredService<ContrasenasFiltradasHibp>();
             return sp.GetRequiredService<ContrasenasFiltradasNunca>();
+        });
+
+        // FlowPasarela: HttpClient con timeout de 30s para llamadas a Flow.cl.
+        servicios.AddHttpClient<FlowPasarela>(c =>
+        {
+            c.Timeout = TimeSpan.FromSeconds(30);
         });
 
         // --- Puertos con estado por peticion ---
@@ -279,6 +329,11 @@ public static class RegistroDeServicios
             PermitirSinDocumentos = sp.GetRequiredService<IConfiguration>()
                 .GetValue(OpcionesVerificacion.ClaveDeConfiguracion, false),
         });
+
+        // --- MOD-08 Archivos (JQ-9): la foto del perfil y los documentos de respaldo ---
+        servicios.AddSingleton<IProcesadorDeImagenes, ProcesadorDeImagenesImageSharp>();
+        servicios.AddSingleton<IAlmacenDeArchivos>(sp => ElegirAlmacen(sp));
+        servicios.AddScoped<ServicioFotoDePerfil>();
 
         // --- MOD-03 Catalogo ---
         servicios.AddScoped<IServicioCatalogo, ServicioCatalogo>();
@@ -361,12 +416,13 @@ public static class RegistroDeServicios
                 PasarelaSimulada.NombreDeLaPasarela => new PasarelaSimulada(
                     sp.GetRequiredService<IOptions<OpcionesZass>>(),
                     sp.GetRequiredService<ILogger<PasarelaSimulada>>()),
+                FlowPasarela.NombreDeLaPasarela => CrearFlow(sp),
                 _ => throw new OptionsValidationException(
                     OpcionesZass.Seccion, typeof(OpcionesZass),
                     new[]
                     {
                         $"{ClavePasarela} dice '{nombre}' y no hay adaptador con ese nombre. "
-                        + $"El unico que existe hoy es '{PasarelaSimulada.NombreDeLaPasarela}'.",
+                        + $"Los disponibles hoy son '{PasarelaSimulada.NombreDeLaPasarela}' y 'flow'.",
                     }),
             };
         });
@@ -424,4 +480,74 @@ public static class RegistroDeServicios
 
         return servicios;
     }
+
+    /// <summary>
+    /// Flow, elegido con <c>Zass:Pasarela=flow</c>. Si falta la ApiKey, la SecretKey o la
+    /// URL de avisos, la API NO arranca: un despliegue que pidio Flow y lo tiene mal escrito
+    /// tiene que fallar al tiro, no al primer cobro. Las claves van en Render y en user-secrets,
+    /// nunca en el repositorio (es publico).
+    /// </summary>
+    private static IPasarelaDePagos CrearFlow(IServiceProvider sp)
+    {
+        var flow = sp.GetRequiredService<IOptions<OpcionesZass>>().Value.Flow;
+        var faltan = new List<string>();
+        if (string.IsNullOrWhiteSpace(flow?.ApiKey)) faltan.Add("Zass:Flow:ApiKey");
+        if (string.IsNullOrWhiteSpace(flow?.SecretKey)) faltan.Add("Zass:Flow:SecretKey");
+        if (string.IsNullOrWhiteSpace(flow?.UrlAvisos)) faltan.Add("Zass:Flow:UrlAvisos");
+        if (faltan.Count > 0)
+            throw new OptionsValidationException(
+                OpcionesZass.Seccion, typeof(OpcionesZass),
+                new[] { $"{ClavePasarela} dice 'flow' y falta: {string.Join(", ", faltan)}." });
+
+        return sp.GetRequiredService<FlowPasarela>();
+    }
+
+    /// <summary>
+    /// MOD-08. Quien guarda los archivos, segun <c>Zass:Archivos:Proveedor</c>:
+    /// <list type="bullet">
+    /// <item>"r2": R2 de Cloudflare. Si falta alguna de sus cuatro claves, la API NO arranca: un
+    /// despliegue que pidio R2 y lo tiene mal escrito tiene que fallar al tiro, no al primer subir.</item>
+    /// <item>"local": una carpeta. En Produccion no se acepta (Render borra el disco en cada
+    /// despliegue, y los archivos se perderian sin aviso).</item>
+    /// <item>vacio: la carpeta local fuera de Produccion; en Produccion, deshabilitado (la API
+    /// arranca y subir responde 503 hasta que Pablo ponga R2).</item>
+    /// </list>
+    /// </summary>
+    private static IAlmacenDeArchivos ElegirAlmacen(IServiceProvider sp)
+    {
+        var opciones = sp.GetRequiredService<IConfiguration>()
+            .GetSection(OpcionesArchivos.Seccion).Get<OpcionesArchivos>() ?? new OpcionesArchivos();
+        var entorno = sp.GetRequiredService<IHostEnvironment>();
+        var proveedor = opciones.Proveedor?.Trim().ToLowerInvariant() ?? "";
+
+        static OptionsValidationException Falla(string mensaje) =>
+            new(OpcionesArchivos.Seccion, typeof(OpcionesArchivos), new[] { mensaje });
+
+        switch (proveedor)
+        {
+            case "r2":
+                if (string.IsNullOrWhiteSpace(opciones.R2CuentaId) || string.IsNullOrWhiteSpace(opciones.R2ClaveAcceso)
+                    || string.IsNullOrWhiteSpace(opciones.R2Secreto) || string.IsNullOrWhiteSpace(opciones.R2Balde))
+                    throw Falla("Zass:Archivos:Proveedor dice 'r2' y falta R2CuentaId, R2ClaveAcceso, R2Secreto o R2Balde.");
+                return new AlmacenR2(opciones, sp.GetRequiredService<ILogger<AlmacenR2>>());
+
+            case "local":
+                if (entorno.IsProduction())
+                    throw Falla("Zass:Archivos:Proveedor 'local' no se permite en Produccion: el disco de Render se borra en cada despliegue.");
+                return new AlmacenLocal(CarpetaLocal(opciones));
+
+            case "":
+                return entorno.IsProduction()
+                    ? new AlmacenDeshabilitado()
+                    : new AlmacenLocal(CarpetaLocal(opciones));
+
+            default:
+                throw Falla($"Zass:Archivos:Proveedor dice '{opciones.Proveedor}' y no hay almacen con ese nombre.");
+        }
+    }
+
+    private static string CarpetaLocal(OpcionesArchivos o) =>
+        string.IsNullOrWhiteSpace(o.CarpetaLocal)
+            ? Path.Combine(Path.GetTempPath(), "zass-archivos")
+            : o.CarpetaLocal;
 }

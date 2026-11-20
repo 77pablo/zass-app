@@ -274,12 +274,16 @@ public sealed class ServicioCobros : IServicioCobros
     private async Task<Resultado<IntentoDePagoDto>> PedirElCobroAsync(
         IntentoDePago intento, Plan plan, bool nueva, CancellationToken ct)
     {
+        var correo = await _repo.CorreoDelUsuarioDePerfilAsync(intento.PerfilPrestadorId, ct);
         var cobro = await _pasarela.IniciarCobroAsync(
             new SolicitudDeCobro(
                 IntentoDePagoId: intento.Id,
                 Monto: intento.Monto,
                 Moneda: intento.Moneda,
-                Descripcion: $"ZASS! {plan.Nombre} - {MesesPorCobro} mes"),
+                Descripcion: $"ZASS! {plan.Nombre} - {MesesPorCobro} mes")
+            {
+                CorreoDelPagador = correo,
+            },
             ct);
 
         if (!cobro.Exito || cobro.Valor is null)
@@ -345,6 +349,14 @@ public sealed class ServicioCobros : IServicioCobros
             return Resultado.Falla<IntentoDePagoDto>(
                 Fallas.Conflicto,
                 "Publica tu perfil antes de tomar tu cupo: la suscripción nace al publicarlo.");
+
+        // Desde el 20-nov-2026 el cupo se toma sin tarjeta (API-69) y esto es SOLO inscribir
+        // la tarjeta de quien ya tiene su cupo. Sin este control, inscribir una tarjeta seria
+        // otra puerta para tomar un cupo, y con un mes gratis que no pasa por TomarCupo.
+        if (await _repo.CupoFundadorDeAsync(perfilPrestadorId, ct) is null)
+            return Resultado.Falla<IntentoDePagoDto>(
+                Fallas.Conflicto,
+                "Primero toma tu cupo de fundador en la página de planes; la tarjeta se inscribe después.");
 
         var intento = await _trabajo.EnTransaccionAsync(async t =>
         {
@@ -415,10 +427,14 @@ public sealed class ServicioCobros : IServicioCobros
     private async Task<Resultado<IntentoDePagoDto>> PedirLaInscripcionAsync(
         IntentoDePago intento, Plan plan, bool nueva, CancellationToken ct)
     {
+        var correo = await _repo.CorreoDelUsuarioDePerfilAsync(intento.PerfilPrestadorId, ct);
         var inscripcion = await _pasarela.IniciarInscripcionAsync(
             new SolicitudDeInscripcion(
                 IntentoDePagoId: intento.Id,
-                Descripcion: $"ZASS! {plan.Nombre} - inscripcion del medio de pago"),
+                Descripcion: $"ZASS! {plan.Nombre} - inscripcion del medio de pago")
+            {
+                CorreoDelPagador = correo,
+            },
             ct);
 
         if (!inscripcion.Exito || inscripcion.Valor is null)
@@ -649,6 +665,7 @@ public sealed class ServicioCobros : IServicioCobros
             // La salida a internet, FUERA de la transaccion, por lo mismo que en
             // PedirElCobroAsync: una llamada de red con una transaccion abierta deja filas
             // bloqueadas el tiempo que tarde la pasarela en contestar.
+            var correo = await _repo.CorreoDelUsuarioDePerfilAsync(s.PerfilPrestadorId, ct);
             var cobro = await _pasarela.CobrarAsync(
                 new SolicitudDeCobro(
                     IntentoDePagoId: intento.Id,
@@ -657,6 +674,7 @@ public sealed class ServicioCobros : IServicioCobros
                     Descripcion: $"ZASS! {plan.Nombre} - {MesesPorCobro} mes")
                 {
                     MedioInscrito = s.ReferenciaPasarela,
+                    CorreoDelPagador = correo,
                 },
                 ct);
 
@@ -745,11 +763,9 @@ public sealed class ServicioCobros : IServicioCobros
             {
                 intento.MarcarFallido(_reloj.Ahora, r.MotivoFallo);
 
-                // Una inscripcion rechazada suelta el cupo al tiro en vez de dejarlo
-                // bloqueado los 25 minutos de la reserva: el cupo 50 es escaso y quien no
-                // pudo inscribir su medio de pago no lo esta usando.
-                if (intento.Tipo == TipoDeIntento.Inscripcion)
-                    await _suscripciones.LiberarCupoFundadorAsync(intento.PerfilPrestadorId, t);
+                // Una inscripcion rechazada NO suelta el cupo (20-nov-2026): el cupo se tomo sin
+                // tarjeta y es de la persona hasta que termine su mes gratis. Puede probar con
+                // otra tarjeta; si el mes termina sin ninguna, lo libera el trabajo diario.
 
                 _auditor.Registrar(Auditar.Entrada(
                     "cobro_rechazado", "intentos_de_pago", intento.Id, _reloj.Ahora,
@@ -778,15 +794,50 @@ public sealed class ServicioCobros : IServicioCobros
                     "El monto confirmado no coincide con el del cobro. No se registró nada.");
             }
 
+            // RN-S7-01 y «al cupo 50 se cierra» (decisión de Pablo, 12-nov): una inscripcion solo
+            // hace fundador a quien tiene un cupo. Si la reserva vencio y el cupo lo tomo otra
+            // persona, el aviso puede llegar igual (la persona inscribio la tarjeta tarde):
+            // antes se ignoraba el resultado de confirmar y quedaba un fundador SIN cupo, y se
+            // podian pasar de 50 (defecto 1 del informe JQ-7). Se mira ANTES de marcar pagado.
+            //
+            // Si todavia queda un cupo libre, se le da ese (decisión de Pablo, 20-nov): rechazar
+            // a alguien que ya inscribio su tarjeta mientras sobran cupos no protege nada. Solo
+            // con los 50 tomados se le dice que no alcanzo.
+            if (intento.Tipo == TipoDeIntento.Inscripcion)
+            {
+                var cupo = await _suscripciones.ConfirmarCupoFundadorAsync(intento.PerfilPrestadorId, t);
+                if (!cupo.Exito)
+                {
+                    var otro = await _suscripciones.ReservarCupoFundadorAsync(intento.PerfilPrestadorId, ct: t);
+                    if (otro.Exito)
+                        cupo = await _suscripciones.ConfirmarCupoFundadorAsync(intento.PerfilPrestadorId, t);
+                }
+                if (!cupo.Exito)
+                {
+                    const string sinCupo =
+                        "El cupo que habías reservado venció y mientras tanto se tomaron todos los del plan fundador.";
+                    intento.MarcarFallido(_reloj.Ahora, sinCupo);
+                    _auditor.Registrar(Auditar.Entrada(
+                        "inscripcion_sin_cupo", "intentos_de_pago", intento.Id, _reloj.Ahora,
+                        contexto: new { perfil = intento.PerfilPrestadorId }));
+                    await _trabajo.GuardarAsync(t);
+
+                    // Exito del caso de uso y no del cupo, igual que un rechazo de la tarjeta:
+                    // la pasarela no tiene que reintentar, y la pantalla lo cuenta con calma.
+                    return Resultado.Ok(new ConfirmacionDto(
+                        intento.Id, Aprobado: false, intento.Estado.ToString(), null,
+                        sinCupo + " No se cobró nada.", Nueva: true));
+                }
+            }
+
             intento.MarcarPagado(_reloj.Ahora);
             if (r.ReferenciaPasarela is not null) intento.ReferenciaPasarela = r.ReferenciaPasarela;
 
             // RN-S7-01: una INSCRIPCION no extiende un mes pagado ni crea fila de pago,
-            // porque no se cobro nada. Lo que hace es dejar el cupo definitivo y arrancar
-            // el mes gratis.
+            // porque no se cobro nada. Lo que hace es dejar el cupo definitivo (ya hecho
+            // arriba) y arrancar el mes gratis.
             if (intento.Tipo == TipoDeIntento.Inscripcion)
             {
-                await _suscripciones.ConfirmarCupoFundadorAsync(intento.PerfilPrestadorId, t);
 
                 var cambio = await _suscripciones.PasarAFundadorConMesGratisAsync(
                     intento.SuscripcionId, intento.ReferenciaPasarela, t);

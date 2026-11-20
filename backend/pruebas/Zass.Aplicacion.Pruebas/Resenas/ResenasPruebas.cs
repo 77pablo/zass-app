@@ -140,6 +140,32 @@ public class ResenasPruebas
         Assert.Equal(Ahora, Assert.Single(_repo.Contactos).OcurridoEn);
     }
 
+    // JQ-5: la ficha registra al tocar WhatsApp, llamar o correo, y dos toques casi a la vez no
+    // pueden dejar dos filas. La carrera de verdad se mide contra PostgreSQL (integración); aquí
+    // se fija que el registro pase por el cerrojo del prestador y por una transacción.
+    [Fact]
+    public async Task Registrar_un_contacto_toma_el_cerrojo_del_prestador_y_confirma()
+    {
+        var r = await _servicio.RegistrarContactoAsync(_ana.Id, _perfil.Id, OrigenContacto.Ficha, CanalContacto.Whatsapp);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(1, _repo.Cerrojos);
+        Assert.Equal(1, _repo.Confirmadas);
+        Assert.Equal(CanalContacto.Whatsapp, Assert.Single(_repo.Contactos).Canal);
+    }
+
+    [Fact]
+    public async Task Un_segundo_registro_tambien_pasa_por_el_cerrojo_y_devuelve_el_primero()
+    {
+        var primero = await _servicio.RegistrarContactoAsync(_ana.Id, _perfil.Id, OrigenContacto.Ficha, CanalContacto.Whatsapp);
+        var segundo = await _servicio.RegistrarContactoAsync(_ana.Id, _perfil.Id, OrigenContacto.Ficha, CanalContacto.Telefono);
+
+        Assert.Equal(primero.Valor, segundo.Valor);
+        Assert.Equal(2, _repo.Cerrojos);
+        // Se guarda solo el primer canal: es una interacción, no un toque.
+        Assert.Equal(CanalContacto.Whatsapp, Assert.Single(_repo.Contactos).Canal);
+    }
+
     [Fact]
     public async Task Despues_de_reseñar_un_contacto_nuevo_abre_otra_interaccion()
     {

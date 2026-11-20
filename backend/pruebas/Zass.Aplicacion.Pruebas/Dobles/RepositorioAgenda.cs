@@ -243,6 +243,9 @@ public sealed class RepositorioAgendaEnMemoria : IRepositorioAgenda
     public Task<Cita?> CitaParaCambioAsync(Guid id, CancellationToken ct = default) =>
         CitaPorIdAsync(id, ct);
 
+    public Task<Cita?> CitaParaReenviarAsync(Guid id, CancellationToken ct = default) =>
+        CitaPorIdAsync(id, ct);
+
     /// <summary>Cuántas veces se pidió el bloqueo ordenado de CC-06.</summary>
     public int BloqueosDeDosFilas { get; private set; }
 
@@ -273,4 +276,14 @@ public sealed class RepositorioAgendaEnMemoria : IRepositorioAgenda
 
     public void AgregarCita(Cita cita) => _base.Citas.Add(cita);
     public void AgregarCambio(CambioCita cambio) => _base.CambiosCita.Add(cambio);
+
+    // ------------------------------------------------------- CS-13: reenviar recordatorio
+
+    public Task<int> ContarReenviosRecordatorioAsync(
+        Guid citaId, string prefijoHoy, CancellationToken ct = default)
+    {
+        var count = _base.Notificaciones.Count(n =>
+            n.CitaId == citaId && n.ClaveIdempotencia.StartsWith(prefijoHoy));
+        return Task.FromResult(count);
+    }
 }

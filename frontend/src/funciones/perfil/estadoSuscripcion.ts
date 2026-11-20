@@ -9,7 +9,7 @@ export interface EstadoDeSuscripcion {
 /** Lo que el servidor devuelve (200, no 404) cuando el perfil todavia no publico. */
 const SIN_SUSCRIPCION = 'sin suscripcion'
 
-function fechaLarga(iso: string | null): string | null {
+export function fechaLarga(iso: string | null): string | null {
   if (iso === null) return null
   const f = new Date(iso)
   if (Number.isNaN(f.getTime())) return null

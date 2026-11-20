@@ -17,6 +17,8 @@ import { capitalizar, duracion, pesos } from '../marco/texto'
 import { useTitulo } from '../marco/useTitulo'
 import { useSesion } from '../sesion/contexto'
 import { EditorDeZonas } from './EditorDeZonas'
+import { TarjetaDelFundador, debePedirTarjeta } from './TarjetaDelFundador'
+import { FotoDePerfil } from './FotoDePerfil'
 import { MisCredenciales } from './MisCredenciales'
 import { useMeta } from '../marco/useMeta'
 import { PaginaCargando } from '../marco/PaginaCargando'
@@ -150,7 +152,7 @@ export function MiFicha() {
     <div className="contenedor ficha-pagina">
       <header className="mi-cabecera">
         <div className="persona">
-          <Monograma nombre={perfil.nombrePublico} tamano="g" />
+          <Monograma nombre={perfil.nombrePublico} tamano="g" foto={perfil.urlFoto} />
           <div>
             <p className="sobretitulo sobretitulo--tinta">Mi ficha</p>
             <h1>{perfil.nombrePublico}</h1>
@@ -158,6 +160,7 @@ export function MiFicha() {
               {[rubro && capitalizar(rubro.nombre), perfil.zonaPrincipal].filter(Boolean).join(' · ') || 'Aún sin oficio ni barrio'}
             </p>
             <p className="persona-detalle"><Link to="/mi-agenda">Mi agenda</Link> · <Link to="/mis-citas">Mis citas</Link></p>
+            <FotoDePerfil tieneFoto={Boolean(perfil.urlFoto)} alCambiar={recargar} />
             <div className="fila-etiquetas">
               <span className={publicada && !sinVisibilidad ? 'sello' : 'dato'}>
                 {publicada ? (sinVisibilidad ? 'Publicada, pero fuera de las búsquedas' : 'Publicada: la ven en las búsquedas') : perfil.estado === 'Despublicado' ? 'En pausa: nadie la ve' : 'Borrador: nadie la ve todavía'}
@@ -185,6 +188,9 @@ export function MiFicha() {
 
       {avisoAccion && <p className="aviso-linea" role="alert">{avisoAccion}</p>}
       {estadoSusc?.alerta && <p className="aviso-linea" role="status">{estadoSusc.texto}</p>}
+      {suscripcion !== null && debePedirTarjeta(suscripcion) && (
+        <TarjetaDelFundador suscripcion={suscripcion} />
+      )}
 
       {!publicada && (
         <section className="guia" aria-label="Lo que falta para publicar">
@@ -283,8 +289,7 @@ export function MiFicha() {
       <MisCredenciales credenciales={credenciales} alCambiar={recargar} />
 
       <p className="letra-chica">
-        Por ahora no puedes subir tu foto, tus títulos ni tu dirección.
-        Mientras tanto, tu cara en la ficha son tus iniciales.
+        Por ahora no puedes cambiar tu dirección desde aquí.
       </p>
     </div>
   )
