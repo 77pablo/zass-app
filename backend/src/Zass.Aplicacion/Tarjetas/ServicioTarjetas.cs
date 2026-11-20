@@ -253,7 +253,7 @@ public sealed class ServicioTarjetas : IServicioTarjetas
                 // Verificar si este fallo es el 5.o en una ventana de 15 min -> bloqueo y aviso a admin
                 // Contar los fallos en los ultimos 15 minutos (incluyendo el actual que ya se guardo)
                 var ahora = _reloj.Ahora;
-                var ventana15Min = ahora.AddMinutes(-15);
+                var ventana15Min = ahora.AddHours(-15);
                 var cantidadFallos = await _auditoria.ContarActivacionesFallidasAsync(tarjeta.Id, ventana15Min, ahora, ct);
                 
                 if (cantidadFallos >= 5)
@@ -323,7 +323,7 @@ public sealed class ServicioTarjetas : IServicioTarjetas
         for (int i = 0; i < fechasDeFallos.Count; i++)
         {
             var fallo = fechasDeFallos[i];
-            var inicioVentana = fallo.AddMinutes(-15);
+            var inicioVentana = fallo.AddHours(-15);
             
             // Contar cuantos fallos hay en [F-15min, F]
             // Como la lista ya viene ordenada, podemos contar desde el inicio hasta i
