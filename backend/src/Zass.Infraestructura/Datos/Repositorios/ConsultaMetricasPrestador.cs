@@ -16,7 +16,7 @@ public sealed class ConsultaMetricasPrestadorEfCore : IConsultaMetricasPrestador
         var desde30 = ahora.AddDays(-30);
 
         var contactos = _ctx.Contactos.AsNoTracking()
-            .Where(c => c.PerfilPrestadorId == perfilPrestadorId && c.OcurridoEn <= ahora);
+            .Where(c => c.OcurridoEn <= ahora);
         var c7 = await contactos.CountAsync(c => c.OcurridoEn >= desde7, ct);
         var c30 = await contactos.CountAsync(c => c.OcurridoEn >= desde30, ct);
         var cTotal = await contactos.CountAsync(ct);
