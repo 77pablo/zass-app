@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
 using Zass.Dominio.Identidad;
@@ -141,45 +142,61 @@ public class ApiTarjetasBloqueoAlertaPruebas : IAsyncLifetime
     {
         using var ctx = ContextoDePrueba.Crear();
         // Borrar TODOS los usuarios de prueba que empiezan con apitj- (de cualquier corrida anterior)
-        // Usamos un bloque PL/pgSQL con delimitador $cleanup$ para evitar conflictos con verbatim strings C#
+        // Usamos ExecuteSqlRawAsync separado para cada tabla con try-catch para tablas que pueden no existir
+        // Orden: tablas con foreign keys primero, luego tablas principales
+        
+        // 1. Tablas dependientes (foreign keys hacia perfiles_prestador/usuarios)
         await ctx.Database.ExecuteSqlRawAsync(
             """
-            DO $cleanup$
-            BEGIN
-                -- Tablas que siempre existen: borrar solo datos de prueba (correo ILIKE 'apitj-%')
-                DELETE FROM tarjetas WHERE perfil_prestador_id IN (SELECT id FROM perfiles_prestador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%'))
-                   OR (perfil_prestador_id IS NULL AND estado = 'Emitida');
-                DELETE FROM citas;
-                DELETE FROM cupos_fundador;
-                DELETE FROM suscripciones;
-                DELETE FROM perfiles_prestador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
-                DELETE FROM auditoria WHERE actor_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%') OR entidad_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
-                DELETE FROM notificaciones WHERE destinatario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
-                DELETE FROM sesiones WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
-                DELETE FROM perfiles_buscador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
-                DELETE FROM usuarios WHERE correo ILIKE 'apitj-%';
-
-                -- Tablas que pueden no existir en algunos entornos: ignorar si no existen
-                BEGIN
-                    DELETE FROM citas_copia;
-                EXCEPTION WHEN undefined_table THEN
-                    NULL;
-                END;
-
-                BEGIN
-                    DELETE FROM trabajos_de_fondo;
-                EXCEPTION WHEN undefined_table THEN
-                    NULL;
-                END;
-
-                BEGIN
-                    DELETE FROM __EFMigrationsHistory;
-                EXCEPTION WHEN undefined_table THEN
-                    NULL;
-                END;
-            END;
-            $cleanup$;
+            DELETE FROM tarjetas WHERE perfil_prestador_id IN (SELECT id FROM perfiles_prestador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%'))
+               OR (perfil_prestador_id IS NULL AND estado = 'Emitida');
             """);
+        
+        // 2. Tablas que pueden no existir - usar try-catch
+        await EjecutarDeleteSiExiste(ctx, "citas_copia");
+        await EjecutarDeleteSiExiste(ctx, "trabajos_de_fondo");
+        await EjecutarDeleteSiExiste(ctx, "__EFMigrationsHistory");
+        
+        // 3. Tablas principales que siempre existen
+        await ctx.Database.ExecuteSqlRawAsync("DELETE FROM citas;");
+        await ctx.Database.ExecuteSqlRawAsync("DELETE FROM cupos_fundador;");
+        await ctx.Database.ExecuteSqlRawAsync("DELETE FROM suscripciones;");
+        await ctx.Database.ExecuteSqlRawAsync(
+            """
+            DELETE FROM perfiles_prestador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
+            """);
+        await ctx.Database.ExecuteSqlRawAsync(
+            """
+            DELETE FROM auditoria WHERE actor_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%') OR entidad_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
+            """);
+        await ctx.Database.ExecuteSqlRawAsync(
+            """
+            DELETE FROM notificaciones WHERE destinatario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
+            """);
+        await ctx.Database.ExecuteSqlRawAsync(
+            """
+            DELETE FROM sesiones WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
+            """);
+        await ctx.Database.ExecuteSqlRawAsync(
+            """
+            DELETE FROM perfiles_buscador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
+            """);
+        await ctx.Database.ExecuteSqlRawAsync(
+            """
+            DELETE FROM usuarios WHERE correo ILIKE 'apitj-%';
+            """);
+    }
+
+    private static async Task EjecutarDeleteSiExiste(ZassDbContext ctx, string tabla)
+    {
+        try
+        {
+            await ctx.Database.ExecuteSqlRawAsync($"DELETE FROM {tabla};");
+        }
+        catch (Npgsql.PostgresException ex) when (ex.SqlState == "42P01") // undefined_table
+        {
+            // Tabla no existe, ignorar
+        }
     }
 
     public async Task DisposeAsync()
