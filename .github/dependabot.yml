@@ -28,6 +28,16 @@ updates:
         update-types: ["minor", "patch"]
     commit-message:
       prefix: "deps"
+    ignore:
+      # La version mayor de estos paquetes va atada a la de .NET: se sube a mano en una migracion (ver #124).
+      - dependency-name: "dotnet-ef"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "Microsoft.EntityFrameworkCore*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "Npgsql*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "Microsoft.AspNetCore*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
