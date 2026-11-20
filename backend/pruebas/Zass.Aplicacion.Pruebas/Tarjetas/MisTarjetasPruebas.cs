@@ -18,12 +18,14 @@ public class MisTarjetasPruebas
     private readonly RepositorioTarjetasEnMemoria _repo = new();
     private readonly BaseEnMemoria _base = new();
     private readonly RelojFijo _reloj = new(Ahora);
+    private readonly SecretosDeterministas _secretos = new();
+    private readonly AuditoriaEnMemoria _auditor = new();
     private readonly ServicioTarjetas _servicio;
 
     private readonly Guid _mio = Guid.NewGuid();
     private readonly Guid _otro = Guid.NewGuid();
 
-    public MisTarjetasPruebas() => _servicio = new ServicioTarjetas(_repo, _base, _reloj);
+    public MisTarjetasPruebas() => _servicio = new ServicioTarjetas(_repo, _base, _reloj, _auditor, _secretos);
 
     private Tarjeta Sembrar(Guid dueno, EstadoTarjeta estado = EstadoTarjeta.Activa, DateTime? desactivadaEn = null)
     {

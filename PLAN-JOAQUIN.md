@@ -181,6 +181,12 @@ Cuántas veces vieron su ficha, cuántos escaneos tuvo su tarjeta y cuántos con
 
 ### JQ-10 — Rescate: la comuna que desaparece cuando hay distancia · N2 · chica (agregada el 17-nov)
 
+> **✅ CUBIERTA, no la hagas (Pablo, 18-nov).** El mismo arreglo entró en el **PR #106**
+> (`web/buscador-citas`, cambio «B3»): la comuna se ve siempre y primero, y la distancia al lado. Tiene su
+> prueba en `TarjetaPersona.prueba.tsx` y su mutación (volver a `p.zona && !p.distancia`) cae. No hagas el
+> `cherry-pick` de `b0e7b8d`: chocaría con el #106. Si al revisar el #106 ves algo distinto de lo que
+> pedía esta tarea (por ejemplo, el pin repetido), coméntalo en ese PR.
+
 **Ya está hecho y con pruebas, pero nunca llegó a `main`.** Lo dejó un agente el 13-nov y quedó en
 una rama que nadie fusionó. Pablo decidió el 17-nov que va a tu carril, porque es búsqueda.
 
