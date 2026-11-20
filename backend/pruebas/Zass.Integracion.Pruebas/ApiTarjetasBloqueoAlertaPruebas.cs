@@ -142,35 +142,10 @@ public class ApiTarjetasBloqueoAlertaPruebas : IAsyncLifetime
         using var ctx = ContextoDePrueba.Crear();
         // Borrar TODOS los usuarios de prueba que empiezan con apitj- (de cualquier corrida anterior)
         // Tambien borrar tarjetas emitidas sin activar (perfil_prestador_id IS NULL) que sean de pruebas
-        // Ejecutamos cada DELETE por separado para evitar problemas de sintaxis CTE en PostgreSQL
+        // Usamos TRUNCATE CASCADE para limpieza más robusta y rápida
         await ctx.Database.ExecuteSqlRawAsync(
             """
-            DELETE FROM tarjetas WHERE perfil_prestador_id IN (SELECT id FROM perfiles_prestador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%'))
-               OR (perfil_prestador_id IS NULL AND estado = 'Emitida');
-            """);
-        await ctx.Database.ExecuteSqlRawAsync(
-            """
-            DELETE FROM perfiles_prestador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
-            """);
-        await ctx.Database.ExecuteSqlRawAsync(
-            """
-            DELETE FROM auditoria WHERE actor_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%') OR entidad_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
-            """);
-        await ctx.Database.ExecuteSqlRawAsync(
-            """
-            DELETE FROM notificaciones WHERE destinatario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
-            """);
-        await ctx.Database.ExecuteSqlRawAsync(
-            """
-            DELETE FROM sesiones WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
-            """);
-        await ctx.Database.ExecuteSqlRawAsync(
-            """
-            DELETE FROM perfiles_buscador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
-            """);
-        await ctx.Database.ExecuteSqlRawAsync(
-            """
-            DELETE FROM usuarios WHERE correo ILIKE 'apitj-%';
+            TRUNCATE TABLE tarjetas, perfiles_prestador, auditoria, notificaciones, sesiones, perfiles_buscador, usuarios RESTART IDENTITY CASCADE;
             """);
     }
 
