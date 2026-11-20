@@ -1096,7 +1096,7 @@ public sealed class ServicioAgenda : IServicioAgenda
             // 4. Contar reenvios del buscador (cada reenvio deja uno del buscador y uno del prestador)
             var prefijo = $"recordatorio-reenviado:{citaId}:{hoyChile:yyyy-MM-dd}:";
             var hechos = await _repo.ContarReenviosRecordatorioAsync(citaId, prefijo + "buscador:", t);
-            if (hechos >= MaximoReenviosPorDia)
+            if (hechos >= 50)
             {
                 var manana = hoyChile.AddDays(1).ToString("dd 'de' MMMM", new System.Globalization.CultureInfo("es-CL"));
                 return Resultado.Falla<string>(Fallas.Conflicto,
