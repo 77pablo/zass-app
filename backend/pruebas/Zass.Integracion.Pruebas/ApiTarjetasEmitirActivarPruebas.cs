@@ -5,6 +5,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Zass.Api.Endpoints;
+using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
 using Zass.Dominio.Identidad;
 using Zass.Dominio.Tarjetas;
@@ -531,4 +532,540 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
         await _app.DisposeAsync();
     }
 
+}
+
+/// <summary>
+/// Reloj fijo para pruebas de bloqueo por intentos: permite avanzar el tiempo.
+/// </summary>
+internal sealed class RelojFijo : IRelojSistema
+{
+    private DateTime _ahora;
+    public RelojFijo(DateTime ahora) => _ahora = ahora;
+    public DateTime Ahora => _ahora;
+    public void Avanzar(TimeSpan cuanto) => _ahora = _ahora.Add(cuanto);
+}
+
+/// <summary>
+/// Variante de AplicacionConProxy que permite inyectar un IRelojSistema personalizado.
+/// Usado para pruebas que controlan el tiempo (bloqueo por intentos, ventanas temporales).
+/// </summary>
+public sealed class AplicacionConReloj : WebApplicationFactory<Program>
+{
+    private readonly Dictionary<string, string?> _ajustes;
+    private readonly IRelojSistema _reloj;
+
+    public AplicacionConReloj(
+        IRelojSistema reloj,
+        string? proxies = null, int limitePublico = 10_000, int? saltos = null,
+        string? cadena = null, string entorno = "Development",
+        Dictionary<string, string?>? extra = null, int? limiteSalud = null)
+    {
+        _reloj = reloj;
+        _entorno = entorno;
+        _ajustes = new Dictionary<string, string?>
+        {
+            ["Zass:CadenaConexion"] = cadena ?? Conexion.Cadena,
+            ["Zass:ClaveDireccionesBase64"] =
+                Convert.ToBase64String(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray()),
+            ["Zass:SecretoAvisoPagos"] =
+                "secreto-de-prueba-del-aviso-0123456789ab", // 40 caracteres
+            ["Zass:Tasa:A"] = "10000", ["Zass:Tasa:G"] = "10000", ["Zass:Tasa:S"] = "10000",
+            ["Zass:Tasa:P"] = limitePublico.ToString(),
+            ["Zass:RevisarContrasenasFiltradas"] = "false",
+            ["Zass:Fondo:Activo"] = "false",
+        };
+        if (limiteSalud is not null) _ajustes["Zass:Tasa:Salud"] = limiteSalud.ToString();
+        if (proxies is not null) _ajustes[ProxiesDeConfianza.ClaveRedes] = proxies;
+        if (saltos is not null) _ajustes[ProxiesDeConfianza.ClaveSaltos] = saltos.ToString();
+        if (extra is not null) foreach (var (k, v) in extra) _ajustes[k] = v;
+    }
+
+    private string _entorno;
+
+    protected override void ConfigureWebHost(IWebHostBuilder constructor)
+    {
+        constructor.UseEnvironment(_entorno);
+        constructor.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(_ajustes));
+        constructor.ConfigureServices(s =>
+        {
+            s.AddTransient<IStartupFilter, FiltroDeProxy>();
+            // Reemplazar el reloj del sistema con el nuestro
+            s.AddSingleton(_reloj);
+        });
+    }
+
+    private sealed class FiltroDeProxy : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> siguiente) => app =>
+        {
+            app.Use(async (http, sig) =>
+            {
+                var remota = http.Request.Headers[AplicacionConProxy.CabeceraRemota].ToString();
+                http.Connection.RemoteIpAddress = IPAddress.Parse(
+                    string.IsNullOrEmpty(remota) ? "127.0.0.1" : remota);
+                await sig();
+            });
+            siguiente(app);
+        };
+    }
+
+    public HttpClient Cliente(bool https = true) => CreateClient(new WebApplicationFactoryClientOptions
+    {
+        AllowAutoRedirect = false,
+        BaseAddress = new Uri(https ? "https://localhost" : "http://localhost"),
+    });
+}
+
+/// <summary>
+/// Pruebas del bloqueo por 5 intentos fallidos en 15 minutos (API-55 4B.5).
+/// Usan un reloj fijo para controlar las ventanas temporales.
+/// </summary>
+public class ApiTarjetasBloqueoIntentosPruebas : IAsyncLifetime
+{
+    private readonly RelojFijo _reloj;
+    private readonly AplicacionConReloj _app;
+    private HttpClient _admin = null!;
+    private HttpClient _prestador = null!;
+    private HttpClient _otroHttp = null!;
+    private Guid _perfilPrestadorId;
+    private string _marca = "";
+    private string _slug = "";
+
+    public ApiTarjetasBloqueoIntentosPruebas()
+    {
+        _reloj = new RelojFijo(new DateTime(2026, 11, 15, 12, 0, 0, DateTimeKind.Utc));
+        _app = new AplicacionConReloj(_reloj);
+    }
+
+    public async Task InitializeAsync()
+    {
+        var cliente = _app.Cliente();
+
+        // Limpiar datos previos
+        await LimpiarTodosDatosPruebaAsync();
+
+        _marca = Guid.NewGuid().ToString("N")[..12];
+        _slug = $"apitj-bloqueo-{_marca}";
+
+        // Crear y autenticar usuarios
+        _admin = await CrearYAutenticarAsync(cliente, "admin", "administrador");
+        _prestador = await CrearYAutenticarAsync(cliente, "prestador");
+        _perfilPrestadorId = (await ObtenerPerfilIdAsync($"apitj-bloqueo-prestador-{_marca}@zass.local"))!.Value;
+        _otroHttp = await CrearYAutenticarAsync(cliente, "otro");
+    }
+
+    private async Task<HttpClient> CrearYAutenticarAsync(HttpClient client, string sufijo, string rol = "prestador")
+    {
+        var correo = $"apitj-bloqueo-{sufijo}-{_marca}@zass.local";
+        var contrasena = "contrasena-larga-1";
+        var rolRegistro = "prestador";
+
+        var reg = await client.PostAsJsonAsync("/api/auth/registro", new
+        {
+            correo,
+            contrasena,
+            nombre = "Usuario " + sufijo,
+            rol = rolRegistro
+        });
+        reg.EnsureSuccessStatusCode();
+
+        // Verificar correo
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var usuario = await ctx.Usuarios.SingleAsync(u => u.Correo == correo);
+            var aviso = await ctx.Notificaciones
+                .Where(n => n.DestinatarioId == usuario.Id
+                            && n.Tipo == TipoNotificacion.CorreoVerificacion)
+                .OrderByDescending(n => n.ProgramadaPara).FirstAsync();
+            var token = Zass.Aplicacion.Puertos.CargaDeAviso.LeerToken(aviso.Cuerpo)!;
+            await client.PostAsJsonAsync("/api/auth/correo/verificar", new { token });
+            usuario.CorreoVerificado = true;
+
+            if (rol == "administrador")
+            {
+                var rolAdmin = await ctx.Roles.FirstAsync(r => r.Codigo == "administrador");
+                usuario.Roles.Add(new UsuarioRol { UsuarioId = usuario.Id, RolId = rolAdmin.Id, AsignadoEn = DateTime.UtcNow });
+            }
+
+            var rubro = await ctx.Rubros.FirstAsync(r => r.Activo);
+            var perfilExistente = await ctx.PerfilesPrestador.SingleOrDefaultAsync(p => p.UsuarioId == usuario.Id);
+            var slugEsperado = sufijo == "prestador" ? _slug : $"apitj-bloqueo-{sufijo}-{_marca}";
+            if (perfilExistente == null)
+            {
+                var perfil = new PerfilPrestador
+                {
+                    UsuarioId = usuario.Id,
+                    RubroId = rubro.Id,
+                    NombrePublico = "Tarjetas " + sufijo,
+                    Slug = slugEsperado,
+                    Estado = EstadoPerfil.Publicado,
+                    PublicadoEn = _reloj.Ahora.AddDays(-1),
+                };
+                ctx.PerfilesPrestador.Add(perfil);
+            }
+            else
+            {
+                perfilExistente.Estado = EstadoPerfil.Publicado;
+                perfilExistente.PublicadoEn = _reloj.Ahora.AddDays(-1);
+                perfilExistente.Slug = slugEsperado;
+            }
+            await ctx.SaveChangesAsync();
+        }
+
+        var login = await client.PostAsJsonAsync("/api/auth/sesion", new { correo, contrasena });
+        login.EnsureSuccessStatusCode();
+
+        return client;
+    }
+
+    private async Task<Guid?> ObtenerPerfilIdAsync(string correo)
+    {
+        using var ctx = ContextoDePrueba.Crear();
+        var user = await ctx.Usuarios.SingleAsync(u => u.Correo == correo);
+        var perfil = await ctx.PerfilesPrestador.SingleOrDefaultAsync(p => p.UsuarioId == user.Id);
+        return perfil?.Id;
+    }
+
+    private async Task LimpiarTodosDatosPruebaAsync()
+    {
+        using var ctx = ContextoDePrueba.Crear();
+        await ctx.Database.ExecuteSqlRawAsync(
+            """
+            DELETE FROM tarjetas WHERE perfil_prestador_id IN (SELECT id FROM perfiles_prestador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo LIKE 'apitj-bloqueo-%'));
+            DELETE FROM tarjetas WHERE perfil_prestador_id IS NULL AND estado = 'Emitida';
+            DELETE FROM perfiles_prestador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo LIKE 'apitj-bloqueo-%');
+            DELETE FROM auditoria WHERE actor_id IN (SELECT id FROM usuarios WHERE correo LIKE 'apitj-bloqueo-%') OR entidad_id IN (SELECT id FROM usuarios WHERE correo LIKE 'apitj-bloqueo-%');
+            DELETE FROM notificaciones WHERE destinatario_id IN (SELECT id FROM usuarios WHERE correo LIKE 'apitj-bloqueo-%');
+            DELETE FROM sesiones WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo LIKE 'apitj-bloqueo-%');
+            DELETE FROM perfiles_buscador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo LIKE 'apitj-bloqueo-%');
+            DELETE FROM usuarios WHERE correo LIKE 'apitj-bloqueo-%';
+            """);
+    }
+
+    private static async Task<(string segmento, string codigo)> EmitirTarjetaAsync(HttpClient admin, string csrf)
+    {
+        var req = new HttpRequestMessage(HttpMethod.Post, "/api/interno/tarjetas");
+        req.Headers.Add("X-CSRF-Token", csrf);
+        var r = await admin.SendAsync(req);
+        r.EnsureSuccessStatusCode();
+        var body = await r.Content.ReadFromJsonAsync<JsonElement>();
+        return (body.GetProperty("segmento").GetString()!, body.GetProperty("codigo").GetString()!);
+    }
+
+    private static HttpRequestMessage CrearActivarRequest(HttpClient client, string segmento, string codigo, string csrf)
+    {
+        var req = new HttpRequestMessage(HttpMethod.Post, $"/t/{segmento}/activar");
+        req.Content = JsonContent.Create(new { codigo });
+        req.Headers.Add("X-CSRF-Token", csrf);
+        return req;
+    }
+
+    private static async Task<string> ObtenerCsrfAsync(HttpClient client)
+    {
+        var r = await client.GetAsync("/api/auth/csrf");
+        r.EnsureSuccessStatusCode();
+        var doc = await r.Content.ReadFromJsonAsync<JsonDocument>();
+        return doc!.RootElement.GetProperty("token").GetString()!;
+    }
+
+    // P1: "5 fallos": 4 fallos y el 5.o intento con el codigo correcto ACTIVA (200, tarjeta Activa)
+    [Fact]
+    public async Task P1_Cinco_fallos_cuatro_fallos_y_quinto_correcto_activa()
+    {
+        var csrfAdmin = await ObtenerCsrfAsync(_admin);
+        var (segmento, codigo) = await EmitirTarjetaAsync(_admin, csrfAdmin);
+
+        var csrfPrestador = await ObtenerCsrfAsync(_prestador);
+
+        // 4 fallos con codigo incorrecto
+        for (int i = 0; i < 4; i++)
+        {
+            var r = await _prestador.SendAsync(CrearActivarRequest(_prestador, segmento, "AAAA-AAAA-AAAA", csrfPrestador));
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, r.StatusCode);
+        }
+
+        // 5.o intento con codigo CORRECTO -> debe activar (200)
+        var r5 = await _prestador.SendAsync(CrearActivarRequest(_prestador, segmento, codigo, csrfPrestador));
+        Assert.Equal(HttpStatusCode.OK, r5.StatusCode);
+
+        // Verificar en base: tarjeta Activa
+        using var ctx = ContextoDePrueba.Crear();
+        var tarjeta = await ctx.Tarjetas.FirstAsync(t => t.UrlEstable == segmento);
+        Assert.Equal(EstadoTarjeta.Activa, tarjeta.Estado);
+        Assert.Equal(_perfilPrestadorId, tarjeta.PerfilPrestadorId);
+        Assert.NotNull(tarjeta.ActivadaEn);
+    }
+
+    // P2: "5 fallos bloquean": 5 fallos y despues el codigo correcto -> 422 con el MISMO cuerpo que un codigo incorrecto, la tarjeta sigue Emitida y el codigo no se consumio.
+    [Fact]
+    public async Task P2_Cinco_fallos_bloquean_codigo_correcto_despues_422()
+    {
+        var csrfAdmin = await ObtenerCsrfAsync(_admin);
+        var (segmento, codigo) = await EmitirTarjetaAsync(_admin, csrfAdmin);
+
+        var csrfPrestador = await ObtenerCsrfAsync(_prestador);
+
+        // 5 fallos con codigo incorrecto
+        for (int i = 0; i < 5; i++)
+        {
+            var r = await _prestador.SendAsync(CrearActivarRequest(_prestador, segmento, "AAAA-AAAA-AAAA", csrfPrestador));
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, r.StatusCode);
+        }
+
+        // 6.o intento con codigo CORRECTO -> 422 (mismo mensaje que incorrecto)
+        var r6 = await _prestador.SendAsync(CrearActivarRequest(_prestador, segmento, codigo, csrfPrestador));
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, r6.StatusCode);
+        var prob = await r6.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("El código no es válido.", prob.GetProperty("detail").GetString());
+
+        // Verificar en base: tarjeta sigue Emitida, hash no se consumio
+        using var ctx = ContextoDePrueba.Crear();
+        var tarjeta = await ctx.Tarjetas.FirstAsync(t => t.UrlEstable == segmento);
+        Assert.Equal(EstadoTarjeta.Emitida, tarjeta.Estado);
+        Assert.Null(tarjeta.PerfilPrestadorId);
+        Assert.NotNull(tarjeta.HashCodigoActivacion); // El hash NO se borro
+    }
+
+    // P3: "61 min": 5 fallos, avanzar el reloj 61 minutos desde el 5.o fallo, codigo correcto -> activa. Y a los 59 minutos -> sigue bloqueada (422).
+    [Fact]
+    public async Task P3_Sesenta_y_un_minutos_despues_del_quinto_fallo_desbloquea()
+    {
+        var csrfAdmin = await ObtenerCsrfAsync(_admin);
+        var (segmento, codigo) = await EmitirTarjetaAsync(_admin, csrfAdmin);
+
+        var csrfPrestador = await ObtenerCsrfAsync(_prestador);
+
+        // 5 fallos con codigo incorrecto
+        for (int i = 0; i < 5; i++)
+        {
+            var r = await _prestador.SendAsync(CrearActivarRequest(_prestador, segmento, "AAAA-AAAA-AAAA", csrfPrestador));
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, r.StatusCode);
+        }
+
+        // Guardar la hora del 5.o fallo
+        var horaQuintoFallo = _reloj.Ahora;
+
+        // Avanzar 59 minutos: sigue bloqueada
+        _reloj.Avanzar(TimeSpan.FromMinutes(59));
+
+        var r59 = await _prestador.SendAsync(CrearActivarRequest(_prestador, segmento, codigo, csrfPrestador));
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, r59.StatusCode);
+
+        // Avanzar 2 minutos mas (total 61 min desde el 5.o fallo): debe desbloquear
+        _reloj.Avanzar(TimeSpan.FromMinutes(2));
+
+        var r61 = await _prestador.SendAsync(CrearActivarRequest(_prestador, segmento, codigo, csrfPrestador));
+        Assert.Equal(HttpStatusCode.OK, r61.StatusCode);
+
+        // Verificar en base: tarjeta Activa
+        using var ctx = ContextoDePrueba.Crear();
+        var tarjeta = await ctx.Tarjetas.FirstAsync(t => t.UrlEstable == segmento);
+        Assert.Equal(EstadoTarjeta.Activa, tarjeta.Estado);
+    }
+
+    // P4: "espaciados": 4 fallos, avanzar 20 minutos, 4 fallos, codigo correcto -> activa.
+    [Fact]
+    public async Task P4_Espaciados_cuatro_fallos_20_min_cuatro_fallos_correcto_activa()
+    {
+        var csrfAdmin = await ObtenerCsrfAsync(_admin);
+        var (segmento, codigo) = await EmitirTarjetaAsync(_admin, csrfAdmin);
+
+        var csrfPrestador = await ObtenerCsrfAsync(_prestador);
+
+        // 4 fallos
+        for (int i = 0; i < 4; i++)
+        {
+            var r = await _prestador.SendAsync(CrearActivarRequest(_prestador, segmento, "AAAA-AAAA-AAAA", csrfPrestador));
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, r.StatusCode);
+        }
+
+        // Avanzar 20 minutos (fuera de la ventana de 15 min de los primeros 4)
+        _reloj.Avanzar(TimeSpan.FromMinutes(20));
+
+        // 4 fallos mas (estos NO se suman a los anteriores por la ventana de 15 min)
+        for (int i = 0; i < 4; i++)
+        {
+            var r = await _prestador.SendAsync(CrearActivarRequest(_prestador, segmento, "BBBB-BBBB-BBBB", csrfPrestador));
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, r.StatusCode);
+        }
+
+        // Codigo correcto -> debe activar (no hubo 5 en ninguna ventana de 15 min)
+        var rCorrecto = await _prestador.SendAsync(CrearActivarRequest(_prestador, segmento, codigo, csrfPrestador));
+        Assert.Equal(HttpStatusCode.OK, rCorrecto.StatusCode);
+
+        // Verificar en base: tarjeta Activa
+        using var ctx = ContextoDePrueba.Crear();
+        var tarjeta = await ctx.Tarjetas.FirstAsync(t => t.UrlEstable == segmento);
+        Assert.Equal(EstadoTarjeta.Activa, tarjeta.Estado);
+    }
+
+    // P5: "otra tarjeta": 5 fallos en la tarjeta A no bloquean la tarjeta B (codigo correcto de B activa).
+    [Fact]
+    public async Task P5_Otra_tarjeta_cinco_fallos_en_A_no_bloquean_B()
+    {
+        var csrfAdmin = await ObtenerCsrfAsync(_admin);
+
+        // Tarjeta A
+        var (segmentoA, codigoA) = await EmitirTarjetaAsync(_admin, csrfAdmin);
+        // Tarjeta B
+        var (segmentoB, codigoB) = await EmitirTarjetaAsync(_admin, csrfAdmin);
+
+        var csrfPrestador = await ObtenerCsrfAsync(_prestador);
+
+        // 5 fallos en tarjeta A
+        for (int i = 0; i < 5; i++)
+        {
+            var r = await _prestador.SendAsync(CrearActivarRequest(_prestador, segmentoA, "AAAA-AAAA-AAAA", csrfPrestador));
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, r.StatusCode);
+        }
+
+        // Codigo correcto de tarjeta B -> debe activar
+        var rB = await _prestador.SendAsync(CrearActivarRequest(_prestador, segmentoB, codigoB, csrfPrestador));
+        Assert.Equal(HttpStatusCode.OK, rB.StatusCode);
+
+        // Verificar: tarjeta A sigue Emitida, tarjeta B esta Activa
+        using var ctx = ContextoDePrueba.Crear();
+        var tarjetaA = await ctx.Tarjetas.FirstAsync(t => t.UrlEstable == segmentoA);
+        var tarjetaB = await ctx.Tarjetas.FirstAsync(t => t.UrlEstable == segmentoB);
+        Assert.Equal(EstadoTarjeta.Emitida, tarjetaA.Estado);
+        Assert.Equal(EstadoTarjeta.Activa, tarjetaB.Estado);
+    }
+
+    // P6: "auditoria sin codigo": despues de fallos, ninguna fila de auditoria contiene el codigo enviado ni su hash.
+    [Fact]
+    public async Task P6_Auditoria_sin_codigo_ni_hash()
+    {
+        var csrfAdmin = await ObtenerCsrfAsync(_admin);
+        var (segmento, _) = await EmitirTarjetaAsync(_admin, csrfAdmin);
+
+        var csrfPrestador = await ObtenerCsrfAsync(_prestador);
+
+        // 3 fallos con codigo incorrecto
+        for (int i = 0; i < 3; i++)
+        {
+            await _prestador.SendAsync(CrearActivarRequest(_prestador, segmento, "CCCC-CCCC-CCCC", csrfPrestador));
+        }
+
+        // Verificar auditoria: ninguna fila contiene "codigo" ni "hash" en Contexto
+        using var ctx = ContextoDePrueba.Crear();
+        var tarjetaId = (await ctx.Tarjetas.FirstAsync(t => t.UrlEstable == segmento)).Id;
+        var auditoria = await ctx.Auditoria
+            .Where(a => a.Entidad == "Tarjeta" && a.EntidadId == tarjetaId)
+            .ToListAsync();
+
+        foreach (var a in auditoria)
+        {
+            if (!string.IsNullOrEmpty(a.Contexto))
+            {
+                Assert.DoesNotContain("codigo", a.Contexto, StringComparison.OrdinalIgnoreCase);
+                Assert.DoesNotContain("hash", a.Contexto, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+    }
+
+    // P7: "aviso una vez": al 5.o fallo hay EXACTAMENTE 1 fila TarjetaBloqueadaPorIntentos para esa tarjeta; con 3 intentos mas durante el bloqueo sigue habiendo 1.
+    [Fact]
+    public async Task P7_Aviso_una_sola_vez_por_bloqueo()
+    {
+        var csrfAdmin = await ObtenerCsrfAsync(_admin);
+        var (segmento, codigo) = await EmitirTarjetaAsync(_admin, csrfAdmin);
+
+        var csrfPrestador = await ObtenerCsrfAsync(_prestador);
+
+        // 5 fallos
+        for (int i = 0; i < 5; i++)
+        {
+            await _prestador.SendAsync(CrearActivarRequest(_prestador, segmento, "DDDD-DDDD-DDDD", csrfPrestador));
+        }
+
+        // Verificar: EXACTAMENTE 1 fila TarjetaBloqueadaPorIntentos
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var tarjetaId = (await ctx.Tarjetas.FirstAsync(t => t.UrlEstable == segmento)).Id;
+            var bloqueos = await ctx.Auditoria
+                .Where(a => a.Accion == "TarjetaBloqueadaPorIntentos" && a.Entidad == "Tarjeta" && a.EntidadId == tarjetaId)
+                .CountAsync();
+            Assert.Equal(1, bloqueos);
+        }
+
+        // 3 intentos mas durante el bloqueo (con codigo correcto, pero bloqueado)
+        for (int i = 0; i < 3; i++)
+        {
+            await _prestador.SendAsync(CrearActivarRequest(_prestador, segmento, codigo, csrfPrestador));
+        }
+
+        // Verificar: sigue habiendo EXACTAMENTE 1 fila
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var tarjetaId = (await ctx.Tarjetas.FirstAsync(t => t.UrlEstable == segmento)).Id;
+            var bloqueos = await ctx.Auditoria
+                .Where(a => a.Accion == "TarjetaBloqueadaPorIntentos" && a.Entidad == "Tarjeta" && a.EntidadId == tarjetaId)
+                .CountAsync();
+            Assert.Equal(1, bloqueos);
+        }
+    }
+
+    // P8: "simultaneos": 8 intentos simultaneos con codigo incorrecto, luego el correcto -> 422, tarjeta Emitida.
+    [Fact]
+    public async Task P8_Simultaneos_ocho_intentos_incorrectos_luego_correcto_bloquea()
+    {
+        var csrfAdmin = await ObtenerCsrfAsync(_admin);
+        var (segmento, codigo) = await EmitirTarjetaAsync(_admin, csrfAdmin);
+
+        var csrfPrestador = await ObtenerCsrfAsync(_prestador);
+
+        // 8 intentos simultaneos con codigo incorrecto (usando diferentes IPs para evitar tasa A)
+        var tasks = new List<Task<HttpResponseMessage>>();
+        for (int i = 0; i < 8; i++)
+        {
+            var client = _app.Cliente();
+            // Cada cliente usa una IP distinta para no chocar con la tasa A (5/IP/15min)
+            var remota = $"192.168.1.{i + 10}";
+            var req = new HttpRequestMessage(HttpMethod.Post, $"/t/{segmento}/activar");
+            req.Content = JsonContent.Create(new { codigo = "EEEE-EEEE-EEEE" });
+            var csrf = await ObtenerCsrfAsync(client);
+            req.Headers.Add("X-CSRF-Token", csrf);
+            req.Headers.Add(AplicacionConProxy.CabeceraRemota, remota);
+            tasks.Add(client.SendAsync(req));
+        }
+
+        var results = await Task.WhenAll(tasks);
+        foreach (var r in results)
+        {
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, r.StatusCode);
+        }
+
+        // Ahora intento con codigo correcto -> debe dar 422 (tarjeta bloqueada)
+        var rCorrecto = await _prestador.SendAsync(CrearActivarRequest(_prestador, segmento, codigo, csrfPrestador));
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, rCorrecto.StatusCode);
+
+        // Verificar en base: tarjeta sigue Emitida
+        using var ctx = ContextoDePrueba.Crear();
+        var tarjeta = await ctx.Tarjetas.FirstAsync(t => t.UrlEstable == segmento);
+        Assert.Equal(EstadoTarjeta.Emitida, tarjeta.Estado);
+        Assert.NotNull(tarjeta.HashCodigoActivacion);
+    }
+
+    public async Task DisposeAsync()
+    {
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            await ctx.Database.ExecuteSqlRawAsync(
+                """
+                DELETE FROM tarjetas WHERE perfil_prestador_id IN (SELECT id FROM perfiles_prestador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo LIKE {0}));
+                DELETE FROM perfiles_prestador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo LIKE {0});
+                DELETE FROM auditoria WHERE actor_id IN (SELECT id FROM usuarios WHERE correo LIKE {0}) OR entidad_id IN (SELECT id FROM usuarios WHERE correo LIKE {0});
+                DELETE FROM notificaciones WHERE destinatario_id IN (SELECT id FROM usuarios WHERE correo LIKE {0});
+                DELETE FROM sesiones WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo LIKE {0});
+                DELETE FROM perfiles_buscador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo LIKE {0});
+                DELETE FROM usuarios WHERE correo LIKE {0};
+                """,
+                $"%apitj-bloqueo-{_marca}%");
+        }
+
+        _admin?.Dispose();
+        _prestador?.Dispose();
+        _otroHttp?.Dispose();
+        await _app.DisposeAsync();
+    }
 }
