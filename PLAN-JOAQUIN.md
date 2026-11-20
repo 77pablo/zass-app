@@ -23,6 +23,7 @@ empieces. Tu **JQ-7** está en el **PR #151**: si te piden cambios ahí, eso va 
 | El bloqueo de tarjetas tras 5 intentos (PR #149, `ServicioTarjetas.ActivarAsync`) | Otra IA |
 | La limpieza de la prueba del día de Chile (`ApiAgendaPruebas.cs`) | Otra IA |
 | Los borradores de interfaz #98, #103, #106, #107, #128, #130 y el #76 (eliminar cuenta) | Claude |
+| **Desde el 20-nov, Esteban (`lazyctm`)**: la gracia de 7 días del cobro fundador, completar los datos de las cuentas antiguas, y las notificaciones push con API-43 y API-45. Ver `PLAN-ESTEBAN.md` | Esteban |
 
 **Por qué esta cola:** el backend de todo lo INTERNO ya existe y está probado: la cola del
 Verificador (API-29, 30, 31), la moderación de reseñas (API-52, 53), emitir tarjetas (API-59) y la
