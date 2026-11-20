@@ -247,14 +247,14 @@ public sealed class ServicioTarjetas : IServicioTarjetas
                     OcurridoEn = _reloj.Ahora,
                 });
 
-                // Guardar PRIMERO para que el fallo este en la base antes de contar (D1)
-                await _trabajo.GuardarAsync(ct);
-
                 // Verificar si este fallo es el 5.o en una ventana de 15 min -> bloqueo y aviso a admin
-                // Contar los fallos en los ultimos 15 minutos (incluyendo el actual que ya se guardo)
+                // Contar los fallos en los ultimos 15 minutos (SIN incluir el actual, M5: deshacer arreglo D1)
                 var ahora = _reloj.Ahora;
                 var ventana15Min = ahora.AddMinutes(-15);
                 var cantidadFallos = await _auditoria.ContarActivacionesFallidasAsync(tarjeta.Id, ventana15Min, ahora, ct);
+
+                // Guardar el intento fallido DESPUES de contar (M5: revertir D1)
+                await _trabajo.GuardarAsync(ct);
                 
                 if (cantidadFallos >= 5)
                 {
