@@ -381,7 +381,7 @@ public class FlowPasarelaPruebas
 
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
                 {
-                    Content = new StringContent(JsonSerializer.Serialize(new { customerId = long.Parse(customerId.Split('-').Last()) }), Encoding.UTF8, "application/json"),
+                    Content = new StringContent(JsonSerializer.Serialize(new { customerId }), Encoding.UTF8, "application/json"),
                 });
             }
             if (req.RequestUri!.AbsolutePath == "/customer/register")
