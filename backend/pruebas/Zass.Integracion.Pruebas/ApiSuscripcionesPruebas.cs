@@ -202,6 +202,66 @@ public class ApiSuscripcionesPruebas : IAsyncLifetime
             $"respondió {(int)respuesta.StatusCode}");
     }
 
+    // -------------------------------------------- API-75: la vuelta del navegador
+
+    [Fact]
+    public async Task API_75_sin_sesion_ni_CSRF_redirige_a_planes_listo_y_no_cambia_nada()
+    {
+        var tomadosAntes = await CuposTomadosAsync();
+        var intentosAntes = await IntentosAsync();
+        var intento = Guid.NewGuid();
+        var firma = PasarelaSimulada.CalcularFirma(SecretoPrueba, intento, 5990, ReferenciaPrueba);
+        var formulario = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["intento"] = intento.ToString(), ["monto"] = "5990", ["estado"] = "aprobado",
+            ["referencia"] = ReferenciaPrueba, ["firma"] = firma,
+        });
+
+        var respuesta = await _cliente.PostAsync("/api/pagos/vuelta", formulario);
+
+        // Viene de la pasarela por POST de formulario: ni 401 ni 403, una redireccion.
+        Assert.Equal(HttpStatusCode.Redirect, respuesta.StatusCode);
+        // Ese intento no existe: no se aprueba nada y se dice "revisar", no "aprobado".
+        Assert.EndsWith("/planes/listo?resultado=revisar", respuesta.Headers.Location!.ToString());
+        Assert.Equal(tomadosAntes, await CuposTomadosAsync());
+        Assert.Equal(intentosAntes, await IntentosAsync());
+    }
+
+    [Fact]
+    public async Task API_75_con_un_cuerpo_roto_tambien_redirige_y_no_revienta()
+    {
+        var respuesta = await _cliente.PostAsync("/api/pagos/vuelta",
+            new StringContent("{esto no es json", Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.Redirect, respuesta.StatusCode);
+        Assert.EndsWith("/planes/listo?resultado=revisar", respuesta.Headers.Location!.ToString());
+    }
+
+    [Theory]
+    [InlineData("/api/pagos/vuelta?volver=https://malo.example/robar")]
+    [InlineData("/api/pagos/vuelta?resultado=https://malo.example")]
+    public async Task API_75_no_se_puede_usar_para_mandar_a_alguien_a_otro_sitio(string ruta)
+    {
+        var respuesta = await _cliente.GetAsync(ruta);
+
+        var destino = respuesta.Headers.Location!.ToString();
+        Assert.DoesNotContain("malo.example", destino);
+        Assert.Matches(@"/planes/listo\?resultado=(aprobado|rechazado|revisar)$", destino);
+    }
+
+    [Fact]
+    public void API_75_traduce_la_confirmacion_a_tres_palabras_fijas()
+    {
+        static Zass.Aplicacion.Suscripciones.ConfirmacionDto Dto(bool aprobado) =>
+            new(Guid.NewGuid(), aprobado, aprobado ? "Pagado" : "Fallido", null, "", true);
+
+        Assert.Equal("aprobado", Zass.Api.Endpoints.ResultadoDeLaVuelta.De(Zass.Dominio.Comun.Resultado.Ok(Dto(true))));
+        Assert.Equal("rechazado", Zass.Api.Endpoints.ResultadoDeLaVuelta.De(Zass.Dominio.Comun.Resultado.Ok(Dto(false))));
+        Assert.Equal("revisar", Zass.Api.Endpoints.ResultadoDeLaVuelta.De(
+            Zass.Dominio.Comun.Resultado.Falla<Zass.Aplicacion.Suscripciones.ConfirmacionDto>(
+                Zass.Dominio.Comun.Fallas.NoEncontrado, "Ese cobro no existe.")));
+    }
+
     private async Task<string> TokenCsrfAsync()
     {
         var respuesta = await _cliente.GetAsync("/api/auth/csrf");

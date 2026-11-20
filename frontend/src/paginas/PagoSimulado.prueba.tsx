@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { olvidarCsrf } from '../api/cliente'
 import { PagoSimulado } from './PagoSimulado'
@@ -13,6 +13,8 @@ import { PagoSimulado } from './PagoSimulado'
  */
 
 let avisos: Record<string, unknown>[]
+// Lo que contesta API-70 en cada prueba (por omision, un objeto vacio: «no se sabe»).
+let respuestaDelAviso: unknown
 
 function json(cuerpo: unknown, estado = 200) {
   return new Response(JSON.stringify(cuerpo), { status: estado, headers: { 'content-type': 'application/json' } })
@@ -20,13 +22,22 @@ function json(cuerpo: unknown, estado = 200) {
 
 beforeEach(() => {
   avisos = []
+  respuestaDelAviso = {}
   olvidarCsrf()
   vi.stubGlobal('fetch', vi.fn(async (ruta: string, opciones?: RequestInit) => {
     if (ruta === '/api/auth/csrf') return json({ token: 't' })
-    if (ruta === '/api/pagos/aviso') avisos.push(JSON.parse(String(opciones?.body)))
+    if (ruta === '/api/pagos/aviso') {
+      avisos.push(JSON.parse(String(opciones?.body)))
+      return json(respuestaDelAviso)
+    }
     return json({})
   }))
 })
+
+/** La vuelta, mostrando con qué resultado se llegó: así la prueba ve a dónde mandó la pasarela. */
+function Vuelta() {
+  return <p>listo{useLocation().search}</p>
+}
 
 const INTENTO = '3f2a9c1e-7b4d-4e8a-9c2b-1d5e6f7a8b9c'
 
@@ -35,7 +46,7 @@ function pintar(direccion: string) {
     <MemoryRouter initialEntries={[direccion]}>
       <Routes>
         <Route path="/pago/inscripcion" element={<PagoSimulado />} />
-        <Route path="/planes/listo" element={<p>listo</p>} />
+        <Route path="/planes/listo" element={<Vuelta />} />
       </Routes>
     </MemoryRouter>,
   )
@@ -55,7 +66,7 @@ describe('PagoSimulado', () => {
       firma: 'abc_DEF-123',
       estado: 'aprobado',
     })
-    expect(await screen.findByText('listo')).toBeInTheDocument()
+    expect(await screen.findByText(/^listo/)).toBeInTheDocument()
   })
 
   it('no inventa el monto: si la dirección trae otro, lo devuelve igual', async () => {
@@ -65,5 +76,20 @@ describe('PagoSimulado', () => {
 
     await waitFor(() => expect(avisos).toHaveLength(1))
     expect(avisos[0]).toMatchObject({ monto: '15000', referencia: 'sim-x' })
+  })
+
+  // Defecto 3 del informe JQ-7: un rechazo terminaba en «Tu medio de pago quedó inscrito».
+  // Lo que se muestra al volver lo decide la respuesta de la API, no el botón que se apretó.
+  it.each([
+    [{ aprobado: true }, 'aprobado'],
+    [{ aprobado: false }, 'rechazado'],
+    [{}, 'revisar'],
+  ])('si la API contesta %j, vuelve con ?resultado=%s', async (respuesta, resultado) => {
+    respuestaDelAviso = respuesta
+    pintar(`/pago/inscripcion?intento=${INTENTO}&referencia=sim-x&monto=0&firma=f`)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Simular un rechazo' }))
+
+    expect(await screen.findByText(`listo?resultado=${resultado}`)).toBeInTheDocument()
   })
 })
