@@ -247,15 +247,21 @@ public sealed class ServicioTarjetas : IServicioTarjetas
                     OcurridoEn = _reloj.Ahora,
                 });
 
+                // Guardar PRIMERO para que el fallo este en la base antes de contar (D1)
+                await _trabajo.GuardarAsync(ct);
+
                 // Verificar si este fallo es el 5.o en una ventana de 15 min -> bloqueo y aviso a admin
-                var esQuintoFallo = await EsQuintoFalloEnVentanaAsync(tarjeta.Id, ct);
-                if (esQuintoFallo)
+                // Contar los fallos en los ultimos 15 minutos (incluyendo el actual que ya se guardo)
+                var ahora = _reloj.Ahora;
+                var ventana15Min = ahora.AddMinutes(-15);
+                var cantidadFallos = await _auditoria.ContarActivacionesFallidasAsync(tarjeta.Id, ventana15Min, ahora, ct);
+                
+                if (cantidadFallos >= 5)
                 {
                     // Aviso al Administrador (idempotente por clave "tarjeta-bloqueada:<tarjeta>:<hora del 5.o fallo>")
-                    await NotificarAdministradorBloqueoAsync(tarjeta.Id, ct);
+                    // La hora del 5.o fallo es la del fallo actual (ahora)
+                    await NotificarAdministradorBloqueoAsync(tarjeta.Id, ahora, ct);
                 }
-
-                await _trabajo.GuardarAsync(ct);
 
                 // MISMO mensaje que codigo incorrecto (no revelar cual)
                 return Resultado.Falla<ActivarTarjetaResultado>(Fallas.ReglaDeNegocio, "El código no es válido.");
@@ -293,20 +299,25 @@ public sealed class ServicioTarjetas : IServicioTarjetas
     /// Bloqueada = en los ultimos 60 minutos hay un intento fallido F tal que
     /// entre F-15min y F hay 5 o mas intentos fallidos de ESA tarjeta.
     /// El bloqueo dura 1 hora desde ese intento F (el 5.o fallo).
+    /// D4: Esta funcion reemplaza a las antiguas EstaBloqueadaAsync y EsQuintoFalloEnVentanaAsync.
     /// </summary>
     private async Task<(bool Bloqueada, DateTime? FinBloqueo)> EstaBloqueadaAsync(Guid tarjetaId, CancellationToken ct)
     {
         var ahora = _reloj.Ahora;
         var ventana60Min = ahora.AddMinutes(-60);
 
-        // Obtener todos los intentos fallidos en los ultimos 60 minutos
+        // Contar fallos en los ultimos 60 minutos usando la consulta SQL especializada (D2)
+        var totalFallos60Min = await _auditoria.ContarActivacionesFallidasAsync(tarjetaId, ventana60Min, ahora, ct);
+        if (totalFallos60Min < 5) return (false, null);
+
+        // Obtener los fallos para verificar la ventana de 15 min (necesitamos las fechas)
         var intentosFallidos = await _auditoria.ConsultarAsync(
             entidad: "Tarjeta",
             entidadId: tarjetaId,
             actorId: null,
             antesDe: null,
             antesDeId: null,
-            limite: 100, // Suficiente: max 5 por 15 min * 4 = 20 en 60 min, con margen
+            limite: 100,
             ct);
 
         // Filtrar solo los de activacion fallida y en la ventana de 60 min
@@ -325,14 +336,14 @@ public sealed class ServicioTarjetas : IServicioTarjetas
 
             if (cuentaEnVentana >= 5)
             {
-                // Este fallo F es el que dispara el bloqueo (el 5.o en su ventana de 15 min)
+                // Este fallo F es el que disparó el bloqueo (el 5.o en su ventana de 15 min)
                 var finBloqueo = fallo.OcurridoEn.AddHours(1);
                 if (ahora < finBloqueo)
                 {
                     return (true, finBloqueo);
                 }
-                // Si ya paso la hora, este bloqueo especifico ya no aplica
-                // (pero podria haber otro fallo mas reciente que si bloquee)
+                // Si ya pasó la hora, este bloqueo específico ya no aplica
+                // (pero podría haber otro fallo más reciente que sí bloquee)
             }
         }
 
@@ -340,48 +351,15 @@ public sealed class ServicioTarjetas : IServicioTarjetas
     }
 
     /// <summary>
-    /// Verifica si el intento fallido que acabamos de registrar (el mas reciente)
-    /// es el 5.o en una ventana de 15 minutos.
-    /// Se llama DESPUES de registrar el fallo actual en la auditoria.
-    /// </summary>
-    private async Task<bool> EsQuintoFalloEnVentanaAsync(Guid tarjetaId, CancellationToken ct)
-    {
-        var ahora = _reloj.Ahora;
-        var ventana60Min = ahora.AddMinutes(-60);
-
-        var intentosFallidos = await _auditoria.ConsultarAsync(
-            entidad: "Tarjeta",
-            entidadId: tarjetaId,
-            actorId: null,
-            antesDe: null,
-            antesDeId: null,
-            limite: 100,
-            ct);
-
-        var fallos = intentosFallidos
-            .Where(r => r.Accion == "TarjetaActivacionFallida" && r.OcurridoEn >= ventana60Min && r.OcurridoEn <= ahora)
-            .OrderBy(r => r.OcurridoEn)
-            .ToList();
-
-        if (fallos.Count < 5) return false;
-
-        // El fallo mas reciente es el que acabamos de registrar
-        var falloReciente = fallos.Last();
-        var inicioVentana = falloReciente.OcurridoEn.AddMinutes(-15);
-        var cuentaEnVentana = fallos.Count(f => f.OcurridoEn >= inicioVentana && f.OcurridoEn <= falloReciente.OcurridoEn);
-
-        return cuentaEnVentana >= 5;
-    }
-
-    /// <summary>
     /// Notifica al administrador cuando se alcanza el 5.o fallo (bloqueo).
     /// Usa clave de idempotencia "tarjeta-bloqueada:<tarjeta>:<hora del 5.o fallo>".
+    /// D5: La hora del 5.o fallo se pasa como parametro para que la clave sea unica por bloqueo.
     /// Si no hay forma de notificar administradores, lo registra en auditoria y continua.
     /// </summary>
-    private async Task NotificarAdministradorBloqueoAsync(Guid tarjetaId, CancellationToken ct)
+    private async Task NotificarAdministradorBloqueoAsync(Guid tarjetaId, DateTime horaQuintoFallo, CancellationToken ct)
     {
-        var ahora = _reloj.Ahora;
-        var claveIdempotencia = $"tarjeta-bloqueada:{tarjetaId}:{ahora:yyyyMMddTHHmmss}";
+        // La clave usa la hora del 5.o fallo, no la hora actual (D5)
+        var claveIdempotencia = $"tarjeta-bloqueada:{tarjetaId}:{horaQuintoFallo:yyyyMMddTHHmmss}";
 
         // Buscar si ya existe un administrador para notificar
         // NOTA: No hay un metodo directo en IRepositorioUsuarios para buscar por rol.
@@ -397,12 +375,12 @@ public sealed class ServicioTarjetas : IServicioTarjetas
             Contexto = JsonSerializer.Serialize(new
             {
                 Motivo = "5 intentos fallidos en 15 minutos",
-                BloqueadaHasta = ahora.AddHours(1),
+                BloqueadaHasta = horaQuintoFallo.AddHours(1),
                 ClaveIdempotencia = claveIdempotencia,
                 Nota = "Notificacion a administrador pendiente: no hay consulta de usuarios por rol en IRepositorioUsuarios"
             }),
             IpOrigen = null,
-            OcurridoEn = ahora,
+            OcurridoEn = horaQuintoFallo,
         });
 
         // TODO: Cuando exista forma de notificar administradores (ej. INotificaciones para rol),
