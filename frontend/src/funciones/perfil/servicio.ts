@@ -81,6 +81,9 @@ export interface Suscripcion {
   vigenteHasta: string | null
   diasRestantes: number
   renovacionAutomatica: boolean
+  /** Cupo sin tarjeta (20-nov-2026). Opcionales: una API vieja no los manda. */
+  esFundador?: boolean
+  tarjetaInscrita?: boolean
 }
 
 const PERFIL = '/api/mi/perfil-prestador'

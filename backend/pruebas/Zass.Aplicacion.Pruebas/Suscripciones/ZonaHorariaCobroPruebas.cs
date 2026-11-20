@@ -144,7 +144,8 @@ public class ZonaHorariaCobroPruebas
         var rPrueba = suscripciones.IniciarPruebaAsync(perfil.Id).GetAwaiter().GetResult();
         Assert.True(rPrueba.Exito);
 
-        // 2. Inscribirse como fundador (toma cupo e inscribe medio de pago)
+        // 2. Tomar el cupo (sin tarjeta, arranca el mes gratis) e inscribir el medio de pago
+        Assert.True(suscripciones.TomarCupoFundadorAsync(perfil.Id).GetAwaiter().GetResult().Exito);
         var claveInscripcion = "ins-" + perfil.Id;
         var inscripcion = cobros.IniciarInscripcionFundadorAsync(perfil.Id, claveInscripcion).GetAwaiter().GetResult();
         Assert.True(inscripcion.Exito);
