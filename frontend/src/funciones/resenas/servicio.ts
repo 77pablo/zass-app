@@ -175,8 +175,9 @@ export function nuevaClaveDeIdempotencia(): string {
 /** API-46. Deja constancia del contacto y arranca el reloj de los 7 dias. Devuelve su id. */
 export async function registrarContacto(
   perfilId: string, origen: OrigenContacto, canal: CanalContacto,
+  opciones: { keepalive?: boolean } = {},
 ): Promise<string> {
-  const r = await enviar<{ id: string }>('/api/contactos', { perfilId, origen, canal })
+  const r = await enviar<{ id: string }>('/api/contactos', { perfilId, origen, canal }, 'POST', {}, opciones)
   return r.id
 }
 
