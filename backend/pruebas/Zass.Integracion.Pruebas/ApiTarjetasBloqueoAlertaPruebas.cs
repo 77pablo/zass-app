@@ -141,28 +141,23 @@ public class ApiTarjetasBloqueoAlertaPruebas : IAsyncLifetime
     {
         using var ctx = ContextoDePrueba.Crear();
         // Borrar TODOS los usuarios de prueba que empiezan con apitj- (de cualquier corrida anterior)
-        // Usamos un bloque PL/pgSQL para truncar solo tablas que existen
+        // Tambien borrar tarjetas emitidas sin activar (perfil_prestador_id IS NULL) que sean de pruebas
+        // Usamos el mismo patrón que ApiTarjetasEmitirActivarPruebas, extendido con tablas adicionales
         await ctx.Database.ExecuteSqlRawAsync(
             """
-            DO $$
-            DECLARE
-                tablas TEXT[] := ARRAY[
-                    'tarjetas', 'perfiles_prestador', 'auditoria', 'notificaciones',
-                    'sesiones', 'perfiles_buscador', 'usuarios', 'suscripciones',
-                    'cupos_fundador', 'citas', 'citas_copia', 'trabajos_de_fondo'
-                ];
-                t TEXT;
-            BEGIN
-                SET session_replication_role = 'replica';
-                FOREACH t IN ARRAY tablas LOOP
-                    BEGIN
-                        EXECUTE format('TRUNCATE TABLE %I RESTART IDENTITY CASCADE', t);
-                    EXCEPTION WHEN undefined_table THEN
-                        -- ignorar tablas que no existen
-                    END;
-                END LOOP;
-                SET session_replication_role = 'origin';
-            END $$;
+            DELETE FROM tarjetas WHERE perfil_prestador_id IN (SELECT id FROM perfiles_prestador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%'))
+               OR (perfil_prestador_id IS NULL AND estado = 'Emitida');
+            DELETE FROM citas_copia;
+            DELETE FROM citas;
+            DELETE FROM cupos_fundador;
+            DELETE FROM suscripciones;
+            DELETE FROM perfiles_prestador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
+            DELETE FROM auditoria WHERE actor_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%') OR entidad_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
+            DELETE FROM notificaciones WHERE destinatario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
+            DELETE FROM sesiones WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
+            DELETE FROM perfiles_buscador WHERE usuario_id IN (SELECT id FROM usuarios WHERE correo ILIKE 'apitj-%');
+            DELETE FROM trabajos_de_fondo;
+            DELETE FROM usuarios WHERE correo ILIKE 'apitj-%';
             """);
     }
 
