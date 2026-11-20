@@ -33,6 +33,7 @@ En .NET el `:` de la configuración se escribe `__` en una variable de entorno (
 | Variable | Obligatoria | Significado |
 |---|---|---|
 | `PORT` | la inyecta Render | Puerto HTTP en el que escucha la API (8080 si no existe). |
+| `SIXLABORS_LICENSE_KEY` | **sí, al CONSTRUIR, secreta** | Licencia de ImageSharp (fotos de perfil). Desde la 4.0 la librería la exige al compilar en Release, y sin ella **el build de Render falla** («No Six Labors license found»; pasó el 20-nov-2026). Es la licencia comunitaria gratuita, pedida en licensing.sixlabors.com. Va el texto **completo** de la licencia, sin escapar. Render la pasa al `Dockerfile` como build arg; la imagen final no la lleva. |
 | `ASPNETCORE_ENVIRONMENT` | sí (`Production`) | Todo lo que no sea `Development` se trata como producción: validación estricta y Swagger apagado. |
 | `Zass__CadenaConexion` | **sí, secreta** | Cadena de Npgsql: `Host=ep-xxxx.neon.tech;Database=zass;Username=...;Password=...;SSL Mode=Require`. **Neon entrega una URL `postgresql://...`: Npgsql no la entiende, conviértela a esta forma.** En producción sin `SSL Mode=Require` la API no arranca. |
 | `Zass__ClaveDireccionesBase64` | **sí, secreta** | Clave AES-256 que cifra las direcciones de los prestadores: 32 bytes en Base64 (por ejemplo `openssl rand -base64 32`). **Si se pierde, las direcciones guardadas no se pueden descifrar**: guárdala también fuera de Render. No la cambies con datos ya guardados. |
