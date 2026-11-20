@@ -142,7 +142,7 @@ public sealed class FlowPasarela : IPasarelaDePagos
         var json = await response.Content.ReadAsStringAsync(ct);
         try
         {
-            var resultado = JsonSerializer.Deserialize<T>(json, Json);
+            var resultado = JsonSerializer.Deserialize<T>(json);
             return Resultado.Ok(resultado!);
         }
         catch (JsonException e)
@@ -191,7 +191,7 @@ public sealed class FlowPasarela : IPasarelaDePagos
         var json = await response.Content.ReadAsStringAsync(ct);
         try
         {
-            var resultado = JsonSerializer.Deserialize<T>(json, Json);
+            var resultado = JsonSerializer.Deserialize<T>(json);
             return Resultado.Ok(resultado!);
         }
         catch (JsonException e)
