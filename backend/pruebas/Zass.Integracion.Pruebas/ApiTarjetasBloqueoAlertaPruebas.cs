@@ -103,16 +103,28 @@ public class ApiTarjetasBloqueoAlertaPruebas : IAsyncLifetime
             {
                 var rubro = ctx.Rubros.First(r => r.Activo);
                 var slug = sufijo == "prestador" ? $"apitj-{_marca}" : $"apitj-{sufijo}-{_marca}";
-                var perfil = new PerfilPrestador
+                // El registro con rol prestador YA crea el perfil (en Borrador). Agregar otro
+                // chocaba con el unico ix_perfiles_prestador_usuario_id (23505): era el rojo de
+                // las 5 pruebas en CI, no «un problema del ambiente». Se publica el que existe.
+                var existente = ctx.PerfilesPrestador.SingleOrDefault(p => p.UsuarioId == usuario.Id);
+                if (existente is null)
                 {
-                    UsuarioId = usuario.Id,
-                    RubroId = rubro.Id,
-                    NombrePublico = "Tarjetas " + sufijo,
-                    Slug = slug,
-                    Estado = EstadoPerfil.Publicado,
-                    PublicadoEn = DateTime.UtcNow.AddDays(-1),
-                };
-                ctx.PerfilesPrestador.Add(perfil);
+                    ctx.PerfilesPrestador.Add(new PerfilPrestador
+                    {
+                        UsuarioId = usuario.Id,
+                        RubroId = rubro.Id,
+                        NombrePublico = "Tarjetas " + sufijo,
+                        Slug = slug,
+                        Estado = EstadoPerfil.Publicado,
+                        PublicadoEn = DateTime.UtcNow.AddDays(-1),
+                    });
+                }
+                else
+                {
+                    existente.Estado = EstadoPerfil.Publicado;
+                    existente.PublicadoEn = DateTime.UtcNow.AddDays(-1);
+                    existente.Slug = slug;
+                }
                 ctx.SaveChanges();
             }
             else
