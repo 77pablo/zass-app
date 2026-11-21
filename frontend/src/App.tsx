@@ -10,6 +10,8 @@ import { MiFicha } from './paginas/MiFicha'
 import { MisCitas } from './paginas/MisCitas'
 import { MisResenas } from './paginas/MisResenas'
 import { MisTarjetas } from './paginas/MisTarjetas'
+import { MesaDeVerificacion } from './paginas/MesaDeVerificacion'
+import { IndiceInterno, PuertaInterna } from './paginas/PanelInterno'
 import { NoEncontrada } from './paginas/NoEncontrada'
 import { OfrecerServicios } from './paginas/OfrecerServicios'
 import { Oficios } from './paginas/Oficios'
@@ -64,6 +66,12 @@ export function App() {
         <Route path="tarjeta/no-disponible" element={<AvisoDeTarjeta aviso="no-disponible" />} />
         <Route path="tarjeta/sin-activar" element={<AvisoDeTarjeta aviso="sin-activar" />} />
         <Route path="t/:segmento" element={<TarjetaEnMayusculas />} />
+        {/* JQ-11: sin el rol verificador o administrador, todo /interno responde como una página que no existe. */}
+        <Route path="interno" element={<PuertaInterna />}>
+          <Route index element={<IndiceInterno />} />
+          <Route path="verificacion" element={<MesaDeVerificacion />} />
+          <Route path="*" element={<NoEncontrada />} />
+        </Route>
         <Route path="*" element={<NoEncontrada />} />
       </Route>
     </Routes>
