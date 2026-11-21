@@ -18,7 +18,7 @@ namespace Zass.Infraestructura.Datos.Migraciones
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.10")
+                .HasAnnotation("ProductVersion", "10.0.15")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "citext");
@@ -5771,6 +5771,11 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("anonimizado_en");
 
+                    b.Property<string>("Apellido")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("apellido");
+
                     b.Property<string>("Correo")
                         .IsRequired()
                         .HasColumnType("citext")
@@ -5795,11 +5800,38 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasColumnType("text")
                         .HasColumnName("hash_contrasena");
 
+                    b.Property<DateTime?>("MayorDeEdadConfirmadoEn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("mayor_de_edad_confirmado_en");
+
                     b.Property<string>("Nombre")
                         .IsRequired()
                         .HasMaxLength(150)
                         .HasColumnType("character varying(150)")
                         .HasColumnName("nombre");
+
+                    b.Property<string>("RazonSocial")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("razon_social");
+
+                    b.Property<string>("Rut")
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)")
+                        .HasColumnName("rut");
+
+                    b.Property<string>("Telefono")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("telefono");
+
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Particular")
+                        .HasColumnName("tipo");
 
                     b.Property<string>("TokenRecuperacion")
                         .HasColumnType("text")
@@ -5823,6 +5855,11 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.HasIndex("Correo")
                         .IsUnique()
                         .HasDatabaseName("i_x_usuarios_correo");
+
+                    b.HasIndex("Rut")
+                        .IsUnique()
+                        .HasDatabaseName("i_x_usuarios_rut")
+                        .HasFilter("rut IS NOT NULL");
 
                     b.HasIndex("TokenRecuperacion")
                         .HasDatabaseName("i_x_usuarios_token_recuperacion");
@@ -5983,7 +6020,7 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<List<string>>("Aspectos")
+                    b.PrimitiveCollection<List<string>>("Aspectos")
                         .IsRequired()
                         .HasColumnType("text[]")
                         .HasColumnName("aspectos");
@@ -6654,7 +6691,7 @@ namespace Zass.Infraestructura.Datos.Migraciones
                             Id = (short)1,
                             Activo = true,
                             Codigo = "prueba",
-                            Descripcion = "30 dias para publicar el perfil y aparecer en las busquedas.",
+                            Descripcion = "30 días para publicar tu perfil y aparecer en las búsquedas.",
                             DiasPrueba = (short)30,
                             MaxServicios = 10,
                             MaxTarjetas = 1,
@@ -6667,7 +6704,7 @@ namespace Zass.Infraestructura.Datos.Migraciones
                             Id = (short)2,
                             Activo = true,
                             Codigo = "mensual",
-                            Descripcion = "Publica tu perfil, apareces en las busquedas y recibes solicitudes de hora. 7990 pesos al mes; cancela cuando quieras.",
+                            Descripcion = "Publica tu perfil, aparece en las búsquedas y recibe solicitudes de hora. Cancela cuando quieras.",
                             DiasPrueba = (short)0,
                             MaxServicios = 10,
                             MaxTarjetas = 1,
@@ -6680,7 +6717,7 @@ namespace Zass.Infraestructura.Datos.Migraciones
                             Id = (short)3,
                             Activo = true,
                             Codigo = "fundador",
-                            Descripcion = "Precio de lanzamiento para las primeras 50 personas: 5990 pesos al mes mientras mantengas tu suscripcion activa.",
+                            Descripcion = "Precio de lanzamiento para las primeras 50 personas, congelado mientras mantengas tu suscripción activa.",
                             DiasPrueba = (short)0,
                             MaxServicios = 10,
                             MaxTarjetas = 1,

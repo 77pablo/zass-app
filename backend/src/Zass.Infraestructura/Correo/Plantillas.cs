@@ -67,6 +67,7 @@ public static class Plantillas
              or TipoNotificacion.ResenaRespondida
              or TipoNotificacion.SuscripcionPorVencer
              or TipoNotificacion.SuscripcionVencida
+             or TipoNotificacion.CobroRechazado
              or TipoNotificacion.PerfilPublicado
              or TipoNotificacion.CitaSolicitada
              or TipoNotificacion.CitaConfirmada
@@ -97,8 +98,18 @@ public static class Plantillas
             CargaDeAviso.LeerToken(carga) is { } t ? Recuperacion(nombre, EnlaceDeRecuperacion(urlPublica, t)) : null,
         TipoNotificacion.SuscripcionPorVencer =>
             int.TryParse(CargaDeAviso.LeerCampo(carga, "dias"), out var d)
-                ? PorVencer(nombre, d, EnlaceDelPanel(urlPublica)) : null,
+                ? CargaDeAviso.LeerCampo(carga, "sinTarjeta") == "si"
+                    ? MesGratisSinTarjeta(nombre, d, EnlaceDelPanel(urlPublica))
+                    : PorVencer(nombre, d, EnlaceDelPanel(urlPublica))
+                : null,
         TipoNotificacion.SuscripcionVencida => Vencida(nombre, EnlaceDelPanel(urlPublica)),
+        // Sin dias en la carga sale igual, con «pronto»: un aviso de cobro que no llega es peor
+        // que uno sin la cifra exacta.
+        TipoNotificacion.CobroRechazado => CobroRechazado(
+            nombre,
+            int.TryParse(CargaDeAviso.LeerCampo(carga, "dias"), out var dr) ? dr : null,
+            CargaDeAviso.LeerCampo(carga, "fundador") == "si",
+            EnlaceDelPanel(urlPublica)),
         // Con el slug se enlaza su ficha publica, que es lo que querra abrir y compartir. Sin el
         // —los avisos encolados ANTES de que existiera esta plantilla llevan una frase suelta en vez
         // de una carga JSON— se enlaza su panel: sigue siendo util y no se pierde el aviso.
@@ -183,6 +194,33 @@ public static class Plantillas
     /// RN-S3-09 apaga el perfil al dejar de pagar. Este aviso existe para que eso no ocurra
     /// por sorpresa: sin el, el prestador se enteraria porque dejan de llamarlo.
     /// </summary>
+    /// <summary>
+    /// Fundador en su mes gratis y sin tarjeta (20-nov-2026). Lo que importa decirle: que si no
+    /// la inscribe pierde el cupo, y que inscribirla hoy no cobra nada.
+    /// </summary>
+    public static CorreoRenderizado MesGratisSinTarjeta(string nombre, int dias, string enlace)
+    {
+        var cuando = dias <= 1 ? "mañana" : $"en {dias} días";
+        var parrafo =
+            $"Tu mes gratis de fundador en ZASS! termina {cuando} y todavía no inscribes tu tarjeta. "
+            + "Inscríbela antes para mantener tu cupo y tu precio congelado: hoy no se te cobra nada. "
+            + "Si el mes termina sin tarjeta, el cupo queda libre para otra persona y tu ficha deja de "
+            + "aparecer en las búsquedas.";
+        var texto =
+            $"Hola {nombre}:\n\n" +
+            $"{parrafo}\n\n" +
+            $"Puedes inscribirla aquí:\n\n{enlace}\n\n" +
+            "Si ya la inscribiste, ignora este mensaje.\n\n" +
+            "— El equipo de ZASS!";
+        var html = Marco(
+            $"Tu mes gratis termina {cuando}",
+            $"Hola {H(nombre)}:",
+            parrafo,
+            "Inscribir mi tarjeta", enlace,
+            "Si ya la inscribiste, ignora este mensaje.");
+        return new($"Tu mes gratis de ZASS! termina {cuando}", texto, html);
+    }
+
     public static CorreoRenderizado PorVencer(string nombre, int dias, string enlace)
     {
         var cuando = dias <= 1 ? "mañana" : $"en {dias} días";
@@ -203,6 +241,41 @@ public static class Plantillas
             "Ver mi suscripción", enlace,
             "Si ya renovaste, ignora este mensaje.");
         return new($"Tu suscripción a ZASS! vence {cuando}", texto, html);
+    }
+
+    /// <summary>
+    /// ES-1. El cobro automatico fue rechazado y hay plazo hasta el vencimiento. Texto
+    /// PROPUESTO: lo aprueba Pablo en el PR.
+    /// </summary>
+    public static CorreoRenderizado CobroRechazado(string nombre, int? dias, bool fundador, string enlace)
+    {
+        var plazo = dias switch
+        {
+            null => "pronto",
+            <= 1 => "mañana",
+            _ => $"en {dias} días",
+        };
+        var consecuencia = fundador
+            ? "Si no se puede cobrar antes de que venza, pierdes tu cupo de fundador y tu precio "
+              + "congelado, y tu ficha deja de aparecer en las búsquedas."
+            : "Si no se puede cobrar antes de que venza, tu ficha deja de aparecer en las búsquedas.";
+        var parrafo =
+            "No pudimos cobrar la mensualidad de tu suscripción a ZASS! con tu tarjeta. "
+            + $"Tu suscripción vence {plazo} y lo volveremos a intentar cada día hasta entonces. "
+            + consecuencia;
+        var texto =
+            $"Hola {nombre}:\n\n" +
+            $"{parrafo}\n\n" +
+            $"Puedes actualizar tu tarjeta aquí:\n\n{enlace}\n\n" +
+            "Si ya la actualizaste, ignora este mensaje.\n\n" +
+            "— El equipo de ZASS!";
+        var html = Marco(
+            "No pudimos cobrar tu suscripción",
+            $"Hola {H(nombre)}:",
+            parrafo,
+            "Actualizar mi tarjeta", enlace,
+            "Si ya la actualizaste, ignora este mensaje.");
+        return new("No pudimos cobrar tu suscripción a ZASS!", texto, html);
     }
 
     /// <summary>Ya venció: la ficha dejó de aparecer. Se dice sin rodeos y sin culpar a nadie.</summary>

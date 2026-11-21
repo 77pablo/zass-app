@@ -64,6 +64,15 @@ public interface IServicioSuscripciones
     Task<int> VencerExpiradasAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// ES-1. Encola el correo «actualiza tu tarjeta» cuando el cobro automatico de un periodo
+    /// fue rechazado. UNO por periodo: la clave lleva la suscripcion y el vencimiento, asi que
+    /// los reintentos rechazados de los dias siguientes no mandan otro.
+    /// </summary>
+    Task AvisarCobroRechazadoAsync(
+        Guid perfilPrestadorId, Guid suscripcionId, DateTime vigenteHasta,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Las que vencen dentro de N dias, para avisar ANTES.
     ///
     /// Desaparecer de la busqueda sin aviso previo es lo que volveria cruel a RN-S3-09:
@@ -124,6 +133,15 @@ public interface IServicioSuscripciones
     Task<Resultado<short>> ReservarCupoFundadorAsync(
         Guid perfilPrestadorId, TimeSpan? duracion = null, CancellationToken ct = default);
 
+    /// <summary>
+    /// «Quiero mi cupo» (API-69, decision de Pablo del 20-nov-2026): toma y deja definitivo
+    /// uno de los 50 cupos y arranca el mes gratis, SIN tarjeta. La tarjeta se inscribe
+    /// despues, antes de que termine el mes gratis (API-76); si no, el cupo se libera.
+    /// Idempotente: quien ya tiene su cupo recibe el mismo.
+    /// </summary>
+    Task<Resultado<CupoTomadoDto>> TomarCupoFundadorAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default);
+
     /// <summary>Marca como definitivo el cupo fundador tras confirmarse el pago o la inscripcion.</summary>
     Task<Resultado> ConfirmarCupoFundadorAsync(Guid perfilPrestadorId, CancellationToken ct = default);
 
@@ -163,7 +181,17 @@ public sealed record SuscripcionDto(
     bool EnPrueba,
     DateTime? VigenteHasta,
     int DiasRestantes,
-    bool RenovacionAutomatica);
+    bool RenovacionAutomatica,
+    // Cupo sin tarjeta (20-nov-2026): la pantalla tiene que poder decir «inscribe tu
+    // tarjeta antes del ...» sin adivinarlo por el nombre del plan.
+    bool EsFundador = false,
+    bool TarjetaInscrita = false,
+    // ES-1: dias de gracia que le quedan al fundador cuyo cobro fue rechazado, o nulo si no
+    // esta en gracia. «Mi ficha» lo muestra con el enlace para cambiar la tarjeta.
+    int? DiasDeGracia = null);
+
+/// <summary>El cupo recien tomado y hasta cuando dura el mes gratis.</summary>
+public sealed record CupoTomadoDto(short Numero, DateTime MesGratisHasta, bool TarjetaInscrita);
 
 /// <summary>
 /// Que hizo la corrida diaria. Lo guarda el planificador en <c>ultimo_resumen</c>, asi que
@@ -179,7 +207,9 @@ public sealed record SuscripcionPorVencer(
     Guid SuscripcionId,
     Guid PerfilPrestadorId,
     DateTime VigenteHasta,
-    int DiasRestantes);
+    int DiasRestantes,
+    // Fundador en su mes gratis y sin tarjeta: el aviso le dice que la inscriba o pierde el cupo.
+    bool FundadorSinTarjeta = false);
 
 /// <summary>
 /// El estado del plan de lanzamiento, listo para pintarse. <paramref name="Mensaje"/> es

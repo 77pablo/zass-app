@@ -17,8 +17,15 @@ public class ValidadoresPruebas
     private static RegistrarCuentaCmd Registro(
         string correo = "pablo@correo.cl",
         string contrasena = "contrasena-larga-1",
-        string nombre = "Pablo Espinoza",
-        string rol = "buscador") => new(correo, contrasena, nombre, rol);
+        string nombre = "Pablo",
+        string rol = "buscador",
+        string? tipo = "particular",
+        string? apellido = "Espinoza",
+        string? rut = "11.111.111-1",
+        string? telefono = "+56 9 1234 5678",
+        string? razonSocial = null,
+        bool mayorDeEdad = true) =>
+        new(correo, contrasena, nombre, rol, tipo, apellido, rut, telefono, razonSocial, mayorDeEdad);
 
     [Theory]
     [InlineData("")]
@@ -187,4 +194,56 @@ public class ValidadoresPruebas
             Latitud: latitud,
             Longitud: longitud,
             Version: 0);
+
+    // ------------------------------------------------ Registro completo (20-nov-2026)
+
+    [Fact]
+    public void Una_empresa_con_razon_social_y_sin_apellido_pasa() =>
+        Assert.True(_registro.Validate(Registro(
+            tipo: "empresa", apellido: null, razonSocial: "Gasfiteria Rojas SpA",
+            rut: "76.086.428-5", telefono: "22 345 6789")).IsValid);
+
+    [Fact]
+    public void Un_particular_sin_apellido_se_rechaza() =>
+        Assert.False(_registro.Validate(Registro(apellido: "  ")).IsValid);
+
+    [Fact]
+    public void Una_empresa_sin_razon_social_se_rechaza() =>
+        Assert.False(_registro.Validate(Registro(tipo: "empresa", razonSocial: null)).IsValid);
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("persona")]
+    [InlineData("Particular")]
+    public void Sin_un_tipo_valido_se_rechaza(string? tipo) =>
+        Assert.False(_registro.Validate(Registro(tipo: tipo)).IsValid);
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("11.111.111-2")]     // digito verificador equivocado
+    [InlineData("12345")]
+    [InlineData("abc")]
+    public void Sin_RUT_o_con_un_RUT_invalido_se_rechaza(string? rut) =>
+        Assert.False(_registro.Validate(Registro(rut: rut)).IsValid);
+
+    [Theory]
+    [InlineData("11111111-1")]
+    [InlineData("11.111.111-1")]
+    [InlineData("8.765.432-k")]       // la k en minuscula tambien
+    public void Un_RUT_valido_escrito_de_cualquier_forma_pasa(string rut) =>
+        Assert.True(_registro.Validate(Registro(rut: rut)).IsValid);
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("1234")]
+    [InlineData("+1 555 123 4567")]
+    public void Sin_telefono_o_con_uno_que_no_es_chileno_se_rechaza(string? telefono) =>
+        Assert.False(_registro.Validate(Registro(telefono: telefono)).IsValid);
+
+    [Fact]
+    public void Sin_marcar_que_es_mayor_de_18_se_rechaza() =>
+        Assert.False(_registro.Validate(Registro(mayorDeEdad: false)).IsValid);
 }

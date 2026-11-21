@@ -68,6 +68,18 @@ public sealed class OpcionesZass
     /// </summary>
     public bool RevisarContrasenasFiltradas { get; set; } = true;
 
+    /// <summary>
+    /// Correo del administrador que recibe las alertas de seguridad (tarjetas bloqueadas por intentos fallidos).
+    /// En produccion es obligatorio; en desarrollo/pruebas es opcional. Config: Zass:CorreoAlertasAdmin,
+    /// env: Zass__CorreoAlertasAdmin.
+    /// </summary>
+    public string? CorreoAlertasAdmin { get; set; }
+
+    /// <summary>
+    /// Opciones de Flow.cl (la pasarela de pagos real). Se usan solo si Zass:Pasarela = "flow".
+    /// </summary>
+    public OpcionesFlow? Flow { get; set; }
+
     public byte[] ClaveDirecciones()
     {
         byte[] clave;
@@ -89,6 +101,39 @@ public sealed class OpcionesZass
 
         return clave;
     }
+}
+
+/// <summary>
+/// Opciones de Flow.cl. Se leen de Zass:Flow en appsettings.json o variables de entorno.
+/// </summary>
+public sealed class OpcionesFlow
+{
+    /// <summary>
+    /// API Key de Flow (publica, se incluye en cada peticion).
+    /// </summary>
+    public string? ApiKey { get; set; }
+
+    /// <summary>
+    /// Secret Key para firmar las peticiones (HMAC-SHA256). Nunca se envia, solo firma.
+    /// </summary>
+    public string? SecretKey { get; set; }
+
+    /// <summary>
+    /// URL base de Flow. Por defecto https://sandbox.flow.cl/api; en produccion
+    /// https://www.flow.cl/api.
+    /// </summary>
+    public string? UrlBase { get; set; }
+
+    /// <summary>
+    /// URL PUBLICA de la API que recibe los avisos de Flow (ej: https://api.zass.cl/api/pagos/aviso).
+    /// </summary>
+    public string? UrlAvisos { get; set; }
+
+    /// <summary>
+    /// A donde vuelve el navegador despues de pagar o inscribir la tarjeta (API-75). Opcional: si
+    /// falta, sale de UrlAvisos cambiando «/aviso» por «/vuelta».
+    /// </summary>
+    public string? UrlVuelta { get; set; }
 }
 
 /// <summary>
@@ -128,7 +173,42 @@ public sealed class ValidadorOpcionesPagos : IValidateOptions<OpcionesZass>
             }
         }
 
+        // Validar CorreoAlertasAdmin: en produccion es obligatorio y debe tener forma de correo
+        if (string.IsNullOrWhiteSpace(o.CorreoAlertasAdmin))
+        {
+            if (_entorno.IsProduction())
+            {
+                fallos.Add("Falta Zass:CorreoAlertasAdmin");
+            }
+            else
+            {
+                _registro.LogWarning("Zass:CorreoAlertasAdmin no configurado; las alertas de tarjeta bloqueada no se enviaran.");
+            }
+        }
+        else if (!EsCorreoValido(o.CorreoAlertasAdmin))
+        {
+            if (_entorno.IsProduction())
+            {
+                fallos.Add("Zass:CorreoAlertasAdmin no tiene forma de correo valido.");
+            }
+            else
+            {
+                _registro.LogWarning("Zass:CorreoAlertasAdmin no tiene forma de correo valido; las alertas no se enviaran.");
+            }
+        }
+
         return fallos.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(fallos);
+    }
+
+    private static bool EsCorreoValido(string correo)
+    {
+        // Validacion simple pero efectiva: algo@algo.algo
+        if (string.IsNullOrWhiteSpace(correo)) return false;
+        var partes = correo.Split('@');
+        if (partes.Length != 2) return false;
+        if (string.IsNullOrWhiteSpace(partes[0]) || string.IsNullOrWhiteSpace(partes[1])) return false;
+        if (!partes[1].Contains(".")) return false;
+        return true;
     }
 }
 
@@ -154,6 +234,11 @@ public static class RegistroDeServicios
             .Bind(configuracion.GetSection(OpcionesZass.Seccion))
             .ValidateDataAnnotations()
             .ValidateOnStart();
+
+        // Las opciones de Flow NO se validan al arrancar: Zass:Flow solo existe donde se eligio
+        // Zass:Pasarela=flow, y exigirlas siempre dejaria sin arrancar a produccion con la
+        // simulada, a desarrollo y a todas las pruebas. Se exigen al resolver la pasarela
+        // (el caso "flow" del switch de abajo). Se leen como parte de OpcionesZass.Flow.
 
         // Las opciones se leen al RESOLVER, no al registrar. Leerlas aqui mismo
         // congelaria la configuracion que existia en este instante, y se perderia
@@ -187,6 +272,12 @@ public static class RegistroDeServicios
             if (opciones.RevisarContrasenasFiltradas)
                 return sp.GetRequiredService<ContrasenasFiltradasHibp>();
             return sp.GetRequiredService<ContrasenasFiltradasNunca>();
+        });
+
+        // FlowPasarela: HttpClient con timeout de 30s para llamadas a Flow.cl.
+        servicios.AddHttpClient<FlowPasarela>(c =>
+        {
+            c.Timeout = TimeSpan.FromSeconds(30);
         });
 
         // --- Puertos con estado por peticion ---
@@ -326,12 +417,13 @@ public static class RegistroDeServicios
                 PasarelaSimulada.NombreDeLaPasarela => new PasarelaSimulada(
                     sp.GetRequiredService<IOptions<OpcionesZass>>(),
                     sp.GetRequiredService<ILogger<PasarelaSimulada>>()),
+                FlowPasarela.NombreDeLaPasarela => CrearFlow(sp),
                 _ => throw new OptionsValidationException(
                     OpcionesZass.Seccion, typeof(OpcionesZass),
                     new[]
                     {
                         $"{ClavePasarela} dice '{nombre}' y no hay adaptador con ese nombre. "
-                        + $"El unico que existe hoy es '{PasarelaSimulada.NombreDeLaPasarela}'.",
+                        + $"Los disponibles hoy son '{PasarelaSimulada.NombreDeLaPasarela}' y 'flow'.",
                     }),
             };
         });
@@ -373,6 +465,9 @@ public static class RegistroDeServicios
         servicios.AddScoped<ProcesadorDeCorreo>();
         servicios.AddHostedService<TrabajoDeCorreo>();
 
+        // --- Alertas al administrador ---
+        servicios.AddScoped<IAlertasAdministrador, AlertasAdministrador>();
+
         // --- A-09 Planificador (trabajos de fondo) ---
         servicios.AddOptions<OpcionesFondo>().Bind(configuracion.GetSection(OpcionesFondo.Seccion));
         servicios.AddScoped<CoordinadorDeTrabajos>();
@@ -385,6 +480,27 @@ public static class RegistroDeServicios
         servicios.AddValidatorsFromAssemblyContaining<ValidadorRegistrarCuenta>();
 
         return servicios;
+    }
+
+    /// <summary>
+    /// Flow, elegido con <c>Zass:Pasarela=flow</c>. Si falta la ApiKey, la SecretKey o la
+    /// URL de avisos, la API NO arranca: un despliegue que pidio Flow y lo tiene mal escrito
+    /// tiene que fallar al tiro, no al primer cobro. Las claves van en Render y en user-secrets,
+    /// nunca en el repositorio (es publico).
+    /// </summary>
+    private static IPasarelaDePagos CrearFlow(IServiceProvider sp)
+    {
+        var flow = sp.GetRequiredService<IOptions<OpcionesZass>>().Value.Flow;
+        var faltan = new List<string>();
+        if (string.IsNullOrWhiteSpace(flow?.ApiKey)) faltan.Add("Zass:Flow:ApiKey");
+        if (string.IsNullOrWhiteSpace(flow?.SecretKey)) faltan.Add("Zass:Flow:SecretKey");
+        if (string.IsNullOrWhiteSpace(flow?.UrlAvisos)) faltan.Add("Zass:Flow:UrlAvisos");
+        if (faltan.Count > 0)
+            throw new OptionsValidationException(
+                OpcionesZass.Seccion, typeof(OpcionesZass),
+                new[] { $"{ClavePasarela} dice 'flow' y falta: {string.Join(", ", faltan)}." });
+
+        return sp.GetRequiredService<FlowPasarela>();
     }
 
     /// <summary>

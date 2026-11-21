@@ -101,6 +101,15 @@ public class ZassDbContext : DbContext
             e.HasIndex(x => x.Correo).IsUnique();
             e.Property(x => x.Nombre).HasMaxLength(150).IsRequired();
             e.Property(x => x.Estado).HasConversion<string>().HasMaxLength(30);
+            // Registro completo (20-nov-2026). Todas opcionales en la base: las cuentas de antes
+            // no las tienen; lo que las exige al registrarse es el validador de API-08.
+            e.Property(x => x.Tipo).HasConversion<string>().HasMaxLength(20)
+                .HasDefaultValue(TipoCuenta.Particular).HasSentinel(TipoCuenta.Particular);
+            e.Property(x => x.Apellido).HasMaxLength(100);
+            e.Property(x => x.Rut).HasMaxLength(12);
+            e.HasIndex(x => x.Rut).IsUnique().HasFilter("rut IS NOT NULL");
+            e.Property(x => x.Telefono).HasMaxLength(20);
+            e.Property(x => x.RazonSocial).HasMaxLength(200);
             e.HasIndex(x => x.TokenVerificacion);
             e.HasIndex(x => x.TokenRecuperacion);
         });
@@ -722,7 +731,7 @@ public class ZassDbContext : DbContext
                     Id = 1,
                     Codigo = "prueba",
                     Nombre = "Prueba",
-                    Descripcion = "30 dias para publicar el perfil y aparecer en las busquedas.",
+                    Descripcion = "30 días para publicar tu perfil y aparecer en las búsquedas.",
                     PrecioMensual = 0,
                     DiasPrueba = 30,
                     MaxServicios = 10,
@@ -735,7 +744,7 @@ public class ZassDbContext : DbContext
                     Id = 2,
                     Codigo = "mensual",
                     Nombre = "ZASS! Mensual",
-                    Descripcion = "Publica tu perfil, apareces en las busquedas y recibes solicitudes de hora. 7990 pesos al mes; cancela cuando quieras.",
+                    Descripcion = "Publica tu perfil, aparece en las búsquedas y recibe solicitudes de hora. Cancela cuando quieras.",
                     PrecioMensual = 7990,
                     DiasPrueba = 0,
                     MaxServicios = 10,
@@ -748,7 +757,7 @@ public class ZassDbContext : DbContext
                     Id = 3,
                     Codigo = "fundador",
                     Nombre = "ZASS! Fundador",
-                    Descripcion = "Precio de lanzamiento para las primeras 50 personas: 5990 pesos al mes mientras mantengas tu suscripcion activa.",
+                    Descripcion = "Precio de lanzamiento para las primeras 50 personas, congelado mientras mantengas tu suscripción activa.",
                     PrecioMensual = 5990,
                     DiasPrueba = 0,
                     MaxServicios = 10,

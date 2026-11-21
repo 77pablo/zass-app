@@ -130,6 +130,11 @@ public class TrabajoDiarioCobraPruebas
         public Task<int> VencerExpiradasAsync(CancellationToken ct = default) =>
             throw new NotSupportedException();
 
+        public Task AvisarCobroRechazadoAsync(
+            Guid perfilPrestadorId, Guid suscripcionId, DateTime vigenteHasta,
+            CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<IReadOnlyList<SuscripcionPorVencer>> PorVencerAsync(
             int dentroDeDias, CancellationToken ct = default) =>
             throw new NotSupportedException();
@@ -153,6 +158,10 @@ public class TrabajoDiarioCobraPruebas
 
         public Task<Resultado<short>> ReservarCupoFundadorAsync(
             Guid perfilPrestadorId, TimeSpan? duracion = null, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<Resultado<CupoTomadoDto>> TomarCupoFundadorAsync(
+            Guid perfilPrestadorId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
         public Task<Resultado> ConfirmarCupoFundadorAsync(

@@ -509,7 +509,7 @@ public class VerificacionSinDocumentosApiPruebas : IAsyncLifetime
         _correos.Add(correo);
         Assert.Equal(HttpStatusCode.Created, (await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo, contrasena = "contrasena-larga-1", nombre = "Pablo Espinoza", rol = "prestador",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo, contrasena = "contrasena-larga-1", nombre = "Pablo Espinoza", rol = "prestador",
         })).StatusCode);
 
         // El token de verificacion llega por el aviso encolado, como en ApiPruebas.
@@ -602,7 +602,7 @@ public class VerificacionSinDocumentosApiPruebas : IAsyncLifetime
         _correos.Add(verificador);
         await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo = verificador, contrasena = "contrasena-larga-1", nombre = "Vera Ficadora", rol = "buscador",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo = verificador, contrasena = "contrasena-larga-1", nombre = "Vera Ficadora", rol = "buscador",
         });
         Guid verificadorId;
         using (var ctx = ContextoDePrueba.Crear())

@@ -231,4 +231,80 @@ public class RegistroPruebas
         var r = await _servicio.ActivarPrestadorAsync(id);
         Assert.True(r.Exito, r.Mensaje);
     }
+
+    // ------------------------------------------------ Registro completo (20-nov-2026)
+
+    private static RegistrarCuentaCmd Completo(
+        string correo = "ana@correo.cl", string rut = "11.111.111-1", string tipo = "particular",
+        string rol = "buscador") =>
+        new(correo, "contrasena-larga-1", "Ana", rol, tipo,
+            Apellido: tipo == "particular" ? "Rojas" : null, Rut: rut, Telefono: " +56 9 1234 5678 ",
+            RazonSocial: tipo == "empresa" ? "Gasfiteria Rojas SpA" : null, MayorDeEdad: true);
+
+    [Fact]
+    public async Task Los_datos_de_la_cuenta_se_guardan_y_el_RUT_con_una_sola_forma()
+    {
+        var r = await _servicio.RegistrarAsync(Completo());
+
+        Assert.True(r.Exito, r.Mensaje);
+        var u = Assert.Single(_base.Usuarios);
+        Assert.Equal(TipoCuenta.Particular, u.Tipo);
+        Assert.Equal("Rojas", u.Apellido);
+        Assert.Equal("11111111-1", u.Rut);
+        Assert.Equal("+56 9 1234 5678", u.Telefono);
+        Assert.Null(u.RazonSocial);
+        Assert.Equal(_reloj.Ahora, u.MayorDeEdadConfirmadoEn);
+    }
+
+    [Fact]
+    public async Task Un_RUT_ya_usado_se_rechaza_aunque_venga_escrito_distinto()
+    {
+        await _servicio.RegistrarAsync(Completo(correo: "ana@correo.cl", rut: "11.111.111-1"));
+
+        var r = await _servicio.RegistrarAsync(Completo(correo: "otra@correo.cl", rut: "111111111"));
+
+        Assert.False(r.Exito);
+        Assert.Equal(Fallas.Conflicto, r.Codigo);
+        Assert.Contains("RUT", r.Mensaje!);
+        Assert.Single(_base.Usuarios);
+    }
+
+    [Fact]
+    public async Task Una_empresa_guarda_su_razon_social_y_su_ficha_parte_con_ese_nombre()
+    {
+        var r = await _servicio.RegistrarAsync(Completo(tipo: "empresa", rut: "76.086.428-5", rol: "prestador"));
+
+        Assert.True(r.Exito, r.Mensaje);
+        var u = Assert.Single(_base.Usuarios);
+        Assert.Equal(TipoCuenta.Empresa, u.Tipo);
+        Assert.Equal("Gasfiteria Rojas SpA", u.RazonSocial);
+        Assert.Null(u.Apellido);
+        Assert.Equal("Ana", u.Nombre);   // la persona de contacto
+        Assert.Equal("Gasfiteria Rojas SpA", Assert.Single(_base.PerfilesPrestador).NombrePublico);
+    }
+
+    [Fact]
+    public async Task Un_particular_que_ofrece_parte_con_nombre_y_apellido_en_su_ficha()
+    {
+        await _servicio.RegistrarAsync(Completo(rol: "prestador"));
+
+        Assert.Equal("Ana Rojas", Assert.Single(_base.PerfilesPrestador).NombrePublico);
+    }
+
+    [Fact]
+    public void Borrar_la_cuenta_borra_tambien_RUT_telefono_apellido_y_razon_social()
+    {
+        var u = new Zass.Dominio.Identidad.Usuario
+        {
+            Nombre = "Ana", Apellido = "Rojas", Rut = "11111111-1", Telefono = "+56912345678",
+            RazonSocial = "Gasfiteria Rojas SpA",
+        };
+
+        u.Anonimizar();
+
+        Assert.Null(u.Apellido);
+        Assert.Null(u.Rut);
+        Assert.Null(u.Telefono);
+        Assert.Null(u.RazonSocial);
+    }
 }
