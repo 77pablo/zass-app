@@ -219,6 +219,20 @@ export function Ficha() {
                       </a>
                     </li>
                   )}
+                  {/*
+                    CS-19: el contacto a la libreta del teléfono (API-07). Solo si hay algo que
+                    guardar: una vCard con el puro nombre no sirve. El servidor exige lo mismo que
+                    para ver estos botones (sesión y correo verificado), así que el enlace solo
+                    aparece donde va a funcionar. No registra un contacto (API-46): guardarlo no
+                    es hablar con nadie, igual que abrir el sitio web.
+                  */}
+                  {(c.telefono || wasap || c.correo) && (
+                    <li>
+                      <a className="boton" href={`/api/prestadores/${encodeURIComponent(slug)}/vcard`} download>
+                        <Icono nombre="persona" />Guardar contacto
+                      </a>
+                    </li>
+                  )}
                 </ul>
               ) : (
                 <p className="bloque-vacio">
