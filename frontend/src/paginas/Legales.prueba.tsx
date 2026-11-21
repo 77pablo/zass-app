@@ -8,7 +8,7 @@ import { AvisoDeBorrador } from './AvisoDeBorrador'
 import { DatoLegal } from './DatoLegal'
 import { Privacidad } from './Privacidad'
 import { Terminos } from './Terminos'
-import { BORRADOR_LEGAL, estaPendiente, RESPONSABLE } from './legal'
+import { BORRADOR_LEGAL, estaPendiente, GARANTIAS_TRANSFERENCIA, RESPONSABLE } from './legal'
 
 afterEach(() => { document.head.innerHTML = ''; document.title = '' })
 
@@ -134,6 +134,37 @@ describe('Privacidad', () => {
   it('explica que la direccion no se muestra', () => {
     enRuta(<Privacidad />)
     expect(screen.getByText(/La dirección se guarda cifrada/)).toBeInTheDocument()
+  })
+})
+
+/*
+ * Lo que la politica decia y el sistema no hacia (auditoria T35, 18-nov-2026). Los textos de abajo son
+ * PROPUESTOS y esperan a Pablo y a su abogado; lo que se vigila es que la politica no vuelva a decir
+ * menos de lo que el sistema guarda. Los literales van escritos a mano, no copiados de legal.ts.
+ */
+describe('Privacidad: lo que el sistema guarda de verdad', () => {
+  it('quien busca: dice que se guarda el contacto, la reseña y la cita, y ya no dice «nada más»', () => {
+    enRuta(<Privacidad />)
+    const fila = screen.getByRole('rowheader', { name: 'Quien busca' }).closest('tr')!
+    expect(fila).not.toHaveTextContent(/nada más/i)
+    expect(fila).toHaveTextContent('que lo contactaste, cuándo y por qué medio')
+    expect(fila).toHaveTextContent(/Si dejas una reseña/)
+    expect(fila).toHaveTextContent(/Si pides una hora/)
+  })
+
+  it('nombra a los dos proveedores de correo que el backend sabe usar', () => {
+    const { container } = enRuta(<Privacidad />)
+    expect(container).toHaveTextContent('Resend (envío de correos, Brasil)')
+    expect(container).toHaveTextContent(/Brevo/)
+  })
+
+  // Vigila que el parrafo exista y muestre el dato de legal.ts, no que siga vacio: el dia que el abogado
+  // llene GARANTIAS_TRANSFERENCIA esta prueba tiene que seguir verde (ver la nota de DatoLegal, abajo).
+  it('declara la transferencia internacional y muestra sus garantías', () => {
+    enRuta(<Privacidad />)
+    const parrafo = screen.getByText(/transferencia internacional de datos/).closest('p')!
+    expect(parrafo).toHaveTextContent(/Estados Unidos/)
+    expect(parrafo).toHaveTextContent(GARANTIAS_TRANSFERENCIA)
   })
 })
 
