@@ -82,32 +82,34 @@ public class AutorizacionEnRutasPrivadasPruebas : IAsyncLifetime
     }
 
     /// <summary>
-    /// Todo lo que no sea GET bajo /t/ pide sesion. El GET /t/{segmento} (API-54, el escaneo de
-    /// la tarjeta) es publico a proposito y se queda fuera; el POST /t/{segmento}/activar (API-55)
-    /// es el unico POST con sesion fuera de /api, y antes se colgaba de app.MapPost sin
-    /// RequireAuthorization: el filtro de datos de cuenta (ES-2) no lo veia y esta prueba
-    /// tampoco. El CSRF no se ve en los metadatos (los filtros de endpoint no dejan rastro ahi):
-    /// lo comprueba por HTTP ApiTarjetasEmitirActivarPruebas.
+    /// Bajo /t/ solo se LEE. El GET /t/{segmento} (API-54, el escaneo de la tarjeta) es publico a
+    /// proposito, y en produccion lo atiende una Function de Cloudflare que solo deja pasar GET y
+    /// no reenvia cookies (RN-S6-07). Un POST con sesion bajo /t/ no llegaria nunca a la API: asi
+    /// estuvo API-55 hasta el 21-nov-2026, sin pantalla posible. Ahora vive en /api/mi, que pide
+    /// sesion por grupo (Todo_lo_de_api_mi_pide_sesion); el CSRF no se ve en los metadatos (los
+    /// filtros de endpoint no dejan rastro ahi): lo comprueba por HTTP ApiTarjetasEmitirActivarPruebas.
     /// </summary>
     [Fact]
-    public void Lo_que_escribe_bajo_t_pide_sesion()
+    public void Bajo_t_solo_se_lee_y_la_activacion_vive_en_api_mi_con_sesion()
     {
-        var escriben = _app.Services.GetRequiredService<EndpointDataSource>().Endpoints
+        var endpoints = _app.Services.GetRequiredService<EndpointDataSource>().Endpoints
             .OfType<RouteEndpoint>()
-            .Where(e => Ruta(e).StartsWith("/t/", StringComparison.Ordinal))
-            .Where(e => !SoloLectura(e))
             .ToList();
+        var bajoT = endpoints.Where(e => Ruta(e).StartsWith("/t/", StringComparison.Ordinal)).ToList();
 
-        // Si la busqueda deja de ver API-55, la prueba pasaria con cero rutas.
-        Assert.Contains(escriben, e => Ruta(e) == "/t/{segmento}/activar");
+        // Si la busqueda deja de ver API-54, la prueba pasaria con cero rutas.
+        Assert.Contains(bajoT, e => Ruta(e) == "/t/{segmento}");
 
-        var fallos = escriben
-            .Where(e => !PideSesion(e))
+        var escriben = bajoT
+            .Where(e => !SoloLectura(e))
             .Select(e => $"{e.DisplayName} ({Ruta(e)})")
             .ToList();
+        Assert.True(escriben.Count == 0,
+            "Rutas de /t/ que escriben (la Function de /t/ no las deja pasar):\n  " + string.Join("\n  ", escriben));
 
-        Assert.True(fallos.Count == 0,
-            "Rutas de /t/ que escriben sin sesion:\n  " + string.Join("\n  ", fallos));
+        var activar = Assert.Single(endpoints, e => Ruta(e) == "/api/mi/tarjetas/{segmento}/activar");
+        Assert.True(PideSesion(activar), "API-55 tiene que pedir sesion.");
+        Assert.False(SoloLectura(activar));
     }
 
     /// <summary>

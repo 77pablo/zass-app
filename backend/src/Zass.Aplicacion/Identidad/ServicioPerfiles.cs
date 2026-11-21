@@ -19,13 +19,33 @@ public sealed record EditarPerfilPrestadorCmd(
     double? Longitud,
     int Version);
 
-/// <summary>API-23 - Preferencias del buscador (CU-04).</summary>
+/// <summary>
+/// API-23 - Preferencias del buscador (CU-04).
+///
+/// <see cref="RubrosInteres"/> es opcional y nulo significa «no los toques»: el PUT existia
+/// antes que los rubros, y un cliente que no los conoce no debe borrarlos sin querer. Para
+/// quitarlos todos se manda la lista vacia.
+/// </summary>
 public sealed record EditarPerfilBuscadorCmd(
     int? ZonaInteresId,
     short RadioPreferidoKm,
     bool AceptaAvisos,
     bool CanalCorreo,
-    bool CanalPush);
+    bool CanalPush,
+    IReadOnlyList<short>? RubrosInteres = null);
+
+/// <summary>
+/// API-23b - Las preferencias tal como estan guardadas, mas los identificadores de los
+/// favoritos (para pintar el boton de guardar en la busqueda sin pedir la lista entera).
+/// </summary>
+public sealed record MiPerfilBuscadorDto(
+    int? ZonaInteresId,
+    short RadioPreferidoKm,
+    bool AceptaAvisos,
+    bool CanalCorreo,
+    bool CanalPush,
+    IReadOnlyList<short> RubrosInteres,
+    IReadOnlyList<Guid> Favoritos);
 
 /// <summary>
 /// API-18 - El perfil como lo ve su dueno: con la zona y sin la ubicacion exacta.
@@ -247,18 +267,111 @@ public sealed class ServicioPerfiles
             return Resultado.Falla(Fallas.Validacion,
                 $"El radio tiene que estar entre {RadioMinimoKm} y {RadioMaximoKm} km.");
 
-        var perfil = await _perfiles.BuscadorDeUsuarioAsync(usuarioId, ct);
-        if (perfil is null)
-            return Resultado.Falla(Fallas.NoEncontrado, "Esta cuenta no tiene perfil de buscador.");
+        var rubros = cmd.RubrosInteres?.Distinct().ToList();
+        if (rubros is not null && (rubros.Count > MaxRubrosDeInteres || rubros.Any(r => r <= 0)))
+            return Resultado.Falla(Fallas.Validacion,
+                $"Puedes elegir hasta {MaxRubrosDeInteres} oficios.");
+
+        var perfil = await BuscadorOCrearAsync(usuarioId, ct);
 
         perfil.ZonaInteresId = cmd.ZonaInteresId;
         perfil.RadioPreferidoKm = cmd.RadioPreferidoKm;
         perfil.AceptaAvisos = cmd.AceptaAvisos;
         perfil.CanalCorreo = cmd.CanalCorreo;
         perfil.CanalPush = cmd.CanalPush;
+        if (rubros is not null) perfil.RubrosInteres = rubros;
 
         await _unidad.GuardarAsync(ct);
         return Resultado.Ok();
+    }
+
+    // ------------------------------------------------------------- CU-04 y CS-08, leer
+
+    /// <summary>Cuantos oficios de interes caben (CU-04). Una portada, no un catalogo.</summary>
+    public const int MaxRubrosDeInteres = 5;
+
+    /// <summary>
+    /// Cuantos favoritos caben (CS-08). La lista vive en una columna jsonb que se lee entera en
+    /// cada peticion: sin tope, nada impide que alguien la llene con miles de identificadores.
+    /// </summary>
+    public const int MaxFavoritos = 100;
+
+    /// <summary>
+    /// API-23b. Una cuenta sin perfil de buscador —un prestador que nunca busco— recibe los valores
+    /// por omision, no un 404: para quien mira la pantalla no hay diferencia entre «no tengo
+    /// preferencias» y «nunca las guarde».
+    /// </summary>
+    public async Task<MiPerfilBuscadorDto> MiPerfilBuscadorAsync(
+        Guid usuarioId, CancellationToken ct = default)
+    {
+        var perfil = await _perfiles.BuscadorDeUsuarioAsync(usuarioId, ct)
+                     ?? new PerfilBuscador { UsuarioId = usuarioId };
+
+        return new MiPerfilBuscadorDto(
+            perfil.ZonaInteresId, perfil.RadioPreferidoKm, perfil.AceptaAvisos,
+            perfil.CanalCorreo, perfil.CanalPush,
+            perfil.RubrosInteres.ToList(), perfil.Favoritos.ToList());
+    }
+
+    // ------------------------------------------------------------- CS-08, escribir
+
+    /// <summary>
+    /// Guarda un prestador como favorito. Solo uno PUBLICADO: un borrador o uno pausado no
+    /// existe para el publico, y el mismo 404 para los dos casos evita que esto sirva para
+    /// sondear quien se dio de alta sin publicar (igual que la ficha, API-05).
+    ///
+    /// Guardar dos veces el mismo no es un error: el boton se puede tocar desde dos pestañas.
+    /// </summary>
+    public async Task<Resultado> GuardarFavoritoAsync(
+        Guid usuarioId, Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        var prestador = await _perfiles.PrestadorPorIdAsync(perfilPrestadorId, ct);
+        if (prestador is null || prestador.Estado != EstadoPerfil.Publicado)
+            return Resultado.Falla(Fallas.NoEncontrado, "Esta ficha no existe, o ya no está publicada.");
+
+        var perfil = await BuscadorOCrearAsync(usuarioId, ct);
+        if (perfil.Favoritos.Contains(perfilPrestadorId)) return Resultado.Ok();
+
+        if (perfil.Favoritos.Count >= MaxFavoritos)
+            return Resultado.Falla(Fallas.ReglaDeNegocio,
+                $"Ya tienes {MaxFavoritos} guardados. Quita alguno para guardar otro.");
+
+        // El mas reciente primero. Una lista NUEVA y no Insert sobre la que ya existe: asi el
+        // cambio se nota aunque alguien toque el comparador de la columna jsonb.
+        perfil.Favoritos = new[] { perfilPrestadorId }.Concat(perfil.Favoritos).ToList();
+        await _unidad.GuardarAsync(ct);
+        return Resultado.Ok();
+    }
+
+    /// <summary>
+    /// Quita un favorito. Quitar uno que no estaba responde igual que quitar uno que si: el
+    /// resultado que la persona pidio —que no este— ya se cumple. No mira si el prestador sigue
+    /// publicado: uno que se despublico tiene que poder quitarse igual.
+    /// </summary>
+    public async Task<Resultado> QuitarFavoritoAsync(
+        Guid usuarioId, Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        var perfil = await _perfiles.BuscadorDeUsuarioAsync(usuarioId, ct);
+        if (perfil is null || !perfil.Favoritos.Contains(perfilPrestadorId)) return Resultado.Ok();
+
+        perfil.Favoritos = perfil.Favoritos.Where(id => id != perfilPrestadorId).ToList();
+        await _unidad.GuardarAsync(ct);
+        return Resultado.Ok();
+    }
+
+    /// <summary>
+    /// El perfil de buscador de la cuenta, creandolo si no existe. El registro solo lo crea para
+    /// quien entra como buscador, pero una misma cuenta puede ser las dos cosas (seccion 3 de S1):
+    /// un prestador que guarda a un colega no deberia toparse con «no tienes perfil de buscador».
+    /// </summary>
+    private async Task<PerfilBuscador> BuscadorOCrearAsync(Guid usuarioId, CancellationToken ct)
+    {
+        var perfil = await _perfiles.BuscadorDeUsuarioAsync(usuarioId, ct);
+        if (perfil is not null) return perfil;
+
+        perfil = new PerfilBuscador { UsuarioId = usuarioId };
+        _perfiles.Agregar(perfil);
+        return perfil;
     }
 
     // ------------------------------------------------------------ auxiliares

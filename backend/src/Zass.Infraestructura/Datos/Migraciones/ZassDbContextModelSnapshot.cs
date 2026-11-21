@@ -5534,6 +5534,13 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasColumnType("smallint")
                         .HasColumnName("radio_preferido_km");
 
+                    b.PrimitiveCollection<List<short>>("RubrosInteres")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint[]")
+                        .HasColumnName("rubros_interes")
+                        .HasDefaultValueSql("'{}'::smallint[]");
+
                     b.Property<Guid>("UsuarioId")
                         .HasColumnType("uuid")
                         .HasColumnName("usuario_id");

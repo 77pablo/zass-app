@@ -127,7 +127,10 @@ public sealed class ServicioResenas : IServicioResenas
                 false, null, MotivoDeNoElegibilidad.CuentaNoHabilitada, MensajeCuentaNoHabilitada, null));
 
         var perfil = await _repo.PerfilAsync(perfilPrestadorId, ct);
-        if (perfil is null)
+        // Igual que la lectura pública: un perfil que no está publicado responde EXACTAMENTE
+        // como uno que no existe. Si no, este endpoint sería un oráculo para saber qué
+        // identificadores corresponden a perfiles en borrador (auditoría del 21-nov-2026).
+        if (perfil is null || perfil.Estado != EstadoPerfil.Publicado)
             return Resultado.Falla<ResultadoElegibilidad>(Fallas.NoEncontrado, "No encontramos a ese prestador.");
 
         if (await _identidad.EsMismaPersonaAsync(perfil.UsuarioId, buscadorId, ct))

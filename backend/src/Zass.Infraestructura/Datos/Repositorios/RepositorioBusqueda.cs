@@ -215,6 +215,37 @@ public sealed class RepositorioBusquedaEfCore : IRepositorioBusqueda
     }
 
     /// <summary>
+    /// CS-08. LINQ y no SQL: no hay distancia que medir. La etiqueta de la zona principal es la
+    /// misma que la de los recien llegados («Barrio, Comuna» o la comuna sola).
+    /// </summary>
+    public async Task<IReadOnlyList<TarjetaFila>> TarjetasPorIdAsync(
+        IReadOnlyList<Guid> perfilIds, CancellationToken ct = default)
+    {
+        if (perfilIds.Count == 0) return Array.Empty<TarjetaFila>();
+        var ids = perfilIds.ToArray();
+
+        return await _ctx.PerfilesPrestador.AsNoTracking()
+            .Where(p => ids.Contains(p.Id) && p.Estado == Zass.Dominio.Comun.EstadoPerfil.Publicado)
+            .Select(p => new TarjetaFila(
+                p.Id,
+                p.Slug,
+                p.NombrePublico,
+                p.UrlFoto,
+                _ctx.Rubros.Where(r => r.Id == p.RubroId).Select(r => r.Nombre).FirstOrDefault(),
+                _ctx.Coberturas
+                    .Where(c => c.PerfilPrestadorId == p.Id && c.EsPrincipal)
+                    .Select(c => c.Zona!.Tipo == Zass.Dominio.Catalogo.TipoDeZona.Barrio
+                        ? c.Zona!.Nombre + ", " + c.Zona!.Comuna : c.Zona!.Nombre)
+                    .FirstOrDefault(),
+                _ctx.Credenciales.Any(cr =>
+                    cr.PerfilPrestadorId == p.Id
+                    && cr.Estado == Zass.Dominio.Comun.EstadoCredencial.Verificada),
+                p.PromedioCalificacion,
+                p.TotalResenas))
+            .ToListAsync(ct);
+    }
+
+    /// <summary>
     /// La barra de busqueda. SQL a mano por lo mismo que la busqueda por distancia: la distancia sale
     /// de PostGIS y el orden depende de ella.
     ///

@@ -4,8 +4,11 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.Extensions.Options;
 using Zass.Api.Configuracion;
 using Zass.Aplicacion.Busqueda;
+using Zass.Aplicacion.Catalogo;
+using Zass.Aplicacion.Geografia;
 using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Suscripciones;
+using Zass.Dominio.Comun;
 using Zass.Infraestructura.Configuracion;
 
 namespace Zass.Api.Endpoints;
@@ -353,19 +356,82 @@ public static class EndpointsIdentidad
             .RequireRateLimiting(Tasa.General)
             .WithName("API-22b");
 
-        // API-23 - Preferencias de zona y radio (CU-04).
+        // API-23 - Preferencias de zona, radio y oficios de interes (CU-04).
+        //
+        // Que la zona y los oficios EXISTAN se mira aqui, en el borde: son de MOD-04 y MOD-03, y
+        // MOD-01 no los conoce. Sin esto, una zona inventada llegaba a la base y rebotaba en la
+        // clave foranea como un 500; y un oficio inventado se guardaba sin que nadie lo notara.
         grupo.MapPut("/perfil-buscador", async (
-                EditarPerfilBuscadorCmd cmd, ServicioPerfiles servicio, ClaimsPrincipal quien) =>
+                EditarPerfilBuscadorCmd cmd, ServicioPerfiles servicio,
+                IServicioCatalogo catalogo, IServicioGeografia geografia, ClaimsPrincipal quien) =>
             {
                 var usuarioId = quien.UsuarioId();
-                return usuarioId is null
-                    ? Results.Unauthorized()
-                    : Respuestas.DeResultado(
-                        await servicio.EditarBuscadorAsync(usuarioId.Value, cmd));
+                if (usuarioId is null) return Results.Unauthorized();
+
+                if (cmd.ZonaInteresId is { } zonaId && !(await geografia.ZonaPorIdAsync(zonaId)).Exito)
+                    return Respuestas.Problema(Resultado.Falla(Fallas.Validacion, "Esa comuna no existe."));
+
+                foreach (var rubroId in (cmd.RubrosInteres ?? Array.Empty<short>()).Distinct())
+                    if (await catalogo.RubroPorIdAsync(rubroId) is null)
+                        return Respuestas.Problema(Resultado.Falla(Fallas.Validacion, "Uno de esos oficios no existe."));
+
+                return Respuestas.DeResultado(await servicio.EditarBuscadorAsync(usuarioId.Value, cmd));
             })
             .ConValidacion<EditarPerfilBuscadorCmd>()
             .RequireRateLimiting(Tasa.General)
             .WithName("API-23");
+
+        // API-23b - Las preferencias guardadas y los identificadores de los favoritos (CU-04,
+        // CS-08). El mismo recurso que API-23, con el metodo que faltaba: sin esto la pantalla no
+        // tenia como saber que habia guardado la persona.
+        grupo.MapGet("/perfil-buscador", async (ServicioPerfiles servicio, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                return usuarioId is null
+                    ? Results.Unauthorized()
+                    : Results.Ok(await servicio.MiPerfilBuscadorAsync(usuarioId.Value));
+            })
+            .RequireRateLimiting(Tasa.General)
+            .WithName("API-23b");
+
+        // CS-08 - Mis favoritos, como tarjetas. Los identificadores son de MOD-01 (el perfil de
+        // buscador) y las tarjetas de MOD-05: ninguno de los dos puede armar la lista solo, igual
+        // que la ficha. La tarjeta NO trae contacto (ver FavoritoDto).
+        grupo.MapGet("/favoritos", async (
+                ServicioPerfiles servicio, IServicioBusqueda busqueda, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+
+                var mio = await servicio.MiPerfilBuscadorAsync(usuarioId.Value);
+                return Results.Ok(await busqueda.TarjetasDeFavoritosAsync(mio.Favoritos));
+            })
+            .RequireRateLimiting(Tasa.General)
+            .WithName("API-23-favoritos");
+
+        // CS-08 - Guardar un favorito. PUT porque es idempotente: guardarlo dos veces deja lo mismo.
+        grupo.MapPut("/favoritos/{perfilId:guid}", async (
+                Guid perfilId, ServicioPerfiles servicio, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                return usuarioId is null
+                    ? Results.Unauthorized()
+                    : Respuestas.DeResultado(await servicio.GuardarFavoritoAsync(usuarioId.Value, perfilId));
+            })
+            .RequireRateLimiting(Tasa.General)
+            .WithName("API-23-favorito-guardar");
+
+        // CS-08 - Quitar un favorito. Tambien idempotente: quitar uno que no estaba responde 204.
+        grupo.MapDelete("/favoritos/{perfilId:guid}", async (
+                Guid perfilId, ServicioPerfiles servicio, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                return usuarioId is null
+                    ? Results.Unauthorized()
+                    : Respuestas.DeResultado(await servicio.QuitarFavoritoAsync(usuarioId.Value, perfilId));
+            })
+            .RequireRateLimiting(Tasa.General)
+            .WithName("API-23-favorito-quitar");
     }
 
     // ------------------------------------------------- 1 - Publico, sin sesion

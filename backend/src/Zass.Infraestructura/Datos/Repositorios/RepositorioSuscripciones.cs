@@ -160,8 +160,12 @@ public sealed class RepositorioSuscripcionesEfCore : IRepositorioSuscripciones
         _ctx.IntentosDePago.FirstOrDefaultAsync(i => i.Id == id, ct);
 
     public Task<IntentoDePago?> IntentoPorClaveAsync(
-        string clave, CancellationToken ct = default) =>
-        _ctx.IntentosDePago.FirstOrDefaultAsync(i => i.ClaveIdempotencia == clave, ct);
+        string clave, Guid perfilPrestadorId, CancellationToken ct = default) =>
+        _ctx.IntentosDePago.FirstOrDefaultAsync(
+            i => i.ClaveIdempotencia == clave && i.PerfilPrestadorId == perfilPrestadorId, ct);
+
+    public Task<bool> ClaveDeIntentoUsadaAsync(string clave, CancellationToken ct = default) =>
+        _ctx.IntentosDePago.AnyAsync(i => i.ClaveIdempotencia == clave, ct);
 
     public async Task<IReadOnlyList<IntentoDePago>> IntentosPorPrefijoDeClaveAsync(
         string prefijo, CancellationToken ct = default) =>

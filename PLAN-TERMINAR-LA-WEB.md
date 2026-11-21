@@ -58,6 +58,12 @@ El nivel dice cuánto cuidado pide: **N1** sin riesgo (textos, documentos) · **
 
 ### Carril P — Pablo con Claude
 
+> **Avance al 22-nov-2026 (mañana):** P-1 (#192), P-2 y P-3 (#195) y P-4 (#193) **hechos y en `main`**.
+> De P-6, la parte de código avanzó mucho: una auditoría de endpoints encontró 11 problemas y quedaron
+> arreglados en #193, #194, #196 y #198 (el más serio: **un prestador podía hacer que el cobro
+> automático de otra persona no ocurriera**). Además apareció y se hizo **P-10** (abajo).
+> Siguen pendientes: P-5, P-7, P-8, P-9, el resto de P-6 (rotar secretos) y **P-11**.
+
 | ID | Tarea | Nivel | Depende de | Entrega |
 |---|---|---|---|---|
 | **P-1** | **Fotos de trabajos, servidor** (T69, la está haciendo un modelo gratis): revisar lo que deje, completar lo que falte, migración `FotosDeTrabajos`, límite por plan (`maxFotosTrabajos`) | N3 | — | PR con CI verde y mutaciones que caen |
@@ -69,6 +75,8 @@ El nivel dice cuánto cuidado pide: **N1** sin riesgo (textos, documentos) · **
 | **P-7** | **Probar la copia de seguridad**: restaurar Neon en una base aparte (con las herramientas de su misma versión, no con el PostgreSQL 16 local) y contar filas | N3 | — | Restauración comprobada y escrita en `ESTADO.md` |
 | **P-8** | **La prueba final**: los 39 casos de uso recorridos en el celular y en el escritorio, en producción, con la lista de la sección 7. Lo que falle vuelve al carril de su dueño | N2 | Todo lo anterior | Lista firmada |
 | **P-9** | **Abrir `zass.cl`**: borrar los datos de demostración, quitar el mantenimiento, comprobar desde un celular nuevo | N3 | P-8 y el abogado | La web abierta |
+| **P-10** | **Activar la tarjeta NFC desde la web** (CU-19): no se podía (no había pantalla y la Function de Cloudflare rechazaba el POST). **Hecho en #199**: `/tarjeta/sin-activar/{segmento}` pide el código; API-55 pasó a `/api/mi/tarjetas/{segmento}/activar`. Falta 4A: si la tarjeta ya es tuya, llevarte a tu panel | N3 | — | Hecho |
+| **P-11** | **Cerrar la API directa en Render** (decisión de Pablo: *antes de abrir*, no ahora). La URL de Render está en el repo público y no hay secreto compartido Cloudflare↔API, así que se saltan el modo mantenimiento y los límites por IP. Claude programa el secreto (`X-Origen`); Pablo pone las dos variables | N3 | Antes de P-9 | Secreto en Render y Cloudflare |
 
 ### Carril J — Joaquín
 
@@ -86,6 +94,7 @@ Empieza por lo que **bloquea la publicación** (JQ-17) y después pasa al estilo
 | **JQ-19b** | **Estilo iPhone: el prestador**: ofrecer servicios, Mi ficha, Mi agenda, Mis tarjetas, Mis reseñas, Mis credenciales | N2 | — | Ídem |
 | **JQ-19c** | **Estilo iPhone: reseñas, tarjetas y legal**: escribir reseña, todas las reseñas, `t/:segmento` y los tres estados de tarjeta, términos, privacidad, profesionales | N2 | — | Ídem |
 | **JQ-19d** | **Estilo iPhone: el panel interno**: Verificador, reportes, tarjetas, auditoría, indicadores (en el escritorio, estilo iPad) | N2 | #163 | Ídem |
+| **JQ-22** | **«Guardados» en la navegación** (#195): hoy `/mis-guardados` solo se alcanza desde la ficha y la portada. Va en la `Cabecera` y en la barra inferior, y el ícono de corazón (hoy es `estrella`). Mirar también en el celular la pantalla de activar tarjeta (#199) | N2 | — | Fusionado |
 | **JQ-20** | **Los borradores heredados**: actualizar con `main` y fusionar #130, #106, #107 y #98; **rehacer** #103 (choca con `index.css`) y #128 (la página de mantenimiento sigue en el estilo v3) o cerrarlos | N2 | — | Ninguno abierto |
 | **JQ-21** | Correr `verificacion-interna.mjs` del #159 y dejar el resultado en el PR | N1 | — | Hecho |
 

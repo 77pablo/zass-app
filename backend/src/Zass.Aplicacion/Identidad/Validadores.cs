@@ -206,5 +206,13 @@ public sealed class ValidadorEditarPerfilBuscador : AbstractValidator<EditarPerf
                        + $"y {ServicioPerfiles.RadioMaximoKm} km.");
 
         RuleFor(x => x.ZonaInteresId).GreaterThan(0).When(x => x.ZonaInteresId is not null);
+
+        // CU-04: hasta cinco oficios. Que EXISTAN lo mira el endpoint contra el catalogo (MOD-03):
+        // un validador no consulta la base.
+        RuleFor(x => x.RubrosInteres)
+            .Must(r => r!.Distinct().Count() <= ServicioPerfiles.MaxRubrosDeInteres)
+            .WithMessage($"Puedes elegir hasta {ServicioPerfiles.MaxRubrosDeInteres} oficios.")
+            .When(x => x.RubrosInteres is not null);
+        RuleForEach(x => x.RubrosInteres).GreaterThan((short)0).When(x => x.RubrosInteres is not null);
     }
 }

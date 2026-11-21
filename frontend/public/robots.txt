@@ -6,6 +6,7 @@ Disallow: /mi-agenda
 Disallow: /mis-citas
 Disallow: /mis-resenas
 Disallow: /mis-tarjetas
+Disallow: /mis-guardados
 Disallow: /interno
 Disallow: /pago/
 Disallow: /planes/listo

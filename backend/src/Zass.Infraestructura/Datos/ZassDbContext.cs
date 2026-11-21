@@ -1107,6 +1107,11 @@ public class ZassDbContext : DbContext
 
         // Listas de texto -> text[]
         b.Entity<Resena>().Property(x => x.Aspectos).HasColumnType("text[]");
+        // CU-04. Con valor por omision en la base: las filas que ya existen quedan con la lista
+        // vacia al migrar, y no con un nulo que el modelo no sabria leer.
+        b.Entity<PerfilBuscador>().Property(x => x.RubrosInteres)
+            .HasColumnType("smallint[]")
+            .HasDefaultValueSql("'{}'::smallint[]");
         b.Entity<PerfilBuscador>().Property(x => x.Favoritos)
             .HasConversion(
                 v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),

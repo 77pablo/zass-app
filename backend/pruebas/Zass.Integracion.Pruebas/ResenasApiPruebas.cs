@@ -936,4 +936,35 @@ public class ResenasApiPruebas : IAsyncLifetime
         Assert.Equal("SinContacto", sin.GetProperty("motivo").GetString());
         Assert.Equal(HttpStatusCode.BadRequest, sinParametro.StatusCode);
     }
+
+    /// <summary>
+    /// API-47 no puede ser un oráculo de perfiles que no se ven (auditoría del 21-nov-2026).
+    /// Antes, un perfil en borrador respondía 200 con <c>SinContacto</c> y uno inexistente 404:
+    /// bastaba mirar el código para saber qué identificador era un perfil sin publicar. Ahora los
+    /// dos responden lo MISMO, igual que la lectura pública de reseñas.
+    /// </summary>
+    [Theory]
+    [InlineData(EstadoPerfil.Borrador)]
+    [InlineData(EstadoPerfil.Despublicado)]
+    public async Task Elegibilidad_de_un_perfil_no_publicado_responde_igual_que_uno_inexistente(EstadoPerfil estado)
+    {
+        var prestador = await UnaPersonaAsync("prestador");
+        var autor = await UnaPersonaAsync("buscador");
+        Guid perfilId;
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var perfil = await ctx.PerfilesPrestador.SingleAsync(x => x.UsuarioId == prestador.UsuarioId);
+            perfil.Estado = estado;
+            perfil.RubroId = 1;
+            await ctx.SaveChangesAsync();
+            perfilId = perfil.Id;
+        }
+
+        var oculto = await autor.Http.GetAsync($"/api/mi/elegibilidad?perfilId={perfilId}");
+        var inexistente = await autor.Http.GetAsync($"/api/mi/elegibilidad?perfilId={Guid.NewGuid()}");
+
+        Assert.Equal(HttpStatusCode.NotFound, inexistente.StatusCode);
+        Assert.Equal(inexistente.StatusCode, oculto.StatusCode);
+        Assert.Equal(await CuerpoComparable.De(inexistente), await CuerpoComparable.De(oculto));
+    }
 }

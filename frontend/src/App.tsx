@@ -8,6 +8,7 @@ import { Ficha } from './paginas/Ficha'
 import { MiAgenda } from './paginas/MiAgenda'
 import { MiFicha } from './paginas/MiFicha'
 import { MisCitas } from './paginas/MisCitas'
+import { MisGuardados } from './paginas/MisGuardados'
 import { MisResenas } from './paginas/MisResenas'
 import { MisTarjetas } from './paginas/MisTarjetas'
 import { MesaDeVerificacion } from './paginas/MesaDeVerificacion'
@@ -28,6 +29,7 @@ import { ResenasDelPrestador } from './paginas/ResenasDelPrestador'
 import { Terminos } from './paginas/Terminos'
 import { RecuperarContrasena, RestablecerContrasena, VerificarCorreo } from './paginas/Recuperacion'
 import { AvisoDeTarjeta, TarjetaEnMayusculas } from './paginas/AvisoDeTarjeta'
+import { ActivarTarjeta } from './paginas/ActivarTarjeta'
 
 /**
  * Un sitio de varias paginas, no una pagina larga: cada seccion vive en su propia ruta y se
@@ -61,6 +63,8 @@ export function App() {
         {/* CS-16: sin esta ruta, la ventana de 72 h para editar una reseña no se puede alcanzar. */}
         <Route path="mis-resenas" element={<MisResenas />} />
         <Route path="mis-tarjetas" element={<MisTarjetas />} />
+        {/* CS-08 y CU-04: la gente guardada y lo que la persona suele buscar. */}
+        <Route path="mis-guardados" element={<MisGuardados />} />
         <Route path="ofrecer-servicios" element={<OfrecerServicios />} />
         <Route path="verificar-correo" element={<VerificarCorreo />} />
         <Route path="recuperar-contrasena" element={<RecuperarContrasena />} />
@@ -68,6 +72,8 @@ export function App() {
         <Route path="tarjeta/no-valida" element={<AvisoDeTarjeta aviso="no-valida" />} />
         <Route path="tarjeta/no-disponible" element={<AvisoDeTarjeta aviso="no-disponible" />} />
         <Route path="tarjeta/sin-activar" element={<AvisoDeTarjeta aviso="sin-activar" />} />
+        {/* CU-19: API-54 trae aqui una tarjeta emitida, con su segmento, para activarla. */}
+        <Route path="tarjeta/sin-activar/:segmento" element={<ActivarTarjeta />} />
         <Route path="t/:segmento" element={<TarjetaEnMayusculas />} />
         {/* JQ-11/12: sin un rol interno, todo /interno responde como una página que no existe; y cada
             sección, sin el rol que pide su API. */}

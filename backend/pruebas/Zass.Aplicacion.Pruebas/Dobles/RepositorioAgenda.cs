@@ -154,10 +154,15 @@ public sealed class RepositorioAgendaEnMemoria : IRepositorioAgenda
         Task.FromResult(_base.Citas.FirstOrDefault(c => c.Id == id) is { } c ? Enlazar(c) : null);
 
     public Task<Cita?> CitaPorClaveAsync(
-        string claveIdempotencia, CancellationToken ct = default) =>
+        string claveIdempotencia, Guid buscadorId, CancellationToken ct = default) =>
         Task.FromResult(
-            _base.Citas.FirstOrDefault(c => c.ClaveIdempotencia == claveIdempotencia) is { } c
+            _base.Citas.FirstOrDefault(c => c.ClaveIdempotencia == claveIdempotencia
+                                            && c.BuscadorId == buscadorId) is { } c
                 ? Enlazar(c) : null);
+
+    public Task<bool> ClaveDeCitaUsadaAsync(
+        string claveIdempotencia, CancellationToken ct = default) =>
+        Task.FromResult(_base.Citas.Any(c => c.ClaveIdempotencia == claveIdempotencia));
 
     public Task<int> CitasActivasEntreAsync(
         Guid buscadorId, Guid perfilPrestadorId, CancellationToken ct = default) =>
