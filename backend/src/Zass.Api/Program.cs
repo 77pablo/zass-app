@@ -137,6 +137,7 @@ app.MapearSuscripciones();                               // API-66 a API-70 (S7 
 app.MapearVerificacion();
 app.MapearAuditoria();
 
+app.MapearNotificaciones();                             // API-45 y su baja y clave (ES-3, push)
 app.MapearTarjetas();                                  // API-54 /t/{segmento} (CS-18)
 
 // Sonda de vida. Sin sesion y con el limite publico: tambien es un endpoint.
