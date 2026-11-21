@@ -39,6 +39,7 @@ export function SoloSeccion({ seccion, children }: { seccion: SeccionInterna; ch
 const SECCIONES: { seccion: SeccionInterna; a: string; titulo: string; bajada: string }[] = [
   { seccion: 'verificacion', a: '/interno/verificacion', titulo: T.SECCION_VERIFICACION, bajada: T.SECCION_VERIFICACION_BAJADA },
   { seccion: 'moderacion', a: '/interno/reportes', titulo: T.SECCION_MODERACION, bajada: T.SECCION_MODERACION_BAJADA },
+  { seccion: 'administracion', a: '/interno/indicadores', titulo: T.SECCION_INDICADORES, bajada: T.SECCION_INDICADORES_BAJADA },
 ]
 
 /** /interno: el índice, con solo las secciones que tu cuenta puede usar. Crece con JQ-13 y JQ-14. */
@@ -53,7 +54,7 @@ export function IndiceInterno() {
       {mias.length === 0 && <p className="bloque-texto bloque-vacio">{T.SIN_SECCIONES}</p>}
       <ul className="panel-interno-secciones">
         {mias.map((s) => (
-          <li key={s.seccion} className="bloque">
+          <li key={s.a} className="bloque">
             <Link className="enlace" to={s.a}>{s.titulo}<Icono nombre="chevron" /></Link>
             <p className="bloque-texto">{s.bajada}</p>
           </li>

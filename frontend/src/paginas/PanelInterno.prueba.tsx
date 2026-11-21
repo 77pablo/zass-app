@@ -24,6 +24,7 @@ function pintar(ruta: string, estado: EstadoDeSesion, roles: string[] = []) {
             <Route index element={<IndiceInterno />} />
             <Route path="verificacion" element={<SoloSeccion seccion="verificacion"><p>la mesa</p></SoloSeccion>} />
             <Route path="reportes" element={<SoloSeccion seccion="moderacion"><p>los reportes</p></SoloSeccion>} />
+            <Route path="indicadores" element={<SoloSeccion seccion="administracion"><p>los indicadores</p></SoloSeccion>} />
           </Route>
           <Route path="/entrar" element={<p>pantalla de entrar</p>} />
           <Route path="*" element={<NoEncontrada />} />
@@ -84,12 +85,19 @@ describe('JQ-11: la puerta de /interno', () => {
     pintar('/interno', 'dentro', ['buscador', 'administrador'])
     expect(screen.getByRole('heading', { level: 1, name: 'Panel interno' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /Verificación de credenciales|Reseñas reportadas/ })).toBeNull()
+    expect(screen.getByRole('link', { name: /Indicadores/ })).toHaveAttribute('href', '/interno/indicadores')
+  })
+
+  it('el verificador y el moderador no ven los indicadores (JQ-14)', () => {
+    pintar('/interno', 'dentro', ['verificador', 'moderador'])
+    expect(screen.queryByRole('link', { name: /Indicadores/ })).toBeNull()
   })
 
   it.each([
     ['el moderador, en la verificación', '/interno/verificacion', ['moderador'], 'la mesa'],
     ['el verificador, en los reportes', '/interno/reportes', ['verificador'], 'los reportes'],
     ['el administrador, en los reportes', '/interno/reportes', ['administrador'], 'los reportes'],
+    ['un verificador sin administrador, en los indicadores', '/interno/indicadores', ['verificador'], 'los indicadores'],
   ])('cada sección tiene su puerta: %s ve una página que no existe', (_, ruta, roles, contenido) => {
     pintar(ruta, 'dentro', roles)
     expect(screen.getByRole('heading', { level: 1, name: 'Esta página no existe.' })).toBeInTheDocument()
