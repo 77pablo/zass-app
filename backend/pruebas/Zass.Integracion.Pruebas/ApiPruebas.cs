@@ -2492,6 +2492,7 @@ public partial class ApiPruebas : IAsyncLifetime
             "CS-02b",
             "CS-04",
             "CSRF",
+            "MI-METRICAS",
             "MI-SUSCRIPCION",
         };
 
