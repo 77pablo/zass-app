@@ -10,7 +10,7 @@ import { ProveedorDeSesion } from '../sesion/Sesion'
 /*
  * La portada mientras no hay datos.
  *
- * Casi todas sus secciones viven tras un `&&` (el mapa, la cinta, las cifras, los recien
+ * Casi todas sus secciones viven tras un `&&` (el mapa, las cifras, los recien
  * llegados). Antes, sin datos, desaparecian sin una palabra: la primera visita del dia, con la API
  * dormida en Render, veia media portada muda y no sabia si esperar o irse.
  */

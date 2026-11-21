@@ -22,6 +22,16 @@ import { mkdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { chromium } from 'playwright'
 
+/** RUT valido al azar (modulo 11): el registro lo exige y es unico desde el 20-nov-2026. */
+function rutAlAzar() {
+  const cuerpo = 10_000_000 + Math.floor(Math.random() * 89_999_999)
+  let suma = 0, factor = 2
+  for (let n = cuerpo; n > 0; n = Math.floor(n / 10)) { suma += (n % 10) * factor; factor = factor === 7 ? 2 : factor + 1 }
+  const resto = 11 - (suma % 11)
+  return `${cuerpo}-${resto === 11 ? '0' : resto === 10 ? 'K' : resto}`
+}
+
+
 const BASE = process.env.ZASS_BASE ?? 'https://localhost:5173'
 const raiz = resolve(import.meta.dirname, '..', '..')
 const carpeta = resolve(raiz, 'registros', 'capturas')
@@ -116,7 +126,7 @@ try {
   if (fase === 'cuenta') {
     const correo = `contacto.${Date.now()}@zass.local`
     const r = await contexto.request.post(`${BASE}/api/auth/registro`, {
-      data: { correo, contrasena: CLAVE, nombre: 'Rosa Contacto', rol: 'buscador' },
+      data: { correo, contrasena: CLAVE, nombre: 'Rosa', rol: 'buscador', tipo: 'particular', apellido: 'Contacto', rut: rutAlAzar(), telefono: '+56 9 1234 5678', mayorDeEdad: true },
     })
     comprobar('la cuenta de buscador se crea por la API', r.status() === 201, `HTTP ${r.status()}`)
     console.log(`\nCorreo de la cuenta: ${correo}`)

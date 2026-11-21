@@ -100,3 +100,84 @@ public sealed class ContrasenasFiltradasNunca : IContrasenasFiltradas
     public Task<bool> EstaFiltradaAsync(string contrasena, CancellationToken ct = default)
         => Task.FromResult(false);
 }
+
+/// <summary>Doble de IAlertasAdministrador que captura las alertas para las pruebas.</summary>
+public sealed class AlertasAdministradorEnMemoria : IAlertasAdministrador
+{
+    public List<AlertaTarjetaBloqueada> Alertas { get; } = new();
+    public Task AvisarTarjetaBloqueadaAsync(AlertaTarjetaBloqueada alerta, CancellationToken ct = default)
+    {
+        Alertas.Add(alerta);
+        return Task.CompletedTask;
+    }
+}
+
+/// <summary>Repositorio de auditoria en memoria para pruebas.</summary>
+public sealed class RepositorioAuditoriaEnMemoria : IRepositorioAuditoria
+{
+    private readonly List<RegistroAuditoria> _registros = new();
+    private long _nextId = 1;
+
+    public List<RegistroAuditoria> Registros => _registros;
+
+    public Task<IReadOnlyList<RegistroAuditoria>> ConsultarAsync(
+        string? entidad, Guid? entidadId, Guid? actorId,
+        DateTime? antesDe, long? antesDeId, int limite, CancellationToken ct = default)
+    {
+        var consulta = _registros.AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(entidad) && entidadId.HasValue)
+        {
+            consulta = consulta.Where(r => r.Entidad == entidad && r.EntidadId == entidadId);
+        }
+        else if (actorId.HasValue)
+        {
+            consulta = consulta.Where(r => r.ActorId == actorId);
+        }
+
+        if (antesDe.HasValue && antesDeId.HasValue)
+        {
+            consulta = consulta.Where(r => r.OcurridoEn < antesDe || (r.OcurridoEn == antesDe && r.Id < antesDeId.Value));
+        }
+        else if (antesDe.HasValue)
+        {
+            consulta = consulta.Where(r => r.OcurridoEn < antesDe);
+        }
+
+        consulta = consulta.OrderByDescending(r => r.OcurridoEn).ThenByDescending(r => r.Id);
+
+        return Task.FromResult<IReadOnlyList<RegistroAuditoria>>(
+            consulta.Take(limite + 1).ToList());
+    }
+
+    public Task<int> ContarActivacionesFallidasAsync(
+        Guid tarjetaId, DateTime desde, DateTime hasta, CancellationToken ct = default)
+    {
+        return Task.FromResult(_registros.Count(r =>
+            r.Entidad == "Tarjeta"
+            && r.EntidadId == tarjetaId
+            && r.Accion == "TarjetaActivacionFallida"
+            && r.OcurridoEn >= desde
+            && r.OcurridoEn <= hasta));
+    }
+
+    public Task<IReadOnlyList<DateTime>> ObtenerFechasDeFallosAsync(
+        Guid tarjetaId, DateTime desde, DateTime hasta, CancellationToken ct = default)
+    {
+        return Task.FromResult<IReadOnlyList<DateTime>>(_registros
+            .Where(r => r.Entidad == "Tarjeta"
+                     && r.EntidadId == tarjetaId
+                     && r.Accion == "TarjetaActivacionFallida"
+                     && r.OcurridoEn >= desde
+                     && r.OcurridoEn <= hasta)
+            .OrderBy(r => r.OcurridoEn)
+            .Select(r => r.OcurridoEn)
+            .ToList());
+    }
+
+    internal void Agregar(RegistroAuditoria r)
+    {
+        r.Id = _nextId++;
+        _registros.Add(r);
+    }
+}

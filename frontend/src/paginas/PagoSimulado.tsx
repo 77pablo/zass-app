@@ -85,7 +85,7 @@ export function PagoSimulado() {
 
       <h1>Inscribir el medio de pago</h1>
       <p className="bloque-texto">
-        Al inscribirlo, tu cupo de fundador queda confirmado y tu primer mes empieza a correr.
+        Al inscribirlo, tu cupo de fundador queda asegurado para cuando termine tu mes gratis.
         Hoy no se te cobra nada.
       </p>
 
