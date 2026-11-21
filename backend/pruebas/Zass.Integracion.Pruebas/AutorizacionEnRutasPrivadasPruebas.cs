@@ -82,6 +82,67 @@ public class AutorizacionEnRutasPrivadasPruebas : IAsyncLifetime
     }
 
     /// <summary>
+    /// Todo lo que no sea GET bajo /t/ pide sesion. El GET /t/{segmento} (API-54, el escaneo de
+    /// la tarjeta) es publico a proposito y se queda fuera; el POST /t/{segmento}/activar (API-55)
+    /// es el unico POST con sesion fuera de /api, y antes se colgaba de app.MapPost sin
+    /// RequireAuthorization: el filtro de datos de cuenta (ES-2) no lo veia y esta prueba
+    /// tampoco. El CSRF no se ve en los metadatos (los filtros de endpoint no dejan rastro ahi):
+    /// lo comprueba por HTTP ApiTarjetasEmitirActivarPruebas.
+    /// </summary>
+    [Fact]
+    public void Lo_que_escribe_bajo_t_pide_sesion()
+    {
+        var escriben = _app.Services.GetRequiredService<EndpointDataSource>().Endpoints
+            .OfType<RouteEndpoint>()
+            .Where(e => Ruta(e).StartsWith("/t/", StringComparison.Ordinal))
+            .Where(e => !SoloLectura(e))
+            .ToList();
+
+        // Si la busqueda deja de ver API-55, la prueba pasaria con cero rutas.
+        Assert.Contains(escriben, e => Ruta(e) == "/t/{segmento}/activar");
+
+        var fallos = escriben
+            .Where(e => !PideSesion(e))
+            .Select(e => $"{e.DisplayName} ({Ruta(e)})")
+            .ToList();
+
+        Assert.True(fallos.Count == 0,
+            "Rutas de /t/ que escriben sin sesion:\n  " + string.Join("\n  ", fallos));
+    }
+
+    /// <summary>
+    /// Todo /api/interno revalida el rol EN LA BASE (RolVigenteEnBase), no solo en la cookie de
+    /// 15 minutos: a quien se le quita el rol se le corta el panel en la peticion siguiente. Se
+    /// mira la politica ya resuelta (las politicas con nombre solo se ven asi), para que un
+    /// grupo interno nuevo con un RequireRole suelto no pase.
+    /// </summary>
+    [Fact]
+    public async Task Todo_lo_de_api_interno_revalida_el_rol_en_la_base()
+    {
+        var proveedor = _app.Services.GetRequiredService<IAuthorizationPolicyProvider>();
+        var internos = _app.Services.GetRequiredService<EndpointDataSource>().Endpoints
+            .OfType<RouteEndpoint>()
+            .Where(e => Ruta(e).StartsWith("/api/interno", StringComparison.Ordinal))
+            .ToList();
+        Assert.NotEmpty(internos);
+
+        var fallos = new List<string>();
+        foreach (var e in internos)
+        {
+            var politica = await AuthorizationPolicy.CombineAsync(
+                proveedor,
+                e.Metadata.GetOrderedMetadata<IAuthorizeData>(),
+                e.Metadata.GetOrderedMetadata<AuthorizationPolicy>());
+            if (politica is null
+                || !politica.Requirements.OfType<Zass.Api.Configuracion.RolVigenteEnBase>().Any())
+                fallos.Add($"{e.DisplayName} ({Ruta(e)})");
+        }
+
+        Assert.True(fallos.Count == 0,
+            "Rutas de /api/interno sin el rol revalidado en base:\n  " + string.Join("\n  ", fallos));
+    }
+
+    /// <summary>
     /// Si la busqueda se rompe y no ve ningun endpoint de /api/mi, las tres pruebas
     /// anteriores pasarían en verde con cero rutas. Esta prueba exige al menos el
     /// numero medido para detectar que la busqueda esta rota.
@@ -114,6 +175,11 @@ public class AutorizacionEnRutasPrivadasPruebas : IAsyncLifetime
         e.Metadata.GetMetadata<IAllowAnonymous>() is null
         && (e.Metadata.GetOrderedMetadata<IAuthorizeData>().Any()
             || e.Metadata.GetOrderedMetadata<AuthorizationPolicy>().Any());
+
+    /// <summary>Solo GET o HEAD: lo que no escribe nada.</summary>
+    private static bool SoloLectura(RouteEndpoint e) =>
+        e.Metadata.GetMetadata<IHttpMethodMetadata>() is { } m
+        && m.HttpMethods.All(x => x is "GET" or "HEAD");
 
     /// <summary>
     /// El endpoint pide rol o politica si ademas de pedir sesion tiene:

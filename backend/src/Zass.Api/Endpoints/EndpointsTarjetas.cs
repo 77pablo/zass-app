@@ -52,6 +52,12 @@ public static class EndpointsTarjetas
         // API-55 POST /t/{segmento}/activar - Activar con codigo de un solo uso (CU-19, CC-05)
         // Fuera de /api a proposito: la ruta que figura en api-rest.md y el QR impreso.
         // Tasa A (Autenticacion): 5 por IP cada 15 min. Requiere sesion prestador con perfil publicado.
+        //
+        // Es el unico POST con sesion fuera de /api, y por eso no hereda nada de un grupo: la
+        // sesion y el CSRF van declarados aqui, igual que en los grupos de /api/mi. Antes solo
+        // miraba `UsuarioId() is null` dentro del cuerpo: sin metadatos de autorizacion, el
+        // filtro de datos de cuenta (ES-2) no lo veia, la prueba de rutas privadas tampoco, y
+        // se aceptaba sin el token CSRF.
         app.MapPost("/t/{segmento}/activar", async (
                 string segmento,
                 ActivarRequest request,
@@ -74,6 +80,8 @@ public static class EndpointsTarjetas
                 var r = await tarjetas.ActivarAsync(segmento, request.Codigo, mio.Valor.Id, ip, http.RequestAborted);
                 return r.Exito ? Results.Ok(r.Valor) : Respuestas.Problema(r);
             })
+            .RequireAuthorization()
+            .AddEndpointFilter<FiltroCsrf>()
             .RequireRateLimiting(Tasa.Autenticacion)
             .WithName("API-55");
 
