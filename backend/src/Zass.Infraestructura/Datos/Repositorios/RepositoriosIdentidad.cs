@@ -68,6 +68,9 @@ public sealed class RepositorioUsuariosEfCore : IRepositorioUsuarios
     public Task<bool> ExisteRutAsync(string rut, CancellationToken ct = default) =>
         _ctx.Usuarios.AnyAsync(u => u.Rut == rut, ct);
 
+    public Task<Usuario?> PorRutAsync(string rut, CancellationToken ct = default) =>
+        _ctx.Usuarios.FirstOrDefaultAsync(u => u.Rut == rut, ct);
+
     public Task<Rol?> RolPorCodigoAsync(string codigo, CancellationToken ct = default) =>
         _ctx.Roles.FirstOrDefaultAsync(r => r.Codigo == codigo, ct);
 
@@ -189,6 +192,32 @@ public sealed class ColaNotificacionesEfCore : INotificaciones
             .Where(n => n.CitaId == citaId && n.Estado == EstadoEnvio.Programada
                 && (n.Tipo == TipoNotificacion.Recordatorio24h || n.Tipo == TipoNotificacion.Recordatorio2h))
             .ExecuteUpdateAsync(s => s.SetProperty(n => n.Estado, EstadoEnvio.Anulada), ct);
+
+    public Task<Notificacion?> UltimoAsync(Guid destinatarioId, TipoNotificacion tipo, CancellationToken ct = default) =>
+        _ctx.Notificaciones.AsNoTracking()
+            .Where(n => n.DestinatarioId == destinatarioId && n.Tipo == tipo)
+            .OrderByDescending(n => n.ProgramadaPara).ThenByDescending(n => n.Id)
+            .FirstOrDefaultAsync(ct);
+
+    /// <summary>
+    /// <c>ON CONFLICT DO NOTHING</c> sobre el indice unico de la clave (R-18): si otra peticion
+    /// encolo la misma clave un instante antes, esta no inserta nada y no lanza. Con
+    /// <c>Add</c> + <c>SaveChanges</c> la segunda terminaria en un 23505 y en un 500.
+    /// Va por la conexion de este contexto: si hay una transaccion abierta, queda dentro.
+    /// </summary>
+    public async Task<bool> EncolarSiNoExisteAsync(Notificacion aviso, CancellationToken ct = default)
+    {
+        var filas = await _ctx.Database.ExecuteSqlInterpolatedAsync($@"
+            INSERT INTO notificaciones
+                (id, destinatario_id, cita_id, tipo, canal, clave_idempotencia, estado,
+                 asunto, cuerpo, programada_para, intentos)
+            VALUES
+                ({aviso.Id}, {aviso.DestinatarioId}, {aviso.CitaId}, {aviso.Tipo.ToString()},
+                 {aviso.Canal.ToString()}, {aviso.ClaveIdempotencia}, {aviso.Estado.ToString()},
+                 {aviso.Asunto}, {aviso.Cuerpo}, {aviso.ProgramadaPara}, {aviso.Intentos})
+            ON CONFLICT (clave_idempotencia) DO NOTHING", ct);
+        return filas == 1;
+    }
 }
 
 /// <summary>TBL-28. Solo insercion.</summary>

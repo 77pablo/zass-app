@@ -264,9 +264,13 @@ public class RegistroPruebas
         var r = await _servicio.RegistrarAsync(Completo(correo: "otra@correo.cl", rut: "111111111"));
 
         Assert.False(r.Exito);
-        Assert.Equal(Fallas.Conflicto, r.Codigo);
-        Assert.Contains("RUT", r.Mensaje!);
+        // Decision de Pablo (21-nov-2026): codigo propio, aviso neutro y correo a la cuenta original.
+        Assert.Equal(Fallas.RutConCuenta, r.Codigo);
+        Assert.Equal(ServicioRegistro.MensajeRutConCuenta, r.Mensaje);
         Assert.Single(_base.Usuarios);
+        var ana = Assert.Single(_base.Usuarios);
+        Assert.Equal(ana.Id, Assert.Single(_cola.Encoladas,
+            n => n.Tipo == TipoNotificacion.RegistroConRutExistente).DestinatarioId);
     }
 
     [Fact]

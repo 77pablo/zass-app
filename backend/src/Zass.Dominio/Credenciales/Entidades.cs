@@ -42,6 +42,21 @@ public class Credencial
         Documentos.Any(d => d.Estado == EstadoDocumento.Disponible);
 
     /// <summary>
+    /// Si el publico la ve en la ficha (API-05). Ni el borrador (es de su dueño) ni, desde el
+    /// 21-nov-2026 (decision de Pablo), la rechazada: un titulo que el Verificador rechazo —uno
+    /// falso, por ejemplo— no puede seguir en la ficha como «declarada por el usuario». El dueño
+    /// la sigue viendo en «Mis credenciales», con el motivo. En revision y vencida siguen como
+    /// las define la especificacion: «Declarada por el usuario».
+    ///
+    /// <para>
+    /// Los repositorios no pueden llamar a este metodo dentro de la consulta (EF no lo traduce) y
+    /// repiten la condicion; el servicio la vuelve a pasar por aqui, de guarda.
+    /// </para>
+    /// </summary>
+    public static bool EsVisibleAlPublico(EstadoCredencial estado) =>
+        estado is not (EstadoCredencial.Borrador or EstadoCredencial.Rechazada);
+
+    /// <summary>
     /// El publico solo ve dos etiquetas. Que sea un metodo impide que alguien
     /// serialice el estado interno por error y filtre que fue rechazada.
     /// </summary>

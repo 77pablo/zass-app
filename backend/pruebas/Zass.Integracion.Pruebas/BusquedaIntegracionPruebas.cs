@@ -371,6 +371,29 @@ public class BusquedaIntegracionPruebas : IDisposable
     }
 
     /// <summary>
+    /// Una rechazada (un titulo falso, por ejemplo) no da sello ni deja pasar el filtro «solo
+    /// verificados». El calculo mira solo `estado = 'Verificada'`; esta prueba lo fija por si
+    /// alguien lo cambia por «todo lo que no es borrador».
+    /// </summary>
+    [Fact]
+    public async Task Una_credencial_rechazada_no_da_sello_ni_pasa_solo_verificados()
+    {
+        var perfil = await UnPrestadorBuscableAsync();
+        _prueba.Ctx.Credenciales.Add(new Credencial
+        {
+            PerfilPrestadorId = perfil.Id,
+            Tipo = TipoCredencial.Titulo,
+            Nombre = "Titulo rechazado",
+            ObtenidaEn = new DateOnly(2020, 1, 15),
+            Estado = EstadoCredencial.Rechazada,
+        });
+        await _prueba.Ctx.SaveChangesAsync();
+
+        Assert.False(Assert.Single(await BuscarDesdeLaPlazaAsync()).TieneVerificada);
+        Assert.Empty(await BuscarDesdeLaPlazaAsync(Consulta(_reloj.Ahora, soloVerificados: true)));
+    }
+
+    /// <summary>
     /// RN-S5-11 tambien manda en el filtro: el promedio solo es publico con 3 resenas o
     /// mas, asi que filtrar por el fuera de ese caso ocultaria perfiles por un numero que
     /// nadie puede ver.

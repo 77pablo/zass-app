@@ -58,11 +58,28 @@ public sealed class ServicioRegistro
     private static readonly TimeSpan VidaDelToken = TimeSpan.FromHours(24);
 
     /// <summary>
-    /// El mismo mensaje en el registro y al completar los datos (ES-2): no dice de quien es el
-    /// RUT ni nada que distinga un caso del otro.
+    /// ES-2: completar los datos de una cuenta antigua con un RUT que ya usa OTRA cuenta. Desde
+    /// el 21-nov-2026 el registro (API-08) no usa este texto sino <see cref="MensajeRutConCuenta"/>.
     /// </summary>
     public const string MensajeRutOcupado =
         "Ya existe una cuenta con ese RUT. Si es tuya, entra con tu correo.";
+
+    /// <summary>
+    /// API-08 con un RUT que ya tiene cuenta (decision de Pablo, 21-nov-2026). Es SIEMPRE este
+    /// texto, haya salido o no el correo (la espera entre avisos no se nota por fuera), y no
+    /// dice nada de la cuenta original: ni su correo, ni su telefono, ni enmascarados.
+    /// </summary>
+    public const string MensajeRutConCuenta =
+        "Este RUT ya tiene una cuenta en ZASS!. Enviamos un mensaje al correo con que se creó esa " +
+        "cuenta, con un enlace para entrar y otro para crear una contraseña nueva.";
+
+    /// <summary>
+    /// Lo minimo entre dos avisos de «intentaron registrarse con tu RUT» a una misma cuenta. Como
+    /// API-71: el limite de tasa protege por IP, y el daño de este aviso no lo recibe quien llama
+    /// sino la dueña del correo. Una hora y no dos minutos porque el correo no lleva nada que
+    /// caduque (solo enlaces a «Entrar» y a «Recuperar contraseña»): el primero sigue sirviendo.
+    /// </summary>
+    public static readonly TimeSpan EsperaEntreAvisosDeRut = TimeSpan.FromHours(1);
 
     private readonly IRepositorioUsuarios _usuarios;
     private readonly IRepositorioPerfiles _perfiles;
@@ -117,8 +134,11 @@ public sealed class ServicioRegistro
         // Una persona o empresa, una cuenta. Igual que el correo: por cortesia, porque la que
         // manda es el indice unico parcial de la base.
         var rut = Rut.Normalizar(cmd.Rut);
-        if (rut is not null && await _usuarios.ExisteRutAsync(rut, ct))
-            return Resultado.Falla<CuentaCreadaDto>(Fallas.Conflicto, MensajeRutOcupado);
+        if (rut is not null && await _usuarios.PorRutAsync(rut, ct) is { } duena)
+        {
+            await AvisarALaDuenaDelRutAsync(duena, ip, ct);
+            return Resultado.Falla<CuentaCreadaDto>(Fallas.RutConCuenta, MensajeRutConCuenta);
+        }
         var tipo = string.Equals(cmd.Tipo, "empresa", StringComparison.OrdinalIgnoreCase)
             ? TipoCuenta.Empresa : TipoCuenta.Particular;
         var razonSocial = tipo == TipoCuenta.Empresa ? Recortar(cmd.RazonSocial) : null;
@@ -188,6 +208,54 @@ public sealed class ServicioRegistro
         await _unidad.GuardarAsync(ct);
 
         return Resultado.Ok(new CuentaCreadaDto(usuario.Id, rol.Codigo));
+    }
+
+    /// <summary>
+    /// Decision de Pablo (21-nov-2026): un RUT que ya tiene cuenta no crea otra, y en vez de un
+    /// «ya existe» sin salida se le escribe a la cuenta ORIGINAL, a su correo, con el enlace para
+    /// entrar y el de recuperar la contraseña. Quien escribio el formulario no recibe nada: si no
+    /// es la dueña, no se entera de ningun dato de ella.
+    ///
+    /// <para>
+    /// Espera por cuenta (<see cref="EsperaEntreAvisosDeRut"/>): dentro de ella no sale otro
+    /// correo y la respuesta es la misma. Lo que se mira es el ultimo aviso de este tipo en la
+    /// cola, asi que no hace falta columna nueva.
+    /// </para>
+    ///
+    /// <para>
+    /// Dos intentos a la vez: los dos ven el mismo «ultimo aviso» y arman la MISMA clave de
+    /// idempotencia (cuelga del aviso anterior, no del reloj), asi que el indice unico deja
+    /// entrar uno solo, y el otro recibe un falso, no un 500.
+    /// </para>
+    /// </summary>
+    private async Task AvisarALaDuenaDelRutAsync(Usuario duena, string? ip, CancellationToken ct)
+    {
+        // Una cuenta eliminada se anonimiza y suelta el RUT, asi que aqui no deberia llegar; si
+        // llegara, no se le escribe a un correo que ya no es de nadie.
+        if (duena.Estado is EstadoCuenta.Eliminada) return;
+
+        var ahora = _reloj.Ahora;
+        var ultimo = await _avisos.UltimoAsync(duena.Id, TipoNotificacion.RegistroConRutExistente, ct);
+        var recienAvisada = ultimo is not null && ahora - ultimo.ProgramadaPara < EsperaEntreAvisosDeRut;
+
+        var encolado = !recienAvisada && await _avisos.EncolarSiNoExisteAsync(new Notificacion
+        {
+            DestinatarioId = duena.Id,
+            Tipo = TipoNotificacion.RegistroConRutExistente,
+            Canal = CanalNotificacion.Correo,
+            ClaveIdempotencia = $"rut-con-cuenta:{duena.Id:N}:tras:{ultimo?.Id.ToString("N") ?? "ninguno"}",
+            Asunto = "Alguien intentó crear otra cuenta con tu RUT en ZASS!",
+            // Nada que guardar: la plantilla solo necesita el nombre de la dueña y la URL publica.
+            Cuerpo = "{}",
+            ProgramadaPara = ahora,
+        }, ct);
+
+        // Cada intento queda, haya salido correo o no: muchos seguidos contra la misma cuenta es
+        // justo lo que hay que poder ver. Quien lo intento no tiene cuenta: no hay actor, queda la IP.
+        _auditor.Registrar(Auditar.Entrada(
+            "registro_con_rut_existente", "usuario", duena.Id, ahora,
+            contexto: new { avisoEncolado = encolado }, ip: ip));
+        await _unidad.GuardarAsync(ct);
     }
 
     /// <summary>
