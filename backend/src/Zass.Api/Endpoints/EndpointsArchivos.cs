@@ -56,11 +56,21 @@ public static class EndpointsArchivos
             .RequireRateLimiting(Tasa.General)
             .WithName("API-72-quitar");
 
-        // API-74 - Subir una foto de trabajo (multipart, campo "archivo").
-        // Solo el dueno del perfil. Procesa como la foto de perfil pero en un tamano mas grande
-        // (lado mayor 1200 px, WebP, sin metadatos). Rechaza si ya tiene MaxFotosTrabajos de su plan.
+        // API-77 - Las fotos de trabajos (T69). Del plan: Esencial 0, Profesional y Fundador 12.
+        // El dueño ve todas las suyas (aunque pasen del tope tras bajar de plan) para poder quitarlas.
+        mia.MapGet("/fotos-trabajo", async (IServicioFotosDeTrabajo fotos, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+                var r = await fotos.MisFotosAsync(usuarioId.Value);
+                return r.Exito ? Results.Ok(r.Valor) : Respuestas.Problema(r);
+            })
+            .RequireRateLimiting(Tasa.General)
+            .WithName("API-77-listar");
+
+        // API-77 - Subir una (multipart, campo "archivo"): lado mayor 1200 px, WebP, sin metadatos.
         mia.MapPost("/fotos-trabajo", async (
-                IFormFile? archivo, ServicioFotosDeTrabajo fotos, ClaimsPrincipal quien) =>
+                IFormFile? archivo, IServicioFotosDeTrabajo fotos, ClaimsPrincipal quien) =>
             {
                 var usuarioId = quien.UsuarioId();
                 if (usuarioId is null) return Results.Unauthorized();
@@ -68,22 +78,36 @@ public static class EndpointsArchivos
 
                 await using var contenido = archivo.OpenReadStream();
                 var r = await fotos.SubirAsync(usuarioId.Value, contenido, archivo.Length);
-                return r.Exito ? Results.Ok(new { urlFoto = r.Valor }) : Respuestas.Problema(r);
+                return r.Exito ? Results.Ok(r.Valor) : Respuestas.Problema(r);
             })
             .WithMetadata(new RequestSizeLimitAttribute(LimiteDeLaPeticion))
             .RequireRateLimiting(Tasa.Sensible)
-            .WithName("API-74");
+            .WithName("API-77");
 
-        // API-74-quitar - Borrar una foto de trabajo propia.
+        // API-77-ordenar - Todas las propias, en el orden nuevo.
+        mia.MapPut("/fotos-trabajo/orden", async (
+                OrdenDeFotosHttpCmd cmd, IServicioFotosDeTrabajo fotos, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+                if (cmd.Ids is null || cmd.Ids.Count > 100)
+                    return Results.Problem(statusCode: StatusCodes.Status400BadRequest,
+                        title: "El orden tiene que traer la lista de tus fotos.");
+                return Respuestas.DeResultado(await fotos.OrdenarAsync(usuarioId.Value, cmd.Ids));
+            })
+            .RequireRateLimiting(Tasa.General)
+            .WithName("API-77-ordenar");
+
+        // API-77-quitar - Borrar una propia. Una ajena responde 404, igual que una inexistente.
         mia.MapDelete("/fotos-trabajo/{fotoId:guid}", async (
-                Guid fotoId, ServicioFotosDeTrabajo fotos, ClaimsPrincipal quien) =>
+                Guid fotoId, IServicioFotosDeTrabajo fotos, ClaimsPrincipal quien) =>
             {
                 var usuarioId = quien.UsuarioId();
                 if (usuarioId is null) return Results.Unauthorized();
                 return Respuestas.DeResultado(await fotos.BorrarAsync(usuarioId.Value, fotoId));
             })
             .RequireRateLimiting(Tasa.General)
-            .WithName("API-74-quitar");
+            .WithName("API-77-quitar");
 
         // API-73 - Servir una foto. Publica: es la misma que se ve en la ficha. El nombre es
         // aleatorio y no cambia nunca (una foto nueva es un nombre nuevo), asi que se puede
@@ -133,3 +157,6 @@ public static class EndpointsArchivos
         return Results.Stream(doc.Archivo.Contenido, doc.Archivo.TipoMime);
     }
 }
+
+/// <summary>API-77-ordenar: los ids de TODAS las fotos propias, en el orden nuevo.</summary>
+public sealed record OrdenDeFotosHttpCmd(List<Guid>? Ids);

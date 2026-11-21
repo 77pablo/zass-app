@@ -1468,4 +1468,37 @@ public class BusquedaIntegracionPruebas : IDisposable
         Assert.False(r.Valor!.OrdenadoPorDistancia);
         Assert.Contains("distancia", r.Valor!.Aviso!, StringComparison.OrdinalIgnoreCase);
     }
+
+    // ------------------------------------------------------------- T69: fotos de trabajos en la ficha
+
+    [Fact]
+    public async Task La_ficha_muestra_las_fotos_de_trabajos_solo_mientras_el_plan_las_incluye()
+    {
+        var perfil = await UnPrestadorBuscableAsync(estadoSuscripcion: EstadoSuscripcion.Activa);
+        var ctx = _prueba.Ctx;
+        var suscripcion = await ctx.Suscripciones.SingleAsync(s => s.PerfilPrestadorId == perfil.Id);
+        suscripcion.PlanId = (await ctx.Planes.SingleAsync(p => p.Codigo == "profesional")).Id;
+        // 13 guardadas con un plan de 12 (pasa si subió dos a la vez, o si el tope bajara): se
+        // insertan al revés, así que la ficha tiene que ordenarlas Y cortar en el tope.
+        for (var i = 12; i >= 0; i--)
+            ctx.FotosDeTrabajo.Add(new FotoTrabajo
+            {
+                PerfilPrestadorId = perfil.Id,
+                ClaveAlmacen = $"fotos/{Guid.NewGuid():N}.webp",
+                Orden = i,
+            });
+        await ctx.SaveChangesAsync();
+
+        var conProfesional = await _servicio.FichaPublicaAsync(perfil.Slug);
+        Assert.Equal(Enumerable.Range(0, 12), conProfesional!.FotosTrabajo.Select(f => f.Orden));
+        Assert.All(conProfesional.FotosTrabajo, f => Assert.Matches(@"^/api/archivos/fotos/[0-9a-f]{32}\.webp$", f.Url));
+
+        // Baja al Esencial: las fotos siguen guardadas, pero la ficha deja de mostrarlas.
+        suscripcion.PlanId = (await ctx.Planes.SingleAsync(p => p.Codigo == "mensual")).Id;
+        await ctx.SaveChangesAsync();
+
+        var conEsencial = await _servicio.FichaPublicaAsync(perfil.Slug);
+        Assert.Empty(conEsencial!.FotosTrabajo);
+        Assert.Equal(13, await ctx.FotosDeTrabajo.CountAsync(f => f.PerfilPrestadorId == perfil.Id));
+    }
 }

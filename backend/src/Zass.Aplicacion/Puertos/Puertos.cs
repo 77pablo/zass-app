@@ -187,6 +187,8 @@ public interface IRepositorioPerfiles
     void AgregarFotoTrabajo(FotoTrabajo foto);
     void EliminarFotoTrabajo(FotoTrabajo foto);
     Task<FotoTrabajo?> FotoTrabajoPorIdAsync(Guid id, CancellationToken ct = default);
+    /// <summary>Las fotos de un perfil, en su orden y con seguimiento (para reordenarlas).</summary>
+    Task<List<FotoTrabajo>> FotosDeTrabajoDePerfilAsync(Guid perfilPrestadorId, CancellationToken ct = default);
     Task<IReadOnlyList<FotoTrabajoPublicaDto>> FotosDeTrabajoParaFichaAsync(Guid perfilPrestadorId, CancellationToken ct = default);
 }
 

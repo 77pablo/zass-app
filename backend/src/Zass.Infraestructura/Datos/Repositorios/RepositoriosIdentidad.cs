@@ -149,6 +149,12 @@ public sealed class RepositorioPerfilesEfCore : IRepositorioPerfiles
     public async Task<FotoTrabajo?> FotoTrabajoPorIdAsync(Guid id, CancellationToken ct = default) =>
         await _ctx.FotosDeTrabajo.FirstOrDefaultAsync(f => f.Id == id, ct);
 
+    public async Task<List<FotoTrabajo>> FotosDeTrabajoDePerfilAsync(Guid perfilPrestadorId, CancellationToken ct = default) =>
+        await _ctx.FotosDeTrabajo
+            .Where(f => f.PerfilPrestadorId == perfilPrestadorId)
+            .OrderBy(f => f.Orden).ThenBy(f => f.CreadaEn)
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<FotoTrabajoPublicaDto>> FotosDeTrabajoParaFichaAsync(Guid perfilPrestadorId, CancellationToken ct = default)
     {
         var prefijo = TiposDeArchivo.CarpetaFotos.Length + 1;

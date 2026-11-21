@@ -334,7 +334,7 @@ public static class RegistroDeServicios
         servicios.AddSingleton<IProcesadorDeImagenes, ProcesadorDeImagenesImageSharp>();
         servicios.AddSingleton<IAlmacenDeArchivos>(sp => ElegirAlmacen(sp));
         servicios.AddScoped<ServicioFotoDePerfil>();
-        servicios.AddScoped<ServicioFotosDeTrabajo>();
+        servicios.AddScoped<IServicioFotosDeTrabajo, ServicioFotosDeTrabajo>();
 
         // --- MOD-03 Catalogo ---
         servicios.AddScoped<IServicioCatalogo, ServicioCatalogo>();

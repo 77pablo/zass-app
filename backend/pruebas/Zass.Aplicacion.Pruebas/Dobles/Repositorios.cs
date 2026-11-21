@@ -165,6 +165,10 @@ public sealed class RepositorioPerfilesEnMemoria : IRepositorioPerfiles
     public Task<FotoTrabajo?> FotoTrabajoPorIdAsync(Guid id, CancellationToken ct = default) =>
         Task.FromResult(_base.FotosDeTrabajo.FirstOrDefault(f => f.Id == id));
 
+    public Task<List<FotoTrabajo>> FotosDeTrabajoDePerfilAsync(Guid perfilPrestadorId, CancellationToken ct = default) =>
+        Task.FromResult(_base.FotosDeTrabajo.Where(f => f.PerfilPrestadorId == perfilPrestadorId)
+            .OrderBy(f => f.Orden).ThenBy(f => f.CreadaEn).ToList());
+
     public Task<IReadOnlyList<FotoTrabajoPublicaDto>> FotosDeTrabajoParaFichaAsync(Guid perfilPrestadorId, CancellationToken ct = default)
     {
         var prefijo = TiposDeArchivo.CarpetaFotos.Length + 1;

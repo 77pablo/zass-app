@@ -224,8 +224,12 @@ public sealed class ProcesadorDeImagenesDePrueba : IProcesadorDeImagenes
 /// <summary>Doble de IServicioFotosDeTrabajo que devuelve lista vacia.</summary>
 public sealed class ServicioFotosDeTrabajoFalso : IServicioFotosDeTrabajo
 {
-    public Task<Resultado<string>> SubirAsync(Guid usuarioId, Stream contenido, long largoDeclarado, CancellationToken ct = default)
-        => Task.FromResult(Resultado.Falla<string>(Fallas.ReglaDeNegocio, "Falso en pruebas."));
+    public Task<Resultado<FotoTrabajoPropiaDto>> SubirAsync(Guid usuarioId, Stream contenido, long largoDeclarado, CancellationToken ct = default)
+        => Task.FromResult(Resultado.Falla<FotoTrabajoPropiaDto>(Fallas.ReglaDeNegocio, "Falso en pruebas."));
+    public Task<Resultado<MisFotosDeTrabajoDto>> MisFotosAsync(Guid usuarioId, CancellationToken ct = default)
+        => Task.FromResult(Resultado.Falla<MisFotosDeTrabajoDto>(Fallas.ReglaDeNegocio, "Falso en pruebas."));
+    public Task<Resultado> OrdenarAsync(Guid usuarioId, IReadOnlyList<Guid> ids, CancellationToken ct = default)
+        => Task.FromResult(Resultado.Falla(Fallas.ReglaDeNegocio, "Falso en pruebas."));
     public Task<Resultado> BorrarAsync(Guid usuarioId, Guid fotoId, CancellationToken ct = default)
         => Task.FromResult(Resultado.Falla(Fallas.ReglaDeNegocio, "Falso en pruebas."));
     public Task<IReadOnlyList<FotoTrabajoPublicaDto>> ObtenerParaFichaAsync(Guid perfilPrestadorId, CancellationToken ct = default)
