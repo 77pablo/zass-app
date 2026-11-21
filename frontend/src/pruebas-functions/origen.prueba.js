@@ -10,7 +10,8 @@ import { onRequest as ficha } from '../../functions/prestadores/[slug].js'
 import { onRequest as sitemap } from '../../functions/sitemap.xml.js'
 import { CABECERA_DE_ORIGEN, ponerSecretoDeOrigen, secretoDeOrigen } from '../../functions/_comun/origen.js'
 
-const SECRETO = 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9'
+// Un valor de mentira, legible a proposito (uno con forma de clave real lo marca gitleaks).
+const SECRETO = 'valor-de-prueba-'.repeat(4)
 const API = 'https://api.ejemplo.test'
 
 /** Las cabeceras con que cada llamada salio hacia la API, venga como Request o como (url, opciones). */
