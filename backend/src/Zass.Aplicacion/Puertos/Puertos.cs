@@ -178,6 +178,25 @@ public interface IRepositorioUsuarios
     Task<Usuario?> PorRutAsync(string rut, CancellationToken ct = default);
     Task<Rol?> RolPorCodigoAsync(string codigo, CancellationToken ct = default);
     void Agregar(Usuario usuario);
+
+    /// <summary>
+    /// Suma un intento fallido de entrar, en UNA sola sentencia atomica: dos intentos
+    /// simultaneos no pueden leer el mismo valor y perder uno. Si la cuenta esta bloqueada
+    /// (<c>bloqueada_hasta &gt; ahora</c>) no cuenta nada. Si este intento llega a
+    /// <paramref name="intentosParaBloquear"/>, deja la cuenta bloqueada hasta
+    /// <paramref name="bloqueadaHasta"/> y el contador en cero. Devuelve verdadero SOLO para
+    /// el intento que disparo el bloqueo (uno por bloqueo). Con un id que no existe no hace
+    /// nada, pero hace el mismo viaje a la base (para igualar tiempos).
+    /// </summary>
+    Task<bool> SumarIntentoFallidoAsync(
+        Guid usuarioId, DateTime ahora, int intentosParaBloquear, DateTime bloqueadaHasta,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Pone el contador en cero tras entrar bien, solo si la cuenta NO esta bloqueada en ese
+    /// instante. Devuelve falso si lo esta (el bloqueo pudo nacer despues de leer la cuenta).
+    /// </summary>
+    Task<bool> ReiniciarIntentosSiNoBloqueadaAsync(Guid usuarioId, DateTime ahora, CancellationToken ct = default);
 }
 
 public interface IRepositorioSesiones
