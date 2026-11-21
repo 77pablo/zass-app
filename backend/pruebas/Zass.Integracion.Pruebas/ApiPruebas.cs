@@ -2488,6 +2488,12 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-73",
             "API-74",
 
+            // T69: las fotos de trabajos (subir, listar las propias, ordenarlas y quitar una).
+            "API-77",
+            "API-77-listar",
+            "API-77-ordenar",
+            "API-77-quitar",
+
             "API-resenas-publicas",
             "CS-02b",
             "CS-04",
