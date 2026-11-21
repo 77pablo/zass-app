@@ -37,7 +37,7 @@ const FAVORITO = {
   promedioCalificacion: null, totalResenas: 2,
 }
 
-const RUBROS = [1, 2, 3, 4, 5, 6].map((id) => ({ id, codigo: `r${id}`, nombre: `oficio ${id}`, icono: null }))
+const RUBROS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((id) => ({ id, codigo: `r${id}`, nombre: `oficio ${id}`, icono: null }))
 const ZONAS = [{
   id: 7, nombre: 'Temuco', sector: 'temuco', comuna: 'Temuco', centroLatitud: -38.7, centroLongitud: -72.6,
   tipo: 'Comuna', region: 'La Araucanía', padreId: null,
@@ -226,12 +226,12 @@ describe('la pantalla de guardados', () => {
     })
   })
 
-  it('con cinco oficios elegidos no deja elegir un sexto', async () => {
-    perfil.rubrosInteres = [1, 2, 3, 4, 5]
+  it('con diez oficios elegidos no deja elegir un undécimo', async () => {
+    perfil.rubrosInteres = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     pintar('/mis-guardados')
 
-    expect(await screen.findByRole('button', { name: 'Oficio 6' })).toBeDisabled()
-    expect(screen.getByText(/Ya elegiste 5/)).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Oficio 11' })).toBeDisabled()
+    expect(screen.getByText(/Ya elegiste 10/)).toBeInTheDocument()
     // Los elegidos se pueden quitar.
     expect(screen.getByRole('button', { name: 'Oficio 1' })).toBeEnabled()
   })
