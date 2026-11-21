@@ -75,7 +75,7 @@ describe('JQ-14: formato de las cifras', () => {
   it.each([[0, '0 %'], [1 / 3, '33 %'], [1, '100 %']])('porcentaje(%s) = %s', (x, texto) => {
     expect(porcentaje(x)).toBe(texto)
   })
-  it.each([[0.4, '0 h'], [20, '20 h'], [47, '47 h'], [48, '2 días'], [84, '3,5 días']])('duracion(%s) = %s', (h, texto) => {
+  it.each([[0, 'menos de 1 h'], [0.4, 'menos de 1 h'], [0.99, 'menos de 1 h'], [1, '1 h'], [20, '20 h'], [47, '47 h'], [48, '2 días'], [84, '3,5 días']])('duracion(%s) = %s', (h, texto) => {
     expect(duracion(h)).toBe(texto)
   })
 })

@@ -190,6 +190,8 @@ export const porcentaje = (x: number) => `${Math.round(x * 100)} %`
 
 /** Horas como «14 h» o, desde 48 h, «3,5 días». */
 export function duracion(horas: number): string {
+  // Bajo una hora, «0 h» parece un dato vacío o un error.
+  if (horas < 1) return 'menos de 1 h'
   if (horas < 48) return `${Math.round(horas)} h`
   const dias = Math.round((horas / 24) * 10) / 10
   return `${dias.toLocaleString('es-CL')} días`

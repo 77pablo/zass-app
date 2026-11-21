@@ -259,7 +259,8 @@ public class IndicadoresApiPruebas : IAsyncLifetime
         var correo = $"ind-api-{Guid.NewGuid():N}@zass.local";
         var registro = await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo, contrasena = "contrasena-larga-1", nombre = "Usuario Test", rol = "buscador",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678",
+            mayorDeEdad = true, correo, contrasena = "contrasena-larga-1", nombre = "Usuario Test", rol = "buscador",
         });
         Assert.Equal(HttpStatusCode.Created, registro.StatusCode);
 
