@@ -189,7 +189,7 @@ public sealed class ServicioTarjetas : IServicioTarjetas
 
     // ------------------------------------------------------------- API-55 (CU-19)
     /// <summary>
-    /// API-55 POST /t/{segmento}/activar. Activa la tarjeta con codigo de un solo uso.
+    /// API-55 POST /api/mi/tarjetas/{segmento}/activar. Activa la tarjeta con codigo de un solo uso.
     /// Implementa CC-05: consumo atomico en la misma transaccion con bloqueo de fila.
     /// Implementa 4B.5: bloqueo tras {IntentosParaBloquear} intentos fallidos en {VentanaDeIntentos.TotalMinutes} minutos ({DuracionDelBloqueo.TotalHours} hora).
     /// Tasa A (Autenticacion). Requiere sesion prestador con perfil publicado.

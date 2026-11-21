@@ -29,6 +29,7 @@ import { ResenasDelPrestador } from './paginas/ResenasDelPrestador'
 import { Terminos } from './paginas/Terminos'
 import { RecuperarContrasena, RestablecerContrasena, VerificarCorreo } from './paginas/Recuperacion'
 import { AvisoDeTarjeta, TarjetaEnMayusculas } from './paginas/AvisoDeTarjeta'
+import { ActivarTarjeta } from './paginas/ActivarTarjeta'
 
 /**
  * Un sitio de varias paginas, no una pagina larga: cada seccion vive en su propia ruta y se
@@ -71,6 +72,8 @@ export function App() {
         <Route path="tarjeta/no-valida" element={<AvisoDeTarjeta aviso="no-valida" />} />
         <Route path="tarjeta/no-disponible" element={<AvisoDeTarjeta aviso="no-disponible" />} />
         <Route path="tarjeta/sin-activar" element={<AvisoDeTarjeta aviso="sin-activar" />} />
+        {/* CU-19: API-54 trae aqui una tarjeta emitida, con su segmento, para activarla. */}
+        <Route path="tarjeta/sin-activar/:segmento" element={<ActivarTarjeta />} />
         <Route path="t/:segmento" element={<TarjetaEnMayusculas />} />
         {/* JQ-11/12: sin un rol interno, todo /interno responde como una página que no existe; y cada
             sección, sin el rol que pide su API. */}
