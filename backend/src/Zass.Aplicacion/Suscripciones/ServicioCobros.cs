@@ -509,6 +509,16 @@ public sealed class ServicioCobros : IServicioCobros
     public static string ClaveDeCobroAutomatico(Guid suscripcionId, DateTime vigenteHasta) =>
         $"{PrefijoCobroAutomatico}{suscripcionId:D}:{vigenteHasta:yyyy-MM-dd}";
 
+    /// <summary>
+    /// ES-1. La clave del reintento diario tras un rechazo: la del periodo mas el DIA en que
+    /// se reintenta, en hora de Chile. Una por dia y por periodo, por la misma razon que la de
+    /// arriba: correr el trabajo dos veces el mismo dia reintenta UNA vez. Comparte el prefijo
+    /// con la del periodo, y asi <see cref="IRepositorioSuscripciones.IntentosPorPrefijoDeClaveAsync"/>
+    /// trae juntos el cobro y sus reintentos.
+    /// </summary>
+    public static string ClaveDeReintento(string claveDelPeriodo, DateOnly dia) =>
+        $"{claveDelPeriodo}:reintento:{dia:yyyy-MM-dd}";
+
     public async Task<ResumenDeCobros> CobrarVencimientosAsync(CancellationToken ct = default)
     {
         // La misma consulta que usa el aviso, con el mismo umbral. Si algun dia cambia
@@ -576,7 +586,16 @@ public sealed class ServicioCobros : IServicioCobros
             // escribiendo. Esto tambien es lo que descarta, sin contarlo, a quien esta en
             // el plan de prueba: ese mes es gratis y no se cobra nunca.
             var calculo = await CalcularAsync(s.PerfilPrestadorId, plan.Codigo, null, ct);
-            if (!calculo.Exito || calculo.Valor is null) continue;
+            if (!calculo.Exito || calculo.Valor is null)
+            {
+                // ES-1. El fundador que perdio su cupo no se cobra al precio fundador: el
+                // calculo lo rechaza. Antes se saltaba en silencio; ahora queda en la
+                // auditoria, que es como se ve en vez de taparse.
+                if (plan.Codigo == ServicioSuscripciones.PlanFundador)
+                    _auditor.Registrar(Auditar.Entrada(
+                        "cobro_omitido_fundador_sin_cupo", "suscripciones", s.Id, _reloj.Ahora));
+                continue;
+            }
 
             // Con QUE se cobra. La suscripcion tiene que traer la referencia del medio de
             // pago que la persona inscribio; sin ella no hay contra que cobrar y NO se
@@ -594,14 +613,36 @@ public sealed class ServicioCobros : IServicioCobros
 
             var clave = ClaveDeCobroAutomatico(s.Id, s.VigenteHasta);
 
-            // Ya hubo un intento para esta suscripcion y este periodo. Da igual como
-            // acabo: no se cobra otra vez hoy. Un rechazo NO se reintenta solo, porque la
-            // politica de reintento y la «gracia» son decision de Pablo y todavia no
-            // existen (RN-S7-10 solo dice que el rechazo es normal).
-            if (await _repo.IntentoPorClaveAsync(clave, ct) is not null)
+            // Ya hubo un intento para esta suscripcion y este periodo.
+            //
+            // ES-1 (decision de Pablo, 20-nov-2026): si TODOS los de este periodo fueron
+            // rechazados, hay gracia hasta el vencimiento con un reintento por dia. Si alguno
+            // esta Pendiente (la pasarela no contesto: no se sabe si cobro) o Pagado, no se
+            // reintenta: reintentar a ciegas lo que no se sabe si se cobro es como se cobra
+            // dos veces. El cobro tardio (RN-S7-16) no reintenta: la gracia termina al vencer.
+            var previos = await _repo.IntentosPorPrefijoDeClaveAsync(clave, ct);
+            var reintento = false;
+            if (previos.Count > 0)
             {
-                contadores.YaIntentadas++;
-                continue;
+                if (esCobroTardio || previos.Any(i => i.Estado != EstadoIntentoPago.Fallido))
+                {
+                    contadores.YaIntentadas++;
+                    continue;
+                }
+
+                // Uno por dia, contando el primer intento: si el rechazo fue HOY (en hora de
+                // Chile), la segunda corrida de hoy no reintenta. La clave del reintento es la
+                // garantia si dos procesos llegan a la vez; el dia de creacion cubre el caso
+                // del cobro original, que no lleva el sufijo.
+                var hoy = HoraDeChile.DiaLocal(ahora);
+                clave = ClaveDeReintento(clave, hoy);
+                if (previos.Any(i => i.ClaveIdempotencia == clave
+                                     || HoraDeChile.DiaLocal(i.CreadoEn) == hoy))
+                {
+                    contadores.YaIntentadas++;
+                    continue;
+                }
+                reintento = true;
             }
 
             var intento = await _trabajo.EnTransaccionAsync(async t =>
@@ -642,6 +683,7 @@ public sealed class ServicioCobros : IServicioCobros
                         diasRestantes = dias,
                         pasarela = _pasarela.Nombre,
                         cobro_tardio = esCobroTardio,
+                        reintento,
                     }));
 
                 // RN-S7-16: auditoria especifica para cobro tardio (se crea al iniciar el intento)
@@ -695,7 +737,17 @@ public sealed class ServicioCobros : IServicioCobros
             else if (resuelto.Valor.Aprobado)
                 contadores.Cobradas++;
             else
+            {
                 contadores.Rechazadas++;
+
+                // ES-1. «Actualiza tu tarjeta», uno por periodo (la clave del aviso lo
+                // garantiza aunque el reintento de manana tambien falle). Solo dentro de la
+                // gracia: el cobro tardio ocurre despues del vencimiento, cuando ya no hay
+                // plazo que ofrecer.
+                if (!esCobroTardio)
+                    await _suscripciones.AvisarCobroRechazadoAsync(
+                        s.PerfilPrestadorId, s.Id, s.VigenteHasta, ct);
+            }
         }
     }
 
