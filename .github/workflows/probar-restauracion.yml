@@ -14,18 +14,18 @@ on:
   schedule:
     - cron: "47 7 * * 1"   # los lunes, despues de la copia de las 06:17 UTC
   workflow_dispatch: {}
-  # Cuando alguien cambia ESTE flujo, se prueba en su PR antes de fusionar.
-  pull_request:
-    paths:
-      - .github/workflows/probar-restauracion.yml
-      - .github/scripts/esquema-esperado.py
-
+  # Ya no corre en los PR: la frase de las copias vive en el entorno «copias», que solo se usa
+  # desde main, y un PR no puede leerla. Para probar un cambio a este flujo: fusionarlo y lanzarlo
+  # a mano desde la pestaña Actions (workflow_dispatch).
 permissions:
   contents: read
   actions: read   # para bajar el artefacto de otra corrida
 
 jobs:
   restaurar:
+    # Los secretos viven en el entorno «copias», que solo se usa desde main: una rama o un PR
+    # no pueden leerlos aunque alguien con escritura agregue un flujo (auditoria del 22-nov).
+    environment: copias
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
