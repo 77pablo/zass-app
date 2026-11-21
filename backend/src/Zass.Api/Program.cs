@@ -93,6 +93,8 @@ app.UsarIdDePeticion();
 // El orden importa: las cabeceras primero, para que acompanen incluso a una respuesta
 // de error o de limite de tasa.
 app.UsarCabecerasDeSeguridad();
+// Lo que la sesion ve no lo guarda ningun cache, salvo que el endpoint diga otra cosa.
+app.UsarCacheControlPrivado();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
