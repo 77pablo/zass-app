@@ -74,7 +74,16 @@ portada («Cambiar»)**. Falta:
 
 - El enlace «Guardados» en la `Cabecera` y en la barra inferior (son tuyas: `marco/`).
 - El ícono de corazón en `marco/Icono.tsx` (hoy el botón usa `estrella` porque no había corazón).
-- Revisar en el celular la posición del botón de guardar y de «Quitar» junto a las tarjetas.
+- **Defecto D1, visto en un navegador real el 21-nov (gravedad alta en el celular): los botones bajo
+  las tarjetas quedan TAPADOS por la tarjeta siguiente y no se pueden tocar.** En `/buscar` con sesión, a
+  390 px, de 4 «Guardar» solo el último se puede tocar (`elementFromPoint` devuelve el monograma de la
+  otra persona); en escritorio pasa con el primero de la fila de arriba cuando hay segunda fila; en
+  `/mis-guardados` a 390 px queda tapado el «Quitar» del primero. **Causa probable:** en `index.css`
+  (~406-408) `.tarjeta-persona { height: 100% }` llena el `li` y el botón, hermano de la tarjeta dentro del
+  mismo `li`, se sale por abajo; en el celular empeora con `.tarjetas-rejilla { gap: 0; overflow: hidden }`
+  (~1257). Los botones están en `PaginaBuscar.tsx` (~374) y en el `li` de `ListaDeGuardados` en
+  `MisGuardados.tsx`. Capturas en `zass-tareas
+avegador-noche\capturas` (las tiene Pablo).
 - De paso, mirar en el celular la pantalla nueva de **activar la tarjeta** (`/tarjeta/sin-activar/{segmento}`, #199), que se hizo con las clases existentes.
 
 ### JQ-21 — Verificar el panel interno · N1
