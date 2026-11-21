@@ -210,8 +210,12 @@ public sealed class RepositorioSuscripcionesEnMemoria : IRepositorioSuscripcione
         Task.FromResult(_base.IntentosDePago.FirstOrDefault(i => i.Id == id));
 
     public Task<IntentoDePago?> IntentoPorClaveAsync(
-        string clave, CancellationToken ct = default) =>
-        Task.FromResult(_base.IntentosDePago.FirstOrDefault(i => i.ClaveIdempotencia == clave));
+        string clave, Guid perfilPrestadorId, CancellationToken ct = default) =>
+        Task.FromResult(_base.IntentosDePago.FirstOrDefault(
+            i => i.ClaveIdempotencia == clave && i.PerfilPrestadorId == perfilPrestadorId));
+
+    public Task<bool> ClaveDeIntentoUsadaAsync(string clave, CancellationToken ct = default) =>
+        Task.FromResult(_base.IntentosDePago.Any(i => i.ClaveIdempotencia == clave));
 
     public Task<IReadOnlyList<IntentoDePago>> IntentosPorPrefijoDeClaveAsync(
         string prefijo, CancellationToken ct = default) =>

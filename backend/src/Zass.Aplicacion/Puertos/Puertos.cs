@@ -301,10 +301,23 @@ public interface IRepositorioSuscripciones
     Task<IntentoDePago?> IntentoPorIdAsync(Guid id, CancellationToken ct = default);
 
     /// <summary>
-    /// CC-04. El intento que ya creo esa clave, si existe. El doble envio del mismo
-    /// formulario tiene que devolver el MISMO intento y no crear un segundo cobro.
+    /// CC-04. El intento que ya creo esa clave, si existe Y es de ese perfil. El doble envio
+    /// del mismo formulario tiene que devolver el MISMO intento y no crear un segundo cobro.
+    ///
+    /// Filtra por dueno a proposito: la clave la inventa el cliente, y buscarla en toda la
+    /// tabla le entregaria el intento AJENO (con su UrlParaPagar) a quien presentara una clave
+    /// que ya uso otro prestador. Que exista pero sea de otro lo dice
+    /// <see cref="ClaveDeIntentoUsadaAsync"/>.
     /// </summary>
-    Task<IntentoDePago?> IntentoPorClaveAsync(string clave, CancellationToken ct = default);
+    Task<IntentoDePago?> IntentoPorClaveAsync(
+        string clave, Guid perfilPrestadorId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Si algun intento, de quien sea, ya usa esa clave. Solo un si o un no: lo usan el
+    /// conflicto controlado de API-68/API-76 y el cobro automatico, cuya clave la arma el
+    /// servidor y basta con saber que ya existe.
+    /// </summary>
+    Task<bool> ClaveDeIntentoUsadaAsync(string clave, CancellationToken ct = default);
 
     /// <summary>
     /// ES-1. Todos los intentos cuya clave empieza por <paramref name="prefijo"/>: el cobro
@@ -807,10 +820,23 @@ public interface IRepositorioAgenda
     Task<Cita?> CitaPorIdAsync(Guid id, CancellationToken ct = default);
 
     /// <summary>
-    /// La cita que creó esta clave, si ya existe (CC-04, flujo 4B de CU-12). Devolverla es lo
-    /// que convierte un doble envío en la misma respuesta en vez de una segunda cita.
+    /// La cita que creó esta clave, si ya existe Y es de ese buscador (CC-04, flujo 4B de
+    /// CU-12). Devolverla es lo que convierte un doble envío en la misma respuesta en vez de
+    /// una segunda cita.
+    ///
+    /// Filtra por dueño a propósito: la clave la inventa el cliente, así que buscarla en toda
+    /// la tabla le entregaría la cita AJENA (nota, código, prestador) a quien presentara una
+    /// clave que ya usó otra persona. Que exista pero sea de otro lo dice
+    /// <see cref="ClaveDeCitaUsadaAsync"/>, sin devolver nada de esa cita.
     /// </summary>
-    Task<Cita?> CitaPorClaveAsync(string claveIdempotencia, CancellationToken ct = default);
+    Task<Cita?> CitaPorClaveAsync(
+        string claveIdempotencia, Guid buscadorId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Si alguna cita, de quien sea, ya usa esa clave. Solo un sí o un no: sirve para responder
+    /// un conflicto controlado antes de que el índice único lo convierta en un 500.
+    /// </summary>
+    Task<bool> ClaveDeCitaUsadaAsync(string claveIdempotencia, CancellationToken ct = default);
 
     /// <summary>Cuántas activas tiene ese buscador con ese prestador (RN-S4-06, tope de 3).</summary>
     Task<int> CitasActivasEntreAsync(
