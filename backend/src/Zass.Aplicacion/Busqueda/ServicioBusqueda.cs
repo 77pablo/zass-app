@@ -261,6 +261,28 @@ public sealed class ServicioBusqueda : IServicioBusqueda
             radioKm));
     }
 
+    // ------------------------------------------------------------- CS-08, los favoritos
+
+    public async Task<IReadOnlyList<FavoritoDto>> TarjetasDeFavoritosAsync(
+        IReadOnlyList<Guid> perfilIds, CancellationToken ct = default)
+    {
+        if (perfilIds.Count == 0) return Array.Empty<FavoritoDto>();
+
+        var filas = (await _repo.TarjetasPorIdAsync(perfilIds, ct)).ToDictionary(f => f.Id);
+
+        // El orden es el de la lista guardada (el mas reciente primero), no el de la base.
+        return perfilIds
+            .Where(filas.ContainsKey)
+            .Select(id => filas[id])
+            .Select(f => new FavoritoDto(
+                f.Id, f.Slug, f.NombrePublico, f.UrlFoto, f.RubroNombre, f.ZonaPrincipal,
+                f.Verificada,
+                // RN-S5-11: con menos de 3 resenas el promedio no es publico.
+                f.TotalResenas >= 3 ? f.PromedioCalificacion : null,
+                f.TotalResenas))
+            .ToList();
+    }
+
     // ------------------------------------------------------------- API-62, la comunidad
 
     /// <summary>Cuantas tarjetas de "recien llegados" se muestran. Una portada, no un listado.</summary>

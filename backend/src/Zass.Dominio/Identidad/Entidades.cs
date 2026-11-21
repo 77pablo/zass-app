@@ -214,7 +214,20 @@ public class PerfilBuscador
     public bool AceptaAvisos { get; set; } = true;
     public bool CanalCorreo { get; set; } = true;
     public bool CanalPush { get; set; }
+
+    /// <summary>
+    /// CS-08. Los perfiles de prestador guardados, del mas reciente al mas antiguo. Son
+    /// identificadores y nada mas: el nombre, la foto o la nota se leen al listar, porque
+    /// copiarlos aqui los dejaria viejos en cuanto el prestador cambie su ficha.
+    /// </summary>
     public List<Guid> Favoritos { get; set; } = new();
+
+    /// <summary>
+    /// CU-04. Los rubros que le interesan a quien busca (TBL-07), como punto de partida de la
+    /// portada. Un arreglo y no una tabla, por lo mismo que `aspectos` de la resena: un conjunto
+    /// chico que nunca se consulta por separado (normalizacion, excepcion deliberada).
+    /// </summary>
+    public List<short> RubrosInteres { get; set; } = new();
 
     public Usuario? Usuario { get; set; }
     public Zona? ZonaInteres { get; set; }

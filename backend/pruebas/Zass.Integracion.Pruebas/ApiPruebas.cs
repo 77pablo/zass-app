@@ -2483,6 +2483,12 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-22",
             "API-22b",
             "API-23",
+            // P-2 y P-3 (21-nov-2026): leer las preferencias (el metodo que faltaba de API-23) y los
+            // favoritos de CS-08, que la matriz de trazabilidad pone sobre API-23.
+            "API-23b",
+            "API-23-favoritos",
+            "API-23-favorito-guardar",
+            "API-23-favorito-quitar",
             "API-24",
             "API-25",
             // JQ-9: los documentos de respaldo. API-26 es el del documento; quitar y ver son el
