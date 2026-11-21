@@ -372,18 +372,6 @@ main:focus { outline: none; }
   .barra-campo { font-size: 1.0625rem; }
 }
 
-/* Cinta de oficios: decorativa (aria-hidden), en voz baja */
-.cinta { overflow: hidden; padding: 12px 0; border: 0; background: transparent; }
-.cinta-pista { display: flex; width: max-content; animation: cinta 60s linear infinite; }
-.cinta-item {
-  display: inline-flex; align-items: center; gap: 28px; padding-right: 28px; white-space: nowrap;
-  font-size: clamp(1.4rem, 3.6vw, 2.2rem); font-weight: 700; letter-spacing: -0.025em;
-  color: var(--borde-campo);
-}
-.cinta-item i { width: 8px; height: 8px; border-radius: 50%; background: var(--linea-fuerte); }
-
-@keyframes cinta { to { transform: translateX(-50%); } }
-
 /* Cifras: una tarjeta blanca con tres numeros, como los resumenes de Salud. */
 .cifras { padding: 8px 24px; }
 .cifras-fila {
@@ -816,15 +804,6 @@ option { background: var(--blanco); color: var(--pizarra); }
 
 /* --- La barra de la portada: sin borde que gira ni destello --- */
 .barra-boton { position: relative; overflow: hidden; }
-
-/* --- Cinta de dos filas, en sentidos opuestos, lenta --- */
-.cinta { display: grid; gap: 14px; }
-.cinta-pista--inversa { animation: cinta-inversa 52s linear infinite; }
-@keyframes cinta-inversa { from { transform: translateX(-50%); } to { transform: translateX(0); } }
-.cinta-chip {
-  display: inline-flex; align-items: center; margin-right: 8px; padding: 6px 14px; border-radius: 999px; white-space: nowrap;
-  font-size: 0.9375rem; font-weight: 500; color: var(--pizarra); background: var(--blanco); border: 0;
-}
 
 /* --- Entrada al hacer scroll --- */
 .aparece { opacity: 0; transform: translateY(16px); transition: opacity 0.5s var(--curva), transform 0.5s var(--curva); transition-delay: calc(var(--orden, 0) * 70ms); }

@@ -65,6 +65,9 @@ public sealed class RepositorioUsuariosEfCore : IRepositorioUsuarios
     public Task<bool> ExisteCorreoAsync(string correo, CancellationToken ct = default) =>
         _ctx.Usuarios.AnyAsync(u => u.Correo == correo, ct);
 
+    public Task<bool> ExisteRutAsync(string rut, CancellationToken ct = default) =>
+        _ctx.Usuarios.AnyAsync(u => u.Rut == rut, ct);
+
     public Task<Rol?> RolPorCodigoAsync(string codigo, CancellationToken ct = default) =>
         _ctx.Roles.FirstOrDefaultAsync(r => r.Codigo == codigo, ct);
 

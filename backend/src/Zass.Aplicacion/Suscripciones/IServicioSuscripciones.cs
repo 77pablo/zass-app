@@ -124,6 +124,15 @@ public interface IServicioSuscripciones
     Task<Resultado<short>> ReservarCupoFundadorAsync(
         Guid perfilPrestadorId, TimeSpan? duracion = null, CancellationToken ct = default);
 
+    /// <summary>
+    /// «Quiero mi cupo» (API-69, decision de Pablo del 20-nov-2026): toma y deja definitivo
+    /// uno de los 50 cupos y arranca el mes gratis, SIN tarjeta. La tarjeta se inscribe
+    /// despues, antes de que termine el mes gratis (API-76); si no, el cupo se libera.
+    /// Idempotente: quien ya tiene su cupo recibe el mismo.
+    /// </summary>
+    Task<Resultado<CupoTomadoDto>> TomarCupoFundadorAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default);
+
     /// <summary>Marca como definitivo el cupo fundador tras confirmarse el pago o la inscripcion.</summary>
     Task<Resultado> ConfirmarCupoFundadorAsync(Guid perfilPrestadorId, CancellationToken ct = default);
 
@@ -163,7 +172,14 @@ public sealed record SuscripcionDto(
     bool EnPrueba,
     DateTime? VigenteHasta,
     int DiasRestantes,
-    bool RenovacionAutomatica);
+    bool RenovacionAutomatica,
+    // Cupo sin tarjeta (20-nov-2026): la pantalla tiene que poder decir «inscribe tu
+    // tarjeta antes del ...» sin adivinarlo por el nombre del plan.
+    bool EsFundador = false,
+    bool TarjetaInscrita = false);
+
+/// <summary>El cupo recien tomado y hasta cuando dura el mes gratis.</summary>
+public sealed record CupoTomadoDto(short Numero, DateTime MesGratisHasta, bool TarjetaInscrita);
 
 /// <summary>
 /// Que hizo la corrida diaria. Lo guarda el planificador en <c>ultimo_resumen</c>, asi que
@@ -179,7 +195,9 @@ public sealed record SuscripcionPorVencer(
     Guid SuscripcionId,
     Guid PerfilPrestadorId,
     DateTime VigenteHasta,
-    int DiasRestantes);
+    int DiasRestantes,
+    // Fundador en su mes gratis y sin tarjeta: el aviso le dice que la inscriba o pierde el cupo.
+    bool FundadorSinTarjeta = false);
 
 /// <summary>
 /// El estado del plan de lanzamiento, listo para pintarse. <paramref name="Mensaje"/> es

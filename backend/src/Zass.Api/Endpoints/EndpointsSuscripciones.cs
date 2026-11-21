@@ -138,12 +138,31 @@ public static class EndpointsSuscripciones
             .RequireRateLimiting(Tasa.Sensible)
             .WithName("API-68");
 
-        // API-69 - Toma un cupo fundador inscribiendo el medio de pago (RN-S7-01).
+        // API-69 - Toma un cupo fundador, SIN tarjeta (decision de Pablo, 20-nov-2026). Lo deja
+        // definitivo y arranca el mes gratis; la tarjeta se inscribe despues con API-76.
         //
-        // Sin cuerpo a proposito: no hay nada que elegir. El plan es el fundador, el monto
-        // es cero y el perfil sale de la sesion. Lo unico que viaja es la clave de
-        // idempotencia, para que el doble clic no tome dos cupos.
+        // Sin cuerpo a proposito: no hay nada que elegir. El perfil sale de la sesion. La clave
+        // de idempotencia se sigue pidiendo; ademas tomar es idempotente por perfil.
         grupo.MapPost("/suscripcion/fundador", async (
+                HttpContext http, IServicioSuscripciones suscripciones,
+                ServicioPerfiles perfiles, ClaimsPrincipal quien) =>
+            {
+                if (http.ClaveIdempotencia() is null) return FaltaLaClave();
+
+                var mio = await MiPerfil(perfiles, quien);
+                if (!mio.Exito) return Respuestas.Problema(mio);
+
+                return Respuestas.DeResultado(
+                    await suscripciones.TomarCupoFundadorAsync(mio.Valor!.Id));
+            })
+            .AddEndpointFilter<FiltroIdempotencia>()
+            .RequireRateLimiting(Tasa.Sensible)
+            .WithName("API-69");
+
+        // API-76 - Inscribe la tarjeta de quien YA tiene su cupo fundador (RN-S7-01). Monto
+        // cero: no se cobra nada, se autoriza el cobro de cuando termine el mes gratis.
+        // Devuelve a donde mandar a la persona (la pasarela).
+        grupo.MapPost("/suscripcion/tarjeta", async (
                 HttpContext http, IServicioCobros cobros,
                 ServicioPerfiles perfiles, ClaimsPrincipal quien) =>
             {
@@ -157,7 +176,7 @@ public static class EndpointsSuscripciones
             })
             .AddEndpointFilter<FiltroIdempotencia>()
             .RequireRateLimiting(Tasa.Sensible)
-            .WithName("API-69");
+            .WithName("API-76");
     }
 
     private static void MapearAvisos(RouteGroupBuilder grupo)

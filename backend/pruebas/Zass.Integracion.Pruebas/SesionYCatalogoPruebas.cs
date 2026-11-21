@@ -77,7 +77,7 @@ public class SesionYCatalogoPruebas : IAsyncLifetime
     {
         var respuesta = await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo, contrasena = "contrasena-larga-para-pruebas-123", nombre = "Usuario Prueba", rol,
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo, contrasena = "contrasena-larga-para-pruebas-123", nombre = "Usuario Prueba", rol,
         });
         Assert.Equal(HttpStatusCode.Created, respuesta.StatusCode);
     }

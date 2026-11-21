@@ -43,14 +43,14 @@ beforeEach(() => {
 
 const pintar = () => render(<MemoryRouter><ReportesDeResenas /></MemoryRouter>)
 const resoluciones = () => llamadas.filter((l) => l.ruta.endsWith('/resolver'))
-const reporte = (prestador: string) => screen.findByRole('article', { name: `Reseña a ${prestador}` })
+const reporte = (prestador: string) => screen.findByRole('article', { name: `Reseña sobre ${prestador}` })
 
 describe('JQ-12: la cola de reportes (API-52)', () => {
   it('el más antiguo primero, con la reseña completa y el motivo del reporte', async () => {
     pintar()
     const lista = await screen.findByRole('list', { name: 'Reseñas reportadas' })
     const articulos = within(lista).getAllByRole('article')
-    expect(articulos.map((a) => a.getAttribute('aria-label'))).toEqual(['Reseña a Rosa Millán', 'Reseña a Jorge Huenchullán'])
+    expect(articulos.map((a) => a.getAttribute('aria-label'))).toEqual(['Reseña sobre Rosa Millán', 'Reseña sobre Jorge Huenchullán'])
 
     const ofensivo = articulos[1]
     expect(ofensivo).toHaveTextContent(NUEVO.comentario)
@@ -85,8 +85,8 @@ describe('JQ-12: resolver (API-53)', () => {
       ruta: '/api/interno/reportes/r-nuevo/resolver', metodo: 'POST',
       cuerpo: { decision: 'retirar', motivo: 'Insulta sin aportar nada del servicio.' },
     }])
-    expect(screen.queryByRole('article', { name: 'Reseña a Jorge Huenchullán' })).toBeNull()
-    expect(screen.getByRole('article', { name: 'Reseña a Rosa Millán' })).toBeInTheDocument()
+    expect(screen.queryByRole('article', { name: 'Reseña sobre Jorge Huenchullán' })).toBeNull()
+    expect(screen.getByRole('article', { name: 'Reseña sobre Rosa Millán' })).toBeInTheDocument()
     // Sin recargar: la cola se pidió una sola vez.
     expect(llamadas.filter((l) => l.ruta === '/api/interno/reportes/cola')).toHaveLength(1)
   })
@@ -124,6 +124,6 @@ describe('JQ-12: resolver (API-53)', () => {
     await userEvent.type(within(r).getByLabelText('Motivo de la decisión'), 'Es una opinión legítima.')
     await userEvent.click(within(r).getByRole('button', { name: 'Guardar decisión' }))
     expect(await within(r).findByRole('alert')).toHaveTextContent('Este reporte ya fue resuelto.')
-    expect(screen.getByRole('article', { name: 'Reseña a Jorge Huenchullán' })).toBeInTheDocument()
+    expect(screen.getByRole('article', { name: 'Reseña sobre Jorge Huenchullán' })).toBeInTheDocument()
   })
 })
