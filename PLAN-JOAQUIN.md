@@ -82,8 +82,7 @@ portada («Cambiar»)**. Falta:
   (~406-408) `.tarjeta-persona { height: 100% }` llena el `li` y el botón, hermano de la tarjeta dentro del
   mismo `li`, se sale por abajo; en el celular empeora con `.tarjetas-rejilla { gap: 0; overflow: hidden }`
   (~1257). Los botones están en `PaginaBuscar.tsx` (~374) y en el `li` de `ListaDeGuardados` en
-  `MisGuardados.tsx`. Capturas en `zass-tareas
-avegador-noche\capturas` (las tiene Pablo).
+  `MisGuardados.tsx`. Capturas en `zass-tareas/navegador-noche/capturas` (las tiene Pablo).
 - De paso, mirar en el celular la pantalla nueva de **activar la tarjeta** (`/tarjeta/sin-activar/{segmento}`, #199), que se hizo con las clases existentes.
 
 ### JQ-21 — Verificar el panel interno · N1
