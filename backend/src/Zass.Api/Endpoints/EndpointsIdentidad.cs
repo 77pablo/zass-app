@@ -446,12 +446,34 @@ public static class EndpointsIdentidad
         // de linea en los valores (RFC 2426), UTF-8.
         // Content-Type "text/vcard; charset=utf-8" y Content-Disposition attachment
         // con filename "<slug>.vcf" (sanea el slug a [a-z0-9-]).
+        //
+        // La vCard ES el contacto: lleva el telefono, el WhatsApp y el correo. Por eso exige lo
+        // mismo que API-05 para mostrarlos —sesion y correo verificado (RN-S1-09)—. La primera
+        // version era anonima, y junto con API-64 (la lista de todos los slugs publicados)
+        // dejaba la libreta de contactos de todos los prestadores a un script de distancia sin
+        // crear ninguna cuenta: exactamente lo que el muro de API-05 existe para evitar.
+        // Se comprueba ANTES de buscar la ficha, asi que el 401 y el 403 no dicen si existe.
         grupo.MapGet("/prestadores/{slug}/vcard", async (
                 string slug,
                 IServicioBusqueda busqueda,
+                IServicioIdentidad identidad,
                 IOptions<OpcionesZass> opciones,
                 HttpContext http) =>
             {
+                if (http.User.Identity?.IsAuthenticated != true) return Results.Unauthorized();
+
+                var usuarioId = http.User.UsuarioId();
+                var usuario = usuarioId is null ? null : await identidad.ObtenerUsuarioAsync(usuarioId.Value);
+                if (usuario is null || !usuario.CorreoVerificado)
+                    return Results.Problem(
+                        statusCode: StatusCodes.Status403Forbidden,
+                        title: "Verifica tu correo para guardar el contacto.");
+
+                // La respuesta lleva datos de contacto que dependen de la sesion: ningun cache
+                // compartido puede guardarla.
+                http.Response.Headers.CacheControl = "private, no-store";
+                http.Response.Headers.Vary = "Cookie";
+
                 var ficha = await busqueda.FichaPublicaAsync(slug);
                 if (ficha is null) return Results.NotFound();
 

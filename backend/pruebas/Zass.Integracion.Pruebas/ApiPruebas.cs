@@ -1503,7 +1503,7 @@ public partial class ApiPruebas : IAsyncLifetime
     public async Task La_vcard_descarga_con_contacto_completo_y_content_type_correcto()
     {
         var slug = await UnaFichaConContactoAsync();
-        using var visitante = UnVisitante();
+        var visitante = _cliente;   // con sesion y correo verificado (RN-S1-09)
 
         var respuesta = await visitante.GetAsync($"/api/prestadores/{slug}/vcard");
 
@@ -1533,7 +1533,8 @@ public partial class ApiPruebas : IAsyncLifetime
     [Fact]
     public async Task La_vcard_slug_inexistente_devuelve_404()
     {
-        using var visitante = UnVisitante();
+        await UnPrestadorConSesionAsync();
+        var visitante = _cliente;   // con sesion verificada: sin ella responde 401 antes de buscar
 
         var respuesta = await visitante.GetAsync("/api/prestadores/este-slug-no-existe-para-nadie/vcard");
 
@@ -1593,7 +1594,7 @@ public partial class ApiPruebas : IAsyncLifetime
                 .SetProperty(x => x.VigenteHasta, DateTime.UtcNow.AddDays(-1)));
         await ctx.SaveChangesAsync();
 
-        using var visitante = UnVisitante();
+        var visitante = _cliente;   // con sesion verificada: el 404 tiene que ser por la suscripcion
         var respuestaVcard = await visitante.GetAsync($"/api/prestadores/{slug}/vcard");
         var respuestaInexistente = await visitante.GetAsync("/api/prestadores/este-slug-no-existe-para-nadie/vcard");
 
@@ -1604,11 +1605,75 @@ public partial class ApiPruebas : IAsyncLifetime
             await CuerpoComparable.De(respuestaInexistente), await CuerpoComparable.De(respuestaVcard));
     }
 
+    /// <summary>
+    /// La vCard es el contacto: sin sesion NO puede entregarlo. Antes era anonima y, con API-64
+    /// listando todos los slugs, cualquiera bajaba la libreta de contactos de todos los
+    /// prestadores sin crear una cuenta. Y el 401 sale antes de buscar: no dice si la ficha existe.
+    /// </summary>
+    [Fact]
+    public async Task La_vcard_sin_sesion_responde_401_sin_un_solo_dato_de_contacto()
+    {
+        var slug = await UnaFichaConContactoAsync();
+        using var visitante = UnVisitante();
+
+        var respuesta = await visitante.GetAsync($"/api/prestadores/{slug}/vcard");
+        var inexistente = await visitante.GetAsync("/api/prestadores/este-slug-no-existe-para-nadie/vcard");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, respuesta.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, inexistente.StatusCode);
+        var texto = await respuesta.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("1234 5678", texto);
+        Assert.DoesNotContain("912345678", texto);
+        Assert.DoesNotContain("contacto@perez.cl", texto);
+    }
+
+    [Fact]
+    public async Task La_vcard_con_sesion_pero_sin_correo_verificado_responde_403_sin_datos()
+    {
+        var slug = await UnaFichaConContactoAsync();
+        var primero = _cliente;
+        using var sinVerificar = _app.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            HandleCookies = true, AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost"),
+        });
+        _cliente = sinVerificar;
+        try
+        {
+            var correo = NuevoCorreo();
+            await RegistrarAsync(correo);           // a proposito NO se verifica
+            await IniciarSesionAsync(correo);
+
+            var respuesta = await _cliente.GetAsync($"/api/prestadores/{slug}/vcard");
+
+            Assert.Equal(HttpStatusCode.Forbidden, respuesta.StatusCode);
+            var texto = await respuesta.Content.ReadAsStringAsync();
+            Assert.Contains("Verifica tu correo", texto);
+            Assert.DoesNotContain("1234 5678", texto);
+            Assert.DoesNotContain("contacto@perez.cl", texto);
+        }
+        finally
+        {
+            _cliente = primero;
+        }
+    }
+
+    [Fact]
+    public async Task La_vcard_no_se_guarda_en_caches_compartidos()
+    {
+        var slug = await UnaFichaConContactoAsync();
+
+        var respuesta = await _cliente.GetAsync($"/api/prestadores/{slug}/vcard");
+
+        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
+        Assert.True(respuesta.Headers.CacheControl?.NoStore, $"Cache-Control: {respuesta.Headers.CacheControl}");
+        Assert.True(respuesta.Headers.CacheControl?.Private, $"Cache-Control: {respuesta.Headers.CacheControl}");
+    }
+
     [Fact]
     public async Task La_vcard_escapa_coma_punto_y_coma_barra_y_saltos_de_linea()
     {
         var slug = await UnaFichaConContactoAsync();
-        using var visitante = UnVisitante();
+        var visitante = _cliente;   // con sesion y correo verificado (RN-S1-09)
 
         var respuesta = await visitante.GetAsync($"/api/prestadores/{slug}/vcard");
         Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
@@ -1634,7 +1699,7 @@ public partial class ApiPruebas : IAsyncLifetime
         // la MISMA fuente (FichaPublicaAsync) que la ficha, asi que no puede incluir nada que
         // la ficha no muestre.
         var slug = await UnaFichaConContactoAsync();
-        using var visitante = UnVisitante();
+        var visitante = _cliente;   // con sesion y correo verificado (RN-S1-09)
 
         var respuesta = await visitante.GetAsync($"/api/prestadores/{slug}/vcard");
         Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
