@@ -112,6 +112,16 @@ jobs:
         working-directory: backend
         run: |
           set -euo pipefail
+          # Fijar el SDK 10. Desde nov-2026 la imagen del runner trae el SDK 11 preinstalado, y
+          # sin global.json `dotnet` toma el mas nuevo: `dotnet ef` fallo el 20-nov con
+          # NETSDK1004 («project.assets.json not found»). El global.json vive solo en el runner.
+          sdk10=$(dotnet --list-sdks | awk '$1 ~ /^10\./ {print $1}' | sort -V | tail -1)
+          test -n "$sdk10" || { echo "No hay SDK 10 en el runner"; exit 1; }
+          printf '{ "sdk": { "version": "%s", "rollForward": "latestFeature" } }\n' "$sdk10" > global.json
+          cat global.json
+          dotnet --version
+          # Restaurar explicito: `dotnet ef` no lo garantiza, y sin esto falla igual que arriba.
+          dotnet restore src/Zass.Infraestructura
           dotnet tool restore
           dotnet ef migrations list \
             --project src/Zass.Infraestructura --startup-project src/Zass.Infraestructura \

@@ -35,8 +35,10 @@ paquete NuGet**, y 20 pruebas de arquitectura lo vigilan.
 
 ## 1. Tu carril, y quién tiene lo demás
 
-**Mientras estés en tu carril, decides, escribes, commiteas, pusheas y abres tu PR.** Lo único de
-Pablo es apretar el botón de fusionar.
+**Mientras estés en tu carril, decides, escribes, commiteas, pusheas y abres tu PR.** Para que tu PR se
+fusione no tienes que pedirle nada a nadie: ver «Quién fusiona», abajo.
+
+**Quién fusiona (Pablo, 20-nov-2026):** cuando tu PR tenga el CI en verde y esté listo (no en borrador), **Claude lo revisa y lo fusiona**. No tienes que avisarle a Pablo ni pedirle nada. Si la revisión encuentra algo, Claude lo comenta en el PR y lo corriges. Claude solo le consulta a Pablo si el PR cambia precios o cobros de forma distinta a lo ya decidido, toca temas legales o necesita algo de producción. **Publicar en producción** sigue siendo de Pablo.
 
 | Es tuyo | Es de otro (no lo toques) |
 |---|---|
@@ -46,6 +48,27 @@ Pablo es apretar el botón de fusionar.
 | Tus propias pruebas, incluidas las de navegador | `ESTADO.md`: lo lleva la sesión principal |
 
 Si para tu tarea necesitas tocar un archivo que es de otro, **avísalo en el PR antes de hacerlo**.
+
+### Cómo decidir sin esperar a Pablo
+
+No tienes que preguntarle a Pablo para avanzar. Cuando te surja una duda, resuélvela en este orden:
+
+1. **Si ya hay una decisión escrita, manda esa.** Búscala en este plan, en `ESTADO.md`, en los
+   comentarios del código y en la documentación técnica. Si dos fuentes se contradicen, **gana la
+   decisión de Pablo más antigua que esté escrita en el código o en la documentación**, no este plan:
+   el plan lo escribe Claude y se puede equivocar. Dilo en el PR.
+2. **Si no hay nada escrito, decide tú** lo más prudente (lo que no cobra de más, no expone datos y
+   se puede deshacer), y explica en el PR qué elegiste y por qué. En la revisión se acepta o se cambia.
+3. **La documentación técnica no la tocas tú:** vive en el OneDrive de Pablo, fuera del repositorio.
+   Si tu cambio contradice un documento (una regla `RN-…`, un caso de uso, un endpoint), escríbelo en
+   el PR bajo un título **«Documento que cambia»**, con el código y qué debería decir. Claude lo
+   actualiza después de fusionar.
+4. **Los textos que ve el usuario** (correos, avisos, botones) los propones tú en el PR. Los revisa
+   Claude en la revisión del PR, contra el tono del sitio: en español de Chile, claros, sin
+   tecnicismos y sin culpar al usuario. No esperes a Pablo para eso.
+5. **Solo es de Pablo** (y te lo consulta Claude, no tú): cambiar precios o lo que se cobra, decisiones legales, secretos y claves,
+   y todo lo que se hace en producción (Neon, Render, Cloudflare). Si tu tarea necesita una de esas
+   cosas, déjala anotada en el PR y sigue con lo demás.
 
 ### Tres reglas duras
 
@@ -96,6 +119,11 @@ paga en ese plazo, **pierde el cupo fundador**.
   `ReferenciaPasarela` está vacía, o sea, si no inscribió tarjeta. Esa condición hay que quitarla para
   el caso de la tarjeta que falla.
 - **No cobrar el precio fundador a quien ya no tiene cupo.**
+- **Al perder el cupo NO hay paso automático al Mensual** (decisión de Pablo del 12-nov, ya anotada
+  en `ServicioSuscripciones.cs`). La suscripción **vence**, la ficha sale de la búsqueda y no se
+  le cobra nada más. Si quiere volver, elige el Mensual a mano en `/planes`. Así nunca se le
+  cobra un precio distinto sin que lo acepte. *(Corregido el 20-nov: la primera versión de este
+  plan decía lo contrario, y era un error del plan.)*
 - Un aviso visible en **«Mi ficha»** mientras está en gracia: cuántos días le quedan y un enlace para
   actualizar la tarjeta.
 
@@ -104,8 +132,12 @@ y `PorVencerAsync`, y el `Planificador` (`Zass.Infraestructura/Fondo/Planificado
 de Flow es de Claude: tu código habla con la pasarela **solo a través del puerto** que ya existe.
 
 **Pruebas mínimas:** falla el cobro → sale un correo y no dos; el reintento del día siguiente paga →
-conserva el cupo; pasan los 7 días sin pago → pierde el cupo y el siguiente cobro es al precio
-Mensual; dos procesos cobrando a la vez → un solo cobro.
+conserva el cupo; pasan los 7 días sin pago → pierde el cupo, la suscripción vence y **no se
+intenta ningún cobro más**; dos procesos cobrando a la vez → un solo cobro.
+
+**Documento que cambia:** RN-S7-10 (`subsistema-7-suscripciones-y-pagos.md`) dice que un rechazo
+no se reintenta solo. Con ES-1 sí se reintenta dentro de la gracia. Anótalo en el PR (ver «Cómo decidir sin esperar a Pablo»,
+en la sección 1); el documento lo actualiza Claude.
 
 ### ES-2 — Completar los datos de las cuentas antiguas · N2 (N3 si necesitas migración)
 

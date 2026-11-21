@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { olvidarCsrf } from '../api/cliente'
 import type { Suscripcion } from '../funciones/perfil/servicio'
-import { TarjetaDelFundador, debePedirTarjeta } from './TarjetaDelFundador'
+import { TarjetaDelFundador, debePedirTarjeta, estaEnGracia } from './TarjetaDelFundador'
 
 /*
  * Cupo sin tarjeta (decisión de Pablo, 20-nov-2026): la tarjeta se inscribe durante el mes
@@ -22,6 +22,11 @@ const FUNDADOR: Suscripcion = {
   plan: 'ZASS! Fundador', estado: 'Prueba', vigente: true, enPrueba: true,
   vigenteHasta: '2026-12-20T15:00:00Z', diasRestantes: 30, renovacionAutomatica: false,
   esFundador: true, tarjetaInscrita: false,
+}
+
+/** ES-1: tarjeta inscrita, cobro rechazado, le quedan 3 días. */
+const EN_GRACIA: Suscripcion = {
+  ...FUNDADOR, estado: 'Prueba', diasRestantes: 3, tarjetaInscrita: true, diasDeGracia: 3,
 }
 
 let llamadas: { ruta: string, clave: string | null }[]
@@ -67,6 +72,20 @@ describe('debePedirTarjeta', () => {
   })
 })
 
+describe('estaEnGracia', () => {
+  it('solo al fundador vigente con días de gracia', () => {
+    expect(estaEnGracia(EN_GRACIA)).toBe(true)
+    expect(estaEnGracia({ ...EN_GRACIA, diasDeGracia: null })).toBe(false)
+    expect(estaEnGracia({ ...EN_GRACIA, diasDeGracia: 0 })).toBe(false)
+    expect(estaEnGracia({ ...EN_GRACIA, esFundador: false })).toBe(false)
+    expect(estaEnGracia({ ...EN_GRACIA, vigente: false })).toBe(false)
+    // Una API vieja no manda el campo: nadie está en gracia.
+    const { diasDeGracia: _g, ...vieja } = EN_GRACIA
+    expect(estaEnGracia(vieja)).toBe(false)
+    expect(estaEnGracia(null)).toBe(false)
+  })
+})
+
 describe('TarjetaDelFundador', () => {
   it('dice hasta cuándo y qué pasa si no la inscribe', () => {
     pintar()
@@ -80,6 +99,31 @@ describe('TarjetaDelFundador', () => {
     pintar()
 
     await userEvent.click(screen.getByRole('button', { name: 'Inscribir mi tarjeta' }))
+
+    expect(await screen.findByText('la pasarela')).toBeInTheDocument()
+    expect(llamadas).toHaveLength(1)
+    expect(llamadas[0].ruta).toContain('/api/mi/suscripcion/tarjeta')
+    expect(llamadas[0].clave).not.toBeNull()
+  })
+
+  it('ES-1: en gracia dice cuántos días quedan y qué pierde', () => {
+    pintar(EN_GRACIA)
+
+    expect(screen.getByRole('heading', { name: 'No pudimos cobrar tu suscripción' })).toBeInTheDocument()
+    expect(screen.getByText('en 3 días')).toBeInTheDocument()
+    expect(screen.getByText(/pierdes tu cupo de fundador y tu precio congelado/)).toBeInTheDocument()
+    expect(screen.queryByText(/hoy no se te cobra nada/)).toBeNull()
+  })
+
+  it('ES-1: con un día de gracia dice «mañana»', () => {
+    pintar({ ...EN_GRACIA, diasDeGracia: 1 })
+    expect(screen.getByText('mañana')).toBeInTheDocument()
+  })
+
+  it('ES-1: «Actualizar mi tarjeta» va a API-76 y lleva a la pasarela', async () => {
+    pintar(EN_GRACIA)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Actualizar mi tarjeta' }))
 
     expect(await screen.findByText('la pasarela')).toBeInTheDocument()
     expect(llamadas).toHaveLength(1)

@@ -64,6 +64,15 @@ public interface IServicioSuscripciones
     Task<int> VencerExpiradasAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// ES-1. Encola el correo «actualiza tu tarjeta» cuando el cobro automatico de un periodo
+    /// fue rechazado. UNO por periodo: la clave lleva la suscripcion y el vencimiento, asi que
+    /// los reintentos rechazados de los dias siguientes no mandan otro.
+    /// </summary>
+    Task AvisarCobroRechazadoAsync(
+        Guid perfilPrestadorId, Guid suscripcionId, DateTime vigenteHasta,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Las que vencen dentro de N dias, para avisar ANTES.
     ///
     /// Desaparecer de la busqueda sin aviso previo es lo que volveria cruel a RN-S3-09:
@@ -176,7 +185,10 @@ public sealed record SuscripcionDto(
     // Cupo sin tarjeta (20-nov-2026): la pantalla tiene que poder decir «inscribe tu
     // tarjeta antes del ...» sin adivinarlo por el nombre del plan.
     bool EsFundador = false,
-    bool TarjetaInscrita = false);
+    bool TarjetaInscrita = false,
+    // ES-1: dias de gracia que le quedan al fundador cuyo cobro fue rechazado, o nulo si no
+    // esta en gracia. «Mi ficha» lo muestra con el enlace para cambiar la tarjeta.
+    int? DiasDeGracia = null);
 
 /// <summary>El cupo recien tomado y hasta cuando dura el mes gratis.</summary>
 public sealed record CupoTomadoDto(short Numero, DateTime MesGratisHasta, bool TarjetaInscrita);
@@ -220,4 +232,9 @@ public sealed record PlanDto(
     short DiasPrueba,
     int MaxServicios,
     int MaxTarjetas,
-    bool PermiteCredenciales);
+    bool PermiteCredenciales,
+    // Lo que distingue a los planes desde el 20-nov-2026 (Esencial, Profesional, Equipo).
+    // Al final y con valor por omision: agregarlos no rompe a nadie que construya el DTO.
+    int MaxFotosTrabajos = 0,
+    bool PermiteEstadisticas = false,
+    bool VerificacionPrioritaria = false);
