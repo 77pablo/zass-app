@@ -27,6 +27,13 @@ public class Plan
     public int MaxTarjetas { get; set; } = 1;
     public bool PermiteCredenciales { get; set; } = true;
     public bool Activo { get; set; } = true;
+
+    /// <summary>Maximo de fotos de trabajos que puede subir el prestador.</summary>
+    public int MaxFotosTrabajos { get; set; } = 0;
+    /// <summary>Si el plan permite ver estadisticas de la ficha.</summary>
+    public bool PermiteEstadisticas { get; set; } = false;
+    /// <summary>Si la verificacion del prestador es prioritaria.</summary>
+    public bool VerificacionPrioritaria { get; set; } = false;
 }
 
 /// <summary>TBL-30. La suscripcion de un prestador. Un prestador, una suscripcion vigente.</summary>
