@@ -87,7 +87,7 @@ public class ResenasApiPruebas : IAsyncLifetime
 
         var alta = await p.Http.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo, contrasena = Contrasena, nombre = "Persona de prueba", rol,
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo, contrasena = Contrasena, nombre = "Persona de prueba", rol,
         });
         Assert.Equal(HttpStatusCode.Created, alta.StatusCode);
 

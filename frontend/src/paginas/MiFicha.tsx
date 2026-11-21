@@ -17,6 +17,7 @@ import { capitalizar, duracion, pesos } from '../marco/texto'
 import { useTitulo } from '../marco/useTitulo'
 import { useSesion } from '../sesion/contexto'
 import { EditorDeZonas } from './EditorDeZonas'
+import { TarjetaDelFundador, debePedirTarjeta } from './TarjetaDelFundador'
 import { FotoDePerfil } from './FotoDePerfil'
 import { MisCredenciales } from './MisCredenciales'
 import { useMeta } from '../marco/useMeta'
@@ -187,6 +188,9 @@ export function MiFicha() {
 
       {avisoAccion && <p className="aviso-linea" role="alert">{avisoAccion}</p>}
       {estadoSusc?.alerta && <p className="aviso-linea" role="status">{estadoSusc.texto}</p>}
+      {suscripcion !== null && debePedirTarjeta(suscripcion) && (
+        <TarjetaDelFundador suscripcion={suscripcion} />
+      )}
 
       {!publicada && (
         <section className="guia" aria-label="Lo que falta para publicar">

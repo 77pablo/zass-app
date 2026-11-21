@@ -9,7 +9,19 @@ public class Usuario
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Correo { get; set; } = "";
     public string HashContrasena { get; set; } = "";
+    /// <summary>De pila si es Particular; el de la persona de contacto si es Empresa.</summary>
     public string Nombre { get; set; } = "";
+
+    // Datos de la cuenta (decision de Pablo, 20-nov-2026). Nulos en las cuentas creadas antes.
+    public TipoCuenta Tipo { get; set; } = TipoCuenta.Particular;
+    public string? Apellido { get; set; }
+    /// <summary>Normalizado «12345678-K». Unico: una persona o empresa, una cuenta.</summary>
+    public string? Rut { get; set; }
+    public string? Telefono { get; set; }
+    public string? RazonSocial { get; set; }
+    /// <summary>Cuando marco «soy mayor de 18». No se pide ni se guarda la fecha de nacimiento.</summary>
+    public DateTime? MayorDeEdadConfirmadoEn { get; set; }
+
     public bool CorreoVerificado { get; set; }
     // Los dos tokens de un solo uso de S1. Se guarda el hash, nunca el token que viajo
     // por correo, y cada uno lleva su propio vencimiento porque duran distinto: 24 h el
@@ -47,6 +59,10 @@ public class Usuario
     {
         Correo = $"eliminado-{Id:N}@zass.local";
         Nombre = "Usuario eliminado";
+        Apellido = null;
+        Rut = null;
+        Telefono = null;
+        RazonSocial = null;
         HashContrasena = "";
         TokenVerificacion = null;
         TokenRecuperacion = null;

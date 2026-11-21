@@ -81,6 +81,22 @@ public interface IRepositorioAuditoria
     Task<IReadOnlyList<RegistroAuditoria>> ConsultarAsync(
         string? entidad, Guid? entidadId, Guid? actorId,
         DateTime? antesDe, long? antesDeId, int limite, CancellationToken ct = default);
+
+    /// <summary>
+    /// Cuenta intentos fallidos de activacion para una tarjeta en una ventana de tiempo.
+    /// Usado para implementar el bloqueo 4B.5: 5 fallos en 15 minutos -> bloqueo 1 hora.
+    /// La consulta debe ejecutarse dentro de la misma transaccion que tiene la tarjeta bloqueada (FOR UPDATE).
+    /// </summary>
+    Task<int> ContarActivacionesFallidasAsync(
+        Guid tarjetaId, DateTime desde, DateTime hasta, CancellationToken ct = default);
+
+    /// <summary>
+    /// Trae solo las fechas (OcurridoEn) de los intentos fallidos de activacion de una tarjeta
+    /// entre dos instantes, con filtro en SQL y ordenadas por fecha.
+    /// Usado para verificar la ventana de 15 minutos del bloqueo 4B.5 sin traer todo el registro.
+    /// </summary>
+    Task<IReadOnlyList<DateTime>> ObtenerFechasDeFallosAsync(
+        Guid tarjetaId, DateTime desde, DateTime hasta, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -142,6 +158,8 @@ public interface IRepositorioUsuarios
     Task<Usuario?> PorTokenVerificacionAsync(string hashToken, CancellationToken ct = default);
     Task<Usuario?> PorTokenRecuperacionAsync(string hashToken, CancellationToken ct = default);
     Task<bool> ExisteCorreoAsync(string correo, CancellationToken ct = default);
+    /// <summary>El RUT ya normalizado («12345678-K»).</summary>
+    Task<bool> ExisteRutAsync(string rut, CancellationToken ct = default);
     Task<Rol?> RolPorCodigoAsync(string codigo, CancellationToken ct = default);
     void Agregar(Usuario usuario);
 }

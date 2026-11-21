@@ -171,7 +171,7 @@ public class ApiFichaSinSuscripcionPruebas : IAsyncLifetime
         var correo = $"apisus-b-{Guid.NewGuid():N}-{_marca}@zass.local";
         Assert.Equal(HttpStatusCode.Created, (await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
         })).StatusCode);
 
         using (var ctx = ContextoDePrueba.Crear())

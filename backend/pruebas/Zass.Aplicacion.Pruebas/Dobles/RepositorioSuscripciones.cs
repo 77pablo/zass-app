@@ -37,7 +37,7 @@ public sealed class RepositorioSuscripcionesEnMemoria : IRepositorioSuscripcione
 
         // El repositorio real trae el plan con Include; aqui se enlaza a mano para que
         // el servicio vea lo mismo en los dos lados.
-        if (s is not null && s.Plan is null)
+        if (s is not null && (s.Plan is null || s.Plan.Id != s.PlanId))
             s.Plan = _base.Planes.FirstOrDefault(p => p.Id == s.PlanId);
 
         return Task.FromResult(s);
@@ -53,7 +53,7 @@ public sealed class RepositorioSuscripcionesEnMemoria : IRepositorioSuscripcione
 
         // El repositorio real trae el plan con Include; aqui se enlaza a mano para
         // que el servicio vea lo mismo en los dos lados.
-        if (s is not null && s.Plan is null)
+        if (s is not null && (s.Plan is null || s.Plan.Id != s.PlanId))
             s.Plan = _base.Planes.FirstOrDefault(p => p.Id == s.PlanId);
 
         return Task.FromResult(s);

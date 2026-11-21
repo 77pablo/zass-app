@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using FluentValidation;
+using Zass.Aplicacion.Comun;
 
 namespace Zass.Aplicacion.Identidad;
 
@@ -30,6 +31,16 @@ public static class Limites
     /// </summary>
     public static readonly Regex MovilChileno = new(
         @"^(\+?56)?\s?9\s?\d{4}\s?\d{4}$", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Telefono chileno de 9 digitos, movil o fijo (una empresa puede dar su fijo), con o sin
+    /// +56 y con o sin espacios.
+    /// </summary>
+    public static readonly Regex TelefonoChileno = new(
+        @"^(\+?56)?\s?\d(\s?\d){8}$", RegexOptions.Compiled);
+
+    public const int ApellidoMaximo = 100;
+    public const int RazonSocialMaxima = 200;
 }
 
 public sealed class ValidadorRegistrarCuenta : AbstractValidator<RegistrarCuentaCmd>
@@ -49,6 +60,35 @@ public sealed class ValidadorRegistrarCuenta : AbstractValidator<RegistrarCuenta
         RuleFor(x => x.Nombre)
             .Must(n => !string.IsNullOrWhiteSpace(n)).WithMessage("Falta el nombre.")
             .MaximumLength(Limites.NombreMaximo);
+
+        // Registro completo (decision de Pablo, 20-nov-2026).
+        RuleFor(x => x.Tipo)
+            .Must(t => t is "particular" or "empresa")
+            .WithMessage("Elige si la cuenta es de un particular o de una empresa.");
+
+        RuleFor(x => x.Apellido)
+            .Must(a => !string.IsNullOrWhiteSpace(a)).WithMessage("Falta el apellido.")
+            .MaximumLength(Limites.ApellidoMaximo)
+            .When(x => x.Tipo == "particular");
+
+        RuleFor(x => x.RazonSocial)
+            .Must(r => !string.IsNullOrWhiteSpace(r)).WithMessage("Falta la razón social.")
+            .MaximumLength(Limites.RazonSocialMaxima)
+            .When(x => x.Tipo == "empresa");
+
+        RuleFor(x => x.Rut)
+            .Must(r => !string.IsNullOrWhiteSpace(r)).WithMessage("Falta el RUT.")
+            .Must(Rut.EsValido).WithMessage("Ese RUT no es válido. Revisa el número y el dígito verificador.")
+            .When(x => !string.IsNullOrWhiteSpace(x.Rut), ApplyConditionTo.CurrentValidator);
+
+        RuleFor(x => x.Telefono)
+            .Must(t => !string.IsNullOrWhiteSpace(t)).WithMessage("Falta el teléfono.")
+            .Must(t => t is not null && Limites.TelefonoChileno.IsMatch(t.Trim()))
+                .WithMessage("Escribe un teléfono chileno de 9 dígitos, por ejemplo +56 9 1234 5678.")
+                .When(x => !string.IsNullOrWhiteSpace(x.Telefono), ApplyConditionTo.CurrentValidator);
+
+        RuleFor(x => x.MayorDeEdad)
+            .Equal(true).WithMessage("Para crear una cuenta tienes que ser mayor de 18 años.");
 
         // RN-S1-08, otra vez y en la puerta: ni siquiera llega al caso de uso.
         RuleFor(x => x.Rol)

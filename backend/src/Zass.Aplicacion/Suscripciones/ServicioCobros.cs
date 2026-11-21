@@ -350,6 +350,14 @@ public sealed class ServicioCobros : IServicioCobros
                 Fallas.Conflicto,
                 "Publica tu perfil antes de tomar tu cupo: la suscripción nace al publicarlo.");
 
+        // Desde el 20-nov-2026 el cupo se toma sin tarjeta (API-69) y esto es SOLO inscribir
+        // la tarjeta de quien ya tiene su cupo. Sin este control, inscribir una tarjeta seria
+        // otra puerta para tomar un cupo, y con un mes gratis que no pasa por TomarCupo.
+        if (await _repo.CupoFundadorDeAsync(perfilPrestadorId, ct) is null)
+            return Resultado.Falla<IntentoDePagoDto>(
+                Fallas.Conflicto,
+                "Primero toma tu cupo de fundador en la página de planes; la tarjeta se inscribe después.");
+
         var intento = await _trabajo.EnTransaccionAsync(async t =>
         {
             if (await _repo.IntentoPorClaveAsync(claveIdempotencia, t) is { } carrera)
@@ -755,11 +763,9 @@ public sealed class ServicioCobros : IServicioCobros
             {
                 intento.MarcarFallido(_reloj.Ahora, r.MotivoFallo);
 
-                // Una inscripcion rechazada suelta el cupo al tiro en vez de dejarlo
-                // bloqueado los 25 minutos de la reserva: el cupo 50 es escaso y quien no
-                // pudo inscribir su medio de pago no lo esta usando.
-                if (intento.Tipo == TipoDeIntento.Inscripcion)
-                    await _suscripciones.LiberarCupoFundadorAsync(intento.PerfilPrestadorId, t);
+                // Una inscripcion rechazada NO suelta el cupo (20-nov-2026): el cupo se tomo sin
+                // tarjeta y es de la persona hasta que termine su mes gratis. Puede probar con
+                // otra tarjeta; si el mes termina sin ninguna, lo libera el trabajo diario.
 
                 _auditor.Registrar(Auditar.Entrada(
                     "cobro_rechazado", "intentos_de_pago", intento.Id, _reloj.Ahora,

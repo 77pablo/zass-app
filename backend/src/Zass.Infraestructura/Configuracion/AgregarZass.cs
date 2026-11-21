@@ -69,6 +69,13 @@ public sealed class OpcionesZass
     public bool RevisarContrasenasFiltradas { get; set; } = true;
 
     /// <summary>
+    /// Correo del administrador que recibe las alertas de seguridad (tarjetas bloqueadas por intentos fallidos).
+    /// En produccion es obligatorio; en desarrollo/pruebas es opcional. Config: Zass:CorreoAlertasAdmin,
+    /// env: Zass__CorreoAlertasAdmin.
+    /// </summary>
+    public string? CorreoAlertasAdmin { get; set; }
+
+    /// <summary>
     /// Opciones de Flow.cl (la pasarela de pagos real). Se usan solo si Zass:Pasarela = "flow".
     /// </summary>
     public OpcionesFlow? Flow { get; set; }
@@ -166,7 +173,42 @@ public sealed class ValidadorOpcionesPagos : IValidateOptions<OpcionesZass>
             }
         }
 
+        // Validar CorreoAlertasAdmin: en produccion es obligatorio y debe tener forma de correo
+        if (string.IsNullOrWhiteSpace(o.CorreoAlertasAdmin))
+        {
+            if (_entorno.IsProduction())
+            {
+                fallos.Add("Falta Zass:CorreoAlertasAdmin");
+            }
+            else
+            {
+                _registro.LogWarning("Zass:CorreoAlertasAdmin no configurado; las alertas de tarjeta bloqueada no se enviaran.");
+            }
+        }
+        else if (!EsCorreoValido(o.CorreoAlertasAdmin))
+        {
+            if (_entorno.IsProduction())
+            {
+                fallos.Add("Zass:CorreoAlertasAdmin no tiene forma de correo valido.");
+            }
+            else
+            {
+                _registro.LogWarning("Zass:CorreoAlertasAdmin no tiene forma de correo valido; las alertas no se enviaran.");
+            }
+        }
+
         return fallos.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(fallos);
+    }
+
+    private static bool EsCorreoValido(string correo)
+    {
+        // Validacion simple pero efectiva: algo@algo.algo
+        if (string.IsNullOrWhiteSpace(correo)) return false;
+        var partes = correo.Split('@');
+        if (partes.Length != 2) return false;
+        if (string.IsNullOrWhiteSpace(partes[0]) || string.IsNullOrWhiteSpace(partes[1])) return false;
+        if (!partes[1].Contains(".")) return false;
+        return true;
     }
 }
 
@@ -422,6 +464,9 @@ public static class RegistroDeServicios
         });
         servicios.AddScoped<ProcesadorDeCorreo>();
         servicios.AddHostedService<TrabajoDeCorreo>();
+
+        // --- Alertas al administrador ---
+        servicios.AddScoped<IAlertasAdministrador, AlertasAdministrador>();
 
         // --- A-09 Planificador (trabajos de fondo) ---
         servicios.AddOptions<OpcionesFondo>().Bind(configuracion.GetSection(OpcionesFondo.Seccion));
