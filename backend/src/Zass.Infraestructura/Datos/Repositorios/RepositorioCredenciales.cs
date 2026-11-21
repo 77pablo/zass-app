@@ -68,13 +68,7 @@ public sealed class RepositorioCredencialesEfCore : IRepositorioCredenciales
             .Where(c => c.ReservadaHasta == null || c.ReservadaHasta < ahora || c.ReservadaPor == verificadorId)
             // VerificacionPrioritaria: planes Profesional, Equipo y Fundador con suscripcion vigente (Prueba o Activa)
             // salen antes. Dentro de cada grupo: mas antigua primero (CreadaEn, luego Id).
-            .OrderByDescending(c => _ctx.Suscripciones
-                .Where(s => s.PerfilPrestadorId == c.PerfilPrestadorId
-                    && (s.Estado == EstadoSuscripcion.Prueba || s.Estado == EstadoSuscripcion.Activa)
-                    && s.VigenteHasta > ahora)
-                .Select(s => s.Plan.VerificacionPrioritaria)
-                .FirstOrDefault())
-            .ThenBy(c => c.CreadaEn)
+            .OrderBy(c => c.CreadaEn)
             .ThenBy(c => c.Id)
             .ToListAsync(ct);
 
