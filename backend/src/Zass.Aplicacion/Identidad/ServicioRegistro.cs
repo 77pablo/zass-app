@@ -74,6 +74,17 @@ public sealed class ServicioRegistro
         "cuenta, con un enlace para entrar y otro para crear una contraseña nueva.";
 
     /// <summary>
+    /// API-08 con un RUT cuya cuenta todavia NO verifico su correo (auditoria 22-nov-2026). No se
+    /// escribe a ese correo: nadie demostro que sea de la dueña del RUT, y podria ser justamente el
+    /// de quien lo registro con un RUT ajeno. Se dice la verdad sin dar datos: la cuenta se borra
+    /// sola si nadie la confirma en 72 horas desde que se creo, y entonces el RUT queda libre.
+    /// </summary>
+    public const string MensajeRutSinConfirmar =
+        "Este RUT tiene un registro que todavía no se ha confirmado. Si no se confirma dentro de " +
+        "72 horas desde que se creó, se borra solo y podrás crear tu cuenta con este RUT. Si es tuyo, " +
+        "busca en tu correo el mensaje para confirmarlo.";
+
+    /// <summary>
     /// Lo minimo entre dos avisos de «intentaron registrarse con tu RUT» a una misma cuenta. Como
     /// API-71: el limite de tasa protege por IP, y el daño de este aviso no lo recibe quien llama
     /// sino la dueña del correo. Una hora y no dos minutos porque el correo no lleva nada que
@@ -90,12 +101,20 @@ public sealed class ServicioRegistro
     private readonly INotificaciones _avisos;
     private readonly IAuditor _auditor;
     private readonly IContrasenasFiltradas _filtradas;
+    private readonly ServicioCuentasSinVerificar? _sinVerificar;
 
+    /// <param name="sinVerificar">
+    /// Opcional para no tocar las pruebas que no lo necesitan; en la aplicacion siempre esta
+    /// (AgregarZass). Sin el, una cuenta caducada que choca con el registro espera a la purga
+    /// del planificador en vez de liberarse en el acto.
+    /// </param>
     public ServicioRegistro(
         IRepositorioUsuarios usuarios, IRepositorioPerfiles perfiles, IUnidadDeTrabajo unidad,
         IHashContrasenas hash, IGeneradorSecretos secretos, IRelojSistema reloj,
-        INotificaciones avisos, IAuditor auditor, IContrasenasFiltradas filtradas)
+        INotificaciones avisos, IAuditor auditor, IContrasenasFiltradas filtradas,
+        ServicioCuentasSinVerificar? sinVerificar = null)
     {
+        _sinVerificar = sinVerificar;
         _usuarios = usuarios;
         _perfiles = perfiles;
         _unidad = unidad;
@@ -127,15 +146,30 @@ public sealed class ServicioRegistro
 
         // RN-S1-01. Esta comprobacion es por cortesia: la que de verdad manda es el indice
         // unico de la base, porque dos registros a la vez pasarian los dos por aqui.
-        if (await _usuarios.ExisteCorreoAsync(correo, ct))
+        //
+        // Auditoria 22-nov-2026: si el correo lo retiene una cuenta que nunca se verifico y ya
+        // paso su plazo de 72 h, se borra en el acto (si no tiene actividad) y el correo queda libre.
+        if (await _usuarios.ExisteCorreoAsync(correo, ct)
+            && !await LiberarSiCaducoAsync(await _usuarios.PorCorreoAsync(correo, ct), ip, ct))
             return Resultado.Falla<CuentaCreadaDto>(Fallas.Conflicto,
                 "Ya existe una cuenta con ese correo.");
 
         // Una persona o empresa, una cuenta. Igual que el correo: por cortesia, porque la que
         // manda es el indice unico parcial de la base.
         var rut = Rut.Normalizar(cmd.Rut);
-        if (rut is not null && await _usuarios.PorRutAsync(rut, ct) is { } duena)
+        if (rut is not null && await _usuarios.PorRutAsync(rut, ct) is { } duena
+            && !await LiberarSiCaducoAsync(duena, ip, ct))
         {
+            // Auditoria 22-nov-2026: el aviso de RN-S1-13 va SOLO a un correo verificado. Uno sin
+            // verificar puede ser el de quien registro un RUT ajeno: avisarle seria contarle al
+            // atacante que la dueña intento registrarse. Se responde con la verdad y sin datos.
+            if (!duena.CorreoVerificado)
+            {
+                _auditor.Registrar(Auditar.Entrada(
+                    "registro_con_rut_sin_confirmar", "usuario", duena.Id, _reloj.Ahora, ip: ip));
+                await _unidad.GuardarAsync(ct);
+                return Resultado.Falla<CuentaCreadaDto>(Fallas.RutConCuenta, MensajeRutSinConfirmar);
+            }
             await AvisarALaDuenaDelRutAsync(duena, ip, ct);
             return Resultado.Falla<CuentaCreadaDto>(Fallas.RutConCuenta, MensajeRutConCuenta);
         }
@@ -257,6 +291,10 @@ public sealed class ServicioRegistro
             contexto: new { avisoEncolado = encolado }, ip: ip));
         await _unidad.GuardarAsync(ct);
     }
+
+    private async Task<bool> LiberarSiCaducoAsync(Usuario? cuenta, string? ip, CancellationToken ct) =>
+        cuenta is not null && _sinVerificar is not null
+        && await _sinVerificar.LiberarSiCaducoAsync(cuenta, ip, ct);
 
     /// <summary>
     /// «Ofrecer mis servicios»: quien ya tiene cuenta (como buscador) activa tambien el rol de prestador, sin

@@ -92,6 +92,15 @@ public interface IRepositorioResenas
 
     Task<bool> TieneReporteAbiertoAsync(Guid resenaId, Guid usuarioId, CancellationToken ct = default);
 
+    /// <summary>Si esta persona ya reportó esta reseña y un moderador resolvió «mantener».</summary>
+    Task<bool> TieneReporteMantenidoAsync(Guid resenaId, Guid usuarioId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Quiénes (sin repetir) tienen un reporte GRAVE todavía abierto sobre esta reseña. Leer
+    /// después del cerrojo del prestador.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> ReportantesGravesAbiertosAsync(Guid resenaId, CancellationToken ct = default);
+
     Task<ReporteResena?> ReportePorIdAsync(Guid reporteId, CancellationToken ct = default);
 
     /// <summary>Los reportes sin resolver de esa reseña, con seguimiento. Leer después del cerrojo.</summary>
