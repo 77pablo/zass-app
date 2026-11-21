@@ -232,4 +232,9 @@ public sealed record PlanDto(
     short DiasPrueba,
     int MaxServicios,
     int MaxTarjetas,
-    bool PermiteCredenciales);
+    bool PermiteCredenciales,
+    // Lo que distingue a los planes desde el 20-nov-2026 (Esencial, Profesional, Equipo).
+    // Al final y con valor por omision: agregarlos no rompe a nadie que construya el DTO.
+    int MaxFotosTrabajos = 0,
+    bool PermiteEstadisticas = false,
+    bool VerificacionPrioritaria = false);

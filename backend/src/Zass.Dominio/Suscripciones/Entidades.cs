@@ -23,10 +23,17 @@ public class Plan
     public int PrecioMensual { get; set; }
     public short DiasPrueba { get; set; } = 30;
     public int MaxServicios { get; set; } = 10;
-    /// <summary>Coincide con los tres planes sembrados (1). El tope real se lee de la fila del plan.</summary>
+    /// <summary>Coincide con los planes basicos (prueba y Esencial: 1). El tope real se lee de la fila del plan: Fundador y Profesional 3, Equipo 10.</summary>
     public int MaxTarjetas { get; set; } = 1;
     public bool PermiteCredenciales { get; set; } = true;
     public bool Activo { get; set; } = true;
+
+    /// <summary>Maximo de fotos de trabajos que puede subir el prestador.</summary>
+    public int MaxFotosTrabajos { get; set; } = 0;
+    /// <summary>Si el plan permite ver estadisticas de la ficha.</summary>
+    public bool PermiteEstadisticas { get; set; } = false;
+    /// <summary>Si la verificacion del prestador es prioritaria.</summary>
+    public bool VerificacionPrioritaria { get; set; } = false;
 }
 
 /// <summary>TBL-30. La suscripcion de un prestador. Un prestador, una suscripcion vigente.</summary>
