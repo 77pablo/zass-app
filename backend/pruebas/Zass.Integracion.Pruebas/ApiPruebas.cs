@@ -2492,6 +2492,7 @@ public partial class ApiPruebas : IAsyncLifetime
             "CS-02b",
             "CS-04",
             "CSRF",
+            "ES-2-COMPLETAR-DATOS",   // PUT /api/mi/cuenta/datos (ES-2, 20-nov-2026)
             "MI-SUSCRIPCION",
         };
 

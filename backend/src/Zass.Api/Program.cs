@@ -107,6 +107,9 @@ if (exigirHttps)
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
+// ES-2: cuentas sin los datos del registro completo. Despues de la autorizacion: necesita al
+// usuario ya autenticado y responde 428 antes de que el endpoint haga nada.
+app.UsarFiltroDatosDeCuenta();
 app.UseAntiforgery();
 
 if (app.Environment.IsDevelopment())

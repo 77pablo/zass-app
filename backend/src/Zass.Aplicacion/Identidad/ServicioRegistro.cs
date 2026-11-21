@@ -17,7 +17,29 @@ namespace Zass.Aplicacion.Identidad;
 public sealed record RegistrarCuentaCmd(
     string Correo, string Contrasena, string Nombre, string Rol,
     string? Tipo = null, string? Apellido = null, string? Rut = null, string? Telefono = null,
-    string? RazonSocial = null, bool MayorDeEdad = false);
+    string? RazonSocial = null, bool MayorDeEdad = false) : IDatosDeCuenta;
+
+/// <summary>
+/// Los datos de la cuenta que pide el registro completo (20-nov-2026). Los comparten el registro
+/// (API-08) y ES-2, para que los valide UN solo validador (<see cref="ValidadorDatosDeCuenta"/>).
+/// </summary>
+public interface IDatosDeCuenta
+{
+    string? Tipo { get; }
+    string? Apellido { get; }
+    string? Rut { get; }
+    string? Telefono { get; }
+    string? RazonSocial { get; }
+    bool MayorDeEdad { get; }
+}
+
+/// <summary>
+/// ES-2. Los mismos datos que el registro, para una cuenta creada antes del 20-nov-2026 que no
+/// los tiene. Se piden al entrar y no se puede seguir sin ellos.
+/// </summary>
+public sealed record CompletarDatosCuentaCmd(
+    string? Tipo = null, string? Apellido = null, string? Rut = null, string? Telefono = null,
+    string? RazonSocial = null, bool MayorDeEdad = false) : IDatosDeCuenta;
 
 public sealed record CuentaCreadaDto(Guid UsuarioId, string Rol);
 
@@ -34,6 +56,13 @@ public sealed class ServicioRegistro
     public static readonly string[] RolesPublicos = { "buscador", "prestador" };
 
     private static readonly TimeSpan VidaDelToken = TimeSpan.FromHours(24);
+
+    /// <summary>
+    /// El mismo mensaje en el registro y al completar los datos (ES-2): no dice de quien es el
+    /// RUT ni nada que distinga un caso del otro.
+    /// </summary>
+    public const string MensajeRutOcupado =
+        "Ya existe una cuenta con ese RUT. Si es tuya, entra con tu correo.";
 
     private readonly IRepositorioUsuarios _usuarios;
     private readonly IRepositorioPerfiles _perfiles;
@@ -89,8 +118,7 @@ public sealed class ServicioRegistro
         // manda es el indice unico parcial de la base.
         var rut = Rut.Normalizar(cmd.Rut);
         if (rut is not null && await _usuarios.ExisteRutAsync(rut, ct))
-            return Resultado.Falla<CuentaCreadaDto>(Fallas.Conflicto,
-                "Ya existe una cuenta con ese RUT. Si es tuya, entra con tu correo.");
+            return Resultado.Falla<CuentaCreadaDto>(Fallas.Conflicto, MensajeRutOcupado);
         var tipo = string.Equals(cmd.Tipo, "empresa", StringComparison.OrdinalIgnoreCase)
             ? TipoCuenta.Empresa : TipoCuenta.Particular;
         var razonSocial = tipo == TipoCuenta.Empresa ? Recortar(cmd.RazonSocial) : null;
@@ -199,6 +227,62 @@ public sealed class ServicioRegistro
         _auditor.Registrar(Auditar.Entrada(
             "activar_prestador", "usuario", usuario.Id, ahora,
             actorId: usuario.Id, contexto: new { rol = rol.Codigo }, ip: ip));
+
+        await _unidad.GuardarAsync(ct);
+        return Resultado.Ok();
+    }
+
+    /// <summary>
+    /// ES-2. Completa los datos que le faltan a una cuenta creada antes del registro completo
+    /// (20-nov-2026): tipo, apellido o razon social, RUT, telefono y la casilla de mayoria de
+    /// edad. Las validaciones de forma son las del registro (<see cref="ValidadorDatosDeCuenta"/>,
+    /// en la API); aqui van las que miran la base, con el mismo mensaje que el registro.
+    ///
+    /// <para>
+    /// Solo LLENA lo que falta: un RUT que la cuenta ya tiene no se cambia por aqui (cambiar el
+    /// RUT de una cuenta seria cambiar de quien es). Si ya estaba completa no hay nada que hacer,
+    /// y se dice: este no es un formulario para editar datos.
+    /// </para>
+    /// </summary>
+    public async Task<Resultado> CompletarDatosAsync(
+        Guid usuarioId, CompletarDatosCuentaCmd cmd, string? ip = null, CancellationToken ct = default)
+    {
+        var usuario = await _usuarios.PorIdAsync(usuarioId, ct);
+        if (usuario is null || usuario.Estado is EstadoCuenta.Suspendida or EstadoCuenta.Eliminada)
+            return Resultado.Falla(Fallas.NoAutorizado, "La sesión no es válida. Vuelve a iniciar sesión.");
+
+        if (DatosDeCuenta.Pendientes(usuario).Length == 0)
+            return Resultado.Falla(Fallas.Conflicto, "Tu cuenta ya tiene sus datos completos.");
+
+        var rut = Rut.Normalizar(cmd.Rut);
+        if (usuario.Rut is not null)
+        {
+            if (rut != usuario.Rut)
+                return Resultado.Falla(Fallas.Validacion,
+                    "El RUT de tu cuenta ya está registrado y no se puede cambiar aquí.");
+        }
+        else if (rut is not null && await _usuarios.ExisteRutAsync(rut, ct))
+        {
+            // Por cortesia, como en el registro: el indice unico parcial es la garantia.
+            return Resultado.Falla(Fallas.Conflicto, MensajeRutOcupado);
+        }
+
+        var ahora = _reloj.Ahora;
+        if (usuario.Rut is null)
+        {
+            var tipo = string.Equals(cmd.Tipo, "empresa", StringComparison.OrdinalIgnoreCase)
+                ? TipoCuenta.Empresa : TipoCuenta.Particular;
+            usuario.Tipo = tipo;
+            usuario.Rut = rut;
+            usuario.Apellido = tipo == TipoCuenta.Particular ? Recortar(cmd.Apellido) : null;
+            usuario.RazonSocial = tipo == TipoCuenta.Empresa ? Recortar(cmd.RazonSocial) : null;
+        }
+        usuario.Telefono ??= Recortar(cmd.Telefono);
+        if (cmd.MayorDeEdad) usuario.MayorDeEdadConfirmadoEn ??= ahora;
+        usuario.ActualizadoEn = ahora;
+
+        _auditor.Registrar(Auditar.Entrada(
+            "datos_de_cuenta_completados", "usuario", usuario.Id, ahora, actorId: usuario.Id, ip: ip));
 
         await _unidad.GuardarAsync(ct);
         return Resultado.Ok();

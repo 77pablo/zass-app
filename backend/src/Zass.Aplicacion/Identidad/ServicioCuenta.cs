@@ -13,7 +13,10 @@ public sealed record MiCuentaDto(
     bool CorreoVerificado,
     EstadoCuenta Estado,
     string[] Roles,
-    DateTime CreadoEn);
+    DateTime CreadoEn,
+    // ES-2: lo que le falta del registro completo («rut», «telefono», «mayorDeEdad»). Vacio si
+    // nada. Mientras no este vacio, la interfaz pide completarlo y la API responde 428.
+    string[]? DatosPendientes = null);
 
 /// <summary>
 /// CS-01 verificar correo, CS-02 recuperar contrasena, CS-04 eliminar cuenta y API-16.
@@ -316,6 +319,18 @@ public sealed class ServicioCuenta
             usuario.CorreoVerificado,
             usuario.Estado,
             usuario.Roles.Where(r => r.Rol is not null).Select(r => r.Rol!.Codigo).ToArray(),
-            usuario.CreadoEn));
+            usuario.CreadoEn,
+            DatosDeCuenta.Pendientes(usuario)));
+    }
+
+    /// <summary>
+    /// ES-2. Lo que le falta a la cuenta del registro completo, o vacio. Lo consulta el filtro
+    /// de la API en cada peticion con sesion: una cuenta que no existe no tiene pendientes (la
+    /// rechazara su propio endpoint, como hasta ahora).
+    /// </summary>
+    public async Task<string[]> DatosPendientesAsync(Guid usuarioId, CancellationToken ct = default)
+    {
+        var usuario = await _usuarios.PorIdAsync(usuarioId, ct);
+        return usuario is null ? Array.Empty<string>() : DatosDeCuenta.Pendientes(usuario);
     }
 }
