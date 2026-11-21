@@ -6654,6 +6654,10 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasColumnType("smallint")
                         .HasColumnName("dias_prueba");
 
+                    b.Property<int>("MaxFotosTrabajos")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_fotos_trabajos");
+
                     b.Property<int>("MaxServicios")
                         .HasColumnType("integer")
                         .HasColumnName("max_servicios");
@@ -6672,9 +6676,17 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasColumnType("boolean")
                         .HasColumnName("permite_credenciales");
 
+                    b.Property<bool>("PermiteEstadisticas")
+                        .HasColumnType("boolean")
+                        .HasColumnName("permite_estadisticas");
+
                     b.Property<int>("PrecioMensual")
                         .HasColumnType("integer")
                         .HasColumnName("precio_mensual");
+
+                    b.Property<bool>("VerificacionPrioritaria")
+                        .HasColumnType("boolean")
+                        .HasColumnName("verificacion_prioritaria");
 
                     b.HasKey("Id")
                         .HasName("p_k_planes");
@@ -6693,37 +6705,78 @@ namespace Zass.Infraestructura.Datos.Migraciones
                             Codigo = "prueba",
                             Descripcion = "30 días para publicar tu perfil y aparecer en las búsquedas.",
                             DiasPrueba = (short)30,
+                            MaxFotosTrabajos = 0,
                             MaxServicios = 10,
                             MaxTarjetas = 1,
                             Nombre = "Prueba",
                             PermiteCredenciales = true,
-                            PrecioMensual = 0
+                            PermiteEstadisticas = false,
+                            PrecioMensual = 0,
+                            VerificacionPrioritaria = false
                         },
                         new
                         {
                             Id = (short)2,
                             Activo = true,
                             Codigo = "mensual",
-                            Descripcion = "Publica tu perfil, aparece en las búsquedas y recibe solicitudes de hora. Cancela cuando quieras.",
+                            Descripcion = "Para empezar: tu ficha en la búsqueda, agenda en línea, reseñas y sello Verificado. Hasta 5 servicios.",
                             DiasPrueba = (short)0,
-                            MaxServicios = 10,
+                            MaxFotosTrabajos = 0,
+                            MaxServicios = 5,
                             MaxTarjetas = 1,
-                            Nombre = "ZASS! Mensual",
+                            Nombre = "ZASS! Esencial",
                             PermiteCredenciales = true,
-                            PrecioMensual = 7990
+                            PermiteEstadisticas = false,
+                            PrecioMensual = 7990,
+                            VerificacionPrioritaria = false
                         },
                         new
                         {
                             Id = (short)3,
                             Activo = true,
                             Codigo = "fundador",
-                            Descripcion = "Precio de lanzamiento para las primeras 50 personas, congelado mientras mantengas tu suscripción activa.",
+                            Descripcion = "Todo lo del plan Profesional a precio de lanzamiento, congelado mientras mantengas tu suscripción activa. Solo para las primeras 50 personas.",
                             DiasPrueba = (short)0,
-                            MaxServicios = 10,
-                            MaxTarjetas = 1,
+                            MaxFotosTrabajos = 12,
+                            MaxServicios = 15,
+                            MaxTarjetas = 3,
                             Nombre = "ZASS! Fundador",
                             PermiteCredenciales = true,
-                            PrecioMensual = 5990
+                            PermiteEstadisticas = true,
+                            PrecioMensual = 5990,
+                            VerificacionPrioritaria = true
+                        },
+                        new
+                        {
+                            Id = (short)4,
+                            Activo = true,
+                            Codigo = "profesional",
+                            Descripcion = "Para quien vive de su trabajo: estadísticas de tu ficha, fotos de tus trabajos, verificación prioritaria, hasta 15 servicios y 3 tarjetas.",
+                            DiasPrueba = (short)0,
+                            MaxFotosTrabajos = 12,
+                            MaxServicios = 15,
+                            MaxTarjetas = 3,
+                            Nombre = "ZASS! Profesional",
+                            PermiteCredenciales = true,
+                            PermiteEstadisticas = true,
+                            PrecioMensual = 12990,
+                            VerificacionPrioritaria = true
+                        },
+                        new
+                        {
+                            Id = (short)5,
+                            Activo = false,
+                            Codigo = "equipo",
+                            Descripcion = "Para estudios, consultas y talleres: hasta 5 profesionales, cada uno con todo lo del Profesional. Próximamente.",
+                            DiasPrueba = (short)0,
+                            MaxFotosTrabajos = 12,
+                            MaxServicios = 15,
+                            MaxTarjetas = 10,
+                            Nombre = "ZASS! Equipo",
+                            PermiteCredenciales = true,
+                            PermiteEstadisticas = true,
+                            PrecioMensual = 24990,
+                            VerificacionPrioritaria = true
                         });
                 });
 

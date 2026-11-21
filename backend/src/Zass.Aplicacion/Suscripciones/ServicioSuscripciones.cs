@@ -23,6 +23,12 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
     /// <summary>El plan de siempre, al que puede pasarse quien no alcanzo cupo fundador.</summary>
     public const string PlanMensual = "mensual";
 
+    /// <summary>Plan profesional: estadisticas, fotos de trabajos, verificacion prioritaria.</summary>
+    public const string PlanProfesional = "profesional";
+
+    /// <summary>Plan equipo: para estudios y talleres, hasta 5 profesionales. Inactivo por ahora.</summary>
+    public const string PlanEquipo = "equipo";
+
     /// <summary>
     /// Con cuanta antelacion se avisa. Dos momentos, como los recordatorios de cita
     /// (RN-S4-07): uno con tiempo para decidir y otro el dia antes, para quien lo dejo pasar.
@@ -135,7 +141,8 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
         return planes
             .Select(p => new PlanDto(
                 p.Id, p.Codigo, p.Nombre, p.Descripcion, p.PrecioMensual,
-                p.DiasPrueba, p.MaxServicios, p.MaxTarjetas, p.PermiteCredenciales))
+                p.DiasPrueba, p.MaxServicios, p.MaxTarjetas, p.PermiteCredenciales,
+                p.MaxFotosTrabajos, p.PermiteEstadisticas, p.VerificacionPrioritaria))
             .ToList();
     }
 
