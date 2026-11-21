@@ -22,7 +22,15 @@ public class AvisosPushPruebas
         // Decision del 21-nov: citas, resenas, credencial, ficha, suscripcion y cobro. Un tipo
         // nuevo que se agregue sin decidir su canal deja esta prueba roja.
         var sinPush = Enum.GetValues<TipoNotificacion>().Where(t => !AvisosPush.AdmitePush(t));
-        Assert.Equal(new[] { TipoNotificacion.CorreoVerificacion, TipoNotificacion.RecuperarContrasena }, sinPush);
+        // RegistroConRutExistente (#197, 22-nov) tampoco va por push: es un aviso de seguridad con
+        // el enlace para recuperar la cuenta, y la pantalla del registro promete que llega «al
+        // correo con que se creó esa cuenta». Lo que toca recuperar una cuenta no se lee en la
+        // pantalla bloqueada, igual que los dos con token.
+        Assert.Equal(new[]
+        {
+            TipoNotificacion.CorreoVerificacion, TipoNotificacion.RecuperarContrasena,
+            TipoNotificacion.RegistroConRutExistente,
+        }, sinPush);
     }
 
     [Fact]
