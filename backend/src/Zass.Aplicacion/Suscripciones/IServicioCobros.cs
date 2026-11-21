@@ -81,7 +81,14 @@ public interface IServicioCobros
     /// Idempotente por periodo (CC-04): correr el trabajo dos veces el mismo dia cobra UNA
     /// vez, porque la clave del intento sale de la suscripcion y del periodo y no de la
     /// hora en que corrio. Un rechazo deja el intento <c>Fallido</c> y la suscripcion
-    /// intacta (RN-S7-10), y no se reintenta solo.
+    /// intacta (RN-S7-10).
+    /// </para>
+    ///
+    /// <para>
+    /// ES-1 (20-nov-2026): tras un rechazo hay gracia hasta el vencimiento. Sale UN correo
+    /// «actualiza tu tarjeta» por periodo y se reintenta una vez por dia (clave
+    /// <c>…:reintento:yyyy-MM-dd</c>), nunca si hay un intento <c>Pendiente</c>. Al vencer sin
+    /// pago, el fundador pierde el cupo (lo hace <see cref="IServicioSuscripciones.VencerExpiradasAsync"/>).
     /// </para>
     /// </summary>
     Task<ResumenDeCobros> CobrarVencimientosAsync(CancellationToken ct = default);

@@ -174,6 +174,54 @@ public class CorreoUnidadPruebas
         }
     }
 
+    // ------------------------------------------------- ES-1: cobro rechazado
+
+    [Theory]
+    [InlineData(1, "mañana")]
+    [InlineData(4, "en 4 días")]
+    public void ES1_el_aviso_de_cobro_rechazado_dice_el_plazo_y_lleva_a_cambiar_la_tarjeta(int dias, string esperado)
+    {
+        var r = Plantillas.Renderizar(TipoNotificacion.CobroRechazado, "Ana",
+            "https://zass.cl/", CargaDeAviso.ConCampos(("dias", dias.ToString())))!;
+
+        Assert.Contains(esperado, r.Texto);
+        Assert.Contains("ZASS!", r.Asunto);
+        Assert.Contains("https://zass.cl/mi-ficha", r.Texto);
+        Assert.Contains("href=\"https://zass.cl/mi-ficha\"", r.Html);
+        Assert.Contains("Actualizar mi tarjeta", r.Html);
+        Assert.Contains("cada día", r.Texto);
+    }
+
+    /// <summary>Al fundador se le dice lo que pierde; a quien no lo es, no se le promete un cupo.</summary>
+    [Fact]
+    public void ES1_solo_al_fundador_se_le_dice_que_pierde_el_cupo()
+    {
+        var fundador = Plantillas.Renderizar(TipoNotificacion.CobroRechazado, "Ana", "https://zass.cl",
+            CargaDeAviso.ConCampos(("dias", "3"), ("fundador", "si")))!;
+        var mensual = Plantillas.Renderizar(TipoNotificacion.CobroRechazado, "Ana", "https://zass.cl",
+            CargaDeAviso.ConCampos(("dias", "3")))!;
+
+        Assert.Contains("cupo de fundador", fundador.Texto);
+        Assert.DoesNotContain("cupo", mensual.Texto);
+        Assert.Contains("deja de aparecer", mensual.Texto);
+    }
+
+    /// <summary>
+    /// Un aviso de cobro que no sale es peor que uno sin la cifra exacta: sin dias en la carga
+    /// se renderiza igual, con «pronto».
+    /// </summary>
+    [Fact]
+    public void ES1_el_aviso_de_cobro_rechazado_sin_dias_sale_igual()
+    {
+        var r = Plantillas.Renderizar(
+            TipoNotificacion.CobroRechazado, "Ana", "https://zass.cl", CargaDeAviso.Purgada);
+
+        Assert.NotNull(r);
+        Assert.Contains("pronto", r!.Texto);
+        Assert.True(Plantillas.TienePlantilla(TipoNotificacion.CobroRechazado));
+        Assert.False(Plantillas.LlevaToken(TipoNotificacion.CobroRechazado));
+    }
+
     [Fact]
     public void Un_tipo_sin_plantilla_no_se_renderiza()
     {

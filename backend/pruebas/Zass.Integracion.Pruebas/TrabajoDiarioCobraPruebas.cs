@@ -130,6 +130,11 @@ public class TrabajoDiarioCobraPruebas
         public Task<int> VencerExpiradasAsync(CancellationToken ct = default) =>
             throw new NotSupportedException();
 
+        public Task AvisarCobroRechazadoAsync(
+            Guid perfilPrestadorId, Guid suscripcionId, DateTime vigenteHasta,
+            CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<IReadOnlyList<SuscripcionPorVencer>> PorVencerAsync(
             int dentroDeDias, CancellationToken ct = default) =>
             throw new NotSupportedException();
