@@ -8,6 +8,7 @@ import { Ficha } from './paginas/Ficha'
 import { MiAgenda } from './paginas/MiAgenda'
 import { MiFicha } from './paginas/MiFicha'
 import { MisCitas } from './paginas/MisCitas'
+import { MisGuardados } from './paginas/MisGuardados'
 import { MisResenas } from './paginas/MisResenas'
 import { MisTarjetas } from './paginas/MisTarjetas'
 import { MesaDeVerificacion } from './paginas/MesaDeVerificacion'
@@ -61,6 +62,8 @@ export function App() {
         {/* CS-16: sin esta ruta, la ventana de 72 h para editar una reseña no se puede alcanzar. */}
         <Route path="mis-resenas" element={<MisResenas />} />
         <Route path="mis-tarjetas" element={<MisTarjetas />} />
+        {/* CS-08 y CU-04: la gente guardada y lo que la persona suele buscar. */}
+        <Route path="mis-guardados" element={<MisGuardados />} />
         <Route path="ofrecer-servicios" element={<OfrecerServicios />} />
         <Route path="verificar-correo" element={<VerificarCorreo />} />
         <Route path="recuperar-contrasena" element={<RecuperarContrasena />} />

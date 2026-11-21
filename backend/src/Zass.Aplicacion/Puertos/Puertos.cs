@@ -499,7 +499,19 @@ public interface IRepositorioBusqueda
     /// </summary>
     Task<IReadOnlyList<FilaDeTexto>> PorTextoAsync(
         CriteriosDeTexto criterios, CancellationToken ct = default);
+
+    /// <summary>
+    /// CS-08. Las tarjetas de esos perfiles, solo de los PUBLICADOS y en cualquier orden (el
+    /// servicio las ordena). El promedio sale tal cual esta guardado: RN-S5-11 la aplica el servicio.
+    /// </summary>
+    Task<IReadOnlyList<TarjetaFila>> TarjetasPorIdAsync(
+        IReadOnlyList<Guid> perfilIds, CancellationToken ct = default);
 }
+
+/// <summary>Una tarjeta de favorito, como sale de la base. Sin contacto: ver FavoritoDto.</summary>
+public sealed record TarjetaFila(
+    Guid Id, string Slug, string NombrePublico, string? UrlFoto, string? RubroNombre,
+    string? ZonaPrincipal, bool Verificada, decimal? PromedioCalificacion, int TotalResenas);
 
 /// <summary>
 /// Lo que la consulta de texto recibe ya masticado: las formas y el grupo de cada una (ver
