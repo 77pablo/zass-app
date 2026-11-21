@@ -17,6 +17,7 @@
  * /T/ (QR que pasan la URL a mayusculas) no llega aqui: lo atiende la app (paginas/AvisoDeTarjeta.tsx).
  */
 import { CABECERAS_DE_SEGURIDAD } from '../_comun/seo.js'
+import { ponerSecretoDeOrigen } from '../_comun/origen.js'
 
 const ESPERA_MAXIMA_MS = 4000
 
@@ -48,6 +49,7 @@ export async function onRequest({ request, env, params }) {
   const cabeceras = new Headers({ 'X-Forwarded-Proto': 'https', 'X-Forwarded-Host': entrada.host })
   const ip = request.headers.get('CF-Connecting-IP')
   if (ip) cabeceras.set('X-Forwarded-For', ip)
+  ponerSecretoDeOrigen(cabeceras, env) // P-11
 
   let respuesta
   try {

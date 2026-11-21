@@ -39,6 +39,7 @@ En .NET el `:` de la configuración se escribe `__` en una variable de entorno (
 | `Zass__ClaveDireccionesBase64` | **sí, secreta** | Clave AES-256 que cifra las direcciones de los prestadores: 32 bytes en Base64 (por ejemplo `openssl rand -base64 32`). **Si se pierde, las direcciones guardadas no se pueden descifrar**: guárdala también fuera de Render. No la cambies con datos ya guardados. |
 | `Zass__ExigirHttps` | no (por omisión `true`) | En producción no puede ser `false`: la API se niega a arrancar. |
 | `Zass__ProxiesDeConfianza` | sí, detrás de proxy | Lista (separada por comas) de IP/CIDR desde las que la API cree `X-Forwarded-For` y `X-Forwarded-Proto`. Vacía = no se lee ninguna cabecera reenviada. Ver sección 4. |
+| `Zass__SecretoDeOrigen` | no, pero **recomendada** (secreta) | P-11. El secreto que la Pages Function manda en la cabecera `X-Origen-Zass`. Con él puesto, la API responde **403** a toda petición que no lo traiga (salvo `/api/salud`, `/api/salud/lista` y los dos avisos de Flow). Sin él, la API se comporta como siempre y en producción lo advierte en el registro. Si está puesto y tiene menos de 32 caracteres, o espacios o tildes, la API **no arranca**. Tiene que ser el mismo valor que `SECRETO_ORIGEN` en Cloudflare Pages. Se pone **después** de esa: ver la sección 4.1. |
 | `Zass__SaltosDeProxy` | no (por omisión `2`) | Cuántos proxies se recorren hacia atrás en `X-Forwarded-For` (1 a 5). En el despliegue actual se usa `3`, y lo fija `render.yaml`. Son tres porque `zass-api.onrender.com` está él mismo detrás de Cloudflare (medido el 11-nov-2026: CNAME a `gcp-us-west1-1.origin.onrender.com.cdn.cloudflare.net`, responde con `Server: cloudflare` y `CF-RAY`). La cadena deja tres entradas en `X-Forwarded-For`: el visitante (que escribe la Pages Function), la salida de esa Function (que añade el Cloudflare de Render) y el borde de Cloudflare (que añade el balanceador interno de Render). Ver el comentario en `ProxiesDeConfianza.cs`. |
 | `Zass__Tasa__P/A/G/S/Salud` | no | Límites de peticiones por IP cada 15 min. Los valores por omisión son los de `seguridad.md` (Salud: 2000, grupo propio para las sondas). **No los subas en producción sin medirlo.** |
 | `Zass__UrlPublica` | **sí en la práctica** | Raíz pública del sitio (`https://zass.cl`). Sin ella `ProcesadorDeCorreo` **no envía ningún correo** —los enlaces saldrían rotos— y los avisos se quedan en la cola; también la usa el retorno de la pasarela. No la valida `ValidacionDeArranque`: la API arranca igual y el fallo solo se ve en el registro. |
@@ -81,7 +82,7 @@ Antes de una migración que borre o transforme datos, haz una copia (sección 5)
 
 ### 3.3 API en Render
 1. Sube el repositorio a GitHub y en Render: **New > Blueprint** apuntando al repositorio (lee `render.yaml`).
-2. Render pedirá los valores de las variables `sync: false`: `Zass__CadenaConexion`, `Zass__ClaveDireccionesBase64`, `Zass__ProxiesDeConfianza`.
+2. Render pedirá los valores de las variables `sync: false`: `Zass__CadenaConexion`, `Zass__ClaveDireccionesBase64`, `Zass__SecretoAvisoPagos`, `Zass__ProxiesDeConfianza` y `Zass__SecretoDeOrigen` (esta última se deja vacía al principio: sección 4.1).
 3. `autoDeploy` está en `false` a propósito: despliegas tú, después de migrar.
 4. **El servicio gratuito de Render se duerme tras un rato sin tráfico y despertar tarda** (decenas de segundos): la primera visita tras la inactividad es lenta. Verifica límites e inactividad en la página de Render.
 5. Comprueba: `https://<tu-servicio>.onrender.com/api/salud` y `/api/salud/lista`.
@@ -100,7 +101,45 @@ Detrás de proxies, la conexión que ve la API es la del proxy. Sin corregirlo, 
 **Qué poner en `Zass__ProxiesDeConfianza`:** (a) los rangos publicados de Cloudflare (ver `frontend/DESPLIEGUE-CLOUDFLARE.md`), (b) la red desde la que el balanceador de Render llega al contenedor (`10.0.0.0/8`, medido: llega desde 10.x) y, si hace falta para acceso local/directo, `127.0.0.1` y `::1`.
 Tras el primer despliegue, comprueba mirando qué IP guarda la API (sección 7, punto 4). Si en `ip_origen` aparece una IP de Render o de Cloudflare en vez de la del visitante, falta esa red en la lista.
 
-**Riesgo residual (conócelo):** los rangos de Cloudflare son compartidos por todos sus clientes. Alguien con su propia cuenta de Cloudflare podría pedirle a la API directamente (salvo que ocultes la URL de Render) con un `X-Forwarded-For` inventado y esquivar el límite por IP. La mitigación completa es un secreto compartido entre la Pages Function y la API (cabecera que la API exige); no está implementado. Mientras tanto, no publiques la URL `onrender.com`.
+**Riesgo residual (conócelo):** los rangos de Cloudflare son compartidos por todos sus clientes. Alguien con su propia cuenta de Cloudflare podría pedirle a la API directamente con un `X-Forwarded-For` inventado y esquivar el límite por IP; y cualquiera que conozca la URL de Render se salta además el modo mantenimiento. La URL **ya es pública**: está en el historial del repositorio, que es público. La mitigación es el secreto de origen de la sección 4.1: **ya está implementado, pero no hace nada hasta que se pongan las dos variables.**
+
+### 4.1 Secreto de origen (P-11): que la API solo acepte lo que llega por Cloudflare
+
+**Cómo funciona.** Las Functions que llaman a la API (`functions/api/[[ruta]].js`, `functions/t/[segmento].js`, `functions/prestadores/[slug].js` y el mapa del sitio, `functions/_comun/sitemap.js`) agregan la cabecera `X-Origen-Zass` con el valor de la variable `SECRETO_ORIGEN` de Cloudflare Pages (`functions/_comun/origen.js`). Lo que el visitante mande con ese nombre se borra. La API, si tiene `Zass__SecretoDeOrigen`, responde **403** a toda petición sin esa cabecera exacta (comparación en tiempo constante, `SecretoDeOrigen.cs`). Si cualquiera de las dos variables falta, nada cambia: la Function no manda la cabecera y la API no la pide.
+
+**Qué queda exento, y por qué:**
+
+| Ruta | Por qué no se le pide el secreto |
+|---|---|
+| `/api/salud`, `/api/salud/lista` | Render consulta `/api/salud/lista` directo al contenedor (`healthCheckPath`); si se le pidiera el secreto daría el servicio por caído y ningún despliegue terminaría. El flujo de despertar usa `/api/salud`. |
+| `/api/pagos/aviso` (API-70) y `/api/pagos/vuelta` (API-75) | Los llama Flow (su servidor, y el navegador que vuelve de flow.cl), no la Function. La URL es `Zass__Flow__UrlAvisos`, una variable de Render que no está en el repositorio: desde aquí no se puede saber si apunta a `zass.cl` o a `onrender.com`. Y aunque apuntara a `zass.cl`, con el sitio en mantenimiento la Function le respondería 503 a Flow. No es un agujero: ninguno de los dos cree lo que trae la petición, el adaptador le pregunta el estado a Flow con nuestra firma. |
+
+Nada más: `/api/pagos` a secas, `/api/pagos/avisos` o `/api/saludx` sí piden el secreto (hay pruebas).
+
+**En producción, sin el secreto, la API arranca igual** y escribe en el registro de Render una advertencia («Zass:SecretoDeOrigen no está configurado…»). No se exige a propósito: exigirlo tumbaría la API el mismo día que se despliegue este código, antes de que Cloudflare mande la cabecera. Cuándo pasar a exigirlo lo decide Pablo.
+
+**Pasos para Pablo, EN ESTE ORDEN** (primero Cloudflare manda la cabecera, después Render la exige; al revés, el sitio entero da 403 hasta terminar):
+
+1. **Desplegar el código** de este cambio en los dos lados, sin poner todavía ningún secreto: el sitio (`npm run build` y `npx wrangler pages deploy dist --project-name zass`) y la API (Manual Deploy en Render). Sin variables no cambia nada.
+2. **Generar el secreto** en tu PC, sin pegarlo en ningún chat, archivo del repositorio ni commit. En Git Bash: `openssl rand -hex 32` (64 caracteres hexadecimales). En PowerShell: `[Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))`. Guárdalo en tu gestor de contraseñas.
+3. **Cloudflare Pages:** proyecto `zass` → *Settings* → *Variables and Secrets* → entorno **Production** → *Add* → tipo **Secret** (cifrada), nombre `SECRETO_ORIGEN`, el valor. Guardar. **Una variable nueva solo la ven los despliegues nuevos:** vuelve a desplegar (`npx wrangler pages deploy dist --project-name zass`). Desde ahora las Functions mandan la cabecera y la API todavía no la pide: nada se nota.
+4. **Comprobar que zass.cl sigue andando** (en mantenimiento, con tu pase): `curl -s -o /dev/null -w '%{http_code}\n' -b 'zass_pase=<tu pase>' https://zass.cl/api/planes` → `200`.
+5. **Render:** servicio `zass-api` → *Environment* → agregar `Zass__SecretoDeOrigen` con **el mismo valor** → *Save* (Render reinicia la API). En el registro del arranque ya no debe salir la advertencia del secreto de origen.
+6. **Comprobar con curl** (`<servicio>` es el nombre del servicio en Render):
+   * `curl -s -o /dev/null -w '%{http_code}\n' https://<servicio>.onrender.com/api/planes` → **`403`** (directo, sin la cabecera).
+   * `curl -s -o /dev/null -w '%{http_code}\n' https://<servicio>.onrender.com/api/salud` → `200` (exenta: la sonda de Render sigue viva).
+   * `curl -s -o /dev/null -w '%{http_code}\n' -b 'zass_pase=<tu pase>' https://zass.cl/api/planes` → `200` (por Cloudflare, con la cabecera).
+   * Con el sitio ya abierto, lo mismo sin `-b`.
+
+**Si algo sale mal:** borra `Zass__SecretoDeOrigen` en Render (*Environment*, *Save*): la API vuelve a aceptar todo. No hace falta tocar Cloudflare.
+
+**Para cambiar el secreto sin cortar el sitio:** (1) borra `Zass__SecretoDeOrigen` en Render; (2) cambia `SECRETO_ORIGEN` en Cloudflare y vuelve a desplegar; (3) pon el valor nuevo en Render. La API acepta un solo secreto a la vez, así que ese es el orden que no corta nada.
+
+**Lo que esto NO arregla:** la URL de Render sigue en el historial público del repositorio (y en `ESTADO.md` y `TRASPASO.md`); con el secreto puesto da igual que se conozca. El flujo de despertar (`despertar-api.yml`, desactivado desde el 20-nov) ya no la lleva escrita: la lee de la variable de repositorio `URL_API` y, si no existe, pide por `zass.cl`.
+
+### 4.2 HSTS
+
+La API manda `Strict-Transport-Security: max-age=63072000; includeSubDomains` (2 años). Antes producción mandaba `max-age=2592000` (30 días, medido el 21-nov-2026): el valor por omisión de `UseHsts`, que pisaba al de `UsarCabecerasDeSeguridad`. **Sin `preload`, a propósito:** entrar a la lista de precarga de los navegadores obliga a HTTPS en todo subdominio de `zass.cl`, presente y futuro, y salir tarda meses. Esa decisión es de Pablo.
 
 ## 5. Copias de seguridad
 
@@ -137,7 +176,7 @@ o solo se ve en el panel de Render/Neon, que es de Pablo.
 6. [ ] `/swagger` da 404 en producción. **No comprobable por `zass.cl`:** `/swagger` no empieza por `/api/`, así que lo atiende Cloudflare Pages y devuelve el HTML del sitio con 200. Para comprobarlo de verdad hay que pedirlo al origen de Render, que no se publica.
 7. [ ] Las cookies de sesión salen `Secure; HttpOnly; SameSite=Lax` (herramientas de desarrollo del navegador). **Sin comprobar aquí:** exige iniciar sesión con una cuenta real de producción.
 8. [ ] Probada una restauración de copia. El flujo **sí corre**: carreras diarias de «Copia de la base de datos» en verde (43247183426 el 12-nov, 43445027827 el 13-nov, 43600708505 el 14-nov), así que `NEON_URL_COPIAS` y `FRASE_COPIAS` están puestos. Lo que sigue pendiente es la **restauración**, y no se puede ensayar con el `pg_restore` 16.4 de este PC: ver el aviso de la sección 5.
-9. [ ] La URL `onrender.com` no está publicada en ninguna parte. **Hoy no se cumple dentro del repositorio:** el host del servicio aparece en `.github/workflows/despertar-api.yml` (valor por omisión de `URL_API`), en `ESTADO.md` y en `TRASPASO.md`. Mientras el repositorio sea privado no está «publicada», pero el día que deje de serlo lo estaría; lo que no se puede comprobar desde aquí es si aparece fuera del repositorio.
+9. [ ] La API solo atiende lo que llega por Cloudflare: `Zass__SecretoDeOrigen` en Render y `SECRETO_ORIGEN` en Cloudflare Pages, con el mismo valor (sección 4.1), y `https://<servicio>.onrender.com/api/planes` responde **403**. La URL `onrender.com` **ya es pública** (el repositorio es público desde el 20-nov y la URL está en su historial, en `ESTADO.md` y en `TRASPASO.md`): esconderla ya no es una defensa; el secreto sí.
 10. [ ] Decidido el valor real del límite público (100 cada 15 min por IP es poco para un sitio abierto: una portada hace varias peticiones).
 
 ## 8. Qué quedó comprobado y qué no
