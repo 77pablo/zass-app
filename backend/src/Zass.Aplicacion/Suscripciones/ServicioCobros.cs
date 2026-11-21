@@ -177,9 +177,12 @@ public sealed class ServicioCobros : IServicioCobros
 
         // CC-04, antes de abrir nada: el doble envio devuelve el MISMO intento. Se vuelve
         // a comprobar dentro de la transaccion, porque entre esta lectura y el INSERT cabe
-        // otra solicitud con la misma clave.
-        if (await _repo.IntentoPorClaveAsync(cmd.ClaveIdempotencia, ct) is { } yaExiste)
+        // otra solicitud con la misma clave. Solo cuenta el intento PROPIO: una clave que ya
+        // uso otro prestador es un conflicto, y no se devuelve nada de ese intento.
+        if (await _repo.IntentoPorClaveAsync(cmd.ClaveIdempotencia, cmd.PerfilPrestadorId, ct) is { } yaExiste)
             return await RetomarAsync(yaExiste, ct);
+        if (await _repo.ClaveDeIntentoUsadaAsync(cmd.ClaveIdempotencia, ct))
+            return ClaveAjena();
 
         var calculo = await CalcularAsync(cmd.PerfilPrestadorId, cmd.CodigoPlan, cmd.CodigoCupon, ct);
         if (!calculo.Exito || calculo.Valor is null)
@@ -197,8 +200,10 @@ public sealed class ServicioCobros : IServicioCobros
 
         var intento = await _trabajo.EnTransaccionAsync(async t =>
         {
-            if (await _repo.IntentoPorClaveAsync(cmd.ClaveIdempotencia, t) is { } carrera)
+            if (await _repo.IntentoPorClaveAsync(cmd.ClaveIdempotencia, cmd.PerfilPrestadorId, t) is { } carrera)
                 return carrera;
+            if (await _repo.ClaveDeIntentoUsadaAsync(cmd.ClaveIdempotencia, t))
+                return ClaveAjenaEnCarrera;
 
             // El cupo fundador se RESERVA al empezar a pagar, no al confirmar: si se
             // reservara despues, dos personas podrian pagar por el cupo 50 y una se
@@ -242,6 +247,8 @@ public sealed class ServicioCobros : IServicioCobros
             await _trabajo.GuardarAsync(t);
             return nuevo;
         }, ct);
+
+        if (ReferenceEquals(intento, ClaveAjenaEnCarrera)) return ClaveAjena();
 
         // Null solo sale de la reserva fallida: alguien se llevo el ultimo cupo entre la
         // cotizacion y el cobro. Se vuelve a preguntar el estado para contarlo con el
@@ -331,9 +338,11 @@ public sealed class ServicioCobros : IServicioCobros
                 Fallas.Validacion, "Falta la clave de idempotencia de la solicitud.");
 
         // CC-04, igual que el cobro: el doble clic devuelve el MISMO intento y no toma un
-        // segundo cupo.
-        if (await _repo.IntentoPorClaveAsync(claveIdempotencia, ct) is { } yaExiste)
+        // segundo cupo. Y como alli, solo el intento propio.
+        if (await _repo.IntentoPorClaveAsync(claveIdempotencia, perfilPrestadorId, ct) is { } yaExiste)
             return await RetomarAsync(yaExiste, ct);
+        if (await _repo.ClaveDeIntentoUsadaAsync(claveIdempotencia, ct))
+            return ClaveAjena();
 
         // Se reusa el calculo por dos cosas que si importan —que el perfil exista y que el
         // plan fundador este ABIERTO (RN-S7-06)—, y por ninguna mas: el monto de una
@@ -360,8 +369,10 @@ public sealed class ServicioCobros : IServicioCobros
 
         var intento = await _trabajo.EnTransaccionAsync(async t =>
         {
-            if (await _repo.IntentoPorClaveAsync(claveIdempotencia, t) is { } carrera)
+            if (await _repo.IntentoPorClaveAsync(claveIdempotencia, perfilPrestadorId, t) is { } carrera)
                 return carrera;
+            if (await _repo.ClaveDeIntentoUsadaAsync(claveIdempotencia, t))
+                return ClaveAjenaEnCarrera;
 
             // El cupo se reserva al EMPEZAR, por el mismo motivo que en el cobro: si se
             // reservara al confirmar, dos personas podrian inscribirse por el cupo 50.
@@ -395,6 +406,8 @@ public sealed class ServicioCobros : IServicioCobros
             await _trabajo.GuardarAsync(t);
             return nuevo;
         }, ct);
+
+        if (ReferenceEquals(intento, ClaveAjenaEnCarrera)) return ClaveAjena();
 
         // Null solo sale de la reserva fallida: alguien se llevo el ultimo cupo entre la
         // comprobacion y la reserva.
@@ -448,6 +461,22 @@ public sealed class ServicioCobros : IServicioCobros
 
         return Resultado.Ok(ADto(intento, plan.Codigo, nueva));
     }
+
+    /// <summary>
+    /// CC-04: la clave existe, pero es de OTRO perfil. Conflicto neutro: no dice de quien es
+    /// ni devuelve su intento (antes salia entero, con su UrlParaPagar), y se responde antes
+    /// de llegar al indice unico <c>ux_intento_pago_clave</c>, que lo convertiria en un 500.
+    /// </summary>
+    private static Resultado<IntentoDePagoDto> ClaveAjena() => Resultado.Falla<IntentoDePagoDto>(
+        Fallas.Conflicto,
+        "No pudimos procesar esta solicitud de pago. Vuelve a cargar la página e inténtalo de nuevo.");
+
+    /// <summary>
+    /// La marca con que la transaccion avisa «la clave aparecio, y es ajena». No es un intento:
+    /// nunca se guarda, solo se compara por referencia. Hace falta porque el null de esa
+    /// transaccion ya significa otra cosa (la reserva del cupo fallo).
+    /// </summary>
+    private static readonly IntentoDePago ClaveAjenaEnCarrera = new();
 
     private static IntentoDePagoDto ADto(IntentoDePago i, string codigoPlan, bool nueva) =>
         new(i.Id, codigoPlan, i.MontoBruto, i.MontoDescuento, i.Monto, i.CodigoCupon,
@@ -649,7 +678,7 @@ public sealed class ServicioCobros : IServicioCobros
             {
                 // Entre la lectura de arriba y este INSERT cabe otra corrida, igual que en
                 // IniciarAsync.
-                if (await _repo.IntentoPorClaveAsync(clave, t) is not null)
+                if (await _repo.ClaveDeIntentoUsadaAsync(clave, t))
                     return (IntentoDePago?)null;
 
                 var nuevo = new IntentoDePago
