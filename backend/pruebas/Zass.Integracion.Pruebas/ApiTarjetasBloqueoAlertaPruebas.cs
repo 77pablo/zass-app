@@ -205,7 +205,7 @@ public class ApiTarjetasBloqueoAlertaPruebas : IAsyncLifetime
 
     private static HttpRequestMessage CrearActivarRequest(HttpClient client, string segmento, string codigo, string csrf)
     {
-        var req = new HttpRequestMessage(HttpMethod.Post, $"/t/{segmento}/activar");
+        var req = new HttpRequestMessage(HttpMethod.Post, $"/api/mi/tarjetas/{segmento}/activar");
         req.Content = JsonContent.Create(new { codigo });
         req.Headers.Add("X-CSRF-Token", csrf);
         return req;

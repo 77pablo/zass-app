@@ -19,7 +19,7 @@ using Zass.Dominio.Tarjetas;
 namespace Zass.Integracion.Pruebas;
 
 /// <summary>
-/// API-59 POST /api/interno/tarjetas (Emitir) y API-55 POST /t/{segmento}/activar (Activar).
+/// API-59 POST /api/interno/tarjetas (Emitir) y API-55 POST /api/mi/tarjetas/{segmento}/activar (Activar).
 /// Pruebas de integración contra zass_pruebas.
 /// </summary>
 public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
@@ -174,7 +174,7 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
 
     private static HttpRequestMessage CrearActivarRequest(HttpClient client, string segmento, string codigo, string csrf)
     {
-        var req = new HttpRequestMessage(HttpMethod.Post, $"/t/{segmento}/activar");
+        var req = new HttpRequestMessage(HttpMethod.Post, $"/api/mi/tarjetas/{segmento}/activar");
         req.Content = JsonContent.Create(new { codigo });
         req.Headers.Add("X-CSRF-Token", csrf);
         return req;
@@ -470,7 +470,7 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
         var (segmento, _) = await EmitirTarjetaAsync(_admin);
 
         // Usar formato valido pero codigo inexistente
-        var r = await _cliente.PostAsJsonAsync($"/t/{segmento}/activar", new { codigo = "AAAA-AAAA-AAAA" });
+        var r = await _cliente.PostAsJsonAsync($"/api/mi/tarjetas/{segmento}/activar", new { codigo = "AAAA-AAAA-AAAA" });
         Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode);
     }
 
@@ -484,7 +484,7 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
     {
         var (segmento, codigo) = await EmitirTarjetaAsync(_admin);
 
-        var sinToken = new HttpRequestMessage(HttpMethod.Post, $"/t/{segmento}/activar")
+        var sinToken = new HttpRequestMessage(HttpMethod.Post, $"/api/mi/tarjetas/{segmento}/activar")
         {
             Content = JsonContent.Create(new { codigo }),
         };
@@ -830,7 +830,7 @@ public class ApiTarjetasBloqueoIntentosPruebas : IAsyncLifetime
 
     private static HttpRequestMessage CrearActivarRequest(string segmento, string codigo, string csrf)
     {
-        var req = new HttpRequestMessage(HttpMethod.Post, $"/t/{segmento}/activar");
+        var req = new HttpRequestMessage(HttpMethod.Post, $"/api/mi/tarjetas/{segmento}/activar");
         req.Content = JsonContent.Create(new { codigo });
         req.Headers.Add("X-CSRF-Token", csrf);
         return req;
