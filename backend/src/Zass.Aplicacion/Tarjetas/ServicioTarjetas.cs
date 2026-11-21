@@ -202,9 +202,12 @@ public sealed class ServicioTarjetas : IServicioTarjetas
         if (!FormaDeCodigo.IsMatch(codigoNorm))
             return Resultado.Falla<ActivarTarjetaResultado>(Fallas.ReglaDeNegocio, "El código tiene 12 caracteres.");
 
+        // Malformada, inexistente, ya activada, vencida, bloqueada o con el codigo equivocado:
+        // TODAS responden lo mismo (CodigoNoValido). Si «no existe» saliera distinto de «existe
+        // pero ya no esta Emitida», el endpoint diria que segmentos son tarjetas reales.
         var urlEstable = (segmento ?? "").Trim().ToUpperInvariant();
         if (urlEstable.Length != 9 || !FormaDeUrlEstable.IsMatch(urlEstable))
-            return Resultado.Falla<ActivarTarjetaResultado>(Fallas.NoEncontrado, "Tarjeta no válida.");
+            return CodigoNoValido();
 
         // Ejecutar la transaccion y devolver si hay que alertar
         var (resultado, alerta) = await TransaccionDeActivarAsync(urlEstable, codigoNorm, perfilPrestadorId, ipOrigen, ct);
@@ -219,6 +222,13 @@ public sealed class ServicioTarjetas : IServicioTarjetas
     }
 
     /// <summary>
+    /// La unica respuesta de API-55 cuando la tarjeta o el codigo no sirven, sea cual sea la
+    /// razon. Ver <see cref="ActivarAsync"/>.
+    /// </summary>
+    private static Resultado<ActivarTarjetaResultado> CodigoNoValido() =>
+        Resultado.Falla<ActivarTarjetaResultado>(Fallas.ReglaDeNegocio, "El código no es válido.");
+
+    /// <summary>
     /// Ejecuta la transaccion de activacion y devuelve el resultado y si hay que alertar.
     /// La alerta se envia FUERA de la transaccion (despues del commit).
     /// </summary>
@@ -231,17 +241,11 @@ public sealed class ServicioTarjetas : IServicioTarjetas
             var tarjeta = await _repo.TomarParaActivarAsync(urlEstable, ct);
             if (tarjeta is null)
             {
-                // Distinguir "no existe" de "ya no esta en Emitida (ya activada/vencida)"
-                // para no revelar informacion: mismo error que codigo incorrecto.
-                var existe = await _repo.ExistePorUrlEstableAsync(urlEstable, ct);
-                if (existe)
-                {
-                    // La tarjeta existe pero ya no esta en Emitida (ya activada, vencida, etc.)
-                    // Mismo mensaje que codigo incorrecto (no revelar cual)
-                    return (Resultado.Falla<ActivarTarjetaResultado>(Fallas.ReglaDeNegocio, "El código no es válido."), default(AlertaTarjetaBloqueada?));
-                }
-                // Tarjeta no existe
-                return (Resultado.Falla<ActivarTarjetaResultado>(Fallas.NoEncontrado, "Tarjeta no válida."), default(AlertaTarjetaBloqueada?));
+                // No existe, o existe pero ya no esta en Emitida (ya activada, vencida...). Las
+                // dos responden IGUAL que un codigo incorrecto: antes «no existe» era un 404
+                // «Tarjeta no válida» y «ya activada» un 422, y esa diferencia bastaba para
+                // averiguar que segmentos corresponden a tarjetas reales.
+                return (CodigoNoValido(), default(AlertaTarjetaBloqueada?));
             }
 
             // 4B.5: Verificar si la tarjeta esta bloqueada ANTES de validar el codigo
@@ -251,7 +255,7 @@ public sealed class ServicioTarjetas : IServicioTarjetas
             {
                 // Mientras este bloqueada, cualquier intento (incluso con codigo CORRECTO)
                 // responde IGUAL que un codigo incorrecto y no consume el codigo
-                return (Resultado.Falla<ActivarTarjetaResultado>(Fallas.ReglaDeNegocio, "El código no es válido."), default(AlertaTarjetaBloqueada?));
+                return (CodigoNoValido(), default(AlertaTarjetaBloqueada?));
             }
 
             // Verificar vigencia del codigo (30 dias)
@@ -314,7 +318,7 @@ public sealed class ServicioTarjetas : IServicioTarjetas
                 }
 
                 // MISMO mensaje que codigo incorrecto (no revelar cual)
-                return (Resultado.Falla<ActivarTarjetaResultado>(Fallas.ReglaDeNegocio, "El código no es válido."), alerta);
+                return (CodigoNoValido(), alerta);
             }
 
             // Codigo correcto y no vencido: consumir y activar
