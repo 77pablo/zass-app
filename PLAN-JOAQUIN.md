@@ -31,6 +31,7 @@ en la raíz del repositorio. **Tu carril es la interfaz**, y desde hoy hay una r
 | 7 | **JQ-19a → d** | El estilo iPhone en todas las pantallas que faltan | La tanda más larga |
 | 8 | **JQ-20** | Los borradores heredados que quedan | |
 | 9 | **JQ-21** | Correr `verificacion-interna.mjs` del #159 | Chica |
+| 10 | **JQ-22** | «Guardados» en la cabecera y la barra inferior, y el corazón (22-nov) | Chica, pero sin ella nadie encuentra sus guardados |
 
 **El #76 (eliminar mi cuenta) ya no es tuyo:** pasa a Esteban como ES-5, junto con la nueva pantalla «Mi cuenta».
 
@@ -64,6 +65,17 @@ Accesibilidad igual que en el #131: `axe` en 0 y el teclado en orden (la navegac
 
 Actualizar con `main` y fusionar **#130, #106, #107 y #98**. **Rehacer o cerrar** el #103 (choca con `index.css`)
 y el #128 (la página de mantenimiento sigue en el estilo v3). Al terminar no queda ningún borrador tuyo abierto.
+
+### JQ-22 — «Guardados» en la navegación · N2 · chica (agregada el 22-nov)
+
+Los favoritos ya están en `main` (#195): botón «Guardar» en la ficha y en `/buscar`, y la pantalla
+`/mis-guardados`. Pero **solo se llega a ella desde la ficha («Ver tus guardados») y desde la
+portada («Cambiar»)**. Falta:
+
+- El enlace «Guardados» en la `Cabecera` y en la barra inferior (son tuyas: `marco/`).
+- El ícono de corazón en `marco/Icono.tsx` (hoy el botón usa `estrella` porque no había corazón).
+- Revisar en el celular la posición del botón de guardar y de «Quitar» junto a las tarjetas.
+- De paso, mirar en el celular la pantalla nueva de **activar la tarjeta** (`/tarjeta/sin-activar/{segmento}`, #199), que se hizo con las clases existentes.
 
 ### JQ-21 — Verificar el panel interno · N1
 
