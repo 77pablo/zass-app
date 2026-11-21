@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
 using Zass.Dominio.Credenciales;
+using Zass.Dominio.Suscripciones;
 
 namespace Zass.Infraestructura.Datos.Repositorios;
 
@@ -65,7 +66,16 @@ public sealed class RepositorioCredencialesEfCore : IRepositorioCredenciales
                 p => p.Id == c.PerfilPrestadorId && p.UsuarioId == verificadorId))
             // CC-03: sin las que otro tiene vigentes. Las mias si salen: es lo que tengo tomado.
             .Where(c => c.ReservadaHasta == null || c.ReservadaHasta < ahora || c.ReservadaPor == verificadorId)
-            .OrderBy(c => c.CreadaEn).ThenBy(c => c.Id)
+            // VerificacionPrioritaria: planes Profesional, Equipo y Fundador con suscripcion vigente (Prueba o Activa)
+            // salen antes. Dentro de cada grupo: mas antigua primero (CreadaEn, luego Id).
+            .OrderByDescending(c => _ctx.Suscripciones
+                .Where(s => s.PerfilPrestadorId == c.PerfilPrestadorId
+                    && (s.Estado == EstadoSuscripcion.Prueba || s.Estado == EstadoSuscripcion.Activa)
+                    && s.VigenteHasta > ahora)
+                .Select(s => s.Plan.VerificacionPrioritaria)
+                .FirstOrDefault())
+            .ThenBy(c => c.CreadaEn)
+            .ThenBy(c => c.Id)
             .ToListAsync(ct);
 
     public Task<Credencial?> PorIdParaRevisionAsync(Guid id, CancellationToken ct = default) =>

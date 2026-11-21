@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Zass.Aplicacion.Credenciales;
+using Zass.Aplicacion.Suscripciones;
 using Zass.Dominio.Comun;
 using Zass.Dominio.Credenciales;
 using Zass.Dominio.Identidad;
+using Zass.Dominio.Suscripciones;
 using Zass.Infraestructura.Datos;
 using Zass.Infraestructura.Datos.Repositorios;
 using Zass.Infraestructura.Seguridad;
@@ -512,5 +514,152 @@ public class VerificacionIntegracionPruebas : IAsyncLifetime
         Assert.Null(c.ReservadaPor);
         var (s2, c2) = UnServicio();
         using (c2) Assert.DoesNotContain(await s2.ColaAsync(otro), x => x.Id == id);
+    }
+
+    // ============================================================= VerificacionPrioritaria (T68)
+
+    /// <summary>
+    /// V1: dos credenciales en revision: A de un prestador Esencial enviada PRIMERO,
+    /// B de uno Profesional enviada DESPUES -> la cola trae B antes que A.
+    /// </summary>
+    [Fact]
+    public async Task Cola_prioriza_plan_con_verificacion_prioritaria_sobre_esencial()
+    {
+        // Prestador con plan Esencial (ID 2, verificacion_prioritaria = false)
+        var esencial = await UnPrestadorAsync();
+        using (var ctxSub = Contexto())
+        {
+            var ahora = DateTime.UtcNow;
+            ctxSub.Suscripciones.Add(new Suscripcion
+            {
+                PerfilPrestadorId = esencial.Id, PlanId = 2, // Esencial
+                Estado = EstadoSuscripcion.Activa,
+                IniciaEn = ahora.AddDays(-10), VigenteHasta = ahora.AddDays(20),
+            });
+            await ctxSub.SaveChangesAsync();
+        }
+
+        // Prestador con plan Profesional (ID 4, verificacion_prioritaria = true)
+        var profesional = await UnPrestadorAsync();
+        using (var ctxSub = Contexto())
+        {
+            var ahora = DateTime.UtcNow;
+            ctxSub.Suscripciones.Add(new Suscripcion
+            {
+                PerfilPrestadorId = profesional.Id, PlanId = 4, // Profesional
+                Estado = EstadoSuscripcion.Activa,
+                IniciaEn = ahora.AddDays(-10), VigenteHasta = ahora.AddDays(20),
+            });
+            await ctxSub.SaveChangesAsync();
+        }
+
+        var verificador = await UnVerificadorAsync();
+
+        // A: credencial Esencial creada PRIMERO (mas antigua)
+        var credencialEsencial = await EnRevisionAsync(esencial, creada: DateTime.UtcNow.AddMinutes(-10));
+        // B: credencial Profesional creada DESPUES (mas nueva)
+        var credencialProfesional = await EnRevisionAsync(profesional, creada: DateTime.UtcNow.AddMinutes(-5));
+
+        var (servicio, ctxSvc) = UnServicio();
+        using (ctxSvc)
+        {
+            var cola = await servicio.ColaAsync(verificador);
+            var ids = cola.Where(c => c.Id == credencialEsencial || c.Id == credencialProfesional)
+                .Select(c => c.Id).ToList();
+
+            // Profesional (con prioridad) debe salir ANTES que Esencial (sin prioridad)
+            // aunque la de Esencial sea mas antigua
+            Assert.Equal(new[] { credencialProfesional, credencialEsencial }, ids);
+        }
+    }
+
+    /// <summary>
+    /// V2: dos Profesionales: sale primero la mas antigua.
+    /// </summary>
+    [Fact]
+    public async Task Cola_entre_mismo_prioridad_ordena_por_fecha_creacion()
+    {
+        // Dos prestadores con plan Profesional (prioridad = true)
+        var prof1 = await UnPrestadorAsync();
+        var prof2 = await UnPrestadorAsync();
+        using (var ctxSub = Contexto())
+        {
+            var ahora = DateTime.UtcNow;
+            ctxSub.Suscripciones.AddRange(
+                new Suscripcion { PerfilPrestadorId = prof1.Id, PlanId = 4, Estado = EstadoSuscripcion.Activa, IniciaEn = ahora.AddDays(-10), VigenteHasta = ahora.AddDays(20) },
+                new Suscripcion { PerfilPrestadorId = prof2.Id, PlanId = 4, Estado = EstadoSuscripcion.Activa, IniciaEn = ahora.AddDays(-10), VigenteHasta = ahora.AddDays(20) });
+            await ctxSub.SaveChangesAsync();
+        }
+
+        var verificador = await UnVerificadorAsync();
+
+        // Crear credenciales con orden inverso para probar ordenacion por CreadaEn
+        var credencialNueva = await EnRevisionAsync(prof1, creada: DateTime.UtcNow.AddMinutes(-1));
+        var credencialVieja = await EnRevisionAsync(prof2, creada: DateTime.UtcNow.AddMinutes(-10));
+
+        var (servicio, ctxSvc) = UnServicio();
+        using (ctxSvc)
+        {
+            var cola = await servicio.ColaAsync(verificador);
+            var ids = cola.Where(c => c.Id == credencialNueva || c.Id == credencialVieja)
+                .Select(c => c.Id).ToList();
+
+            // Ambas tienen prioridad, asi que se ordena por CreadaEn (mas antigua primero)
+            Assert.Equal(new[] { credencialVieja, credencialNueva }, ids);
+        }
+    }
+
+    /// <summary>
+    /// V3: un prestador Profesional con la suscripcion VENCIDA no tiene prioridad.
+    /// </summary>
+    [Fact]
+    public async Task Cola_no_prioriza_si_suscripcion_esta_vencida()
+    {
+        // Prestador con plan Profesional pero suscripcion VENCIDA
+        var profVencida = await UnPrestadorAsync();
+        using (var ctxSub = Contexto())
+        {
+            var ahora = DateTime.UtcNow;
+            ctxSub.Suscripciones.Add(new Suscripcion
+            {
+                PerfilPrestadorId = profVencida.Id, PlanId = 4, // Profesional
+                Estado = EstadoSuscripcion.Vencida,
+                IniciaEn = ahora.AddDays(-40), VigenteHasta = ahora.AddDays(-10), // vencida
+            });
+            await ctxSub.SaveChangesAsync();
+        }
+
+        // Prestador con plan Esencial y suscripcion ACTIVA
+        var esencialActiva = await UnPrestadorAsync();
+        using (var ctxSub = Contexto())
+        {
+            var ahora = DateTime.UtcNow;
+            ctxSub.Suscripciones.Add(new Suscripcion
+            {
+                PerfilPrestadorId = esencialActiva.Id, PlanId = 2, // Esencial
+                Estado = EstadoSuscripcion.Activa,
+                IniciaEn = ahora.AddDays(-10), VigenteHasta = ahora.AddDays(20),
+            });
+            await ctxSub.SaveChangesAsync();
+        }
+
+        var verificador = await UnVerificadorAsync();
+
+        // Credencial del Profesional con suscripcion vencida
+        var credencialProfVencida = await EnRevisionAsync(profVencida, creada: DateTime.UtcNow.AddMinutes(-5));
+        // Credencial del Esencial con suscripcion activa
+        var credencialEsencialActiva = await EnRevisionAsync(esencialActiva, creada: DateTime.UtcNow.AddMinutes(-10));
+
+        var (servicio, ctxSvc) = UnServicio();
+        using (ctxSvc)
+        {
+            var cola = await servicio.ColaAsync(verificador);
+            var ids = cola.Where(c => c.Id == credencialProfVencida || c.Id == credencialEsencialActiva)
+                .Select(c => c.Id).ToList();
+
+            // El Profesional con suscripcion vencida NO tiene prioridad
+            // Se ordena por CreadaEn: la del Esencial es mas antigua, sale primero
+            Assert.Equal(new[] { credencialEsencialActiva, credencialProfVencida }, ids);
+        }
     }
 }
