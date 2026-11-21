@@ -1,4 +1,7 @@
-import type { MotivoDeRechazo, ResultadoDeVerificacion, TipoDeCredencialInterna } from './servicio'
+import type {
+  DecisionDeModeracion, MotivoDeRechazo, ResultadoDeVerificacion, TipoDeCredencialInterna,
+} from './servicio'
+import { MOTIVOS_DE_REPORTE } from '../resenas/servicio'
 
 /*
  * JQ-11. Textos del panel interno. PROPUESTA: los aprueba Joaquín (van en «Textos nuevos» del PR).
@@ -81,3 +84,83 @@ export const RESUELTA: Record<ResultadoDeVerificacion, string> = {
   Rechazada: 'Listo: la credencial quedó rechazada y el prestador recibirá el motivo.',
   AntecedentesSolicitados: 'Listo: le pedimos antecedentes al prestador.',
 }
+
+// ---------------------------------------------------------------- JQ-12 · moderación (PROPUESTA)
+
+export const SECCION_MODERACION = 'Reseñas reportadas'
+export const SECCION_MODERACION_BAJADA = 'Decide si una reseña reportada se mantiene o se retira.'
+export const SIN_SECCIONES = 'Tu cuenta no tiene ninguna herramienta asignada.'
+
+export const TITULO_REPORTES = 'Reseñas reportadas'
+export const ERROR_REPORTES = 'No pudimos cargar los reportes.'
+export const REPORTES_VACIOS = 'No hay reportes abiertos.'
+export const RESENA_DE = (prestador: string) => `Reseña sobre ${prestador}`
+export const estrellas = (n: number) => (n === 1 ? '1 estrella' : `${n} estrellas`)
+export const REPORTADA_EL = 'Reportada el'
+export const ETIQUETA_MOTIVO_REPORTE = 'Motivo del reporte'
+export const ETIQUETA_DETALLE_REPORTE = 'Lo que escribió quien reportó'
+export const RESENA_OCULTA = 'Oculta mientras se revisa'
+export const ETIQUETA_DECISION = 'Decisión'
+export const ETIQUETA_MOTIVO_DECISION = 'Motivo de la decisión'
+export const ayudaMotivoDecision = (min: number) => `Al menos ${min} caracteres. Queda registrado.`
+export const faltaMotivoDecision = (min: number) => `Escribe el motivo de la decisión (al menos ${min} caracteres).`
+export const BOTON_DECIDIR = 'Guardar decisión'
+
+export const DECISIONES: { valor: DecisionDeModeracion; texto: string }[] = [
+  { valor: 'mantener', texto: 'Mantener la reseña' },
+  { valor: 'retirar', texto: 'Retirar la reseña' },
+]
+
+export const DECIDIDA: Record<DecisionDeModeracion, string> = {
+  mantener: 'Listo: la reseña se mantiene.',
+  retirar: 'Listo: la reseña quedó retirada.',
+}
+
+
+/** Las mismas etiquetas que ve quien reporta (funciones/resenas, RN-S5-07): no se inventan otras. */
+export const etiquetaDeMotivoDeReporte = (m: string) =>
+  MOTIVOS_DE_REPORTE.find((x) => x.valor === m)?.etiqueta ?? m
+
+// ---------------------------------------------------------------- JQ-13 · tarjetas y auditoría (PROPUESTA)
+
+export const SECCION_TARJETAS = 'Emitir tarjetas'
+export const SECCION_TARJETAS_BAJADA = 'Crea una tarjeta nueva con su código de activación.'
+export const SECCION_AUDITORIA = 'Auditoría'
+export const SECCION_AUDITORIA_BAJADA = 'Busca el rastro de lo que pasó con un registro o con una persona.'
+
+export const TITULO_EMITIR = 'Emitir tarjetas'
+export const INTRO_EMITIR =
+  'Cada tarjeta sale con un código de activación que se muestra una sola vez. Imprímelo en la etiqueta del sobre antes de salir de esta pantalla.'
+export const BOTON_EMITIR = 'Emitir una tarjeta'
+export const EMITIENDO = 'Emitiendo…'
+export const AVISO_UNA_VEZ = 'Anótalo o imprímelo ahora: no lo volveremos a mostrar.'
+export const ETIQUETA_ENLACE = 'Enlace de la tarjeta'
+export const ETIQUETA_CODIGO = 'Código de activación'
+export const ETIQUETA_VENCE = 'El código vence el'
+export const qrDeTarjeta = (enlace: string) => `Código QR de ${enlace}`
+export const BOTON_IMPRIMIR = 'Imprimir la etiqueta'
+export const BOTON_LISTO = 'Ya lo guardé, emitir otra'
+export const CONFIRMAR_LISTO = 'El código no se va a volver a mostrar. ¿Ya lo imprimiste o anotaste?'
+
+export const TITULO_AUDITORIA = 'Auditoría'
+export const ETIQUETA_BUSCAR_POR = 'Buscar por'
+export const POR_ENTIDAD = 'Registro (entidad e identificador)'
+export const POR_ACTOR = 'Persona que actuó'
+export const ETIQUETA_ENTIDAD_AUD = 'Entidad'
+export const AYUDA_ENTIDAD_AUD = 'Como aparece en el registro, por ejemplo «Tarjeta», «credencial» o «resena».'
+export const ETIQUETA_ENTIDAD_ID = 'Identificador del registro'
+export const ETIQUETA_ACTOR_ID = 'Identificador de la persona'
+export const FALTA_ENTIDAD = 'Escribe la entidad.'
+export const GUID_MALO = 'Pega el identificador completo: son 36 caracteres, con guiones.'
+export const BOTON_BUSCAR = 'Buscar'
+export const BUSCANDO = 'Buscando…'
+export const SIN_RESULTADOS = 'No hay registros de auditoría para esa búsqueda.'
+export const BOTON_MAS_ANTIGUOS = 'Ver más antiguos'
+export const FIN_DEL_RASTRO = 'No hay registros más antiguos.'
+export const COL_CUANDO = 'Cuándo'
+export const COL_ACCION = 'Acción'
+export const COL_ENTIDAD = 'Entidad'
+export const COL_ACTOR = 'Quién'
+export const COL_IP = 'IP'
+export const COL_CONTEXTO = 'Contexto'
+export const SIN_DATO = '—'
