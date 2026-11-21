@@ -94,7 +94,7 @@ export const SIN_SECCIONES = 'Tu cuenta no tiene ninguna herramienta asignada.'
 export const TITULO_REPORTES = 'Reseñas reportadas'
 export const ERROR_REPORTES = 'No pudimos cargar los reportes.'
 export const REPORTES_VACIOS = 'No hay reportes abiertos.'
-export const RESENA_DE = (prestador: string) => `Reseña a ${prestador}`
+export const RESENA_DE = (prestador: string) => `Reseña sobre ${prestador}`
 export const estrellas = (n: number) => (n === 1 ? '1 estrella' : `${n} estrellas`)
 export const REPORTADA_EL = 'Reportada el'
 export const ETIQUETA_MOTIVO_REPORTE = 'Motivo del reporte'
