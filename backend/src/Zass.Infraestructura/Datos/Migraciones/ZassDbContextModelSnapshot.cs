@@ -5213,6 +5213,56 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.ToTable("auditoria");
                 });
 
+            modelBuilder.Entity("Zass.Dominio.Comun.SuscripcionPush", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ClaveAuth")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("clave_auth");
+
+                    b.Property<string>("ClaveP256dh")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("clave_p256dh");
+
+                    b.Property<DateTime>("CreadaEn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creada_en");
+
+                    b.Property<string>("Endpoint")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("endpoint");
+
+                    b.Property<DateTime>("UltimoUsoEn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ultimo_uso_en");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("usuario_id");
+
+                    b.HasKey("Id")
+                        .HasName("p_k_suscripciones_push");
+
+                    b.HasIndex("Endpoint")
+                        .IsUnique()
+                        .HasDatabaseName("i_x_suscripciones_push_endpoint");
+
+                    b.HasIndex("UsuarioId")
+                        .HasDatabaseName("i_x_suscripciones_push_usuario_id");
+
+                    b.ToTable("suscripciones_push", (string)null);
+                });
+
             modelBuilder.Entity("Zass.Dominio.Comun.TrabajoDeFondo", b =>
                 {
                     b.Property<string>("Nombre")
@@ -7157,6 +7207,18 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasConstraintName("f_k_notificaciones_usuarios_destinatario_id");
 
                     b.Navigation("Destinatario");
+                });
+
+            modelBuilder.Entity("Zass.Dominio.Comun.SuscripcionPush", b =>
+                {
+                    b.HasOne("Zass.Dominio.Identidad.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("f_k_suscripciones_push_usuarios_usuario_id");
+
+                    b.Navigation("Usuario");
                 });
 
             modelBuilder.Entity("Zass.Dominio.Credenciales.Credencial", b =>

@@ -32,6 +32,28 @@ public class Notificacion
 }
 
 /// <summary>
+/// ES-3 · API-45. Un navegador (celular, computador) donde la persona activo los avisos push.
+/// Una persona puede tener varios; un navegador pertenece a una sola cuenta a la vez.
+/// El endpoint es una URL «de capacidad» del servicio de push: quien la tiene puede mandar
+/// avisos a ese navegador. Por eso no se registra en logs ni se devuelve en ninguna respuesta.
+/// </summary>
+public class SuscripcionPush
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid UsuarioId { get; set; }
+    public string Endpoint { get; set; } = "";
+    /// <summary>Clave publica del navegador (P-256), en base64url. Para cifrar el aviso.</summary>
+    public string ClaveP256dh { get; set; } = "";
+    /// <summary>Secreto de autenticacion del navegador (16 bytes), en base64url.</summary>
+    public string ClaveAuth { get; set; } = "";
+    public DateTime CreadaEn { get; set; } = DateTime.UtcNow;
+    /// <summary>Ultimo registro o ultimo aviso entregado: decide cual se borra al pasar el tope.</summary>
+    public DateTime UltimoUsoEn { get; set; } = DateTime.UtcNow;
+
+    public Usuario? Usuario { get; set; }
+}
+
+/// <summary>
 /// TBL-28. Rastro de acciones sensibles. Solo insercion y lectura.
 /// Nunca guarda contrasenas, tokens, contenido de documentos ni direcciones.
 /// </summary>

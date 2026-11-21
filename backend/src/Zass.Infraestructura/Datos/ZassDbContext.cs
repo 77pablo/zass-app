@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Zass.Dominio.Agenda;
 using Zass.Aplicacion.Identidad;
+using Zass.Aplicacion.Notificaciones;
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Catalogo;
 using Zass.Dominio.Comun;
@@ -69,6 +70,47 @@ public class ZassDbContext : DbContext
 
     // Transversal
     public DbSet<Notificacion> Notificaciones => Set<Notificacion>();
+    public DbSet<SuscripcionPush> SuscripcionesPush => Set<SuscripcionPush>();
+
+    /// <summary>
+    /// ES-3. Antes de guardar, a cada aviso de correo nuevo que admite push se le agrega su gemela
+    /// de push, pero SOLO si el destinatario tiene algun navegador registrado (una consulta para
+    /// todo el lote, y ninguna si no hay avisos nuevos). Va aqui y no en cada caso de uso: son
+    /// trece lugares que encolan, y el dia que se agregue uno mas no hay que acordarse de nada.
+    /// Lo que se encolo ANTES de activar el push lo recoge API-45 (EncolarGemelasPendientesAsync).
+    /// </summary>
+    public override async Task<int> SaveChangesAsync(bool aceptarTodo, CancellationToken ct = default)
+    {
+        await AgregarGemelasPushAsync(ct);
+        return await base.SaveChangesAsync(aceptarTodo, ct);
+    }
+
+    public override int SaveChanges(bool aceptarTodo)
+    {
+        AgregarGemelasPushAsync(default).GetAwaiter().GetResult();
+        return base.SaveChanges(aceptarTodo);
+    }
+
+    private async Task AgregarGemelasPushAsync(CancellationToken ct)
+    {
+        var nuevos = ChangeTracker.Entries<Notificacion>()
+            .Where(e => e.State == EntityState.Added && AvisosPush.LlevaGemela(e.Entity))
+            .Select(e => e.Entity).ToList();
+        if (nuevos.Count == 0) return;
+
+        var claves = ChangeTracker.Entries<Notificacion>()
+            .Select(e => e.Entity.ClaveIdempotencia).ToHashSet();
+        var destinatarios = nuevos.Select(n => n.DestinatarioId).Distinct().ToList();
+        var conPush = (await SuscripcionesPush.AsNoTracking()
+            .Where(s => destinatarios.Contains(s.UsuarioId))
+            .Select(s => s.UsuarioId).Distinct().ToListAsync(ct)).ToHashSet();
+
+        foreach (var aviso in nuevos.Where(n => conPush.Contains(n.DestinatarioId)))
+        {
+            var gemela = AvisosPush.Gemela(aviso);
+            if (claves.Add(gemela.ClaveIdempotencia)) Notificaciones.Add(gemela);
+        }
+    }
     public DbSet<RegistroAuditoria> Auditoria => Set<RegistroAuditoria>();
     public DbSet<TrabajoDeFondo> TrabajosDeFondo => Set<TrabajoDeFondo>();
 
@@ -1057,6 +1099,20 @@ public class ZassDbContext : DbContext
                 .HasFilter("cita_id IS NOT NULL");
             e.HasOne(x => x.Destinatario).WithMany()
                 .HasForeignKey(x => x.DestinatarioId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ES-3 · API-45. Un endpoint es de una sola cuenta (unico); se borra con la cuenta.
+        b.Entity<SuscripcionPush>(e =>
+        {
+            e.ToTable("suscripciones_push");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Endpoint).HasMaxLength(2048).IsRequired();
+            e.HasIndex(x => x.Endpoint).IsUnique();
+            e.Property(x => x.ClaveP256dh).HasMaxLength(200).IsRequired();
+            e.Property(x => x.ClaveAuth).HasMaxLength(200).IsRequired();
+            e.HasIndex(x => x.UsuarioId);
+            e.HasOne(x => x.Usuario).WithMany()
+                .HasForeignKey(x => x.UsuarioId).OnDelete(DeleteBehavior.Cascade);
         });
 
         // A-09 · CC-08. El horario y la reserva del planificador, en la base y no en el proceso:

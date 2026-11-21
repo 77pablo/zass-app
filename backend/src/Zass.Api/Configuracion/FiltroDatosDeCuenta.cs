@@ -43,6 +43,7 @@ public sealed class FiltroDatosDeCuenta
         "API-16",            // ver la propia cuenta
         "API-17",            // eliminar la cuenta
         EndpointCompletar,   // completar los datos
+        "API-45-baja",       // dejar de recibir push en este navegador (ES-3), al cerrar sesion
     };
 
     private readonly RequestDelegate _siguiente;

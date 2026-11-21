@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { ErrorApi, EVENTO_DATOS_PENDIENTES } from '../api/cliente'
 import { cerrarSesion, miCuenta } from '../funciones/identidad/servicio'
+import { darDeBajaAlSalir } from '../funciones/avisos/push'
 import { Contexto, type EstadoDeSesion, type Usuario } from './contexto'
 import { hayMarcaDeSesion, ponerMarcaDeSesion, quitarMarcaDeSesion } from './marca'
 
@@ -49,6 +50,9 @@ export function ProveedorDeSesion({ children }: { children: ReactNode }) {
   }, [recargar])
 
   const salir = useCallback(async () => {
+    // ES-3: antes de cerrar (la baja necesita la sesion), este navegador deja de recibir los
+    // avisos push de esta cuenta. Nunca falla ni tarda mas de unos segundos.
+    await darDeBajaAlSalir()
     try {
       await cerrarSesion()
     } catch {

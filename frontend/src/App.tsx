@@ -9,6 +9,7 @@ import { MiAgenda } from './paginas/MiAgenda'
 import { MiFicha } from './paginas/MiFicha'
 import { MisCitas } from './paginas/MisCitas'
 import { MisGuardados } from './paginas/MisGuardados'
+import { Avisos } from './paginas/Avisos'
 import { MisResenas } from './paginas/MisResenas'
 import { MisTarjetas } from './paginas/MisTarjetas'
 import { MesaDeVerificacion } from './paginas/MesaDeVerificacion'
@@ -65,6 +66,8 @@ export function App() {
         <Route path="mis-tarjetas" element={<MisTarjetas />} />
         {/* CS-08 y CU-04: la gente guardada y lo que la persona suele buscar. */}
         <Route path="mis-guardados" element={<MisGuardados />} />
+        {/* ES-3: activar los avisos push en este navegador. En ES-4 pasa a «Mi cuenta». */}
+        <Route path="avisos" element={<Avisos />} />
         <Route path="ofrecer-servicios" element={<OfrecerServicios />} />
         <Route path="verificar-correo" element={<VerificarCorreo />} />
         <Route path="recuperar-contrasena" element={<RecuperarContrasena />} />
