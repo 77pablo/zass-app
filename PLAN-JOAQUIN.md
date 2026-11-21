@@ -1,11 +1,73 @@
-# Plan de trabajo de Joaquín — al 20 de noviembre de 2026
+# Plan de trabajo de Joaquín — al 21 de noviembre de 2026
 
-ZASS! abre el **lunes 23**. Este archivo es tu cola y tu permiso para avanzar. Manda sobre
+El plan del equipo entero está en `PLAN-TERMINAR-LA-WEB.md`. Este archivo es tu cola y tu permiso para avanzar. Manda sobre
 cualquier lista anterior (`TRASPASO.md`, `TRASPASO-12-NOV.md`, la versión vieja de este archivo en
 la rama `plan-joaquin`): esas tienen cosas que ya están hechas.
 
 **Si retomas desde cero, dile a Claude: «sigue con plan-joaquin de zass».** Él lee esto,
 `ESTADO.md` y `CONTRIBUIR.md`, y sigue por la primera tanda sin terminar.
+
+---
+
+## 00. Plan para terminar la web (Pablo, 21-nov) — LÉELA PRIMERO
+
+Pablo pidió un plan para que los tres terminemos la web. Está entero en **`PLAN-TERMINAR-LA-WEB.md`**,
+en la raíz del repositorio. **Tu carril es la interfaz**, y desde hoy hay una regla nueva:
+
+> **`frontend/src/index.css`, `frontend/src/marco/` y los componentes compartidos (`frontend/src/componentes/`)
+> son solo tuyos.** Pablo, Esteban y Claude usan las clases que ya existen; si les falta un estilo, te lo
+> piden en su PR. Así nadie pisa el CSS de otro al unir.
+
+**Tu cola, en este orden** (lo de arriba bloquea a lo de abajo):
+
+| Orden | ID | Qué | Por qué en ese lugar |
+|---|---|---|---|
+| 1 | **#171** | Las pantallas del pago con estilo (sección 0a) | JQ-17 se apoya en él |
+| 2 | **JQ-17** | La pantalla de los tres planes (sección 0b) | **Bloquea la publicación**: sin ella Pablo no puede desplegar los planes nuevos |
+| 3 | **#167** | Mis estadísticas (JQ-8), solo con `permiteEstadisticas` | Le faltan 4 choques con `main` |
+| 4 | **#163** | Indicadores del panel (JQ-14, API-60) | Le faltan 6 choques con `main` |
+| 5 | **JQ-18** | Fotos de trabajos, la pantalla | Espera que el servidor (la T69 de Claude) esté en `main` |
+| 6 | **#168 · #169** | La foto en la portada (JQ-15) · borradores abandonados (JQ-16) | Ya están hechos en borrador |
+| 7 | **JQ-19a → d** | El estilo iPhone en todas las pantallas que faltan | La tanda más larga |
+| 8 | **JQ-20** | Los borradores heredados que quedan | |
+| 9 | **JQ-21** | Correr `verificacion-interna.mjs` del #159 | Chica |
+
+**El #76 (eliminar mi cuenta) ya no es tuyo:** pasa a Esteban como ES-5, junto con la nueva pantalla «Mi cuenta».
+
+### JQ-18 — Fotos de trabajos, la pantalla · N2 · después de la T69
+
+El servidor lo hace Claude (rama `archivos/fotos-trabajos`). Cuando esté en `main`:
+
+- En **«Mi ficha»**: subir, ordenar y quitar fotos de trabajos. El tope lo da el plan (`maxFotosTrabajos`):
+  al llegar al tope, el botón de subir se cambia por qué plan permite más.
+- En la **ficha pública**: una galería que abre cada foto en grande, con su texto alternativo.
+- Reutiliza lo de la foto de perfil (`FotoDePerfil.tsx`): mismas validaciones y mismos mensajes.
+- **Mutación:** subir una foto más allá del tope tiene que fallar en la API, no solo esconderse en la pantalla.
+
+### JQ-19 — El estilo iPhone en todas las pantallas · N2 · cuatro PR
+
+Hoy solo lo tienen Inicio, Buscar, Ficha y Mis citas (#131). La guía es `DISENO-ESTILO-IPHONE.md` (te la pasa
+Pablo): fondo agrupado `#F2F2F7`, tarjetas blancas en listas agrupadas, letra del sistema, el celeste y el ámbar
+solo como acento, título grande que se compacta al bajar. **Un PR por grupo**, con capturas antes y después a
+390 px y a 1280 px:
+
+| PR | Pantallas |
+|---|---|
+| **JQ-19a** · la cuenta | Entrar, crear cuenta, recuperar y restablecer contraseña, verificar correo |
+| **JQ-19b** · el prestador | Ofrecer servicios, Mi ficha, Mi agenda, Mis tarjetas, Mis reseñas, Mis credenciales |
+| **JQ-19c** · reseñas, tarjetas y legal | Escribir reseña, todas las reseñas, `t/:segmento` y los tres estados de tarjeta, términos, privacidad, profesionales |
+| **JQ-19d** · el panel interno | Verificador, reportes, tarjetas, auditoría, indicadores (en el escritorio, estilo iPad) |
+
+Accesibilidad igual que en el #131: `axe` en 0 y el teclado en orden (la navegación no puede quedar al final del Tab).
+
+### JQ-20 — Los borradores heredados que quedan · N2
+
+Actualizar con `main` y fusionar **#130, #106, #107 y #98**. **Rehacer o cerrar** el #103 (choca con `index.css`)
+y el #128 (la página de mantenimiento sigue en el estilo v3). Al terminar no queda ningún borrador tuyo abierto.
+
+### JQ-21 — Verificar el panel interno · N1
+
+Correr `verificacion-interna.mjs` del #159 y dejar el resultado en el PR.
 
 ---
 
@@ -60,7 +122,7 @@ antes de tocarlo**, porque pueden traer choques. Trabajas **en la misma rama del
 | 5 | **#98** | Compartir una ficha y búsquedas recientes | |
 | 6 | **#103** | Guías de interfaz de Vercel aplicadas a ZASS! | Toca muchos archivos: déjalo para cuando los demás estén fusionados |
 | 7 | **#128** | La página de mantenimiento con la guía v3 | Es la página que hoy se ve en `zass.cl`: pruébala bien |
-| 8 | **#76** | Eliminar mi cuenta: pantalla, contraseña, y cancelar citas y suscripción (CS-04) | **N3: trae una migración**, escrita antes del registro completo (#174). Avisa en el PR antes de rehacerla; es el último |
+| ~~8~~ | ~~**#76**~~ | ~~Eliminar mi cuenta (CS-04)~~ | **Desde el 21-nov es de Esteban (ES-5).** No lo toques |
 
 **Cómo se cierra cada uno:** actualízalo con `main`, revísalo en el navegador a 390 px y a 1280 px, quita el estado de borrador
 («Ready for review») y anota en el PR qué cambiaste. Claude lo revisa y lo fusiona (regla del 20-nov). Si un borrador ya no
@@ -192,8 +254,7 @@ No la vuelvas a abrir. El camino del dinero existe entero: `/planes`, los 50 cup
 de 30 días (RN-S7-03), el cupón y el cobro automático que dispara el planificador 7 días antes
 del vencimiento.
 
-Lo único que falta de ese carril es **la pasarela de verdad**, y no puede empezar hasta que Pablo
-elija Flow, Transbank o Mercado Pago. No es tuyo todavía.
+La pasarela de verdad ya está: es **Flow** (#162). Ponerla en producción es de Esteban (ES-6).
 
 ---
 
@@ -206,7 +267,7 @@ fusione no tienes que pedirle nada a nadie: ver «Quién fusiona», abajo.
 
 | Es tuyo | No lo toques |
 |---|---|
-| Agenda y citas, reseñas, tarjetas NFC, perfiles, búsqueda, datos de demostración | Suscripciones, planes, pagos y pasarela (`Zass.*/Suscripciones/`, `Pagos/`, `EndpointsSuscripciones.cs`, la pantalla `/planes`) |
+| Agenda y citas, reseñas, tarjetas NFC, perfiles, búsqueda, datos de demostración | Suscripciones, planes, pagos y pasarela del servidor (`Zass.*/Suscripciones/`, `Pagos/`, `EndpointsSuscripciones.cs`). **La pantalla `/planes` sí es tuya** (JQ-17) |
 | Las pantallas de todo eso | Neon, Render, los secretos y los textos legales: son de Pablo |
 | Tus propias pruebas, incluidas las de navegador | `ESTADO.md` (lo lleva la sesión principal) |
 
