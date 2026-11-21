@@ -23,7 +23,7 @@ public class Plan
     public int PrecioMensual { get; set; }
     public short DiasPrueba { get; set; } = 30;
     public int MaxServicios { get; set; } = 10;
-    /// <summary>Coincide con los tres planes sembrados (1). El tope real se lee de la fila del plan.</summary>
+    /// <summary>Coincide con los planes basicos (prueba y Esencial: 1). El tope real se lee de la fila del plan: Fundador y Profesional 3, Equipo 10.</summary>
     public int MaxTarjetas { get; set; } = 1;
     public bool PermiteCredenciales { get; set; } = true;
     public bool Activo { get; set; } = true;
