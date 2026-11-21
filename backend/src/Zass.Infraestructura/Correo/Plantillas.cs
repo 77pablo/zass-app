@@ -29,6 +29,16 @@ public static class Plantillas
     public static string EnlaceDeRecuperacion(string urlPublica, string token) =>
         $"{urlPublica.TrimEnd('/')}/restablecer-contrasena?token={Uri.EscapeDataString(token)}";
 
+    /// <summary>La pantalla para entrar con correo y contraseña.</summary>
+    public static string EnlaceDeEntrada(string urlPublica) => $"{urlPublica.TrimEnd('/')}/entrar";
+
+    /// <summary>
+    /// La pantalla donde se PIDE un enlace para crear una contraseña nueva (API-14). No lleva
+    /// token: el token lo manda API-14 cuando la persona lo pide ahi.
+    /// </summary>
+    public static string EnlaceParaPedirContrasena(string urlPublica) =>
+        $"{urlPublica.TrimEnd('/')}/recuperar-contrasena";
+
     /// <summary>El panel del prestador, donde se ve y se renueva la suscripcion.</summary>
     public static string EnlaceDelPanel(string urlPublica) => $"{urlPublica.TrimEnd('/')}/mi-ficha";
 
@@ -75,7 +85,8 @@ public static class Plantillas
              or TipoNotificacion.CitaCancelada
              or TipoNotificacion.CitaReprogramada
              or TipoNotificacion.Recordatorio24h
-             or TipoNotificacion.Recordatorio2h;
+             or TipoNotificacion.Recordatorio2h
+             or TipoNotificacion.RegistroConRutExistente;
 
     /// <summary>
     /// Los que llevan un secreto en la carga. Importa porque de esos el cuerpo se purga en
@@ -103,6 +114,9 @@ public static class Plantillas
                     : PorVencer(nombre, d, EnlaceDelPanel(urlPublica))
                 : null,
         TipoNotificacion.SuscripcionVencida => Vencida(nombre, EnlaceDelPanel(urlPublica)),
+        // No pide nada de la carga: los dos enlaces son fijos.
+        TipoNotificacion.RegistroConRutExistente => RegistroConRutExistente(
+            nombre, EnlaceDeEntrada(urlPublica), EnlaceParaPedirContrasena(urlPublica)),
         // Sin dias en la carga sale igual, con «pronto»: un aviso de cobro que no llega es peor
         // que uno sin la cifra exacta.
         TipoNotificacion.CobroRechazado => CobroRechazado(
@@ -188,6 +202,37 @@ public static class Plantillas
             "Crear contraseña nueva", enlace,
             "Si no fuiste tú, ignora este mensaje: tu contraseña no ha cambiado.");
         return new("Crea una contraseña nueva en ZASS!", texto, html);
+    }
+
+    /// <summary>
+    /// Decision de Pablo (21-nov-2026): alguien intento crear una cuenta con el RUT de esta. Va
+    /// al correo de la cuenta original. No dice nada de quien lo intento (no lo sabemos, y el
+    /// correo que escribio en el formulario no es de la dueña). Texto PROPUESTO: lo aprueba Pablo.
+    /// </summary>
+    public static CorreoRenderizado RegistroConRutExistente(string nombre, string enlaceEntrar, string enlaceContrasena)
+    {
+        const string parrafo =
+            "Alguien intentó crear una cuenta nueva en ZASS! con el RUT de tu cuenta. No la creamos: "
+            + "cada RUT tiene una sola cuenta, y la tuya sigue igual. Si fuiste tú, no necesitas otra: "
+            + "entra con este correo.";
+        const string otra = "Si no recuerdas tu contraseña, puedes crear una nueva aquí:";
+        const string pie =
+            "Si no fuiste tú, puedes ignorar este mensaje: nadie entró a tu cuenta ni cambió nada.";
+        var texto =
+            $"Hola {nombre}:\n\n" +
+            $"{parrafo}\n\n" +
+            $"Para entrar:\n\n{enlaceEntrar}\n\n" +
+            $"{otra}\n\n{enlaceContrasena}\n\n" +
+            $"{pie}\n\n" +
+            "— El equipo de ZASS!";
+        var html = Marco(
+            "Intentaron crear otra cuenta con tu RUT",
+            $"Hola {H(nombre)}:",
+            parrafo,
+            "Entrar a mi cuenta", enlaceEntrar,
+            pie,
+            otra, enlaceContrasena);
+        return new("Alguien intentó crear otra cuenta con tu RUT en ZASS!", texto, html);
     }
 
     /// <summary>
@@ -540,9 +585,15 @@ public static class Plantillas
     private static string H(string s) => WebUtility.HtmlEncode(s);
 
     private static string Marco(string titulo, string saludo, string parrafo,
-        string textoBoton, string enlace, string aviso)
+        string textoBoton, string enlace, string aviso,
+        string? textoOtroEnlace = null, string? otroEnlace = null)
     {
         var e = H(enlace);
+        // Un segundo enlace, como texto y no como boton: solo lo usa el aviso del RUT repetido.
+        var otro = textoOtroEnlace is not null && otroEnlace is not null
+            ? $"<p style=\"margin:0 0 12px;font-size:14px;\">{H(textoOtroEnlace)}<br>"
+              + $"<a href=\"{H(otroEnlace)}\" style=\"color:{Tinta};word-break:break-all;\">{H(otroEnlace)}</a></p>\n"
+            : "";
         return $"""
 <!DOCTYPE html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{H(titulo)}</title></head>
@@ -556,7 +607,7 @@ public static class Plantillas
 <p style="margin:0 0 24px;">{H(parrafo)}</p>
 <p style="margin:0 0 24px;"><a href="{e}" style="display:inline-block;background:{Amarillo};color:{Tinta};font-weight:bold;text-decoration:none;padding:12px 24px;border-radius:6px;">{H(textoBoton)}</a></p>
 <p style="margin:0 0 12px;font-size:14px;">Si el botón no funciona, copia y pega este enlace en tu navegador:<br><a href="{e}" style="color:{Tinta};word-break:break-all;">{e}</a></p>
-<p style="margin:0;font-size:14px;">{H(aviso)}</p>
+{otro}<p style="margin:0;font-size:14px;">{H(aviso)}</p>
 </td></tr></table></td></tr></table></body></html>
 """;
     }

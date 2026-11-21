@@ -17,7 +17,8 @@ public sealed class RepositorioCredencialesEfCore : IRepositorioCredenciales
 
     public async Task<IReadOnlyList<Credencial>> DePrestadorAsync(
         Guid perfilPrestadorId, CancellationToken ct = default) =>
-        await ConDetalle()
+        // Con las verificaciones: de ahi sale el motivo de una rechazada para «Mis credenciales».
+        await ConDetalle().Include(c => c.Verificaciones)
             .Where(c => c.PerfilPrestadorId == perfilPrestadorId)
             .OrderByDescending(c => c.CreadaEn).ThenBy(c => c.Id)
             .ToListAsync(ct);
@@ -25,7 +26,10 @@ public sealed class RepositorioCredencialesEfCore : IRepositorioCredenciales
     public async Task<IReadOnlyList<Credencial>> PublicasDePrestadorAsync(
         Guid perfilPrestadorId, CancellationToken ct = default) =>
         await _ctx.Credenciales.Include(c => c.EntidadCertificadora)
-            .Where(c => c.PerfilPrestadorId == perfilPrestadorId && c.Estado != EstadoCredencial.Borrador)
+            // Credencial.EsVisibleAlPublico, escrita para que EF la traduzca: sin borradores y sin
+            // rechazadas (decision de Pablo, 21-nov-2026).
+            .Where(c => c.PerfilPrestadorId == perfilPrestadorId
+                && c.Estado != EstadoCredencial.Borrador && c.Estado != EstadoCredencial.Rechazada)
             .ToListAsync(ct);
 
     public Task<Credencial?> PorIdAsync(Guid id, CancellationToken ct = default) =>

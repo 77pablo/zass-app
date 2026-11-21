@@ -60,6 +60,20 @@ public interface INotificaciones
     /// El que ya estaba tomado para enviar lo para el procesador, que vuelve a mirar la cita.
     /// </summary>
     Task<int> AnularRecordatoriosAsync(Guid citaId, CancellationToken ct = default);
+
+    /// <summary>
+    /// El ultimo aviso de ese tipo para esa persona, en el estado que sea, o nulo. Sirve para
+    /// una espera entre avisos sin columna nueva: el momento del ultimo aviso ya esta en la cola.
+    /// </summary>
+    Task<Notificacion?> UltimoAsync(Guid destinatarioId, TipoNotificacion tipo, CancellationToken ct = default);
+
+    /// <summary>
+    /// Encola y guarda YA, por su cuenta y sin esperar al <c>GuardarAsync</c> del caso de uso, y
+    /// solo si no hay otro aviso con la misma clave. Devuelve falso si ya habia uno. Existe para
+    /// los avisos que dos peticiones simultaneas podrian encolar a la vez: el indice unico de la
+    /// clave decide cual entra, y la otra no termina en una excepcion (un 500) sino en un falso.
+    /// </summary>
+    Task<bool> EncolarSiNoExisteAsync(Notificacion aviso, CancellationToken ct = default);
 }
 
 /// <summary>TBL-28. Solo insercion. Nunca contrasenas, tokens ni direcciones.</summary>
@@ -160,6 +174,8 @@ public interface IRepositorioUsuarios
     Task<bool> ExisteCorreoAsync(string correo, CancellationToken ct = default);
     /// <summary>El RUT ya normalizado («12345678-K»).</summary>
     Task<bool> ExisteRutAsync(string rut, CancellationToken ct = default);
+    /// <summary>La cuenta que tiene ese RUT (ya normalizado), o nulo.</summary>
+    Task<Usuario?> PorRutAsync(string rut, CancellationToken ct = default);
     Task<Rol?> RolPorCodigoAsync(string codigo, CancellationToken ct = default);
     void Agregar(Usuario usuario);
 }

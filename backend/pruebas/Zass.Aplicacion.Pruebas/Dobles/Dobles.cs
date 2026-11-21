@@ -65,6 +65,19 @@ public sealed class ColaEnMemoria : INotificaciones
         foreach (var n in vivos) n.Anular();
         return Task.FromResult(vivos.Count);
     }
+
+    public Task<Notificacion?> UltimoAsync(Guid destinatarioId, TipoNotificacion tipo, CancellationToken ct = default) =>
+        Task.FromResult(Encoladas
+            .Where(n => n.DestinatarioId == destinatarioId && n.Tipo == tipo)
+            .OrderByDescending(n => n.ProgramadaPara).FirstOrDefault());
+
+    /// <summary>Como la base: con la clave ya usada no se agrega y se devuelve falso.</summary>
+    public Task<bool> EncolarSiNoExisteAsync(Notificacion aviso, CancellationToken ct = default)
+    {
+        if (Encoladas.Any(n => n.ClaveIdempotencia == aviso.ClaveIdempotencia)) return Task.FromResult(false);
+        Encoladas.Add(aviso);
+        return Task.FromResult(true);
+    }
 }
 
 public sealed class AuditoriaEnMemoria : IAuditor

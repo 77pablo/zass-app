@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import usuario from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { Registrarse } from './Registrarse'
 import { ErrorApi } from '../../api/cliente'
 import { digitoVerificador, esTelefonoChileno, normalizarRut } from './rut'
@@ -129,14 +130,36 @@ describe('pantalla de registro', () => {
     expect(await screen.findByText(/revisa tu correo/i)).toBeInTheDocument()
   })
 
-  it('muestra el conflicto cuando el correo o el RUT ya tienen cuenta', async () => {
-    registrarse.mockRejectedValueOnce(new ErrorApi(409, 'Ya existe una cuenta con ese RUT.'))
+  it('muestra el conflicto cuando el correo ya tiene cuenta', async () => {
+    registrarse.mockRejectedValueOnce(new ErrorApi(409, 'Ya existe una cuenta con ese correo.'))
     render(<Registrarse alRegistrarse={vi.fn()} />)
 
     await llenar()
     await crear()
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/ya existe una cuenta/i)
+    expect(screen.queryByRole('link', { name: 'Recuperar contraseña' })).toBeNull()
+  })
+
+  // Decisión de Pablo (21-nov-2026): el RUT con cuenta no es un error sino una salida. Se
+  // muestra el texto del servidor como aviso informativo (no rojo, no role="alert") con los
+  // enlaces a «Entrar» y a «Recuperar contraseña», y no se dice que la cuenta se creó.
+  it('un RUT con cuenta se muestra como aviso informativo con Entrar y Recuperar contraseña', async () => {
+    const texto = 'Este RUT ya tiene una cuenta en ZASS!. Enviamos un mensaje al correo con que se creó esa cuenta.'
+    registrarse.mockRejectedValueOnce(new ErrorApi(409, texto, {}, { codigo: 'rut_con_cuenta', detail: texto }))
+    render(<MemoryRouter><Registrarse alRegistrarse={vi.fn()} /></MemoryRouter>)
+
+    await llenar()
+    await crear()
+
+    const aviso = await screen.findByRole('status')
+    expect(aviso).toHaveTextContent(texto)
+    expect(aviso).toHaveClass('aviso-linea')
+    expect(aviso).not.toHaveClass('aviso--malo')
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByRole('link', { name: 'Entrar' })).toHaveAttribute('href', '/entrar')
+    expect(screen.getByRole('link', { name: 'Recuperar contraseña' })).toHaveAttribute('href', '/recuperar-contrasena')
+    expect(screen.queryByText(/revisa tu correo/i)).toBeNull()
   })
 
   // El backend valida de nuevo, y puede rechazar algo que la pantalla dejo pasar.
