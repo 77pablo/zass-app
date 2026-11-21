@@ -24,6 +24,8 @@ function pintar(ruta: string, estado: EstadoDeSesion, roles: string[] = []) {
             <Route index element={<IndiceInterno />} />
             <Route path="verificacion" element={<SoloSeccion seccion="verificacion"><p>la mesa</p></SoloSeccion>} />
             <Route path="reportes" element={<SoloSeccion seccion="moderacion"><p>los reportes</p></SoloSeccion>} />
+            <Route path="tarjetas" element={<SoloSeccion seccion="administracion"><p>emitir</p></SoloSeccion>} />
+            <Route path="auditoria" element={<SoloSeccion seccion="administracion"><p>la auditoria</p></SoloSeccion>} />
           </Route>
           <Route path="/entrar" element={<p>pantalla de entrar</p>} />
           <Route path="*" element={<NoEncontrada />} />
@@ -80,16 +82,26 @@ describe('JQ-11: la puerta de /interno', () => {
     expect(screen.queryByRole('link', { name: /Verificación de credenciales/ })).toBeNull()
   })
 
-  it('el administrador entra, pero sin verificador ni moderador no ve esas secciones: su API le respondería 403', () => {
+  it('el administrador ve tarjetas y auditoría, pero sin verificador ni moderador no ve esas secciones: su API le respondería 403', () => {
     pintar('/interno', 'dentro', ['buscador', 'administrador'])
     expect(screen.getByRole('heading', { level: 1, name: 'Panel interno' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Emitir tarjetas/ })).toHaveAttribute('href', '/interno/tarjetas')
+    expect(screen.getByRole('link', { name: /Auditoría/ })).toHaveAttribute('href', '/interno/auditoria')
     expect(screen.queryByRole('link', { name: /Verificación de credenciales|Reseñas reportadas/ })).toBeNull()
+  })
+
+  it('el verificador y el moderador no ven tarjetas ni auditoría en el índice (JQ-13)', () => {
+    pintar('/interno', 'dentro', ['verificador', 'moderador'])
+    expect(screen.queryByRole('link', { name: /Emitir tarjetas|Auditoría/ })).toBeNull()
   })
 
   it.each([
     ['el moderador, en la verificación', '/interno/verificacion', ['moderador'], 'la mesa'],
     ['el verificador, en los reportes', '/interno/reportes', ['verificador'], 'los reportes'],
     ['el administrador, en los reportes', '/interno/reportes', ['administrador'], 'los reportes'],
+    ['un verificador sin administrador, en emitir tarjetas', '/interno/tarjetas', ['verificador'], 'emitir'],
+    ['un verificador sin administrador, en la auditoría', '/interno/auditoria', ['verificador'], 'la auditoria'],
+    ['un moderador sin administrador, en emitir tarjetas', '/interno/tarjetas', ['moderador'], 'emitir'],
   ])('cada sección tiene su puerta: %s ve una página que no existe', (_, ruta, roles, contenido) => {
     pintar(ruta, 'dentro', roles)
     expect(screen.getByRole('heading', { level: 1, name: 'Esta página no existe.' })).toBeInTheDocument()
