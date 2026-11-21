@@ -150,7 +150,8 @@ public class MetricasPrestadorApiPruebas : IAsyncLifetime
         var correo = $"met-api-{Guid.NewGuid():N}@zass.local";
         Assert.Equal(HttpStatusCode.Created, (await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo, contrasena = "contrasena-larga-1", nombre = "Usuario Test", rol = "buscador",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678",
+            mayorDeEdad = true, correo, contrasena = "contrasena-larga-1", nombre = "Usuario Test", rol = "buscador",
         })).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await _cliente.PostAsJsonAsync("/api/auth/sesion",
             new { correo, contrasena = "contrasena-larga-1" })).StatusCode);

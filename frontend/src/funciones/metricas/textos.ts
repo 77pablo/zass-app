@@ -8,7 +8,9 @@ export const NO_PRESTADOR_ANTES = 'Esta pantalla es para quienes ofrecen servici
 export const NO_PRESTADOR_ENLACE = 'ofrecer tus servicios'
 export const NO_PRESTADOR_DESPUES = ' con esta misma cuenta.'
 export const CONTACTOS = 'Contactos recibidos'
-export const CONTACTOS_AYUDA = 'Cada vez que alguien tocó WhatsApp, el teléfono o el correo en tu ficha.'
+// API-46 deja un solo contacto abierto por persona y prestador: tocar dos veces no suma dos.
+export const CONTACTOS_AYUDA =
+  'Las personas que te escribieron, llamaron o mandaron un correo desde tu ficha. Si alguien toca dos veces, cuenta una.'
 export const ESCANEOS = 'Escaneos de tus tarjetas'
 export const ULTIMOS_7 = 'Últimos 7 días'
 export const ULTIMOS_30 = 'Últimos 30 días'
