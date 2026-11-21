@@ -11,7 +11,8 @@ import { MisCitas } from './paginas/MisCitas'
 import { MisResenas } from './paginas/MisResenas'
 import { MisTarjetas } from './paginas/MisTarjetas'
 import { MesaDeVerificacion } from './paginas/MesaDeVerificacion'
-import { IndiceInterno, PuertaInterna } from './paginas/PanelInterno'
+import { IndiceInterno, PuertaInterna, SoloSeccion } from './paginas/PanelInterno'
+import { ReportesDeResenas } from './paginas/ReportesDeResenas'
 import { NoEncontrada } from './paginas/NoEncontrada'
 import { OfrecerServicios } from './paginas/OfrecerServicios'
 import { Oficios } from './paginas/Oficios'
@@ -66,10 +67,12 @@ export function App() {
         <Route path="tarjeta/no-disponible" element={<AvisoDeTarjeta aviso="no-disponible" />} />
         <Route path="tarjeta/sin-activar" element={<AvisoDeTarjeta aviso="sin-activar" />} />
         <Route path="t/:segmento" element={<TarjetaEnMayusculas />} />
-        {/* JQ-11: sin el rol verificador o administrador, todo /interno responde como una página que no existe. */}
+        {/* JQ-11/12: sin un rol interno, todo /interno responde como una página que no existe; y cada
+            sección, sin el rol que pide su API. */}
         <Route path="interno" element={<PuertaInterna />}>
           <Route index element={<IndiceInterno />} />
-          <Route path="verificacion" element={<MesaDeVerificacion />} />
+          <Route path="verificacion" element={<SoloSeccion seccion="verificacion"><MesaDeVerificacion /></SoloSeccion>} />
+          <Route path="reportes" element={<SoloSeccion seccion="moderacion"><ReportesDeResenas /></SoloSeccion>} />
           <Route path="*" element={<NoEncontrada />} />
         </Route>
         <Route path="*" element={<NoEncontrada />} />

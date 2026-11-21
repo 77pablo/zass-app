@@ -1,4 +1,7 @@
-import type { MotivoDeRechazo, ResultadoDeVerificacion, TipoDeCredencialInterna } from './servicio'
+import type {
+  DecisionDeModeracion, MotivoDeRechazo, ResultadoDeVerificacion, TipoDeCredencialInterna,
+} from './servicio'
+import { MOTIVOS_DE_REPORTE } from '../resenas/servicio'
 
 /*
  * JQ-11. Textos del panel interno. PROPUESTA: los aprueba Joaquín (van en «Textos nuevos» del PR).
@@ -81,3 +84,39 @@ export const RESUELTA: Record<ResultadoDeVerificacion, string> = {
   Rechazada: 'Listo: la credencial quedó rechazada y el prestador recibirá el motivo.',
   AntecedentesSolicitados: 'Listo: le pedimos antecedentes al prestador.',
 }
+
+// ---------------------------------------------------------------- JQ-12 · moderación (PROPUESTA)
+
+export const SECCION_MODERACION = 'Reseñas reportadas'
+export const SECCION_MODERACION_BAJADA = 'Decide si una reseña reportada se mantiene o se retira.'
+export const SIN_SECCIONES = 'Tu cuenta no tiene ninguna herramienta asignada.'
+
+export const TITULO_REPORTES = 'Reseñas reportadas'
+export const ERROR_REPORTES = 'No pudimos cargar los reportes.'
+export const REPORTES_VACIOS = 'No hay reportes abiertos.'
+export const RESENA_DE = (prestador: string) => `Reseña sobre ${prestador}`
+export const estrellas = (n: number) => (n === 1 ? '1 estrella' : `${n} estrellas`)
+export const REPORTADA_EL = 'Reportada el'
+export const ETIQUETA_MOTIVO_REPORTE = 'Motivo del reporte'
+export const ETIQUETA_DETALLE_REPORTE = 'Lo que escribió quien reportó'
+export const RESENA_OCULTA = 'Oculta mientras se revisa'
+export const ETIQUETA_DECISION = 'Decisión'
+export const ETIQUETA_MOTIVO_DECISION = 'Motivo de la decisión'
+export const ayudaMotivoDecision = (min: number) => `Al menos ${min} caracteres. Queda registrado.`
+export const faltaMotivoDecision = (min: number) => `Escribe el motivo de la decisión (al menos ${min} caracteres).`
+export const BOTON_DECIDIR = 'Guardar decisión'
+
+export const DECISIONES: { valor: DecisionDeModeracion; texto: string }[] = [
+  { valor: 'mantener', texto: 'Mantener la reseña' },
+  { valor: 'retirar', texto: 'Retirar la reseña' },
+]
+
+export const DECIDIDA: Record<DecisionDeModeracion, string> = {
+  mantener: 'Listo: la reseña se mantiene.',
+  retirar: 'Listo: la reseña quedó retirada.',
+}
+
+
+/** Las mismas etiquetas que ve quien reporta (funciones/resenas, RN-S5-07): no se inventan otras. */
+export const etiquetaDeMotivoDeReporte = (m: string) =>
+  MOTIVOS_DE_REPORTE.find((x) => x.valor === m)?.etiqueta ?? m

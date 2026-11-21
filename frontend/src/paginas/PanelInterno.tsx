@@ -1,5 +1,6 @@
+import type { ReactNode } from 'react'
 import { Link, Outlet } from 'react-router-dom'
-import { puedeEntrarAlPanel } from '../funciones/interno/servicio'
+import { puedeEntrarAlPanel, puedeUsar, type SeccionInterna } from '../funciones/interno/servicio'
 import * as T from '../funciones/interno/textos'
 import { Icono } from '../marco/Icono'
 import { PaginaCargando } from '../marco/PaginaCargando'
@@ -9,7 +10,8 @@ import { useSesion } from '../sesion/contexto'
 import { NoEncontrada } from './NoEncontrada'
 
 /**
- * JQ-11. La puerta de /interno: solo pasa quien tiene el rol `verificador` o `administrador`.
+ * JQ-11. La puerta de /interno: solo pasa quien tiene un rol interno (`verificador`, `moderador` o
+ * `administrador`, JQ-12). Cada sección tiene además su propia puerta (`SoloSeccion`).
  *
  * Sin el rol (o sin sesión) la ruta responde EXACTAMENTE como una página que no existe, no como
  * «prohibido» ni mandando a /entrar: no se anuncia que hay un panel. La protección real está en la
@@ -25,20 +27,37 @@ export function PuertaInterna() {
   return <Outlet />
 }
 
-/** /interno: el índice de las herramientas. Crece con JQ-12, JQ-13 y JQ-14. */
+/**
+ * JQ-12. La puerta de cada sección: solo quien tiene el rol que su API exige. Sin él, la misma
+ * página que no existe: quien verifica no se entera de que hay una sección de moderación.
+ */
+export function SoloSeccion({ seccion, children }: { seccion: SeccionInterna; children: ReactNode }) {
+  const { usuario } = useSesion()
+  return puedeUsar(usuario, seccion) ? children : <NoEncontrada />
+}
+
+const SECCIONES: { seccion: SeccionInterna; a: string; titulo: string; bajada: string }[] = [
+  { seccion: 'verificacion', a: '/interno/verificacion', titulo: T.SECCION_VERIFICACION, bajada: T.SECCION_VERIFICACION_BAJADA },
+  { seccion: 'moderacion', a: '/interno/reportes', titulo: T.SECCION_MODERACION, bajada: T.SECCION_MODERACION_BAJADA },
+]
+
+/** /interno: el índice, con solo las secciones que tu cuenta puede usar. Crece con JQ-13 y JQ-14. */
 export function IndiceInterno() {
   useTitulo(T.TITULO_PANEL)
+  const { usuario } = useSesion()
+  const mias = SECCIONES.filter((s) => puedeUsar(usuario, s.seccion))
   return (
     <div className="contenedor ficha-pagina">
       <h1 className="pagina-titulo">{T.TITULO_PANEL}</h1>
       <p className="bloque-texto">{T.INTRO_PANEL}</p>
+      {mias.length === 0 && <p className="bloque-texto bloque-vacio">{T.SIN_SECCIONES}</p>}
       <ul className="panel-interno-secciones">
-        <li className="bloque">
-          <Link className="enlace" to="/interno/verificacion">
-            {T.SECCION_VERIFICACION}<Icono nombre="chevron" />
-          </Link>
-          <p className="bloque-texto">{T.SECCION_VERIFICACION_BAJADA}</p>
-        </li>
+        {mias.map((s) => (
+          <li key={s.seccion} className="bloque">
+            <Link className="enlace" to={s.a}>{s.titulo}<Icono nombre="chevron" /></Link>
+            <p className="bloque-texto">{s.bajada}</p>
+          </li>
+        ))}
       </ul>
     </div>
   )

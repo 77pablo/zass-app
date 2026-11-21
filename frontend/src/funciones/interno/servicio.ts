@@ -1,5 +1,6 @@
 import { enviar, obtener } from '../../api/cliente'
 import type { Usuario } from '../../sesion/contexto'
+import type { MotivoDeReporte } from '../resenas/servicio'
 
 /**
  * JQ-11. Lo que usa el panel interno: la mesa del Verificador (API-29, API-30, API-31) y los
@@ -10,12 +11,32 @@ import type { Usuario } from '../../sesion/contexto'
  */
 
 export const ROL_VERIFICADOR = 'verificador'
+export const ROL_MODERADOR = 'moderador'
 export const ROL_ADMINISTRADOR = 'administrador'
 
-/** Quién puede ver el panel: el mismo criterio que la política `Verificador` de la API, más el administrador. */
+/**
+ * Cada sección se muestra solo a quien tiene el rol que su API exige, para que nadie vea una
+ * pantalla que le respondería 403:
+ * - verificación (API-29 a 31, 74): política `Verificador` → rol `verificador`;
+ * - moderación (API-52, 53): `RequireRole(Roles.Moderador)` → rol `moderador`;
+ * - tarjetas y auditoría (API-59, 61): política `Administrador` → rol `administrador`.
+ * Ninguno incluye a otro: un administrador sin `verificador` recibe 403 en la cola.
+ */
+export type SeccionInterna = 'verificacion' | 'moderacion' | 'administracion'
+
+const ROL_DE: Record<SeccionInterna, string> = {
+  verificacion: ROL_VERIFICADOR,
+  moderacion: ROL_MODERADOR,
+  administracion: ROL_ADMINISTRADOR,
+}
+
+export function puedeUsar(usuario: Usuario | null, seccion: SeccionInterna): boolean {
+  return (usuario?.roles ?? []).includes(ROL_DE[seccion])
+}
+
+/** Quién puede ver el panel: quien pueda usar al menos una de sus secciones. */
 export function puedeEntrarAlPanel(usuario: Usuario | null): boolean {
-  const roles = usuario?.roles ?? []
-  return roles.includes(ROL_VERIFICADOR) || roles.includes(ROL_ADMINISTRADOR)
+  return (Object.keys(ROL_DE) as SeccionInterna[]).some((s) => puedeUsar(usuario, s))
 }
 
 export type TipoDeCredencialInterna = 'Titulo' | 'Certificacion' | 'Curso' | 'Colegiatura'
@@ -97,4 +118,47 @@ export function minutosRestantes(reservadaHasta: string | null, ahora: number): 
   if (!reservadaHasta) return 0
   const ms = new Date(reservadaHasta).getTime() - ahora
   return ms <= 0 ? 0 : Math.ceil(ms / 60_000)
+}
+
+// ---------------------------------------------------------------- JQ-12 · moderación
+
+
+/**
+ * `FilaDeCola` de API-52. Trae la reseña y el motivo del reporte, pero NO quién reportó: el plan lo
+ * pide («quién reportó, sin su correo») y la API no lo da. Queda como pregunta en el PR.
+ */
+export interface ReporteEnCola {
+  reporteId: string
+  resenaId: string
+  motivo: MotivoDeReporte
+  detalle: string | null
+  estado: 'Abierto' | 'EnRevision' | 'ResueltoMantiene' | 'ResueltoRetira'
+  creadoEn: string
+  calificacion: number
+  comentario: string
+  estadoResena: 'Publicada' | 'OcultaEnModeracion' | 'Retirada'
+  /** El prestador reseñado. */
+  perfilNombre: string
+}
+
+export type DecisionDeModeracion = 'mantener' | 'retirar'
+
+/** Lo que exige MOD-11 al motivo de la decisión (ReglasDeResenas.MotivoResolucionMinimo). */
+export const MOTIVO_MODERACION_MINIMO = 10
+
+/** API-52. Los reportes abiertos, sin los propios, el más antiguo primero. */
+export async function colaDeReportes(): Promise<ReporteEnCola[]> {
+  const cola = await obtener<ReporteEnCola[]>('/api/interno/reportes/cola')
+  return [...cola].sort((a, b) => a.creadoEn.localeCompare(b.creadoEn))
+}
+
+/** API-53. Responde 204. */
+export const resolverReporte = (id: string, decision: DecisionDeModeracion, motivo: string) =>
+  enviar<void>(`/api/interno/reportes/${encodeURIComponent(id)}/resolver`, { decision, motivo })
+
+/** «19 de noviembre, 14:05», en hora de Chile. */
+export function fechaYHora(iso: string): string {
+  return new Intl.DateTimeFormat('es-CL', {
+    day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: 'America/Santiago',
+  }).format(new Date(iso))
 }

@@ -7,7 +7,7 @@ import { Cabecera } from '../marco/Cabecera'
 import { ProveedorDeMenuMovil } from '../marco/ProveedorDeMenuMovil'
 import { Contexto, type EstadoDeSesion, type Usuario } from '../sesion/contexto'
 import { NoEncontrada } from './NoEncontrada'
-import { IndiceInterno, PuertaInterna } from './PanelInterno'
+import { IndiceInterno, PuertaInterna, SoloSeccion } from './PanelInterno'
 
 function sesion(estado: EstadoDeSesion, roles: string[]) {
   const usuario: Usuario | null = estado === 'dentro'
@@ -22,7 +22,8 @@ function pintar(ruta: string, estado: EstadoDeSesion, roles: string[] = []) {
         <Routes>
           <Route path="/interno" element={<PuertaInterna />}>
             <Route index element={<IndiceInterno />} />
-            <Route path="verificacion" element={<p>la mesa</p>} />
+            <Route path="verificacion" element={<SoloSeccion seccion="verificacion"><p>la mesa</p></SoloSeccion>} />
+            <Route path="reportes" element={<SoloSeccion seccion="moderacion"><p>los reportes</p></SoloSeccion>} />
           </Route>
           <Route path="/entrar" element={<p>pantalla de entrar</p>} />
           <Route path="*" element={<NoEncontrada />} />
@@ -65,11 +66,34 @@ describe('JQ-11: la puerta de /interno', () => {
     expect(screen.queryByText(/Panel interno|Verificación/)).toBeNull()
   })
 
-  it.each([['verificador'], ['administrador']])('con el rol %s, entra', (rol) => {
-    pintar('/interno', 'dentro', ['buscador', rol])
+  it('el verificador entra y ve solo la verificación', () => {
+    pintar('/interno', 'dentro', ['buscador', 'verificador'])
     expect(screen.getByRole('heading', { level: 1, name: 'Panel interno' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Verificación de credenciales/ }))
       .toHaveAttribute('href', '/interno/verificacion')
+    expect(screen.queryByRole('link', { name: /Reseñas reportadas/ })).toBeNull()
+  })
+
+  it('el moderador entra y ve solo la moderación (JQ-12)', () => {
+    pintar('/interno', 'dentro', ['buscador', 'moderador'])
+    expect(screen.getByRole('link', { name: /Reseñas reportadas/ })).toHaveAttribute('href', '/interno/reportes')
+    expect(screen.queryByRole('link', { name: /Verificación de credenciales/ })).toBeNull()
+  })
+
+  it('el administrador entra, pero sin verificador ni moderador no ve esas secciones: su API le respondería 403', () => {
+    pintar('/interno', 'dentro', ['buscador', 'administrador'])
+    expect(screen.getByRole('heading', { level: 1, name: 'Panel interno' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Verificación de credenciales|Reseñas reportadas/ })).toBeNull()
+  })
+
+  it.each([
+    ['el moderador, en la verificación', '/interno/verificacion', ['moderador'], 'la mesa'],
+    ['el verificador, en los reportes', '/interno/reportes', ['verificador'], 'los reportes'],
+    ['el administrador, en los reportes', '/interno/reportes', ['administrador'], 'los reportes'],
+  ])('cada sección tiene su puerta: %s ve una página que no existe', (_, ruta, roles, contenido) => {
+    pintar(ruta, 'dentro', roles)
+    expect(screen.getByRole('heading', { level: 1, name: 'Esta página no existe.' })).toBeInTheDocument()
+    expect(screen.queryByText(contenido)).toBeNull()
   })
 
   it('las subrutas también pasan por la puerta', () => {
@@ -99,7 +123,7 @@ describe('JQ-11: el enlace en «Más»', () => {
     )
   }
 
-  it.each([['verificador'], ['administrador']])('con el rol %s aparece el enlace', async (rol) => {
+  it.each([['verificador'], ['moderador'], ['administrador']])('con el rol %s aparece el enlace', async (rol) => {
     pintarMenu(['buscador', rol])
     await userEvent.click(screen.getByRole('button', { name: 'Más' }))
     expect(screen.getByRole('link', { name: /Panel interno/ })).toHaveAttribute('href', '/interno')
