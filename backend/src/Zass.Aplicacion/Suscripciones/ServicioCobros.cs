@@ -174,6 +174,8 @@ public sealed class ServicioCobros : IServicioCobros
         if (string.IsNullOrWhiteSpace(cmd.ClaveIdempotencia))
             return Resultado.Falla<IntentoDePagoDto>(
                 Fallas.Validacion, "Falta la clave de idempotencia de la solicitud.");
+        if (EsClaveReservada(cmd.ClaveIdempotencia))
+            return ClaveReservada();
 
         // CC-04, antes de abrir nada: el doble envio devuelve el MISMO intento. Se vuelve
         // a comprobar dentro de la transaccion, porque entre esta lectura y el INSERT cabe
@@ -336,6 +338,8 @@ public sealed class ServicioCobros : IServicioCobros
         if (string.IsNullOrWhiteSpace(claveIdempotencia))
             return Resultado.Falla<IntentoDePagoDto>(
                 Fallas.Validacion, "Falta la clave de idempotencia de la solicitud.");
+        if (EsClaveReservada(claveIdempotencia))
+            return ClaveReservada();
 
         // CC-04, igual que el cobro: el doble clic devuelve el MISMO intento y no toma un
         // segundo cupo. Y como alli, solo el intento propio.
@@ -467,6 +471,31 @@ public sealed class ServicioCobros : IServicioCobros
     /// ni devuelve su intento (antes salia entero, con su UrlParaPagar), y se responde antes
     /// de llegar al indice unico <c>ux_intento_pago_clave</c>, que lo convertiria en un 500.
     /// </summary>
+    /// <summary>
+    /// CC-04. Las claves de <c>intentos_de_pago</c> las ponen DOS autores en la misma columna:
+    /// el cliente (API-68, API-76) y el servidor (el cobro automatico,
+    /// <see cref="ClaveDeCobroAutomatico"/>). El espacio del servidor se reserva: si un
+    /// cliente pudiera crear un intento con la clave <c>cobro-automatico:{suscripcion}:{periodo}</c>
+    /// de OTRA persona, el indice unico <c>ux_intento_pago_clave</c> y la comprobacion de
+    /// «ya existe» harian que el cobro automatico de esa persona se saltara (auditoria del
+    /// 21-nov-2026). Filtrar por dueño en el cobro automatico no basta: el indice unico es
+    /// global y el INSERT chocaria igual. Por eso se cierra la puerta de entrada.
+    ///
+    /// <para>
+    /// Sin distinguir mayusculas: una variante en mayusculas no choca con el indice, pero
+    /// tampoco es una clave que un cliente legitimo genere, y rechazarla no cuesta nada.
+    /// </para>
+    /// </summary>
+    public static bool EsClaveReservada(string clave) =>
+        PrefijosReservados.Any(p => clave.StartsWith(p, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Los prefijos que solo escribe el servidor en <c>intentos_de_pago</c>.</summary>
+    private static readonly string[] PrefijosReservados = [PrefijoCobroAutomatico];
+
+    private static Resultado<IntentoDePagoDto> ClaveReservada() => Resultado.Falla<IntentoDePagoDto>(
+        Fallas.Validacion,
+        "La clave de idempotencia usa un prefijo reservado del servidor. Genera otra (por ejemplo, un UUID).");
+
     private static Resultado<IntentoDePagoDto> ClaveAjena() => Resultado.Falla<IntentoDePagoDto>(
         Fallas.Conflicto,
         "No pudimos procesar esta solicitud de pago. Vuelve a cargar la página e inténtalo de nuevo.");
