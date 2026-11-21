@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using System.IO;
+using Microsoft.EntityFrameworkCore;
 using Zass.Aplicacion.Busqueda;
 using Zass.Aplicacion.Catalogo;
 using Zass.Aplicacion.Credenciales;
@@ -11,6 +12,7 @@ using Zass.Dominio.Comun;
 using Zass.Dominio.Credenciales;
 using Zass.Dominio.Identidad;
 using Zass.Dominio.Suscripciones;
+using Zass.Infraestructura.Archivos;
 using Zass.Infraestructura.Datos.Repositorios;
 using Zass.Infraestructura.Seguridad;
 
@@ -60,7 +62,11 @@ public class BusquedaIntegracionPruebas : IDisposable
             new ServicioIdentidad(new RepositorioUsuariosEfCore(ctx), new RepositorioPerfilesEfCore(ctx)),
             new ServicioCredenciales(new RepositorioCredencialesEfCore(ctx), trabajo, _reloj, auditor),
             _suscripciones,
-            _reloj);
+            _reloj,
+            new ServicioFotosDeTrabajo(
+                new RepositorioPerfilesEfCore(ctx), trabajo,
+                new AlmacenLocal(Path.Combine(Path.GetTempPath(), "zass-pruebas-fotos")),
+                new ProcesadorDeImagenesImageSharp(), auditor, _reloj, _suscripciones));
     }
 
     public void Dispose() => _prueba.Dispose();

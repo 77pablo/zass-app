@@ -8,7 +8,7 @@ using Zass.Api.Configuracion;
 namespace Zass.Api.Endpoints;
 
 /// <summary>
-/// MOD-08 (JQ-9). La foto del perfil: subirla, quitarla y servirla.
+/// MOD-08 (JQ-9). La foto del perfil y las fotos de trabajos: subirlas, quitarlas y servirlas.
 ///
 /// <para>
 /// Ningun archivo se sirve directo desde el almacenamiento: todos pasan por aqui (o por los de
@@ -56,9 +56,38 @@ public static class EndpointsArchivos
             .RequireRateLimiting(Tasa.General)
             .WithName("API-72-quitar");
 
+        // API-74 - Subir una foto de trabajo (multipart, campo "archivo").
+        // Solo el dueno del perfil. Procesa como la foto de perfil pero en un tamano mas grande
+        // (lado mayor 1200 px, WebP, sin metadatos). Rechaza si ya tiene MaxFotosTrabajos de su plan.
+        mia.MapPost("/fotos-trabajo", async (
+                IFormFile? archivo, ServicioFotosDeTrabajo fotos, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+                if (archivo is null) return SinArchivo();
+
+                await using var contenido = archivo.OpenReadStream();
+                var r = await fotos.SubirAsync(usuarioId.Value, contenido, archivo.Length);
+                return r.Exito ? Results.Ok(new { urlFoto = r.Valor }) : Respuestas.Problema(r);
+            })
+            .WithMetadata(new RequestSizeLimitAttribute(LimiteDeLaPeticion))
+            .RequireRateLimiting(Tasa.Sensible)
+            .WithName("API-74");
+
+        // API-74-quitar - Borrar una foto de trabajo propia.
+        mia.MapDelete("/fotos-trabajo/{fotoId:guid}", async (
+                Guid fotoId, ServicioFotosDeTrabajo fotos, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+                return Respuestas.DeResultado(await fotos.BorrarAsync(usuarioId.Value, fotoId));
+            })
+            .RequireRateLimiting(Tasa.General)
+            .WithName("API-74-quitar");
+
         // API-73 - Servir una foto. Publica: es la misma que se ve en la ficha. El nombre es
         // aleatorio y no cambia nunca (una foto nueva es un nombre nuevo), asi que se puede
-        // guardar en cache para siempre.
+        // guardar en cache para siempre. Sirve tanto la foto de perfil como las fotos de trabajos.
         app.MapGet("/api/archivos/fotos/{nombre}", async (
                 string nombre, IAlmacenDeArchivos almacen, HttpContext http) =>
             {

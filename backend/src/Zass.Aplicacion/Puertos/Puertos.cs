@@ -180,6 +180,14 @@ public interface IRepositorioPerfiles
     Task<PerfilBuscador?> BuscadorDeUsuarioAsync(Guid usuarioId, CancellationToken ct = default);
     void Agregar(PerfilPrestador perfil);
     void Agregar(PerfilBuscador perfil);
+
+    // Fotos de trabajos (T69)
+    Task<int> ContarFotosDeTrabajoAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+    Task<int> ObtenerSiguienteOrdenFotoTrabajoAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+    void AgregarFotoTrabajo(FotoTrabajo foto);
+    void EliminarFotoTrabajo(FotoTrabajo foto);
+    Task<FotoTrabajo?> FotoTrabajoPorIdAsync(Guid id, CancellationToken ct = default);
+    Task<IReadOnlyList<FotoTrabajoPublicaDto>> FotosDeTrabajoParaFichaAsync(Guid perfilPrestadorId, CancellationToken ct = default);
 }
 
 /// <summary>

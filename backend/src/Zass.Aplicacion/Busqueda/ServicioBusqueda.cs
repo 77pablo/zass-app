@@ -30,12 +30,13 @@ public sealed class ServicioBusqueda : IServicioBusqueda
     private readonly IServicioCredenciales _credenciales;
     private readonly IServicioSuscripciones _suscripciones;
     private readonly IRelojSistema _reloj;
+    private readonly IServicioFotosDeTrabajo _fotosTrabajo;
 
     public ServicioBusqueda(
         IRepositorioBusqueda repo, IServicioCatalogo catalogo,
         IServicioGeografia geografia, IServicioIdentidad identidad,
         IServicioCredenciales credenciales, IServicioSuscripciones suscripciones,
-        IRelojSistema reloj)
+        IRelojSistema reloj, IServicioFotosDeTrabajo fotosTrabajo)
     {
         _credenciales = credenciales;
         _suscripciones = suscripciones;
@@ -44,6 +45,7 @@ public sealed class ServicioBusqueda : IServicioBusqueda
         _geografia = geografia;
         _identidad = identidad;
         _reloj = reloj;
+        _fotosTrabajo = fotosTrabajo;
     }
 
     public async Task<Resultado<PaginaDeBusqueda>> BuscarAsync(
@@ -296,6 +298,7 @@ public sealed class ServicioBusqueda : IServicioBusqueda
         var servicios = await _catalogo.ServiciosPublicosDePrestadorAsync(perfil.Id, ct);
         var zonas = await _geografia.ZonasDeCoberturaAsync(perfil.Id, ct);
         var credenciales = await _credenciales.CredencialesPublicasAsync(perfil.Id, ct);
+        var fotosTrabajo = await _fotosTrabajo.ObtenerParaFichaAsync(perfil.Id, ct);
 
         // RN-S6-10. La ficha se sigue viendo entera: lo que se apaga es contactar y agendar.
         // El contacto se vacia AQUI, en el servidor, por lo mismo que se vacia sin sesion: si
@@ -321,7 +324,8 @@ public sealed class ServicioBusqueda : IServicioBusqueda
             perfil.TotalResenas,
             contacto,
             perfil.PublicadoEn,
-            vigente);
+            vigente,
+            fotosTrabajo);
     }
 
     // ------------------------------------------------------------- armado

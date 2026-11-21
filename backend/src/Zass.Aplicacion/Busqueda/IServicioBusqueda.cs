@@ -1,5 +1,6 @@
 using Zass.Aplicacion.Credenciales;
 using Zass.Aplicacion.Catalogo;
+using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
 
 namespace Zass.Aplicacion.Busqueda;
@@ -227,6 +228,13 @@ public sealed record FichaPublicaDto(
     /// Sin valor por omision a proposito: quien componga esta ficha tiene que decidirlo.
     /// </summary>
     bool SuscripcionVigente,
+
+    /// <summary>
+    /// Fotos de trabajos realizados (T69). Publicas, en su orden. Vacio si el prestador no tiene
+    /// fotos o su plan no lo permite (Esencial = 0).
+    /// </summary>
+    IReadOnlyList<FotoTrabajoPublicaDto> FotosTrabajo,
+
     /// <summary>
     /// Verdadero cuando quien pregunta NO tiene sesion y por eso <see cref="Contacto"/> viene vacio. Buscar y ver
     /// fichas es publico; contactar exige cuenta gratis. Lo pone el endpoint, que es quien conoce la sesion: el

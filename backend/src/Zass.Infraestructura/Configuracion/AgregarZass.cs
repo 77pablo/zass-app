@@ -330,10 +330,11 @@ public static class RegistroDeServicios
                 .GetValue(OpcionesVerificacion.ClaveDeConfiguracion, false),
         });
 
-        // --- MOD-08 Archivos (JQ-9): la foto del perfil y los documentos de respaldo ---
+        // --- MOD-08 Archivos (JQ-9): la foto del perfil, fotos de trabajos y los documentos de respaldo ---
         servicios.AddSingleton<IProcesadorDeImagenes, ProcesadorDeImagenesImageSharp>();
         servicios.AddSingleton<IAlmacenDeArchivos>(sp => ElegirAlmacen(sp));
         servicios.AddScoped<ServicioFotoDePerfil>();
+        servicios.AddScoped<ServicioFotosDeTrabajo>();
 
         // --- MOD-03 Catalogo ---
         servicios.AddScoped<IServicioCatalogo, ServicioCatalogo>();

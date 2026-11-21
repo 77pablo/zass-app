@@ -26,6 +26,7 @@ public class ZassDbContext : DbContext
     public DbSet<Sesion> Sesiones => Set<Sesion>();
     public DbSet<PerfilPrestador> PerfilesPrestador => Set<PerfilPrestador>();
     public DbSet<PerfilBuscador> PerfilesBuscador => Set<PerfilBuscador>();
+    public DbSet<FotoTrabajo> FotosDeTrabajo => Set<FotoTrabajo>();
 
     // Catalogo y geografia
     public DbSet<Rubro> Rubros => Set<Rubro>();
@@ -183,6 +184,16 @@ public class ZassDbContext : DbContext
                 .HasForeignKey<PerfilPrestador>(x => x.UsuarioId)
                 .OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Rubro).WithMany().HasForeignKey(x => x.RubroId);
+        });
+
+        b.Entity<FotoTrabajo>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.PerfilPrestadorId, x.Orden });
+            e.Property(x => x.ClaveAlmacen).HasMaxLength(200).IsRequired();
+            e.HasOne(x => x.PerfilPrestador).WithMany()
+                .HasForeignKey(x => x.PerfilPrestadorId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<PerfilBuscador>(e =>
