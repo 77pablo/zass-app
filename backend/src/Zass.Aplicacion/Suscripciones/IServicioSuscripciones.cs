@@ -112,6 +112,13 @@ public interface IServicioSuscripciones
     /// </summary>
     Task<int> LimiteDeTarjetasAsync(Guid perfilPrestadorId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Cuantas fotos de trabajo permite el plan vigente del prestador. Lo necesita API-XX
+    /// para validar el tope al subir. Mismo criterio que LimiteDeServiciosAsync: sin
+    /// suscripcion vigente manda el plan inicial.
+    /// </summary>
+    Task<int> LimiteDeFotosDeTrabajoAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+
     /// <summary>Cuantos de los 50 cupos del plan fundador quedan disponibles hoy.</summary>
     Task<int> CuposFundadorDisponiblesAsync(CancellationToken ct = default);
 

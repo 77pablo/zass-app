@@ -162,6 +162,14 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
         return plan?.MaxTarjetas ?? 0;
     }
 
+    public async Task<int> LimiteDeFotosDeTrabajoAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        var vigente = await _repo.VigenteDePrestadorAsync(perfilPrestadorId, _reloj.Ahora, ct);
+        var plan = vigente?.Plan ?? await _repo.PlanPorCodigoAsync(PlanInicial, ct);
+        return plan?.MaxFotosTrabajos ?? 0;
+    }
+
     // ------------------------------------------------------------- Ciclo de vida
 
     public async Task<Resultado> IniciarPruebaAsync(

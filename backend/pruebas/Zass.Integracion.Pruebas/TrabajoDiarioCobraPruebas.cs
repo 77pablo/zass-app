@@ -150,6 +150,10 @@ public class TrabajoDiarioCobraPruebas
             Guid perfilPrestadorId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
+        public Task<int> LimiteDeFotosDeTrabajoAsync(
+            Guid perfilPrestadorId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<int> CuposFundadorDisponiblesAsync(CancellationToken ct = default) =>
             throw new NotSupportedException();
 

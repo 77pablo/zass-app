@@ -39,6 +39,9 @@ public interface IAlmacenDeArchivos
 /// <summary>Los dos tamaños de una foto de perfil, ya en WebP.</summary>
 public sealed record FotoPreparada(byte[] Grande, byte[] Chica);
 
+/// <summary>Una foto de trabajo para la ficha publica: URL y orden.</summary>
+public sealed record FotoTrabajoPublicaDto(string Url, int Orden);
+
 /// <summary>Un archivo abierto para leer. El stream es de quien lo pidio.</summary>
 public sealed record ArchivoAbierto(Stream Contenido, string TipoMime, long Largo) : IAsyncDisposable
 {
@@ -72,4 +75,12 @@ public interface IProcesadorDeImagenes
     /// </summary>
     Task<Resultado<byte[]>> LimpiarImagenAsync(
         Stream imagen, TipoArchivo tipo, CancellationToken ct = default);
+
+    /// <summary>
+    /// Una foto de trabajo: redimensiona manteniendo la proporcion, con lado mayor <= <paramref name="ladoMaximo"/>,
+    /// vuelve a codificar a WebP sin metadatos. NO recorta en cuadrado (la foto de trabajo no se ve en circulo).
+    /// Falla con TipoDeArchivoNoAceptado si no se puede leer como imagen.
+    /// </summary>
+    Task<Resultado<byte[]>> PrepararFotoTrabajoAsync(
+        Stream imagen, int ladoMaximo, CancellationToken ct = default);
 }

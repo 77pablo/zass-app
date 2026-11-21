@@ -186,6 +186,24 @@ public class PerfilPrestador
     public bool PromedioVisible() => TotalResenas >= 3;
 }
 
+/// <summary>
+/// CL-03 · TBL-NUEVA. Fotos de trabajos realizados que sube el prestador para su ficha publica.
+/// Son PUBLICAS como la foto de perfil (no como los documentos de credenciales).
+/// El tope de cuantas puede tener lo dice su plan vigente (Plan.MaxFotosTrabajos).
+/// </summary>
+public class FotoTrabajo
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid PerfilPrestadorId { get; set; }
+    /// <summary>Clave en el almacenamiento (p. ej. "fotos/abc123.webp"). La genera el servidor.</summary>
+    public string ClaveAlmacen { get; set; } = "";
+    /// <summary>Orden de visualizacion en la ficha (0 = primero).</summary>
+    public int Orden { get; set; }
+    public DateTime CreadaEn { get; set; } = DateTime.UtcNow;
+
+    public PerfilPrestador? PerfilPrestador { get; set; }
+}
+
 /// <summary>CL-04 · TBL-06.</summary>
 public class PerfilBuscador
 {

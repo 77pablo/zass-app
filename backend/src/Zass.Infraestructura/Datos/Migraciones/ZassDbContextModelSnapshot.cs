@@ -5472,6 +5472,40 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         });
                 });
 
+            modelBuilder.Entity("Zass.Dominio.Identidad.FotoTrabajo", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ClaveAlmacen")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("clave_almacen");
+
+                    b.Property<DateTime>("CreadaEn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creada_en");
+
+                    b.Property<int>("Orden")
+                        .HasColumnType("integer")
+                        .HasColumnName("orden");
+
+                    b.Property<Guid>("PerfilPrestadorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("perfil_prestador_id");
+
+                    b.HasKey("Id")
+                        .HasName("p_k_fotos_de_trabajo");
+
+                    b.HasIndex("PerfilPrestadorId", "Orden")
+                        .HasDatabaseName("i_x_fotos_de_trabajo_perfil_prestador_id_orden");
+
+                    b.ToTable("fotos_de_trabajo");
+                });
+
             modelBuilder.Entity("Zass.Dominio.Identidad.PerfilBuscador", b =>
                 {
                     b.Property<Guid>("Id")
@@ -7159,6 +7193,18 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasConstraintName("f_k_verificaciones_credenciales_credencial_id");
 
                     b.Navigation("Credencial");
+                });
+
+            modelBuilder.Entity("Zass.Dominio.Identidad.FotoTrabajo", b =>
+                {
+                    b.HasOne("Zass.Dominio.Identidad.PerfilPrestador", "PerfilPrestador")
+                        .WithMany()
+                        .HasForeignKey("PerfilPrestadorId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("f_k_fotos_de_trabajo_perfiles_prestador_perfil_prestador_id");
+
+                    b.Navigation("PerfilPrestador");
                 });
 
             modelBuilder.Entity("Zass.Dominio.Identidad.PerfilBuscador", b =>

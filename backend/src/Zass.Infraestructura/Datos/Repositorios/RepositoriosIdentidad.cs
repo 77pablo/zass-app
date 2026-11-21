@@ -129,6 +129,41 @@ public sealed class RepositorioPerfilesEfCore : IRepositorioPerfiles
 
     public void Agregar(PerfilPrestador perfil) => _ctx.PerfilesPrestador.Add(perfil);
     public void Agregar(PerfilBuscador perfil) => _ctx.PerfilesBuscador.Add(perfil);
+
+    // Fotos de trabajos (T69)
+    public async Task<int> ContarFotosDeTrabajoAsync(Guid perfilPrestadorId, CancellationToken ct = default) =>
+        await _ctx.FotosDeTrabajo.CountAsync(f => f.PerfilPrestadorId == perfilPrestadorId, ct);
+
+    public async Task<int> ObtenerSiguienteOrdenFotoTrabajoAsync(Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        var maxOrden = await _ctx.FotosDeTrabajo
+            .Where(f => f.PerfilPrestadorId == perfilPrestadorId)
+            .MaxAsync(f => (int?)f.Orden, ct);
+        return (maxOrden ?? -1) + 1;
+    }
+
+    public void AgregarFotoTrabajo(FotoTrabajo foto) => _ctx.FotosDeTrabajo.Add(foto);
+
+    public void EliminarFotoTrabajo(FotoTrabajo foto) => _ctx.FotosDeTrabajo.Remove(foto);
+
+    public async Task<FotoTrabajo?> FotoTrabajoPorIdAsync(Guid id, CancellationToken ct = default) =>
+        await _ctx.FotosDeTrabajo.FirstOrDefaultAsync(f => f.Id == id, ct);
+
+    public async Task<List<FotoTrabajo>> FotosDeTrabajoDePerfilAsync(Guid perfilPrestadorId, CancellationToken ct = default) =>
+        await _ctx.FotosDeTrabajo
+            .Where(f => f.PerfilPrestadorId == perfilPrestadorId)
+            .OrderBy(f => f.Orden).ThenBy(f => f.CreadaEn)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<FotoTrabajoPublicaDto>> FotosDeTrabajoParaFichaAsync(Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        var prefijo = TiposDeArchivo.CarpetaFotos.Length + 1;
+        return await _ctx.FotosDeTrabajo
+            .Where(f => f.PerfilPrestadorId == perfilPrestadorId)
+            .OrderBy(f => f.Orden)
+            .Select(f => new FotoTrabajoPublicaDto(TiposDeArchivo.RutaPublica + f.ClaveAlmacen.Substring(prefijo), f.Orden))
+            .ToListAsync(ct);
+    }
 }
 
 /// <summary>

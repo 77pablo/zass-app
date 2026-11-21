@@ -52,6 +52,7 @@ public sealed class BaseEnMemoria : IUnidadDeTrabajo
     public List<CambioCita> CambiosCita { get; } = new();
     public List<Contacto> Contactos { get; } = new();
     public List<Notificacion> Notificaciones { get; } = new();
+    public List<FotoTrabajo> FotosDeTrabajo { get; } = new();
 
     public int Guardados { get; private set; }
     public Task<int> GuardarAsync(CancellationToken ct = default)
@@ -145,4 +146,37 @@ public sealed class RepositorioPerfilesEnMemoria : IRepositorioPerfiles
 
     public void Agregar(PerfilPrestador perfil) => _base.PerfilesPrestador.Add(perfil);
     public void Agregar(PerfilBuscador perfil) => _base.PerfilesBuscador.Add(perfil);
+
+    // Fotos de trabajos (T69)
+    public Task<int> ContarFotosDeTrabajoAsync(Guid perfilPrestadorId, CancellationToken ct = default) =>
+        Task.FromResult(_base.FotosDeTrabajo.Count(f => f.PerfilPrestadorId == perfilPrestadorId));
+
+    public Task<int> ObtenerSiguienteOrdenFotoTrabajoAsync(Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        var maxOrden = _base.FotosDeTrabajo
+            .Where(f => f.PerfilPrestadorId == perfilPrestadorId)
+            .Max(f => (int?)f.Orden);
+        return Task.FromResult((maxOrden ?? -1) + 1);
+    }
+
+    public void AgregarFotoTrabajo(FotoTrabajo foto) => _base.FotosDeTrabajo.Add(foto);
+    public void EliminarFotoTrabajo(FotoTrabajo foto) => _base.FotosDeTrabajo.Remove(foto);
+
+    public Task<FotoTrabajo?> FotoTrabajoPorIdAsync(Guid id, CancellationToken ct = default) =>
+        Task.FromResult(_base.FotosDeTrabajo.FirstOrDefault(f => f.Id == id));
+
+    public Task<List<FotoTrabajo>> FotosDeTrabajoDePerfilAsync(Guid perfilPrestadorId, CancellationToken ct = default) =>
+        Task.FromResult(_base.FotosDeTrabajo.Where(f => f.PerfilPrestadorId == perfilPrestadorId)
+            .OrderBy(f => f.Orden).ThenBy(f => f.CreadaEn).ToList());
+
+    public Task<IReadOnlyList<FotoTrabajoPublicaDto>> FotosDeTrabajoParaFichaAsync(Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        var prefijo = TiposDeArchivo.CarpetaFotos.Length + 1;
+        return Task.FromResult<IReadOnlyList<FotoTrabajoPublicaDto>>(
+            _base.FotosDeTrabajo
+                .Where(f => f.PerfilPrestadorId == perfilPrestadorId)
+                .OrderBy(f => f.Orden)
+                .Select(f => new FotoTrabajoPublicaDto(TiposDeArchivo.RutaPublica + f.ClaveAlmacen.Substring(prefijo), f.Orden))
+                .ToList());
+    }
 }

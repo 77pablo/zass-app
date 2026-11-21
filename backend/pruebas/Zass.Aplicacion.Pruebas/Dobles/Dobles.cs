@@ -1,6 +1,8 @@
 ﻿using System.Security.Cryptography;
 using System.Text;
+using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Puertos;
+using Zass.Aplicacion.Suscripciones;
 using Zass.Dominio.Comun;
 using Zass.Dominio.Identidad;
 
@@ -180,4 +182,56 @@ public sealed class RepositorioAuditoriaEnMemoria : IRepositorioAuditoria
         r.Id = _nextId++;
         _registros.Add(r);
     }
+}
+
+/// <summary>Doble de IAlmacenDeArchivos que no guarda nada.</summary>
+public sealed class AlmacenApagado : IAlmacenDeArchivos
+{
+    public Task<Resultado> GuardarAsync(string clave, Stream contenido, string tipoMime, CancellationToken ct = default)
+        => Task.FromResult(Resultado.Falla(Fallas.AlmacenamientoNoDisponible, "Almacenamiento deshabilitado en pruebas."));
+    public Task<ArchivoAbierto?> AbrirAsync(string clave, CancellationToken ct = default) => Task.FromResult<ArchivoAbierto?>(null);
+    public Task<Resultado> BorrarAsync(string clave, CancellationToken ct = default) => Task.FromResult(Resultado.Ok());
+}
+
+/// <summary>Doble de IProcesadorDeImagenes que devuelve la imagen sin tocar.</summary>
+public sealed class ProcesadorDeImagenesDePrueba : IProcesadorDeImagenes
+{
+    public Task<Resultado<FotoPreparada>> PrepararFotoAsync(Stream imagen, int ladoGrande, int ladoChico, CancellationToken ct = default)
+    {
+        var bytes = new byte[imagen.Length];
+        imagen.Position = 0;
+        imagen.Read(bytes, 0, bytes.Length);
+        return Task.FromResult(Resultado.Ok(new FotoPreparada(bytes, bytes)));
+    }
+
+    public Task<Resultado<byte[]>> LimpiarImagenAsync(Stream imagen, TipoArchivo tipo, CancellationToken ct = default)
+    {
+        var bytes = new byte[imagen.Length];
+        imagen.Position = 0;
+        imagen.Read(bytes, 0, bytes.Length);
+        return Task.FromResult(Resultado.Ok(bytes));
+    }
+
+    public Task<Resultado<byte[]>> PrepararFotoTrabajoAsync(Stream imagen, int ladoMaximo, CancellationToken ct = default)
+    {
+        var bytes = new byte[imagen.Length];
+        imagen.Position = 0;
+        imagen.Read(bytes, 0, bytes.Length);
+        return Task.FromResult(Resultado.Ok(bytes));
+    }
+}
+
+/// <summary>Doble de IServicioFotosDeTrabajo que devuelve lista vacia.</summary>
+public sealed class ServicioFotosDeTrabajoFalso : IServicioFotosDeTrabajo
+{
+    public Task<Resultado<FotoTrabajoPropiaDto>> SubirAsync(Guid usuarioId, Stream contenido, long largoDeclarado, CancellationToken ct = default)
+        => Task.FromResult(Resultado.Falla<FotoTrabajoPropiaDto>(Fallas.ReglaDeNegocio, "Falso en pruebas."));
+    public Task<Resultado<MisFotosDeTrabajoDto>> MisFotosAsync(Guid usuarioId, CancellationToken ct = default)
+        => Task.FromResult(Resultado.Falla<MisFotosDeTrabajoDto>(Fallas.ReglaDeNegocio, "Falso en pruebas."));
+    public Task<Resultado> OrdenarAsync(Guid usuarioId, IReadOnlyList<Guid> ids, CancellationToken ct = default)
+        => Task.FromResult(Resultado.Falla(Fallas.ReglaDeNegocio, "Falso en pruebas."));
+    public Task<Resultado> BorrarAsync(Guid usuarioId, Guid fotoId, CancellationToken ct = default)
+        => Task.FromResult(Resultado.Falla(Fallas.ReglaDeNegocio, "Falso en pruebas."));
+    public Task<IReadOnlyList<FotoTrabajoPublicaDto>> ObtenerParaFichaAsync(Guid perfilPrestadorId, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<FotoTrabajoPublicaDto>>(Array.Empty<FotoTrabajoPublicaDto>());
 }
