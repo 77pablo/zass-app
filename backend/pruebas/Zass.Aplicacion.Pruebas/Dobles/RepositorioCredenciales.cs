@@ -24,7 +24,8 @@ public sealed class RepositorioCredencialesEnMemoria : IRepositorioCredenciales
     public Task<IReadOnlyList<Credencial>> PublicasDePrestadorAsync(Guid perfilPrestadorId, CancellationToken ct = default)
     {
         IReadOnlyList<Credencial> r = _base.Credenciales
-            .Where(c => c.PerfilPrestadorId == perfilPrestadorId && c.Estado != EstadoCredencial.Borrador).ToList();
+            .Where(c => c.PerfilPrestadorId == perfilPrestadorId
+                && c.Estado != EstadoCredencial.Borrador && c.Estado != EstadoCredencial.Rechazada).ToList();
         return Task.FromResult(r);
     }
 

@@ -58,7 +58,10 @@ public enum TipoNotificacion
     ResenaNueva, ResenaRespondida, CredencialResuelta, TarjetaActivada,
     SuscripcionPorVencer, SuscripcionVencida,
     // ES-1: el cobro automatico de la mensualidad fue rechazado. Uno por periodo.
-    CobroRechazado
+    CobroRechazado,
+    // 21-nov-2026 (decision de Pablo): alguien intento registrarse con el RUT de esta cuenta.
+    // Va al correo de la cuenta original, nunca al que se escribio en el formulario.
+    RegistroConRutExistente
 }
 
 public enum CanalNotificacion { Correo, Push }

@@ -187,11 +187,13 @@ public partial class ApiPruebas
     }
 
     /// <summary>
-    /// Un RUT que ya usa otra cuenta se rechaza con el MISMO cuerpo que en el registro: ni dice
-    /// de quien es ni deja distinguir un camino del otro.
+    /// Un RUT que ya usa otra cuenta se rechaza sin decir de quien es. Desde el 21-nov-2026 el
+    /// registro (API-08) responde otra cosa —un aviso y un correo a la dueña—, pero ES-2 NO
+    /// cambio: aqui la persona ya tiene sesion en otra cuenta, y no se le escribe a nadie (ver la
+    /// recomendacion en el PR). Esta prueba fija las dos cosas para que nadie las mezcle sin querer.
     /// </summary>
     [Fact]
-    public async Task ES2_un_rut_de_otra_cuenta_se_rechaza_igual_que_en_el_registro()
+    public async Task ES2_un_rut_de_otra_cuenta_se_rechaza_sin_decir_de_quien_es_y_sin_correo()
     {
         var rutAjeno = DatosDeRegistro.Rut();
         var duena = NuevoCorreo();
@@ -213,7 +215,15 @@ public partial class ApiPruebas
 
         Assert.Equal(HttpStatusCode.Conflict, otroRegistro.StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, completar.StatusCode);
-        Assert.Equal(await CuerpoComparable.De(otroRegistro), await CuerpoComparable.De(completar));
+        var cuerpo = await CuerpoComparable.De(completar);
+        Assert.Equal(Zass.Aplicacion.Identidad.ServicioRegistro.MensajeRutOcupado,
+            JsonDocument.Parse(cuerpo).RootElement.GetProperty("detail").GetString());
+        Assert.DoesNotContain(duena, cuerpo);
         Assert.Equal(3, (await DatosPendientesAsync()).Length);
+
+        // El unico aviso de RUT a la dueña es el del registro; completar no saca otro.
+        using var ctx = ContextoDePrueba.Crear();
+        Assert.Equal(1, await ctx.Notificaciones.CountAsync(n => n.Destinatario!.Correo == duena
+            && n.Tipo == Zass.Dominio.Comun.TipoNotificacion.RegistroConRutExistente));
     }
 }

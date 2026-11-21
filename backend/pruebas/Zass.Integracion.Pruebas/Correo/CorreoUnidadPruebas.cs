@@ -402,6 +402,8 @@ public class CorreoUnidadPruebas
             TipoNotificacion.CitaReprogramada,
             // El planificador (A-09), desde JQ-3.
             TipoNotificacion.Recordatorio24h, TipoNotificacion.Recordatorio2h,
+            // ServicioRegistro, desde el 21-nov-2026: registro con un RUT que ya tiene cuenta.
+            TipoNotificacion.RegistroConRutExistente,
         };
         // Ya no queda ninguno pendiente a conciencia: PerfilPublicado era el ultimo y tiene
         // plantilla desde el 13-nov-2026. Si manana se encola un tipo nuevo sin plantilla, esta
@@ -411,6 +413,33 @@ public class CorreoUnidadPruebas
         var huecos = encolados.Except(pendientes).Where(t => !Plantillas.TienePlantilla(t)).ToArray();
 
         Assert.Empty(huecos);
+    }
+
+    // ------------------------------------------------------- RUT con cuenta (21-nov-2026)
+
+    /// <summary>
+    /// El aviso a la dueña de un RUT: los dos enlaces (entrar y pedir contraseña nueva), ningun
+    /// token (no lo pidio ella), el nombre escapado y nunca en el asunto. No pide nada de la carga.
+    /// </summary>
+    [Fact]
+    public void El_aviso_de_RUT_con_cuenta_lleva_entrar_y_recuperar_y_ningun_secreto()
+    {
+        Assert.True(Plantillas.TienePlantilla(TipoNotificacion.RegistroConRutExistente));
+        Assert.False(Plantillas.LlevaToken(TipoNotificacion.RegistroConRutExistente));
+
+        foreach (var carga in new[] { "", "{}", CargaDeAviso.Purgada })
+            Assert.NotNull(Plantillas.Renderizar(TipoNotificacion.RegistroConRutExistente, "Ana", "https://zass.cl/", carga));
+
+        var r = Plantillas.Renderizar(TipoNotificacion.RegistroConRutExistente, "Luis <b>Pérez</b>", "https://zass.cl/", "{}")!;
+        Assert.Equal("Alguien intentó crear otra cuenta con tu RUT en ZASS!", r.Asunto);
+        Assert.Contains("https://zass.cl/entrar", r.Texto);
+        Assert.Contains("https://zass.cl/recuperar-contrasena", r.Texto);
+        Assert.Contains("href=\"https://zass.cl/entrar\"", r.Html);
+        Assert.Contains("href=\"https://zass.cl/recuperar-contrasena\"", r.Html);
+        Assert.DoesNotContain("token", r.Texto, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Si no fuiste tú", r.Texto);
+        Assert.DoesNotContain("Luis", r.Asunto);
+        Assert.DoesNotContain("<b>Pérez</b>", r.Html);
     }
 
     // ------------------------------------------------------------ recordatorios (JQ-3)
