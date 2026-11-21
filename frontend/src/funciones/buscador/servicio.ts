@@ -43,7 +43,7 @@ export interface Preferencias {
 }
 
 /** CU-04: hasta cinco oficios. El mismo tope que aplica el servidor. */
-export const MAX_RUBROS_DE_INTERES = 5
+export const MAX_RUBROS_DE_INTERES = 10
 
 export function miPerfilBuscador(): Promise<MiPerfilBuscador> {
   return obtener<MiPerfilBuscador>('/api/mi/perfil-buscador')

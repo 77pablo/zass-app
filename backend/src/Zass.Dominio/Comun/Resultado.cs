@@ -65,4 +65,11 @@ public static class Fallas
     /// quien sube y puede reintentar; por eso no es un 4xx.
     /// </summary>
     public const string AlmacenamientoNoDisponible = "almacenamiento_no_disponible";
+
+    /// <summary>
+    /// API-08 con un RUT que ya tiene cuenta (decision de Pablo, 21-nov-2026). Es un 409 como
+    /// cualquier conflicto, pero lleva su propio codigo para que la pantalla lo muestre como
+    /// aviso y no como error: la cuenta no se crea y a la duena se le manda un correo.
+    /// </summary>
+    public const string RutConCuenta = "rut_con_cuenta";
 }

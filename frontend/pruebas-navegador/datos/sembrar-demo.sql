@@ -446,6 +446,30 @@ ON CONFLICT (correo) DO UPDATE
    SET hash_contrasena = EXCLUDED.hash_contrasena, nombre = EXCLUDED.nombre,
        correo_verificado = true, estado = 'Activa', actualizado_en = now();
 
+-- Desde el registro completo (#174) y ES-2 (#183), una cuenta sin RUT, apellido, telefono o la
+-- confirmacion de mayoria de edad se manda a «Completa los datos de tu cuenta» al entrar, y todo
+-- guion de navegador que usara las cuentas demo se quedaba ahi (visto el 21-nov). Se completan
+-- aqui con RUT VALIDOS por modulo 11 (2..7 de derecha a izquierda, 11 -> 0, 10 -> K, como
+-- Zass.Aplicacion/Comun/Rut.cs), de la serie 40.000.001 en adelante, que no es de nadie real
+-- en esta base. Solo toca las que no tienen RUT: correr el sembrado otra vez no cambia nada.
+WITH faltan AS (
+  SELECT id, 40000000 + row_number() OVER (ORDER BY correo) AS n
+    FROM usuarios
+   WHERE correo LIKE 'demo-%@zass.local' AND rut IS NULL
+), con_dv AS (
+  SELECT f.id, f.n,
+         11 - (SELECT sum(substr(reverse(f.n::text), i, 1)::int * (2 + (i - 1) % 6))
+                 FROM generate_series(1, length(f.n::text)) i) % 11 AS r
+    FROM faltan f
+)
+UPDATE usuarios u
+   SET rut = c.n || '-' || CASE c.r WHEN 11 THEN '0' WHEN 10 THEN 'K' ELSE c.r::text END,
+       apellido = coalesce(u.apellido, 'Demo'),
+       telefono = coalesce(u.telefono, '+56 9 1234 5678'),
+       mayor_de_edad_confirmado_en = coalesce(u.mayor_de_edad_confirmado_en, now())
+  FROM con_dv c
+ WHERE u.id = c.id;
+
 CREATE TEMP TABLE demo_u_prestador ON COMMIT DROP AS
 SELECT d.*, u.id AS usuario_id
   FROM demo_prestadores d JOIN usuarios u ON u.correo::text = 'demo-' || d.slug || '@zass.local';

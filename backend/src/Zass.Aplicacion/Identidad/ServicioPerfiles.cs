@@ -287,14 +287,17 @@ public sealed class ServicioPerfiles
 
     // ------------------------------------------------------------- CU-04 y CS-08, leer
 
-    /// <summary>Cuantos oficios de interes caben (CU-04). Una portada, no un catalogo.</summary>
-    public const int MaxRubrosDeInteres = 5;
-
     /// <summary>
-    /// Cuantos favoritos caben (CS-08). La lista vive en una columna jsonb que se lee entera en
-    /// cada peticion: sin tope, nada impide que alguien la llene con miles de identificadores.
+    /// Cuantos oficios de interes caben (CU-04). Diez, por decision de Pablo (22-nov-2026); con los
+    /// cinco rubros de la v1 equivale a «todos», y empieza a acotar cuando el catalogo crezca.
     /// </summary>
-    public const int MaxFavoritos = 100;
+    public const int MaxRubrosDeInteres = 10;
+
+    // Favoritos (CS-08): SIN tope, por decision de Pablo (22-nov-2026). No hace falta uno para
+    // proteger la columna jsonb: solo se guarda un perfil PUBLICADO y nunca dos veces el mismo
+    // (GuardarFavoritoAsync), asi que la lista no puede ser mas larga que la cantidad de
+    // prestadores publicados. Con miles de identificadores inventados no se llega a nada: cada
+    // uno tiene que existir y estar publicado.
 
     /// <summary>
     /// API-23b. Una cuenta sin perfil de buscador —un prestador que nunca busco— recibe los valores
@@ -331,10 +334,6 @@ public sealed class ServicioPerfiles
 
         var perfil = await BuscadorOCrearAsync(usuarioId, ct);
         if (perfil.Favoritos.Contains(perfilPrestadorId)) return Resultado.Ok();
-
-        if (perfil.Favoritos.Count >= MaxFavoritos)
-            return Resultado.Falla(Fallas.ReglaDeNegocio,
-                $"Ya tienes {MaxFavoritos} guardados. Quita alguno para guardar otro.");
 
         // El mas reciente primero. Una lista NUEVA y no Insert sobre la que ya existe: asi el
         // cambio se nota aunque alguien toque el comparador de la columna jsonb.

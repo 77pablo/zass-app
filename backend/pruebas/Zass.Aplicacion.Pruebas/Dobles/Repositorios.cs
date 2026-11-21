@@ -103,6 +103,9 @@ public sealed class RepositorioUsuariosEnMemoria : IRepositorioUsuarios
     public Task<bool> ExisteRutAsync(string rut, CancellationToken ct = default) =>
         Task.FromResult(_base.Usuarios.Any(u => u.Rut == rut));
 
+    public Task<Usuario?> PorRutAsync(string rut, CancellationToken ct = default) =>
+        Task.FromResult(_base.Usuarios.FirstOrDefault(u => u.Rut == rut));
+
     public Task<Rol?> RolPorCodigoAsync(string codigo, CancellationToken ct = default) =>
         Task.FromResult(_base.Roles.FirstOrDefault(r => r.Codigo == codigo));
 

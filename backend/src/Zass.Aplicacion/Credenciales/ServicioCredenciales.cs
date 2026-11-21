@@ -69,6 +69,10 @@ public sealed class ServicioCredenciales : IServicioCredenciales
             c.TieneRespaldo(), c.Documentos.Count)
         {
             Respaldo = c.Documentos.OrderBy(d => d.SubidoEn).Select(ADto).ToList(),
+            MotivoDelRechazo = c.Estado == EstadoCredencial.Rechazada
+                ? c.Verificaciones.Where(v => v.EsRechazo())
+                    .OrderByDescending(v => v.ResueltaEn).Select(v => v.Motivo).FirstOrDefault()
+                : null,
         }).ToList();
     }
 
@@ -368,10 +372,11 @@ public sealed class ServicioCredenciales : IServicioCredenciales
     {
         var credenciales = await _repo.PublicasDePrestadorAsync(perfilPrestadorId, ct);
 
-        // El repositorio ya sacó los borradores; esta guarda es por si algún día otro lo
-        // implementa distinto: un borrador es de su dueño y de nadie más.
+        // El repositorio ya sacó los borradores y las rechazadas; esta guarda es por si algún día
+        // otro lo implementa distinto: un borrador es de su dueño y de nadie más, y una rechazada
+        // no se muestra (decisión de Pablo, 21-nov-2026).
         return credenciales
-            .Where(c => c.Estado != EstadoCredencial.Borrador)
+            .Where(c => Credencial.EsVisibleAlPublico(c.Estado))
             .OrderByDescending(c => c.Estado == EstadoCredencial.Verificada)
             .ThenByDescending(c => c.ObtenidaEn)
             .ThenBy(c => c.Nombre, StringComparer.Create(new System.Globalization.CultureInfo("es-CL"), true))

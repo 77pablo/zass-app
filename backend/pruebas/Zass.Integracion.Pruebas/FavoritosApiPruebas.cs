@@ -246,7 +246,7 @@ public partial class ApiPruebas
     }
 
     [Fact]
-    public async Task Con_100_guardados_el_siguiente_se_rechaza()
+    public async Task Los_favoritos_no_tienen_tope_con_150_guardados_entra_otro()
     {
         var (id, _) = await UnPrestadorEnLaBaseAsync(EstadoPerfil.Publicado);
         var correo = NuevoCorreo();
@@ -256,16 +256,18 @@ public partial class ApiPruebas
         {
             var perfil = await ctx.PerfilesBuscador
                 .SingleAsync(p => ctx.Usuarios.Any(u => u.Id == p.UsuarioId && u.Correo == correo));
-            perfil.Favoritos = Enumerable.Range(0, 100).Select(_ => Guid.NewGuid()).ToList();
+            perfil.Favoritos = Enumerable.Range(0, 150).Select(_ => Guid.NewGuid()).ToList();
             await ctx.SaveChangesAsync();
         }
 
         var r = await GuardarFavoritoAsync(id);
 
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, r.StatusCode);
-        Assert.Contains("Quita alguno", await r.Content.ReadAsStringAsync());
-        Assert.DoesNotContain(id, (await MiPerfilBuscadorAsync()).GetProperty("favoritos")
-            .EnumerateArray().Select(e => e.GetGuid()));
+        // Sin tope (decision de Pablo, 22-nov): el 151 entra y queda primero.
+        Assert.Equal(HttpStatusCode.NoContent, r.StatusCode);
+        var favoritos = (await MiPerfilBuscadorAsync()).GetProperty("favoritos")
+            .EnumerateArray().Select(e => e.GetGuid()).ToList();
+        Assert.Equal(151, favoritos.Count);
+        Assert.Equal(id, favoritos[0]);
     }
 
     // ---------------------------------------------------------------- de quien son
@@ -364,12 +366,17 @@ public partial class ApiPruebas
         var demasiados = await GuardarPreferenciasAsync(new
         {
             zonaInteresId = (int?)null, radioPreferidoKm = 10, aceptaAvisos = true,
-            canalCorreo = true, canalPush = false, rubrosInteres = new short[] { 1, 2, 3, 4, 5, 6 },
+            canalCorreo = true, canalPush = false,
+            rubrosInteres = new short[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 },
         });
+        // Que el rechazo sea POR EL TOPE y no porque entre esos once hay oficios que no existen:
+        // sin esto la prueba pasaria igual aunque el tope desapareciera.
+        var textoDemasiados = await demasiados.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.BadRequest, zonaInventada.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, oficioInventado.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, demasiados.StatusCode);
+        Assert.Contains("hasta 10 oficios", textoDemasiados);
 
         var mio = await MiPerfilBuscadorAsync();
         Assert.Equal(JsonValueKind.Null, mio.GetProperty("zonaInteresId").ValueKind);

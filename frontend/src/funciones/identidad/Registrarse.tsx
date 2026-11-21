@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { ErrorApi } from '../../api/cliente'
 import { registrarse, type RolPublico, type TipoDeCuenta } from './servicio'
 import { APELLIDO_MAXIMO, RAZON_SOCIAL_MAXIMA, revisarDatosDeCuenta } from './datosDeCuenta'
@@ -11,6 +12,14 @@ const CONTRASENA_MINIMA = 10
 const CONTRASENA_MAXIMA = 128
 const CORREO_MAXIMO = 254
 const NOMBRE_MAXIMO = 150
+
+/**
+ * El `codigo` con que API-08 responde (409) cuando el RUT ya tiene cuenta (decisión de Pablo,
+ * 21-nov-2026). La cuenta no se crea y a la dueña se le manda un correo: aquí se muestra como
+ * AVISO, no como error, con la salida a «Entrar» y a «Recuperar contraseña». El texto lo pone el
+ * servidor, que es quien sabe que es el mismo siempre.
+ */
+const CODIGO_RUT_CON_CUENTA = 'rut_con_cuenta'
 
 /*
  * Registro completo (decisión de Pablo, 20-nov-2026): además de correo y contraseña, se elige
@@ -36,6 +45,7 @@ export function Registrarse({
   const rol: RolPublico = rolInicial
   const [campos, setCampos] = useState<Record<string, string>>({})
   const [aviso, setAviso] = useState<string>()
+  const [rutConCuenta, setRutConCuenta] = useState<string>()
   const [listo, setListo] = useState(false)
   const [enviando, setEnviando] = useState(false)
 
@@ -57,6 +67,7 @@ export function Registrarse({
   async function alEnviar(e: FormEvent) {
     e.preventDefault()
     setAviso(undefined)
+    setRutConCuenta(undefined)
 
     const malos = revisar()
     setCampos(malos)
@@ -79,7 +90,10 @@ export function Registrarse({
       setListo(true)
       alRegistrarse()
     } catch (e) {
-      if (e instanceof ErrorApi) {
+      if (e instanceof ErrorApi && e.datos.codigo === CODIGO_RUT_CON_CUENTA) {
+        // No es un error que la persona pueda corregir en el formulario: es una salida.
+        setRutConCuenta(e.mensaje)
+      } else if (e instanceof ErrorApi) {
         // El backend valida de nuevo y puede ver algo que aqui no se vio.
         setCampos(e.campos)
         // El aviso general solo se muestra si el error no cabe en un campo.
@@ -111,6 +125,18 @@ export function Registrarse({
       <p className="bajada">Una sola cuenta para buscar y para ofrecer servicios.</p>
 
       {aviso && <Aviso>{aviso}</Aviso>}
+      {rutConCuenta && (
+        // Informativo, no rojo: la persona no hizo nada malo. role="status" lo lee el lector de
+        // pantalla sin interrumpir como una alerta.
+        <div className="aviso-linea" role="status">
+          <p>{rutConCuenta}</p>
+          <p>
+            <Link to="/entrar">Entrar</Link>
+            {' · '}
+            <Link to="/recuperar-contrasena">Recuperar contraseña</Link>
+          </p>
+        </div>
+      )}
 
       {rol === 'prestador' && (
         <p className="bajada">
