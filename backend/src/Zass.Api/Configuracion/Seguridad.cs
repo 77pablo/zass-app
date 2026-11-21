@@ -33,6 +33,8 @@ public static class Politicas
     public const string RolVerificador = "verificador";
     public const string Administrador = "administrador";
     public const string RolAdministrador = "administrador";
+    public const string Moderador = "moderador";
+    public const string RolModerador = "moderador";
 }
 
 public static class ConfiguracionDeSeguridad
@@ -151,14 +153,27 @@ public static class ConfiguracionDeSeguridad
                 };
             });
 
-        // El rol viaja en la cookie (ClaimTypes.Role, ver EndpointsIdentidad). La politica del
-        // Verificador es lo unico que protege /api/interno: un buscador o un prestador autenticado
+        // El rol viaja en la cookie (ClaimTypes.Role, ver EndpointsIdentidad). Las politicas
+        // internas son lo unico que protege /api/interno: un buscador o un prestador autenticado
         // recibe 403 antes de que el endpoint ejecute nada, ni siquiera para listar la cola.
+        //
+        // Ademas del claim, cada una revalida el rol EN LA BASE (RolVigenteEnBase): la cookie
+        // dura 15 minutos y quitarle el rol a alguien, o suspenderlo, tiene que cortarle el panel
+        // en la peticion siguiente, no un cuarto de hora despues.
         servicios.AddAuthorization(opciones =>
         {
-            opciones.AddPolicy(Politicas.Verificador, p => p.RequireRole(Politicas.RolVerificador));
-            opciones.AddPolicy(Politicas.Administrador, p => p.RequireRole(Politicas.RolAdministrador));
+            opciones.AddPolicy(Politicas.Verificador, p => p
+                .RequireRole(Politicas.RolVerificador)
+                .AddRequirements(new RolVigenteEnBase(Politicas.RolVerificador)));
+            opciones.AddPolicy(Politicas.Administrador, p => p
+                .RequireRole(Politicas.RolAdministrador)
+                .AddRequirements(new RolVigenteEnBase(Politicas.RolAdministrador)));
+            opciones.AddPolicy(Politicas.Moderador, p => p
+                .RequireRole(Politicas.RolModerador)
+                .AddRequirements(new RolVigenteEnBase(Politicas.RolModerador)));
         });
+        // Scoped: consulta la base con el contexto de la peticion.
+        servicios.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, ManejadorRolVigente>();
         servicios.AddAntiforgery(opciones =>
         {
             opciones.HeaderName = CabeceraCsrf;
@@ -213,6 +228,44 @@ public static class ConfiguracionDeSeguridad
             cabeceras["Referrer-Policy"] = "strict-origin-when-cross-origin";
             cabeceras["Permissions-Policy"] = "geolocation=(self), camera=(), microphone=()";
             cabeceras["Cross-Origin-Opener-Policy"] = "same-origin";
+
+            await siguiente();
+        });
+
+    /// <summary>
+    /// <c>Cache-Control: private, no-store</c> por omision en toda respuesta de <c>/api</c> y de
+    /// <c>/t</c> que no haya fijado el suyo.
+    ///
+    /// <para>
+    /// Antes lo ponian a mano solo API-05, la vCard (API-07) y los documentos; el resto de los
+    /// endpoints con datos de la sesion (la cuenta, el perfil propio, las citas, las tarjetas, la
+    /// suscripcion...) salian sin nada, y un proxy intermedio o el cache del navegador en un
+    /// equipo compartido podian guardarlos. Endpoint por endpoint siempre se olvida uno: por eso
+    /// va aqui, una vez, para la clase entera.
+    /// </para>
+    ///
+    /// <para>
+    /// Se decide en <c>OnStarting</c>, justo antes de mandar las cabeceras, para respetar lo que
+    /// el endpoint haya puesto: la foto publica (API-73) declara su cache inmutable y la
+    /// conserva, y el escaneo de la tarjeta (API-54) su propio <c>no-store</c>. Lo publico que no
+    /// declara cache (catalogo, busqueda, planes) hoy no lo declara: si algun dia conviene
+    /// cachearlo, lo dice el endpoint y esto no lo pisa.
+    /// </para>
+    /// </summary>
+    public static IApplicationBuilder UsarCacheControlPrivado(this IApplicationBuilder app) =>
+        app.Use(async (contexto, siguiente) =>
+        {
+            var ruta = contexto.Request.Path;
+            if (ruta.StartsWithSegments("/api") || ruta.StartsWithSegments("/t"))
+            {
+                contexto.Response.OnStarting(() =>
+                {
+                    var cabeceras = contexto.Response.Headers;
+                    if (string.IsNullOrEmpty(cabeceras.CacheControl))
+                        cabeceras.CacheControl = "private, no-store";
+                    return Task.CompletedTask;
+                });
+            }
 
             await siguiente();
         });
