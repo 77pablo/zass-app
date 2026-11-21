@@ -120,7 +120,12 @@ jobs:
             else echo "FALLO $1: se esperaba $3 y hay $obtenido" >&2; falla=1; fi
           }
           # Sembrados por migracion: no cambian con el uso.
-          comprobar "planes"               "SELECT count(*) FROM planes"         3
+          # Los planes los siembran las migraciones: 3 hasta PlanesEsencialProfesionalEquipo, que
+          # agrega Profesional y Equipo (5). Se espera lo que corresponde a ESA copia: un 3 fijo
+          # habria fallado en falso el primer lunes despues de migrar Neon (visto el 22-nov).
+          tres_planes=$(psql_r -c "SELECT count(*) FROM \"__EFMigrationsHistory\" WHERE \"MigrationId\" = '20261121001336_PlanesEsencialProfesionalEquipo'")
+          if [ "$tres_planes" = "1" ]; then planes_esperados=5; else planes_esperados=3; fi
+          comprobar "planes"               "SELECT count(*) FROM planes"         "$planes_esperados"
           comprobar "cupos fundador"       "SELECT count(*) FROM cupos_fundador" 50
           comprobar "R-1 (doble reserva)"  "SELECT count(*) FROM pg_indexes WHERE indexname = 'ux_cita_bloque_activo'" 1
           # Hay gente: produccion tenia 3 usuarios el 15-nov y no se borran.
