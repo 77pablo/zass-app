@@ -48,7 +48,7 @@ describe('JQ-13: auditoría (API-61)', () => {
     expect(pedidas).toEqual([`/api/interno/auditoria?entidad=Tarjeta&entidadId=${TARJETA}`])
 
     const encabezados = within(tabla).getAllByRole('columnheader').map((c) => c.textContent)
-    expect(encabezados).toEqual(['Cuándo', 'Acción', 'Entidad', 'Actor', 'IP', 'Contexto'])
+    expect(encabezados).toEqual(['Cuándo', 'Acción', 'Entidad', 'Quién', 'IP', 'Contexto'])
     const filas = within(tabla).getAllByRole('row').slice(1)
     expect(filas).toHaveLength(2)
     expect(filas[0]).toHaveTextContent('TarjetaActivada')
@@ -95,7 +95,7 @@ describe('JQ-13: auditoría (API-61)', () => {
 
   it.each([
     ['sin entidad', '', TARJETA, 'Escribe la entidad.'],
-    ['con un identificador mal escrito', 'Tarjeta', '1234', 'El identificador no tiene el formato correcto'],
+    ['con un identificador mal escrito', 'Tarjeta', '1234', 'Pega el identificador completo'],
   ])('%s no pregunta a la API', async (_, entidad, id, mensaje) => {
     pintar()
     if (entidad) await userEvent.type(screen.getByLabelText('Entidad'), entidad)
