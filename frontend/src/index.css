@@ -1252,6 +1252,23 @@ option { background: var(--blanco); color: var(--pizarra); }
   .buscar-cuerpo > .letra-chica { margin-top: 10px; font-size: 0.8125rem; }
 }
 
+/* =============================================================== Guias de interfaz (18-nov-2026)
+   Las «Web Interface Guidelines» de Vercel aplicadas a ZASS! (/web-interface-guidelines). */
+/* Sin la demora del doble toque para hacer zoom: el toque responde al tiro. */
+a, button, input, label, select, summary, textarea { touch-action: manipulation; }
+/* Titulos sin una palabra sola en la ultima linea. */
+h1, h2, h3 { text-wrap: balance; }
+/* Lo fijo no tapa lo que tiene el foco: la cabecera arriba, y en el telefono la barra de abajo.
+   Sin esto, tabular hasta el ultimo campo de un formulario lo dejaba DEBAJO de la barra inferior. */
+html { scroll-padding-top: 96px; }
+@media (max-width: 880px) { html { scroll-padding-bottom: calc(80px + env(safe-area-inset-bottom)); } }
+/* Con mouse, la pagina no rebota al llegar al borde; con el dedo se deja (tirar para recargar). */
+@media (pointer: fine) { html { overscroll-behavior: none; } }
+/* La lista de sugerencias se desplaza sola, sin arrastrar la pagina de atras. */
+.barra-lista { overscroll-behavior: contain; }
+/* El <select> nativo con su color explicito (Windows en modo oscuro lo pintaria a su gusto). */
+.orden-zona select { color: var(--pizarra); }
+
 /* =============================================================== Estilo iPhone en el celular
    Las listas agrupadas de iOS: margen de 20 px a los lados, y las personas como CELDAS pegadas en
    una sola tarjeta blanca (como Contactos), con la linea fina que empieza donde empieza el texto. */
