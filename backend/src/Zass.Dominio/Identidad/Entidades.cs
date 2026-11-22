@@ -32,6 +32,17 @@ public class Usuario
     public string? TokenRecuperacion { get; set; }
     public DateTime? TokenRecuperacionExpiraEn { get; set; }
     public EstadoCuenta Estado { get; set; } = EstadoCuenta.PendienteVerificacion;
+
+    // Bloqueo por intentos fallidos de entrar (decision de Pablo, 22-nov-2026): tras 10
+    // fallos seguidos la cuenta queda 15 minutos sin poder entrar, aunque la contrasena sea la
+    // buena. Se cuenta en la base y no en memoria para que valga con varias instancias de la
+    // API. Al bloquear, el contador vuelve a cero: pasado el plazo se empieza de nuevo.
+    // Quien cambia estos valores es SQL atomico (RepositorioUsuariosEfCore), no esta clase.
+    public int IntentosFallidos { get; set; }
+    public DateTime? BloqueadaHasta { get; set; }
+
+    public bool EstaBloqueada(DateTime ahora) => BloqueadaHasta is { } hasta && hasta > ahora;
+
     public DateTime CreadoEn { get; set; } = DateTime.UtcNow;
     public DateTime ActualizadoEn { get; set; } = DateTime.UtcNow;
     public DateTime? AnonimizadoEn { get; set; }

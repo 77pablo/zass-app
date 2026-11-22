@@ -274,6 +274,12 @@ public sealed class ServicioCuenta
         usuario.TokenRecuperacionExpiraEn = null;
         usuario.ActualizadoEn = _reloj.Ahora;
 
+        // Restablecer desbloquea (bloqueo por intentos, 22-nov-2026): quien tiene el enlace del
+        // correo es la duena de la cuenta, y si alguien la dejo bloqueada a proposito esta es la
+        // salida que no hace esperar los 15 minutos.
+        usuario.IntentosFallidos = 0;
+        usuario.BloqueadaHasta = null;
+
         _auditor.Registrar(Auditar.Entrada(
             "restablecer_contrasena", "usuario", usuario.Id, _reloj.Ahora,
             actorId: usuario.Id, ip: ip));

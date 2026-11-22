@@ -178,6 +178,25 @@ public interface IRepositorioUsuarios
     Task<Usuario?> PorRutAsync(string rut, CancellationToken ct = default);
     Task<Rol?> RolPorCodigoAsync(string codigo, CancellationToken ct = default);
     void Agregar(Usuario usuario);
+
+    /// <summary>
+    /// Suma un intento fallido de entrar, en UNA sola sentencia atomica: dos intentos
+    /// simultaneos no pueden leer el mismo valor y perder uno. Si la cuenta esta bloqueada
+    /// (<c>bloqueada_hasta &gt; ahora</c>) no cuenta nada. Si este intento llega a
+    /// <paramref name="intentosParaBloquear"/>, deja la cuenta bloqueada hasta
+    /// <paramref name="bloqueadaHasta"/> y el contador en cero. Devuelve verdadero SOLO para
+    /// el intento que disparo el bloqueo (uno por bloqueo). Con un id que no existe no hace
+    /// nada, pero hace el mismo viaje a la base (para igualar tiempos).
+    /// </summary>
+    Task<bool> SumarIntentoFallidoAsync(
+        Guid usuarioId, DateTime ahora, int intentosParaBloquear, DateTime bloqueadaHasta,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Pone el contador en cero tras entrar bien, solo si la cuenta NO esta bloqueada en ese
+    /// instante. Devuelve falso si lo esta (el bloqueo pudo nacer despues de leer la cuenta).
+    /// </summary>
+    Task<bool> ReiniciarIntentosSiNoBloqueadaAsync(Guid usuarioId, DateTime ahora, CancellationToken ct = default);
 }
 
 public interface IRepositorioSesiones
@@ -548,7 +567,7 @@ public interface IRepositorioBusqueda
     /// servicio las ordena). El promedio sale tal cual esta guardado: RN-S5-11 la aplica el servicio.
     /// </summary>
     Task<IReadOnlyList<TarjetaFila>> TarjetasPorIdAsync(
-        IReadOnlyList<Guid> perfilIds, CancellationToken ct = default);
+        IReadOnlyList<Guid> perfilIds, DateOnly hoy, CancellationToken ct = default);
 }
 
 /// <summary>Una tarjeta de favorito, como sale de la base. Sin contacto: ver FavoritoDto.</summary>
@@ -675,6 +694,9 @@ public class FilaDeBusqueda
     public int TotalResenas { get; set; }
 }
 
+/// <summary>Una credencial que CS-06 tiene que vencer, y a quién avisar.</summary>
+public sealed record CredencialPorVencer(Guid CredencialId, Guid UsuarioId, string Nombre, DateOnly VenceEn);
+
 /// <summary>MOD-02 - Credenciales (TBL-12, TBL-13, TBL-14, TBL-15).</summary>
 public interface IRepositorioCredenciales
 {
@@ -690,7 +712,24 @@ public interface IRepositorioCredenciales
 
     Task<int> ContarDePrestadorAsync(Guid perfilPrestadorId, CancellationToken ct = default);
 
-    Task<bool> TieneVerificadaAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+    /// <summary>
+    /// Si tiene alguna credencial con el sello VIGENTE hoy: verificada y con <c>vence_en</c> nulo o
+    /// &gt;= <paramref name="hoy"/> (Credencial.TieneSelloVigente). Auditoría 22-nov-2026.
+    /// </summary>
+    Task<bool> TieneVerificadaAsync(Guid perfilPrestadorId, DateOnly hoy, CancellationToken ct = default);
+
+    /// <summary>
+    /// CS-06: las verificadas con <c>vence_en &lt; hoy</c>, con el usuario dueño del perfil para
+    /// avisarle. Sin seguimiento: el cambio lo hace <see cref="VencerSiCorrespondeAsync"/>.
+    /// </summary>
+    Task<IReadOnlyList<CredencialPorVencer>> VerificadasPasadasDeFechaAsync(
+        DateOnly hoy, int limite, CancellationToken ct = default);
+
+    /// <summary>
+    /// CS-06 en UNA sentencia condicional: la pasa a vencida solo si SIGUE verificada y pasada de
+    /// fecha. Devuelve si la cambió. Así una edición simultánea del prestador no se pisa.
+    /// </summary>
+    Task<bool> VencerSiCorrespondeAsync(Guid credencialId, DateOnly hoy, CancellationToken ct = default);
 
     void Agregar(Credencial credencial);
     void Eliminar(Credencial credencial);
