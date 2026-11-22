@@ -216,3 +216,34 @@ public sealed class ValidadorEditarPerfilBuscador : AbstractValidator<EditarPerf
         RuleForEach(x => x.RubrosInteres).GreaterThan((short)0).When(x => x.RubrosInteres is not null);
     }
 }
+
+/// <summary>
+/// MFA (API-79, API-82, API-83). Solo se revisa que vengan y que no sean enormes: si el formato
+/// del codigo se validara aqui con un mensaje propio, un 400 se distinguiria del 401 neutro.
+/// </summary>
+public sealed class ValidadorSegundoPaso : AbstractValidator<SegundoPasoCmd>
+{
+    public ValidadorSegundoPaso()
+    {
+        RuleFor(x => x.Desafio).NotEmpty().MaximumLength(100);
+        RuleFor(x => x.Codigo).NotEmpty().WithMessage("Escribe el código.").MaximumLength(20);
+    }
+}
+
+public sealed class ValidadorConfirmarMfa : AbstractValidator<ConfirmarMfaCmd>
+{
+    public ValidadorConfirmarMfa()
+    {
+        RuleFor(x => x.Codigo).NotEmpty().WithMessage("Escribe el código de 6 dígitos.").MaximumLength(20);
+    }
+}
+
+public sealed class ValidadorDesactivarMfa : AbstractValidator<DesactivarMfaCmd>
+{
+    public ValidadorDesactivarMfa()
+    {
+        RuleFor(x => x.Contrasena).NotEmpty().WithMessage("Escribe tu contraseña.")
+            .MaximumLength(Limites.ContrasenaMaxima);
+        RuleFor(x => x.Codigo).NotEmpty().WithMessage("Escribe el código.").MaximumLength(20);
+    }
+}

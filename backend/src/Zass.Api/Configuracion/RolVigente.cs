@@ -51,6 +51,24 @@ public sealed class ManejadorRolVigente : AuthorizationHandler<RolVigenteEnBase>
             || !usuario.Roles.Contains(requisito.Rol, StringComparer.Ordinal))
             return;
 
+        // MFA obligatorio en el panel (decision de Pablo, 22-nov-2026). Con el rol pero sin MFA
+        // activo: 403 con codigo `mfa_requerido` (lo escribe ConfiguracionDeSeguridad al negar).
+        // La pantalla manda a activarlo, cosa que si puede hacer, en /api/mi/mfa.
+        if (!usuario.MfaActivo)
+        {
+            if (contexto.Resource is HttpContext http) http.Items[MfaRequerido.Marca] = true;
+            return;
+        }
+
         contexto.Succeed(requisito);
     }
+}
+
+/// <summary>El 403 del panel para quien tiene el rol pero no ha activado la verificacion en dos pasos.</summary>
+public static class MfaRequerido
+{
+    public const string Codigo = "mfa_requerido";
+    public const string Marca = "zass:mfa_requerido";
+    public const string Detalle =
+        "Para usar el panel interno tienes que activar la verificación en dos pasos en Mi cuenta.";
 }
