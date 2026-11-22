@@ -303,6 +303,9 @@ public sealed record PersonasPorZonaDto(int ZonaId, int Personas);
 
 public sealed record PersonasPorRubroDto(short RubroId, int Personas);
 
-/// <summary>Quien se sumo recien. Lo justo para mostrar una tarjeta y llevar a su ficha.</summary>
+/// <summary>
+/// Quien se sumo recien. Lo justo para mostrar una tarjeta y llevar a su ficha. `UrlFoto` (JQ-15)
+/// es la foto PUBLICA de JQ-9, la misma que ya sale en la ficha y en la busqueda.
+/// </summary>
 public sealed record RecienLlegadoDto(
-    string Slug, string NombrePublico, string? Rubro, string? Zona, bool Verificada);
+    string Slug, string NombrePublico, string? Rubro, string? Zona, bool Verificada, string? UrlFoto = null);

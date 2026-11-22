@@ -126,6 +126,12 @@ describe('Privacidad', () => {
     expect(screen.getByText(/Google Fonts/, { exact: false })).toBeInTheDocument()
   })
 
+  // PR #213: la verificacion en dos pasos guarda una clave y codigos de respaldo; se dice como.
+  it('dice que guarda la verificacion en dos pasos y como', () => {
+    enRuta(<Privacidad />)
+    expect(screen.getByText(/verificación en dos pasos: la clave de tu app de códigos \(cifrada\)/, { exact: false })).toBeInTheDocument()
+  })
+
   it('dice como se guarda la contrasena: solo una huella irreversible', () => {
     enRuta(<Privacidad />)
     expect(screen.getByText(/huella cifrada irreversible/)).toBeInTheDocument()
@@ -245,5 +251,11 @@ describe('enlaces a las paginas legales', () => {
       expect(a).toHaveAttribute('target', '_blank')
       expect(a.getAttribute('rel')).toContain('noopener')
     }
+  })
+
+  // PR #212: el captcha de Cloudflare recibe la IP al crear una cuenta o pedir el cupo; se dice.
+  it('avisa del captcha de Cloudflare (Turnstile) y para qué recibe la IP', () => {
+    enRuta(<Privacidad />)
+    expect(screen.getByText(/Cloudflare Turnstile/, { exact: false })).toBeInTheDocument()
   })
 })

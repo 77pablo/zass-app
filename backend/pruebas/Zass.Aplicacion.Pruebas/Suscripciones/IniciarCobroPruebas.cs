@@ -183,14 +183,14 @@ public class IniciarCobroPruebas
     // ------------------------------------------------------- El cupo fundador
 
     [Fact]
-    public async Task El_plan_fundador_RESERVA_el_cupo_al_iniciar_y_la_reserva_dura_25_minutos()
+    public async Task El_plan_fundador_RESERVA_el_cupo_al_iniciar_y_la_reserva_dura_30_minutos()
     {
         var perfil = UnPrestadorConSuscripcion();
 
         await _cobros.IniciarAsync(new IniciarCobroCmd(perfil.Id, "fundador", null, "k1"));
 
         var cupo = _base.CuposFundador.Single(c => c.PerfilPrestadorId == perfil.Id);
-        Assert.Equal(Ahora.AddMinutes(25), cupo.ReservadoHasta);   // 25, escrito a mano
+        Assert.Equal(Ahora.AddMinutes(30), cupo.ReservadoHasta);   // 30 (N3), escrito a mano
         Assert.Equal(49, await _suscripciones.CuposFundadorDisponiblesAsync());
     }
 

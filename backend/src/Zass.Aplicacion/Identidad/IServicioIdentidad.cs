@@ -10,7 +10,8 @@ public sealed record UsuarioDto(
     string Nombre,
     bool CorreoVerificado,
     EstadoCuenta Estado,
-    string[] Roles);
+    string[] Roles,
+    bool MfaActivo = false);
 
 /// <summary>
 /// API-05 - La ficha publica. Es el DTO que mas expone de todo el sistema, y por eso
@@ -88,7 +89,8 @@ public sealed class ServicioIdentidad : IServicioIdentidad
             usuario.Nombre,
             usuario.CorreoVerificado,
             usuario.Estado,
-            usuario.Roles.Where(r => r.Rol is not null).Select(r => r.Rol!.Codigo).ToArray());
+            usuario.Roles.Where(r => r.Rol is not null).Select(r => r.Rol!.Codigo).ToArray(),
+            usuario.MfaActivo);
     }
 
     public async Task<bool> TieneRolAsync(
