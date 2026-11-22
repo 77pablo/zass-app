@@ -47,4 +47,13 @@ public static class Trabajos
     /// asistencia» las que ya ocurrieron y asumir realizadas las que nadie marcó en 72 h.
     /// </summary>
     public const string Citas = "citas-periodico";
+
+    /// <summary>CS-06 · T8 de la credencial: pasar a «vencida» las verificadas con vence_en &lt; hoy.</summary>
+    public const string CredencialesVencidas = "credenciales-vencidas-diario";
+
+    /// <summary>
+    /// Auditoria 22-nov-2026: borrar las cuentas que siguen sin verificar el correo pasadas 72 h
+    /// desde su creacion, para que no retengan un RUT o un correo ajeno para siempre.
+    /// </summary>
+    public const string CuentasSinVerificar = "cuentas-sin-verificar";
 }

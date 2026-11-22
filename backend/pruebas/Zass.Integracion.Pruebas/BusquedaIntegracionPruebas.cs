@@ -394,6 +394,51 @@ public class BusquedaIntegracionPruebas : IDisposable
     }
 
     /// <summary>
+    /// Auditoría 22-nov-2026, hallazgo 2: una credencial VERIFICADA con <c>vence_en</c> pasado no
+    /// da sello ni pasa «solo verificados» en NINGUNA de las cinco consultas (distancia, zona,
+    /// texto, favoritos y recién llegados), aunque el trabajo de CS-06 aún no la haya vencido. La
+    /// que vence HOY (día de Chile) todavía vale: es el control de que el filtro no se pasa de largo.
+    /// </summary>
+    [Fact]
+    public async Task Una_verificada_pasada_de_fecha_no_da_sello_en_ninguna_consulta_y_la_que_vence_hoy_si()
+    {
+        var hoy = HoraDeChile.DiaLocal(_reloj.Ahora);
+        var vencida = await UnPrestadorBuscableAsync(nombre: "Sello vencido");
+        var vigente = await UnPrestadorBuscableAsync(nombre: "Sello de hoy");
+        foreach (var (perfil, vence) in new[] { (vencida, hoy.AddDays(-1)), (vigente, hoy) })
+            _prueba.Ctx.Credenciales.Add(new Credencial
+            {
+                PerfilPrestadorId = perfil.Id, Tipo = TipoCredencial.Titulo, Nombre = "Certificado SEC",
+                ObtenidaEn = new DateOnly(2020, 1, 15), VenceEn = vence,
+                Estado = EstadoCredencial.Verificada, SelloEn = _reloj.Ahora, SelloPor = Guid.NewGuid(),
+            });
+        await _prueba.Ctx.SaveChangesAsync();
+        var ids = new[] { vencida.Id, vigente.Id };
+
+        var distancia = await BuscarDesdeLaPlazaAsync();
+        var zona = await _repo.PorZonaAsync(Consulta(_reloj.Ahora), null);
+        var texto = await TextoAsync(null, zona: Centro);
+        var tarjetas = await _repo.TarjetasPorIdAsync(ids, hoy);
+        var resumen = await _repo.ResumenAsync(_reloj.Ahora, 50);
+
+        Assert.False(distancia.Single(f => f.Id == vencida.Id).TieneVerificada);
+        Assert.True(distancia.Single(f => f.Id == vigente.Id).TieneVerificada);
+        Assert.False(zona.Single(f => f.Id == vencida.Id).TieneVerificada);
+        Assert.True(zona.Single(f => f.Id == vigente.Id).TieneVerificada);
+        Assert.False(texto.Single(f => f.Id == vencida.Id).TieneVerificada);
+        Assert.True(texto.Single(f => f.Id == vigente.Id).TieneVerificada);
+        Assert.False(tarjetas.Single(f => f.Id == vencida.Id).Verificada);
+        Assert.True(tarjetas.Single(f => f.Id == vigente.Id).Verificada);
+        Assert.False(resumen.Recientes.Single(f => f.Slug == vencida.Slug).Verificada);
+        Assert.True(resumen.Recientes.Single(f => f.Slug == vigente.Slug).Verificada);
+
+        Assert.DoesNotContain(await BuscarDesdeLaPlazaAsync(Consulta(_reloj.Ahora, soloVerificados: true)), f => f.Id == vencida.Id);
+        Assert.DoesNotContain(await _repo.PorZonaAsync(Consulta(_reloj.Ahora, soloVerificados: true), null), f => f.Id == vencida.Id);
+        Assert.DoesNotContain(await TextoAsync(null, zona: Centro, soloVerificados: true), f => f.Id == vencida.Id);
+        Assert.Contains(await BuscarDesdeLaPlazaAsync(Consulta(_reloj.Ahora, soloVerificados: true)), f => f.Id == vigente.Id);
+    }
+
+    /// <summary>
     /// RN-S5-11 tambien manda en el filtro: el promedio solo es publico con 3 resenas o
     /// mas, asi que filtrar por el fuera de ese caso ocultaria perfiles por un numero que
     /// nadie puede ver.

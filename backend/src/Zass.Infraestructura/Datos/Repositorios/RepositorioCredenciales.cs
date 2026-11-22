@@ -38,9 +38,34 @@ public sealed class RepositorioCredencialesEfCore : IRepositorioCredenciales
     public Task<int> ContarDePrestadorAsync(Guid perfilPrestadorId, CancellationToken ct = default) =>
         _ctx.Credenciales.CountAsync(c => c.PerfilPrestadorId == perfilPrestadorId, ct);
 
-    public Task<bool> TieneVerificadaAsync(Guid perfilPrestadorId, CancellationToken ct = default) =>
+    public Task<bool> TieneVerificadaAsync(Guid perfilPrestadorId, DateOnly hoy, CancellationToken ct = default) =>
+        // Credencial.TieneSelloVigente, escrita para que EF la traduzca.
         _ctx.Credenciales.AnyAsync(
-            c => c.PerfilPrestadorId == perfilPrestadorId && c.Estado == EstadoCredencial.Verificada, ct);
+            c => c.PerfilPrestadorId == perfilPrestadorId && c.Estado == EstadoCredencial.Verificada
+                && (c.VenceEn == null || c.VenceEn >= hoy), ct);
+
+    public async Task<IReadOnlyList<CredencialPorVencer>> VerificadasPasadasDeFechaAsync(
+        DateOnly hoy, int limite, CancellationToken ct = default) =>
+        await _ctx.Credenciales.AsNoTracking()
+            .Where(c => c.Estado == EstadoCredencial.Verificada && c.VenceEn != null && c.VenceEn < hoy)
+            .OrderBy(c => c.VenceEn).ThenBy(c => c.Id)
+            .Take(limite)
+            .Select(c => new CredencialPorVencer(c.Id, c.PerfilPrestador!.UsuarioId, c.Nombre, c.VenceEn!.Value))
+            .ToListAsync(ct);
+
+    public async Task<bool> VencerSiCorrespondeAsync(Guid credencialId, DateOnly hoy, CancellationToken ct = default)
+    {
+        // Lo mismo que Credencial.Revocar (estado y reserva), pero condicional y atómico.
+        var filas = await _ctx.Credenciales
+            .Where(c => c.Id == credencialId && c.Estado == EstadoCredencial.Verificada
+                && c.VenceEn != null && c.VenceEn < hoy)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(c => c.Estado, EstadoCredencial.Vencida)
+                .SetProperty(c => c.ReservadaPor, (Guid?)null)
+                .SetProperty(c => c.ReservadaHasta, (DateTime?)null), ct);
+        if (filas == 1) await RefrescarAsync(credencialId, ct);
+        return filas == 1;
+    }
 
     public void Agregar(Credencial credencial) => _ctx.Credenciales.Add(credencial);
     public void Eliminar(Credencial credencial) => _ctx.Credenciales.Remove(credencial);

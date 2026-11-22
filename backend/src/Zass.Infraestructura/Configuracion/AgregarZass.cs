@@ -314,6 +314,9 @@ public static class RegistroDeServicios
         // --- MOD-01 Identidad ---
         servicios.AddScoped<IServicioIdentidad, ServicioIdentidad>();
         servicios.AddScoped<ServicioRegistro>();
+        // Auditoria 22-nov-2026: la purga de cuentas sin verificar (planificador y registro).
+        servicios.AddScoped<IRepositorioCuentasSinVerificar, RepositorioCuentasSinVerificarEfCore>();
+        servicios.AddScoped<ServicioCuentasSinVerificar>();
         servicios.AddScoped<ServicioSesion>();
         servicios.AddScoped<ServicioCuenta>();
         servicios.AddScoped<ServicioPerfiles>();
@@ -322,6 +325,8 @@ public static class RegistroDeServicios
         servicios.AddScoped<IRepositorioCredenciales, RepositorioCredencialesEfCore>();
         servicios.AddScoped<IServicioCredenciales, ServicioCredenciales>();
         servicios.AddScoped<IServicioVerificacion, ServicioVerificacion>();
+        // CS-06: el planificador vence las verificadas pasadas de fecha (auditoria 22-nov-2026).
+        servicios.AddScoped<ServicioVencimientoCredenciales>();
 
         // DECISION DE PRODUCTO REVISABLE (etapa de lanzamiento, sin MOD-08): permite enviar a
         // revision sin documentos. Falso por omision. Se lee al RESOLVER, no al registrar, por la

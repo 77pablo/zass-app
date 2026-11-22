@@ -22,8 +22,11 @@ public partial class ApiPruebas
     private const string TelefonoDeLaDuena = "+56 9 7777 1234";
     private const string NombreDeLaDuena = "Benedicta";
 
-    /// <summary>Registra a la dueña del RUT por el camino de verdad. Devuelve su correo.</summary>
-    private async Task<string> UnaDuenaDeRutAsync(string rut)
+    /// <summary>
+    /// Registra a la dueña del RUT por el camino de verdad y le da el correo por verificado (el
+    /// aviso de RN-S1-13 solo va a un correo verificado: auditoría 22-nov-2026). Devuelve su correo.
+    /// </summary>
+    private async Task<string> UnaDuenaDeRutAsync(string rut, bool verificada = true)
     {
         var correo = NuevoCorreo();
         var alta = await _cliente.PostAsJsonAsync("/api/auth/registro", new
@@ -32,7 +35,26 @@ public partial class ApiPruebas
             mayorDeEdad = true, correo, contrasena = "contrasena-larga-1", nombre = NombreDeLaDuena, rol = "buscador",
         });
         Assert.Equal(HttpStatusCode.Created, alta.StatusCode);
+        if (verificada) await MarcarVerificadaAsync(correo);
         return correo;
+    }
+
+    /// <summary>Lo que deja API-09 al abrir el enlace del correo, sin pasar por el correo.</summary>
+    private static async Task MarcarVerificadaAsync(string correo)
+    {
+        using var ctx = ContextoDePrueba.Crear();
+        Assert.Equal(1, await ctx.Usuarios.Where(u => u.Correo == correo).ExecuteUpdateAsync(s => s
+            .SetProperty(u => u.CorreoVerificado, true)
+            .SetProperty(u => u.Estado, EstadoCuenta.Activa)));
+    }
+
+    /// <summary>Hace que la cuenta parezca creada hace <paramref name="hace"/>.</summary>
+    private static async Task EnvejecerCuentaAsync(string correo, TimeSpan hace)
+    {
+        using var ctx = ContextoDePrueba.Crear();
+        var cuando = DateTime.UtcNow - hace;
+        Assert.Equal(1, await ctx.Usuarios.Where(u => u.Correo == correo)
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.CreadoEn, cuando)));
     }
 
     /// <summary>Otro registro con ese RUT (escrito con puntos, como lo escribe la gente) y otro correo.</summary>
@@ -184,6 +206,92 @@ public partial class ApiPruebas
         }
 
         Assert.Equal(1, await AvisosDeRutAsync(duena));
+    }
+
+    // ------------------------------------------------------- auditoría 22-nov-2026, hallazgo 3
+
+    /// <summary>
+    /// La cuenta dueña del RUT NO verificó su correo: no se le escribe (ese correo puede ser el de
+    /// quien registró un RUT ajeno), no se crea otra cuenta, y la respuesta dice la verdad sin datos.
+    /// </summary>
+    [Fact]
+    public async Task Rut_de_una_cuenta_sin_verificar_no_avisa_a_ese_correo_y_dice_que_se_libera_a_las_72_horas()
+    {
+        var rut = DatosDeRegistro.Rut();
+        var secuestro = await UnaDuenaDeRutAsync(rut, verificada: false);
+        var victima = NuevoCorreo();
+
+        var r = await RegistrarConRutAsync(rut, victima);
+
+        Assert.Equal(HttpStatusCode.Conflict, r.StatusCode);
+        var texto = await CuerpoComparable.De(r);
+        var json = JsonDocument.Parse(texto).RootElement;
+        Assert.Equal("rut_con_cuenta", json.GetProperty("codigo").GetString());
+        Assert.Equal(ServicioRegistro.MensajeRutSinConfirmar, json.GetProperty("detail").GetString());
+        Assert.DoesNotContain("@", texto);
+        Assert.Equal(0, await AvisosDeRutAsync(secuestro));
+        using var ctx = ContextoDePrueba.Crear();
+        Assert.False(await ctx.Usuarios.AnyAsync(u => u.Correo == victima));
+    }
+
+    /// <summary>
+    /// Pasadas las 72 h sin verificar, el registro de la víctima borra en el acto la cuenta que le
+    /// retenía el RUT y crea la suya; queda la traza de la purga y ningún aviso al correo viejo.
+    /// </summary>
+    [Fact]
+    public async Task Rut_de_una_cuenta_sin_verificar_pasadas_72_horas_queda_libre_al_registrarse()
+    {
+        var rut = DatosDeRegistro.Rut();
+        var secuestro = await UnaDuenaDeRutAsync(rut, verificada: false);
+        Guid idViejo;
+        using (var ctx = ContextoDePrueba.Crear())
+            idViejo = (await ctx.Usuarios.SingleAsync(u => u.Correo == secuestro)).Id;
+        await EnvejecerCuentaAsync(secuestro, ServicioCuentasSinVerificar.PlazoParaVerificar + TimeSpan.FromMinutes(5));
+        var victima = NuevoCorreo();
+
+        var r = await RegistrarConRutAsync(rut, victima);
+
+        Assert.Equal(HttpStatusCode.Created, r.StatusCode);
+        using var verificar = ContextoDePrueba.Crear();
+        Assert.False(await verificar.Usuarios.AnyAsync(u => u.Correo == secuestro));
+        Assert.Equal(victima, (await verificar.Usuarios.SingleAsync(u => u.Rut == rut)).Correo);
+        Assert.True(await verificar.Auditoria.AnyAsync(a =>
+            a.Accion == "cuenta_sin_verificar_purgada" && a.EntidadId == idViejo));
+        // La auditoría del registro original NO se borra con la cuenta.
+        Assert.True(await verificar.Auditoria.AnyAsync(a => a.Accion == "registro_cuenta" && a.EntidadId == idViejo));
+        await verificar.Auditoria.Where(a => a.EntidadId == idViejo || a.ActorId == idViejo).ExecuteDeleteAsync();
+    }
+
+    /// <summary>Lo mismo con el correo: una cuenta caducada sin verificar no retiene un correo ajeno.</summary>
+    [Fact]
+    public async Task Correo_de_una_cuenta_sin_verificar_pasadas_72_horas_queda_libre_al_registrarse()
+    {
+        var secuestro = await UnaDuenaDeRutAsync(DatosDeRegistro.Rut(), verificada: false);
+        Guid idViejo;
+        using (var antes = ContextoDePrueba.Crear())
+            idViejo = (await antes.Usuarios.SingleAsync(u => u.Correo == secuestro)).Id;
+        await EnvejecerCuentaAsync(secuestro, ServicioCuentasSinVerificar.PlazoParaVerificar + TimeSpan.FromMinutes(5));
+
+        var r = await RegistrarConRutAsync(DatosDeRegistro.Rut(), secuestro);
+
+        Assert.Equal(HttpStatusCode.Created, r.StatusCode);
+        using var ctx = ContextoDePrueba.Crear();
+        var nueva = await ctx.Usuarios.SingleAsync(u => u.Correo == secuestro);
+        Assert.Equal("Intrusa", nueva.Apellido);
+        Assert.NotEqual(idViejo, nueva.Id);
+        await ctx.Auditoria.Where(a => a.EntidadId == idViejo || a.ActorId == idViejo).ExecuteDeleteAsync();
+    }
+
+    /// <summary>Control: antes de las 72 h el correo sigue retenido (la víctima lo verá liberarse después).</summary>
+    [Fact]
+    public async Task Correo_de_una_cuenta_sin_verificar_antes_de_72_horas_sigue_ocupado()
+    {
+        var secuestro = await UnaDuenaDeRutAsync(DatosDeRegistro.Rut(), verificada: false);
+        await EnvejecerCuentaAsync(secuestro, ServicioCuentasSinVerificar.PlazoParaVerificar - TimeSpan.FromMinutes(5));
+
+        var r = await RegistrarConRutAsync(DatosDeRegistro.Rut(), secuestro);
+
+        Assert.Equal(HttpStatusCode.Conflict, r.StatusCode);
     }
 
     /// <summary>El registro normal, con un RUT libre, sigue como antes: 201 y el correo de verificacion.</summary>

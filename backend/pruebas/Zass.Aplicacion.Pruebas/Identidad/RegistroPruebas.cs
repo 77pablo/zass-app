@@ -260,6 +260,7 @@ public class RegistroPruebas
     public async Task Un_RUT_ya_usado_se_rechaza_aunque_venga_escrito_distinto()
     {
         await _servicio.RegistrarAsync(Completo(correo: "ana@correo.cl", rut: "11.111.111-1"));
+        Verificar(_base.Usuarios.Single());
 
         var r = await _servicio.RegistrarAsync(Completo(correo: "otra@correo.cl", rut: "111111111"));
 
@@ -271,6 +272,30 @@ public class RegistroPruebas
         var ana = Assert.Single(_base.Usuarios);
         Assert.Equal(ana.Id, Assert.Single(_cola.Encoladas,
             n => n.Tipo == TipoNotificacion.RegistroConRutExistente).DestinatarioId);
+    }
+
+    private static void Verificar(Zass.Dominio.Identidad.Usuario u)
+    {
+        u.CorreoVerificado = true;
+        u.Estado = EstadoCuenta.Activa;
+    }
+
+    /// <summary>
+    /// Auditoría 22-nov-2026: si la dueña del RUT no verificó su correo, no se le escribe (ese
+    /// correo puede ser de quien registró un RUT ajeno) y la respuesta lo dice sin datos.
+    /// </summary>
+    [Fact]
+    public async Task Un_RUT_de_una_cuenta_sin_verificar_no_avisa_a_su_correo()
+    {
+        await _servicio.RegistrarAsync(Completo(correo: "secuestro@correo.cl", rut: "11.111.111-1"));
+
+        var r = await _servicio.RegistrarAsync(Completo(correo: "victima@correo.cl", rut: "11.111.111-1"));
+
+        Assert.Equal(Fallas.RutConCuenta, r.Codigo);
+        Assert.Equal(ServicioRegistro.MensajeRutSinConfirmar, r.Mensaje);
+        Assert.DoesNotContain(_cola.Encoladas, n => n.Tipo == TipoNotificacion.RegistroConRutExistente);
+        Assert.Single(_base.Usuarios);
+        Assert.Contains(_auditoria.Registros, a => a.Accion == "registro_con_rut_sin_confirmar");
     }
 
     [Fact]
