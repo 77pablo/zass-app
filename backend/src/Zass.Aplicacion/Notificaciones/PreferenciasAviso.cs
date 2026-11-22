@@ -22,7 +22,8 @@ public static class PreferenciasAviso
                    TipoNotificacion.CitaCancelada, TipoNotificacion.CitaReprogramada]),
         ("recordatorios", [TipoNotificacion.Recordatorio24h, TipoNotificacion.Recordatorio2h]),
         ("resenas", [TipoNotificacion.ResenaNueva, TipoNotificacion.ResenaRespondida]),
-        ("perfil", [TipoNotificacion.CredencialResuelta, TipoNotificacion.PerfilPublicado]),
+        ("perfil", [TipoNotificacion.CredencialResuelta, TipoNotificacion.CredencialVencida,
+                    TipoNotificacion.PerfilPublicado]),
         ("cobros", [TipoNotificacion.SuscripcionPorVencer, TipoNotificacion.SuscripcionVencida,
                     TipoNotificacion.CobroRechazado, TipoNotificacion.TarjetaActivada]),
     ];

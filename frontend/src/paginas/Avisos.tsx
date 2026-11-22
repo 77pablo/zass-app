@@ -31,7 +31,7 @@ const GRUPOS: Record<string, { titulo: string; detalle: string }> = {
   citas: { titulo: 'Citas', detalle: 'Cuando te piden, confirman, rechazan, cancelan o cambian una hora.' },
   recordatorios: { titulo: 'Recordatorios', detalle: 'Un día antes y dos horas antes de cada cita.' },
   resenas: { titulo: 'Reseñas', detalle: 'Cuando te dejan una reseña o responden la tuya.' },
-  perfil: { titulo: 'Tu perfil', detalle: 'Cuando revisamos tu credencial o publicamos tu perfil.' },
+  perfil: { titulo: 'Tu perfil', detalle: 'Cuando revisamos tu credencial, cuando vence y cuando publicamos tu perfil.' },
   cobros: { titulo: 'Plan, cobros y tarjeta', detalle: 'Cuando tu plan está por vencer o venció, si un cobro no pasó y cuando se activa tu tarjeta.' },
 }
 const CORREO_FIJO = 'Estos avisos siempre te llegan por correo.'
