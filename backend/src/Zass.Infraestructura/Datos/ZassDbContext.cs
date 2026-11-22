@@ -156,6 +156,9 @@ public class ZassDbContext : DbContext
             e.Property(x => x.RazonSocial).HasMaxLength(200);
             e.HasIndex(x => x.TokenVerificacion);
             e.HasIndex(x => x.TokenRecuperacion);
+            // MFA (22-nov-2026). El desafio se busca por su hash en el segundo paso.
+            e.Property(x => x.MfaDesafioHash).HasMaxLength(64);
+            e.HasIndex(x => x.MfaDesafioHash).HasFilter("mfa_desafio_hash IS NOT NULL");
         });
 
         b.Entity<Rol>(e =>

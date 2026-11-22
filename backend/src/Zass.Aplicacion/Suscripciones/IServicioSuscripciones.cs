@@ -167,10 +167,11 @@ public interface IServicioSuscripciones
         Guid perfilPrestadorId, TimeSpan? duracion = null, CancellationToken ct = default);
 
     /// <summary>
-    /// «Quiero mi cupo» (API-69, decision de Pablo del 20-nov-2026): toma y deja definitivo
-    /// uno de los 50 cupos y arranca el mes gratis, SIN tarjeta. La tarjeta se inscribe
-    /// despues, antes de que termine el mes gratis (API-76); si no, el cupo se libera.
-    /// Idempotente: quien ya tiene su cupo recibe el mismo.
+    /// «Quiero mi cupo» (API-69). Desde el 22-nov-2026 (N3, decision de Pablo que reemplaza la
+    /// del 20-nov) RESERVA uno de los 50 cupos por 30 minutos; NO lo confirma ni arranca el mes
+    /// gratis. Eso pasa cuando la tarjeta queda inscrita (API-76 + aviso de la pasarela). Sin
+    /// tarjeta a tiempo, el cupo vuelve a quedar libre. Idempotente: una reserva vigente se
+    /// devuelve igual y SIN renovar el plazo; un fundador confirmado recibe su mismo cupo.
     /// </summary>
     Task<Resultado<CupoTomadoDto>> TomarCupoFundadorAsync(
         Guid perfilPrestadorId, CancellationToken ct = default);
@@ -226,8 +227,13 @@ public sealed record SuscripcionDto(
     // vence sin cobrarse. La pantalla lo dice en vez de prometer un cobro que no va a pasar.
     bool RenovacionCancelada = false);
 
-/// <summary>El cupo recien tomado y hasta cuando dura el mes gratis.</summary>
-public sealed record CupoTomadoDto(short Numero, DateTime MesGratisHasta, bool TarjetaInscrita);
+/// <summary>
+/// El cupo recien tomado. Reservado (N3): <c>ReservadoHasta</c> dice hasta cuando hay que
+/// inscribir la tarjeta y <c>MesGratisHasta</c> es nulo (el mes gratis aun no empieza).
+/// Confirmado: <c>ReservadoHasta</c> nulo y <c>MesGratisHasta</c> con la fecha.
+/// </summary>
+public sealed record CupoTomadoDto(
+    short Numero, DateTime? MesGratisHasta, bool TarjetaInscrita, DateTime? ReservadoHasta = null);
 
 /// <summary>
 /// Que hizo la corrida diaria. Lo guarda el planificador en <c>ultimo_resumen</c>, asi que

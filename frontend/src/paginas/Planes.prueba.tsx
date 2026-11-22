@@ -31,8 +31,10 @@ const PLANES = [
   },
 ]
 
-/** API-69 desde el 20-nov-2026: el cupo tomado, SIN tarjeta y sin pasarela. */
-const CUPO_TOMADO = { numero: 12, mesGratisHasta: '2026-12-20T15:00:00Z', tarjetaInscrita: false }
+/** API-69 desde el 22-nov-2026 (N3): el cupo RESERVADO 30 minutos, hasta inscribir la tarjeta. */
+const CUPO_TOMADO = {
+  numero: 12, mesGratisHasta: null, tarjetaInscrita: false, reservadoHasta: '2026-11-22T17:35:00Z',
+}
 
 let cupos: number
 let fallaElCatalogo: boolean
@@ -76,6 +78,12 @@ beforeEach(() => {
     }
     if (ruta.includes('/api/mi/suscripcion/fundador')) return respuestaDelCupo()
     if (ruta.includes('/api/mi/cobros/cotizar')) return respuestaDeCotizar()
+    if (ruta.includes('/api/mi/suscripcion/tarjeta')) {
+      return json({
+        id: 'i1', codigoPlan: 'fundador', montoBruto: 0, montoDescuento: 0, monto: 0,
+        codigoCupon: null, estado: 'Pendiente', urlParaPagar: '/pago-simulado/i1', nueva: true,
+      })
+    }
     throw new Error('ruta no esperada: ' + ruta)
   }))
 })
@@ -148,25 +156,80 @@ describe('Planes', () => {
     expect(await screen.findByText('ZASS! Fundador')).toBeTruthy()
   })
 
-  it('tomar el cupo lo deja tuyo SIN pedir tarjeta y dice hasta cuándo es gratis', async () => {
+  it('N3: tomar el cupo lo RESERVA, dice hasta qué hora y pide inscribir la tarjeta', async () => {
     pintar(sesion('dentro', ['prestador']))
 
     await userEvent.click(await screen.findByRole('button', { name: /quiero mi cupo/i }))
 
-    expect(await screen.findByText(/el cupo N° 12 es tuyo/)).toBeInTheDocument()
-    expect(screen.getByText(/20 de diciembre de 2026/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Mi ficha' })).toHaveAttribute('href', '/mi-ficha')
+    // 17:35 UTC son las 14:35 en Chile (verano, UTC-3).
+    expect(await screen.findByText(/Tu cupo N° 12 está reservado hasta las 14:35/)).toBeInTheDocument()
+    expect(screen.getByText(/el cupo vuelve a quedar libre para otra persona/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /quiero mi cupo/i })).toBeNull()
     expect(llamadas.filter((r) => r.includes('/api/mi/suscripcion/fundador'))).toHaveLength(1)
-    // Ni pasarela ni inscripción de tarjeta: eso es después, desde Mi ficha.
-    expect(llamadas.some((r) => r.includes('/pago') || r.includes('/suscripcion/tarjeta'))).toBe(false)
+    // La tarjeta se inscribe cuando la persona lo pide, no sola.
+    expect(llamadas.some((r) => r.includes('/suscripcion/tarjeta'))).toBe(false)
   })
 
-  it('antes de tomarlo dice que no hace falta tarjeta y qué pasa si no la inscribe', async () => {
+  it('N3: «Inscribir mi tarjeta» abre la inscripción (API-76) que confirma el cupo', async () => {
+    pintar(sesion('dentro', ['prestador']))
+    await userEvent.click(await screen.findByRole('button', { name: /quiero mi cupo/i }))
+
+    await userEvent.click(await screen.findByRole('button', { name: /inscribir mi tarjeta/i }))
+
+    await waitFor(() =>
+      expect(llamadas.filter((r) => r.includes('/api/mi/suscripcion/tarjeta'))).toHaveLength(1))
+  })
+
+  it('N3: con captcha activo, sin resolverlo no se pide el cupo', async () => {
+    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '1x00000000000000000000AA')
+    vi.stubGlobal('turnstile', { render: () => 'w1', reset: () => {}, remove: () => {} })
+    try {
+      pintar(sesion('dentro', ['prestador']))
+      await userEvent.click(await screen.findByRole('button', { name: /quiero mi cupo/i }))
+
+      expect(await screen.findByText(/completa la verificación de que eres una persona/)).toBeInTheDocument()
+      expect(llamadas.some((r) => r.includes('/api/mi/suscripcion/fundador'))).toBe(false)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('N3: con el captcha resuelto, el token viaja en la cabecera X-Turnstile-Token', async () => {
+    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', '1x00000000000000000000AA')
+    const opcionesDelWidget: Record<string, unknown>[] = []
+    vi.stubGlobal('turnstile', {
+      render: (_caja: HTMLElement, o: Record<string, unknown>) => {
+        opcionesDelWidget.push(o)
+        ;(o.callback as (t: string) => void)('token-resuelto')
+        return 'w1'
+      },
+      reset: () => {}, remove: () => {},
+    })
+    const cabeceras: (string | null)[] = []
+    const fetchOriginal = globalThis.fetch
+    vi.stubGlobal('fetch', vi.fn(async (entrada: RequestInfo | URL, opciones?: RequestInit) => {
+      if (String(entrada).includes('/api/mi/suscripcion/fundador'))
+        cabeceras.push(new Headers(opciones?.headers).get('X-Turnstile-Token'))
+      return fetchOriginal(entrada, opciones)
+    }))
+    try {
+      pintar(sesion('dentro', ['prestador']))
+      await waitFor(() => expect(opcionesDelWidget).toHaveLength(1))
+      expect(opcionesDelWidget[0].action).toBe('cupo_fundador')
+
+      await userEvent.click(await screen.findByRole('button', { name: /quiero mi cupo/i }))
+
+      await waitFor(() => expect(cabeceras).toEqual(['token-resuelto']))
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('antes de tomarlo dice que se guarda 30 minutos y que hoy no se cobra', async () => {
     pintar(sesion('dentro', ['prestador']))
 
-    expect(await screen.findByText(/No necesitas tarjeta para tomarlo/)).toBeInTheDocument()
-    expect(screen.getByText(/el cupo queda libre para otra persona/)).toBeInTheDocument()
+    expect(await screen.findByText(/Te guardamos el cupo 30 minutos/)).toBeInTheDocument()
+    expect(screen.getByText(/Hoy no se\s+te cobra nada/)).toBeInTheDocument()
   })
 
   it('dos clics seguidos hacen UNA sola llamada', async () => {

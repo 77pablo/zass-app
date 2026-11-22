@@ -523,7 +523,7 @@ public class BusquedaPruebas
             Total: 9,
             PorZona: new[] { new ConteoCrudo(1, 5), new ConteoCrudo(14, 4) },
             PorRubro: new[] { new ConteoCrudo(1, 7), new ConteoCrudo(2, 2) },
-            Recientes: new[] { new RecienLlegadoFila("marcela-soto", "Marcela Soto", "Corretaje de propiedades", "Centro", true) });
+            Recientes: new[] { new RecienLlegadoFila("marcela-soto", "Marcela Soto", "Corretaje de propiedades", "Centro", true, "/fotos/marcela.webp") });
 
         var r = await _servicio.ResumenDeComunidadAsync();
 
@@ -531,7 +531,7 @@ public class BusquedaPruebas
         Assert.Equal(new[] { 5, 4 }, r.PorZona.Select(z => z.Personas).ToArray());
         Assert.Equal(new short[] { 1, 2 }, r.PorRubro.Select(x => x.RubroId).ToArray());
         var uno = Assert.Single(r.RecienLlegados);
-        Assert.Equal(new RecienLlegadoDto("marcela-soto", "Marcela Soto", "Corretaje de propiedades", "Centro", true), uno);
+        Assert.Equal(new RecienLlegadoDto("marcela-soto", "Marcela Soto", "Corretaje de propiedades", "Centro", true, "/fotos/marcela.webp"), uno);
     }
 
     /// <summary>

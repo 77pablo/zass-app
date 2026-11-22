@@ -5932,6 +5932,35 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("mayor_de_edad_confirmado_en");
 
+                    b.Property<DateTime?>("MfaActivadoEn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("mfa_activado_en");
+
+                    b.PrimitiveCollection<string[]>("MfaCodigosRespaldo")
+                        .HasColumnType("text[]")
+                        .HasColumnName("mfa_codigos_respaldo");
+
+                    b.Property<DateTime?>("MfaDesafioExpiraEn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("mfa_desafio_expira_en");
+
+                    b.Property<string>("MfaDesafioHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("mfa_desafio_hash");
+
+                    b.Property<byte[]>("MfaSecretoCifrado")
+                        .HasColumnType("bytea")
+                        .HasColumnName("mfa_secreto_cifrado");
+
+                    b.Property<byte[]>("MfaSecretoPendienteCifrado")
+                        .HasColumnType("bytea")
+                        .HasColumnName("mfa_secreto_pendiente_cifrado");
+
+                    b.Property<long?>("MfaUltimoPaso")
+                        .HasColumnType("bigint")
+                        .HasColumnName("mfa_ultimo_paso");
+
                     b.Property<string>("Nombre")
                         .IsRequired()
                         .HasMaxLength(150)
@@ -5983,6 +6012,10 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.HasIndex("Correo")
                         .IsUnique()
                         .HasDatabaseName("i_x_usuarios_correo");
+
+                    b.HasIndex("MfaDesafioHash")
+                        .HasDatabaseName("i_x_usuarios_mfa_desafio_hash")
+                        .HasFilter("mfa_desafio_hash IS NOT NULL");
 
                     b.HasIndex("Rut")
                         .IsUnique()
