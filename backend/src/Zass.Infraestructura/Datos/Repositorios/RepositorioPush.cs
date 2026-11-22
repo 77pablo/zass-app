@@ -52,6 +52,10 @@ public sealed class RepositorioPushEfCore : IRepositorioPush
         return true;
     }
 
+    public async Task BorrarTodasDeUsuarioAsync(Guid usuarioId, CancellationToken ct = default) =>
+        _ctx.SuscripcionesPush.RemoveRange(
+            await _ctx.SuscripcionesPush.Where(s => s.UsuarioId == usuarioId).ToListAsync(ct));
+
     /// <summary>
     /// Un INSERT ... SELECT con ON CONFLICT: idempotente aunque dos registros lleguen a la vez.
     /// Solo los que siguen «Programada» (no los que se estan enviando ni los ya enviados).

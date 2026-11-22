@@ -287,6 +287,32 @@ public sealed class ServicioCredenciales : IServicioCredenciales
         return Resultado.Ok(ADto(documento));
     }
 
+    public const string NombreDeCredencialEliminada = "Credencial eliminada";
+
+    public async Task<IReadOnlyList<string>> PrepararBajaDeCuentaAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        var claves = new List<string>();
+        foreach (var credencial in await _repo.DePrestadorAsync(perfilPrestadorId, ct))
+        {
+            foreach (var documento in credencial.Documentos.ToList())
+            {
+                claves.Add(documento.ClaveAlmacenamiento);
+                _repo.QuitarDocumento(documento);
+            }
+
+            // Se queda con su estado y sus fechas (sirven para la auditoria de la verificacion),
+            // pero ya no dice que titulo es ni de que institucion: eso liga a la persona.
+            credencial.Nombre = NombreDeCredencialEliminada;
+            credencial.EntidadCertificadoraId = null;
+            credencial.EntidadCertificadora = null;
+            // El texto libre del verificador puede citar el nombre o el numero del titulo. Queda
+            // el resultado y el motivo (la auditoria), no lo que escribio sobre esta persona.
+            foreach (var verificacion in credencial.Verificaciones) verificacion.Detalle = null;
+        }
+        return claves;
+    }
+
     public async Task<Resultado> QuitarDocumentoAsync(
         Guid perfilPrestadorId, Guid credencialId, Guid documentoId, CancellationToken ct = default)
     {

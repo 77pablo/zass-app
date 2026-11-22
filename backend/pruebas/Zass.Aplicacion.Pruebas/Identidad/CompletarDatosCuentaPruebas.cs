@@ -32,8 +32,8 @@ public class CompletarDatosCuentaPruebas
             usuarios, perfiles, _base, hash, secretos, _reloj, cola, _auditoria, filtradas);
         var sesiones = new ServicioSesion(
             usuarios, new RepositorioSesionesEnMemoria(_base), _base, hash, secretos, _reloj, _auditoria);
-        _cuenta = new ServicioCuenta(
-            usuarios, perfiles, _base, hash, secretos, _reloj, cola, _auditoria, sesiones, filtradas);
+        _cuenta = ArmadoDeCuenta.Cuenta(
+            _base, hash, secretos, _reloj, cola, _auditoria, sesiones, filtradas);
     }
 
     /// <summary>Una cuenta como las de antes del #174: sin RUT, sin telefono, sin casilla.</summary>

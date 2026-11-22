@@ -1,3 +1,6 @@
+using Zass.Aplicacion.Puertos;
+using Zass.Dominio.Catalogo;
+using Zass.Dominio.Credenciales;
 using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Pruebas.Dobles;
 using Zass.Dominio.Comun;
@@ -20,6 +23,9 @@ public class CuentaPruebas
     private readonly ServicioRegistro _registro;
     private readonly ServicioSesion _sesiones;
     private readonly ServicioCuenta _cuenta;
+    private readonly AlmacenQueRecuerda _almacen;
+    private readonly RegistroQueAnota<ServicioBorradoDeDatos> _logBorrado = new();
+    private readonly CifradoDeJuguete _cifrado = new();
 
     private const string Clave = "contrasena-larga-1";
 
@@ -34,8 +40,10 @@ public class CuentaPruebas
             usuarios, perfiles, _base, _hash, _secretos, _reloj, _cola, _auditoria, filtradas);
         _sesiones = new ServicioSesion(
             usuarios, sesiones, _base, _hash, _secretos, _reloj, _auditoria);
-        _cuenta = new ServicioCuenta(
-            usuarios, perfiles, _base, _hash, _secretos, _reloj, _cola, _auditoria, _sesiones, filtradas);
+        _almacen = new AlmacenQueRecuerda(_base);
+        _cuenta = ArmadoDeCuenta.Cuenta(
+            _base, _hash, _secretos, _reloj, _cola, _auditoria, _sesiones, filtradas,
+            _almacen, _logBorrado, _cifrado);
     }
 
     /// <summary>Registra de verdad, con el servicio real: asi el token es el que se emite.</summary>
@@ -432,7 +440,7 @@ public class CuentaPruebas
         var (id, _) = await RegistrarAsync();
         var antes = _base.Usuarios.Single(u => u.Id == id).HashContrasena;
 
-        var r = await _cuenta.VerificarContrasenaAsync(id, Clave);
+        var r = await _cuenta.ConfirmarBajaAsync(id, Clave);
 
         Assert.True(r.Exito, r.Mensaje);
         var usuario = _base.Usuarios.Single(u => u.Id == id);
@@ -447,7 +455,7 @@ public class CuentaPruebas
     {
         var (id, _) = await RegistrarAsync();
 
-        var r = await _cuenta.VerificarContrasenaAsync(id, "no-era-esta");
+        var r = await _cuenta.ConfirmarBajaAsync(id, "no-era-esta");
 
         Assert.False(r.Exito);
         // 422: la sesion es valida, lo que falla es la confirmacion. Un 401 haria que el cliente
@@ -459,10 +467,356 @@ public class CuentaPruebas
     [Fact]
     public async Task Confirmar_la_contrasena_de_una_cuenta_que_no_existe_no_revienta()
     {
-        var r = await _cuenta.VerificarContrasenaAsync(Guid.NewGuid(), Clave);
+        var r = await _cuenta.ConfirmarBajaAsync(Guid.NewGuid(), Clave);
 
         Assert.False(r.Exito);
         Assert.Equal(Fallas.NoEncontrado, r.Codigo);
+    }
+
+    // ----------------------------------------------------------- CS-04: borrar de verdad (Ley 21.719)
+
+    private const string SecretoRfc = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+
+    private static string ClaveNueva(string carpeta, TipoArchivo tipo = TipoArchivo.Webp) =>
+        TiposDeArchivo.NuevaClave(carpeta, tipo);
+
+    private sealed record PrestadorCompleto(
+        Guid Id, PerfilPrestador Perfil, string FotoGrande, string FotoChica,
+        string FotoTrabajo, string Documento, Credencial Credencial);
+
+    /// <summary>Un prestador con TODO lo que la baja tiene que borrar: ficha, fotos, documentos y push.</summary>
+    private async Task<PrestadorCompleto> UnPrestadorConTodoAsync()
+    {
+        var (id, token) = await RegistrarAsync(rol: "prestador");
+        await _cuenta.VerificarCorreoAsync(token);
+
+        var perfil = _base.PerfilesPrestador.Single();
+        var fotoGrande = ClaveNueva(TiposDeArchivo.CarpetaFotos);
+        perfil.Estado = EstadoPerfil.Publicado;
+        perfil.NombrePublico = "Juan Pérez Gasfitería";
+        perfil.Slug = "juan-perez-gasfiteria";
+        perfil.Descripcion = "Gasfíter con 20 años de experiencia";
+        perfil.UrlFoto = TiposDeArchivo.RutaPublica + fotoGrande[(TiposDeArchivo.CarpetaFotos.Length + 1)..];
+        perfil.DireccionCifrada = new byte[] { 1, 2, 3 };
+        perfil.Latitud = -38.73;
+        perfil.Longitud = -72.59;
+        perfil.TelefonoPublico = "+56911112222";
+        perfil.CorreoPublico = "juan@gasfiteria.cl";
+        perfil.Whatsapp = "+56911112222";
+        perfil.SitioWeb = "https://gasfiteria.cl";
+        perfil.Cobertura.Add(new CoberturaPrestador { PerfilPrestadorId = perfil.Id, ZonaId = 7, EsPrincipal = true });
+
+        var fotoTrabajo = ClaveNueva(TiposDeArchivo.CarpetaFotos);
+        _base.FotosDeTrabajo.Add(new FotoTrabajo { PerfilPrestadorId = perfil.Id, ClaveAlmacen = fotoTrabajo });
+
+        var documento = ClaveNueva(TiposDeArchivo.CarpetaDocumentos, TipoArchivo.Pdf);
+        var credencial = new Credencial
+        {
+            PerfilPrestadorId = perfil.Id, Tipo = TipoCredencial.Titulo, Nombre = "Gasfíter clase A N° 12345",
+            EntidadCertificadoraId = 3, Estado = EstadoCredencial.Verificada,
+        };
+        credencial.Documentos.Add(new DocumentoCredencial
+        {
+            CredencialId = credencial.Id, ClaveAlmacenamiento = documento, NombreOriginal = "cedula-juan-perez.pdf",
+            Estado = EstadoDocumento.Disponible,
+        });
+        credencial.Verificaciones.Add(new Verificacion
+        {
+            CredencialId = credencial.Id, VerificadorId = Guid.NewGuid(), Resultado = ResultadoVerificacion.Verificada,
+            Detalle = "Juan Pérez, RUT 11.111.111-1, registro 12345",
+        });
+        _base.Credenciales.Add(credencial);
+
+        _base.SuscripcionesPush.Add(new SuscripcionPush { UsuarioId = id, Endpoint = "https://push/uno" });
+        _base.SuscripcionesPush.Add(new SuscripcionPush { UsuarioId = id, Endpoint = "https://push/dos" });
+        _base.SuscripcionesPush.Add(new SuscripcionPush { UsuarioId = Guid.NewGuid(), Endpoint = "https://push/ajeno" });
+
+        return new PrestadorCompleto(id, perfil, fotoGrande, TiposDeArchivo.ClaveChica(fotoGrande),
+            fotoTrabajo, documento, credencial);
+    }
+
+    [Fact]
+    public async Task Eliminar_la_cuenta_deja_la_ficha_sin_ningun_dato_personal()
+    {
+        var p = await UnPrestadorConTodoAsync();
+
+        var r = await _cuenta.EliminarAsync(p.Id);
+
+        Assert.True(r.Exito, r.Mensaje);
+        var perfil = p.Perfil;
+        Assert.Same(perfil, Assert.Single(_base.PerfilesPrestador));   // la fila sobrevive: la referencian citas y reseñas
+        Assert.Equal(EstadoPerfil.Despublicado, perfil.Estado);
+        Assert.Equal("Perfil eliminado", perfil.NombrePublico);
+        Assert.DoesNotContain("juan", perfil.Slug, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(perfil.Descripcion);
+        Assert.Null(perfil.UrlFoto);
+        Assert.Null(perfil.DireccionCifrada);
+        Assert.Null(perfil.Latitud);
+        Assert.Null(perfil.Longitud);
+        Assert.Null(perfil.TelefonoPublico);
+        Assert.Null(perfil.CorreoPublico);
+        Assert.Null(perfil.Whatsapp);
+        Assert.Null(perfil.SitioWeb);
+        Assert.Empty(perfil.Cobertura);
+    }
+
+    [Fact]
+    public async Task Eliminar_la_cuenta_borra_las_fotos_de_trabajos_y_los_documentos_y_anonimiza_las_credenciales()
+    {
+        var p = await UnPrestadorConTodoAsync();
+
+        await _cuenta.EliminarAsync(p.Id);
+
+        Assert.Empty(_base.FotosDeTrabajo);
+        Assert.Empty(p.Credencial.Documentos);
+        // La credencial sigue (sirve a la auditoria de la verificacion), pero ya no liga a la persona.
+        Assert.Equal(EstadoCredencial.Verificada, p.Credencial.Estado);
+        Assert.Equal("Credencial eliminada", p.Credencial.Nombre);
+        Assert.Null(p.Credencial.EntidadCertificadoraId);
+        Assert.All(p.Credencial.Verificaciones, v => Assert.Null(v.Detalle));
+    }
+
+    [Fact]
+    public async Task Eliminar_la_cuenta_pide_borrar_los_dos_archivos_de_la_foto_la_foto_de_trabajo_y_el_documento()
+    {
+        var p = await UnPrestadorConTodoAsync();
+
+        await _cuenta.EliminarAsync(p.Id);
+
+        Assert.Equivalent(
+            new[] { p.FotoGrande, p.FotoChica, p.FotoTrabajo, p.Documento },
+            _almacen.Borrados.Select(b => b.Clave));
+    }
+
+    [Fact]
+    public async Task Los_archivos_se_borran_DESPUES_de_que_la_base_confirma()
+    {
+        var p = await UnPrestadorConTodoAsync();
+
+        await _cuenta.EliminarAsync(p.Id);
+
+        // Cuando se pidio borrar cada archivo, la base ya habia hecho su ULTIMO guardado.
+        Assert.NotEmpty(_almacen.Borrados);
+        Assert.All(_almacen.Borrados, b => Assert.Equal(_base.Guardados, b.GuardadosAlBorrar));
+    }
+
+    [Fact]
+    public async Task Eliminar_la_cuenta_borra_todos_sus_navegadores_con_push_y_solo_los_suyos()
+    {
+        var p = await UnPrestadorConTodoAsync();
+
+        await _cuenta.EliminarAsync(p.Id);
+
+        var queda = Assert.Single(_base.SuscripcionesPush);
+        Assert.Equal("https://push/ajeno", queda.Endpoint);
+    }
+
+    [Fact]
+    public async Task Un_buscador_sin_ficha_tambien_pierde_sus_navegadores_con_push()
+    {
+        var (id, _) = await RegistrarAsync();
+        _base.SuscripcionesPush.Add(new SuscripcionPush { UsuarioId = id, Endpoint = "https://push/uno" });
+
+        var r = await _cuenta.EliminarAsync(id);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Empty(_base.SuscripcionesPush);
+    }
+
+    [Fact]
+    public async Task Si_falla_borrar_un_archivo_la_baja_queda_hecha_y_el_error_queda_en_el_log()
+    {
+        var p = await UnPrestadorConTodoAsync();
+        _almacen.QueFallan.Add(p.Documento);
+
+        var r = await _cuenta.EliminarAsync(p.Id);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(EstadoCuenta.Eliminada, _base.Usuarios.Single(u => u.Id == p.Id).Estado);
+        // Siguio con los demas archivos, y dejo el error anotado con la clave (sin datos de la persona).
+        Assert.Equal(4, _almacen.Borrados.Count);
+        var error = Assert.Single(_logBorrado.Entradas, e => e.Nivel == Microsoft.Extensions.Logging.LogLevel.Error);
+        Assert.Contains(p.Documento, error.Mensaje);
+    }
+
+    [Fact]
+    public async Task Eliminar_la_cuenta_deja_constancia_en_auditoria_de_lo_borrado_sin_el_contenido()
+    {
+        var p = await UnPrestadorConTodoAsync();
+        _auditoria.Registros.Clear();
+
+        await _cuenta.EliminarAsync(p.Id);
+
+        var e = Assert.Single(_auditoria.Registros, a => a.Accion == "baja_borrar_datos_perfil");
+        Assert.Equal(p.Perfil.Id, e.EntidadId);
+        Assert.DoesNotContain("Juan", e.Contexto ?? "");
+    }
+
+    [Fact]
+    public async Task Despublicar_para_la_baja_saca_la_ficha_de_la_busqueda_y_guarda()
+    {
+        var p = await UnPrestadorConTodoAsync();
+        var guardados = _base.Guardados;
+
+        var r = await _cuenta.DespublicarParaBajaAsync(p.Id);
+
+        Assert.True(r.Exito);
+        Assert.Equal(EstadoPerfil.Despublicado, p.Perfil.Estado);
+        Assert.Equal(guardados + 1, _base.Guardados);
+        // Todavia no borra nada: solo cierra la puerta mientras se cancelan las citas.
+        Assert.Equal("Juan Pérez Gasfitería", p.Perfil.NombrePublico);
+        Assert.Empty(_almacen.Borrados);
+    }
+
+    // ----------------------------------------------------------- CS-04: MFA e intentos en la baja
+
+    private Usuario ConMfaActivo(Guid id)
+    {
+        var u = _base.Usuarios.Single(x => x.Id == id);
+        u.MfaSecretoCifrado = _cifrado.Cifrar(SecretoRfc);
+        u.MfaActivadoEn = _reloj.Ahora;
+        u.MfaCodigosRespaldo = Array.Empty<string>();
+        return u;
+    }
+
+    private string CodigoVigente() => Totp.Codigo(SecretoRfc, Totp.PasoDe(_reloj.Ahora));
+
+    [Fact]
+    public async Task Con_mfa_la_baja_sin_codigo_falla_y_suma_al_contador_de_fallos()
+    {
+        var (id, _) = await RegistrarAsync();
+        var u = ConMfaActivo(id);
+
+        var r = await _cuenta.ConfirmarBajaAsync(id, Clave, codigo: null);
+
+        Assert.False(r.Exito);
+        Assert.Equal(Fallas.ReglaDeNegocio, r.Codigo);
+        Assert.Equal(1, u.IntentosFallidos);
+        Assert.NotEqual(EstadoCuenta.Eliminada, u.Estado);
+    }
+
+    [Fact]
+    public async Task Con_mfa_la_baja_con_un_codigo_malo_falla_y_suma()
+    {
+        var (id, _) = await RegistrarAsync();
+        var u = ConMfaActivo(id);
+
+        var r = await _cuenta.ConfirmarBajaAsync(id, Clave, "000000");
+
+        Assert.False(r.Exito);
+        Assert.Equal(1, u.IntentosFallidos);
+    }
+
+    [Fact]
+    public async Task Con_mfa_la_baja_con_contrasena_y_codigo_buenos_funciona_y_gasta_el_codigo()
+    {
+        var (id, _) = await RegistrarAsync();
+        var u = ConMfaActivo(id);
+
+        var r = await _cuenta.ConfirmarBajaAsync(id, Clave, CodigoVigente());
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(0, u.IntentosFallidos);
+        // El mismo codigo no sirve dos veces (se gasto de forma atomica).
+        Assert.False((await _cuenta.ConfirmarBajaAsync(id, Clave, CodigoVigente())).Exito);
+    }
+
+    [Fact]
+    public async Task Con_mfa_un_codigo_de_respaldo_tambien_confirma_la_baja_y_se_gasta()
+    {
+        var (id, _) = await RegistrarAsync();
+        var u = _base.Usuarios.Single(x => x.Id == id);
+        // Se activa de verdad, para que ServicioMfa arme los codigos de respaldo como los arma siempre.
+        var mfa = new ServicioMfa(new RepositorioUsuariosEnMemoria(_base), _base, _hash, _secretos, _cifrado,
+            _reloj, _auditoria, _sesiones, _cola);
+        var alta = await mfa.IniciarAltaAsync(id);
+        var codigos = (await mfa.ConfirmarAltaAsync(id, new ConfirmarMfaCmd(
+            Totp.Codigo(alta.Valor!.Secreto, Totp.PasoDe(_reloj.Ahora))))).Valor!.Codigos;
+        _reloj.Avanzar(TimeSpan.FromSeconds(60));
+
+        var r = await _cuenta.ConfirmarBajaAsync(id, Clave, codigos[0]);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(9, u.MfaCodigosRespaldo!.Length);
+    }
+
+    [Fact]
+    public async Task Sin_mfa_la_baja_sigue_pidiendo_solo_la_contrasena()
+    {
+        var (id, _) = await RegistrarAsync();
+
+        var r = await _cuenta.ConfirmarBajaAsync(id, Clave);
+
+        Assert.True(r.Exito, r.Mensaje);
+    }
+
+    [Fact]
+    public async Task Una_contrasena_mala_en_la_baja_suma_al_contador_de_fallos()
+    {
+        var (id, _) = await RegistrarAsync();
+        var u = _base.Usuarios.Single(x => x.Id == id);
+
+        await _cuenta.ConfirmarBajaAsync(id, "no-era-esta");
+        await _cuenta.ConfirmarBajaAsync(id, "tampoco-esta");
+
+        Assert.Equal(2, u.IntentosFallidos);
+    }
+
+    [Fact]
+    public async Task Diez_fallos_en_la_baja_bloquean_la_cuenta_y_el_bloqueo_rige_aunque_todo_sea_correcto()
+    {
+        var (id, _) = await RegistrarAsync();
+        var u = ConMfaActivo(id);
+        for (var i = 0; i < ServicioSesion.IntentosParaBloquear; i++)
+            await _cuenta.ConfirmarBajaAsync(id, "no-era-esta");
+        Assert.True(u.EstaBloqueada(_reloj.Ahora));
+
+        var r = await _cuenta.ConfirmarBajaAsync(id, Clave, CodigoVigente());
+
+        Assert.False(r.Exito);
+        // Bloqueada no se mira el codigo, ni se gasta: sigue valido para cuando se levante el bloqueo.
+        Assert.Null(u.MfaUltimoPaso);
+    }
+
+    [Fact]
+    public async Task El_fallo_de_la_baja_no_dice_si_fallo_la_contrasena_o_el_codigo()
+    {
+        var (id, _) = await RegistrarAsync();
+        ConMfaActivo(id);
+
+        var contrasenaMala = await _cuenta.ConfirmarBajaAsync(id, "no-era-esta", CodigoVigente());
+        var codigoMalo = await _cuenta.ConfirmarBajaAsync(id, Clave, "000000");
+        var sinCodigo = await _cuenta.ConfirmarBajaAsync(id, Clave, null);
+
+        Assert.Equal(contrasenaMala.Mensaje, codigoMalo.Mensaje);
+        Assert.Equal(contrasenaMala.Mensaje, sinCodigo.Mensaje);
+        Assert.Equal(contrasenaMala.Codigo, codigoMalo.Codigo);
+    }
+
+    [Fact]
+    public async Task Una_contrasena_actual_mala_al_cambiar_la_contrasena_suma_al_contador_de_fallos()
+    {
+        var (id, _) = await RegistrarAsync();
+        var u = _base.Usuarios.Single(x => x.Id == id);
+
+        var r = await _cuenta.CambiarContrasenaAsync(id, "no-era-esta", "otra-contrasena-nueva-9");
+
+        Assert.False(r.Exito);
+        Assert.Equal(1, u.IntentosFallidos);
+    }
+
+    [Fact]
+    public async Task Cambiar_la_contrasena_con_la_cuenta_bloqueada_no_funciona_ni_con_la_correcta()
+    {
+        var (id, _) = await RegistrarAsync();
+        var u = _base.Usuarios.Single(x => x.Id == id);
+        u.BloqueadaHasta = _reloj.Ahora.AddMinutes(5);
+        var hashAntes = u.HashContrasena;
+
+        var r = await _cuenta.CambiarContrasenaAsync(id, Clave, "otra-contrasena-nueva-9");
+
+        Assert.False(r.Exito);
+        Assert.Equal(hashAntes, u.HashContrasena);
     }
 
     // ----------------------------------------------------------- API-16

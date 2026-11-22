@@ -60,15 +60,19 @@ public sealed class ServicioCuenta
     private readonly IAuditor _auditor;
     private readonly ServicioSesion _sesiones;
     private readonly IContrasenasFiltradas _filtradas;
+    private readonly ServicioMfa _mfa;
+    private readonly ServicioBorradoDeDatos _borrado;
     private readonly Zass.Aplicacion.Suscripciones.IServicioSuscripciones? _suscripciones;
 
     public ServicioCuenta(
         IRepositorioUsuarios usuarios, IRepositorioPerfiles perfiles, IUnidadDeTrabajo unidad,
         IHashContrasenas hash, IGeneradorSecretos secretos, IRelojSistema reloj,
         INotificaciones avisos, IAuditor auditor, ServicioSesion sesiones,
-        IContrasenasFiltradas filtradas,
+        IContrasenasFiltradas filtradas, ServicioMfa mfa, ServicioBorradoDeDatos borrado,
         Zass.Aplicacion.Suscripciones.IServicioSuscripciones? suscripciones = null)
     {
+        _mfa = mfa;
+        _borrado = borrado;
         _suscripciones = suscripciones;
         _usuarios = usuarios;
         _perfiles = perfiles;
@@ -295,14 +299,21 @@ public sealed class ServicioCuenta
     /// </summary>
     public async Task<Resultado> CambiarContrasenaAsync(
         Guid usuarioId, string contrasenaActual, string contrasenaNueva,
-        string? sesionActual = null, CancellationToken ct = default)
+        string? sesionActual = null, string? ip = null, CancellationToken ct = default)
     {
         var usuario = await _usuarios.PorIdAsync(usuarioId, ct);
         if (usuario is null)
             return Resultado.Falla(Fallas.NoEncontrado, "Esa cuenta no existe.");
 
-        if (!_hash.Verifica(contrasenaActual, usuario.HashContrasena))
+        // Auditoria H2: una contraseña actual mala suma al bloqueo por intentos (el mismo del inicio
+        // de sesion y del MFA), y con la cuenta bloqueada ni se mira. Solo la contraseña: cambiarla
+        // no pide el segundo factor, esa decision no es de este cambio.
+        if (usuario.EstaBloqueada(_reloj.Ahora)
+            || !_hash.Verifica(contrasenaActual, usuario.HashContrasena))
+        {
+            await _mfa.RegistrarFalloAsync(usuario, "cambiar_contrasena", ip, ct);
             return Resultado.Falla(Fallas.NoAutorizado, "La contraseña actual no es esa.");
+        }
 
         // P19 (T49): rechazar contrasenas que aparecen en filtraciones conocidas (HIBP).
         if (await _filtradas.EstaFiltradaAsync(contrasenaNueva, ct))
@@ -332,16 +343,37 @@ public sealed class ServicioCuenta
     /// la sesión es válida, lo que falla es la confirmación. Un 401 haría que el cliente intente
     /// renovar la sesión, como si hubiera vencido.
     /// </summary>
-    public async Task<Resultado> VerificarContrasenaAsync(
-        Guid usuarioId, string contrasena, CancellationToken ct = default)
+    public async Task<Resultado> ConfirmarBajaAsync(
+        Guid usuarioId, string contrasena, string? codigo = null, string? ip = null,
+        CancellationToken ct = default)
     {
         var usuario = await _usuarios.PorIdAsync(usuarioId, ct);
         if (usuario is null)
             return Resultado.Falla(Fallas.NoEncontrado, "Esa cuenta no existe.");
 
-        return _hash.Verifica(contrasena, usuario.HashContrasena)
+        // Con la verificacion en dos pasos activa se pide la contraseña Y un codigo (decision de
+        // Pablo): quien solo robo la sesion y adivino la contraseña no puede borrar la cuenta. Los
+        // fallos suman al mismo bloqueo de intentos, y la respuesta no dice cual de los dos fallo.
+        return await _mfa.ConfirmarAsync(usuario, contrasena, codigo, "eliminar_cuenta", ip, ct)
             ? Resultado.Ok()
-            : Resultado.Falla(Fallas.ReglaDeNegocio, "La contraseña no es correcta.");
+            : Resultado.Falla(Fallas.ReglaDeNegocio, ServicioMfa.FalloDeConfirmacion);
+    }
+
+    /// <summary>
+    /// CS-04, el segundo paso (auditoria H3): despublica la ficha ANTES de cancelar las citas. Las
+    /// citas se cancelan una por una, cada una en su transaccion, y mientras la ficha siguiera
+    /// publicada alguien podria agendar una nueva con una cuenta que esta por desaparecer. Es
+    /// idempotente; si la baja falla despues, la persona sigue con su cuenta y puede volver a
+    /// publicar su ficha.
+    /// </summary>
+    public async Task<Resultado> DespublicarParaBajaAsync(Guid usuarioId, CancellationToken ct = default)
+    {
+        var perfil = await _perfiles.PrestadorDeUsuarioAsync(usuarioId, ct);
+        if (perfil is null || perfil.Estado == EstadoPerfil.Despublicado) return Resultado.Ok();
+
+        perfil.Despublicar();
+        await _unidad.GuardarAsync(ct);
+        return Resultado.Ok();
     }
 
     /// <summary>
@@ -371,6 +403,10 @@ public sealed class ServicioCuenta
             if (!fin.Exito) return fin;
         }
 
+        // Ley 21.719: la ficha, las fotos, los documentos y los navegadores con push se borran o se
+        // anonimizan en la MISMA transaccion que la cuenta; los archivos, despues de que confirme.
+        var archivos = await _borrado.PrepararAsync(usuarioId, perfil, ct);
+
         usuario.Anonimizar();
         usuario.AnonimizadoEn = _reloj.Ahora;
         usuario.ActualizadoEn = _reloj.Ahora;
@@ -380,6 +416,8 @@ public sealed class ServicioCuenta
 
         await _sesiones.RevocarTodasAsync(usuarioId, exceptoToken: null, ct);
         await _unidad.GuardarAsync(ct);
+
+        await _borrado.BorrarArchivosAsync(archivos);
         return Resultado.Ok();
     }
 

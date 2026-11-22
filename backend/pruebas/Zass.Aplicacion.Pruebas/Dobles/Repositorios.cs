@@ -53,6 +53,7 @@ public sealed class BaseEnMemoria : IUnidadDeTrabajo
     public List<Contacto> Contactos { get; } = new();
     public List<Notificacion> Notificaciones { get; } = new();
     public List<FotoTrabajo> FotosDeTrabajo { get; } = new();
+    public List<SuscripcionPush> SuscripcionesPush { get; } = new();
 
     public int Guardados { get; private set; }
     public Task<int> GuardarAsync(CancellationToken ct = default)

@@ -137,8 +137,9 @@ export async function cerrarSesion(): Promise<void> {
  * la otra persona) y la suscripción, y anonimiza. Responde 204 y cierra la sesión del lado del
  * servidor; el token CSRF de esa sesión ya no sirve, así que se olvida.
  */
-export async function eliminarMiCuenta(contrasena: string): Promise<void> {
-  await enviar('/api/mi/cuenta', { contrasena }, 'DELETE')
+export async function eliminarMiCuenta(contrasena: string, codigo?: string): Promise<void> {
+  // El código (TOTP o de respaldo) solo viaja si la cuenta tiene la verificación en dos pasos.
+  await enviar('/api/mi/cuenta', codigo ? { contrasena, codigo } : { contrasena }, 'DELETE')
   olvidarCsrf()
 }
 

@@ -53,8 +53,8 @@ public class IdentidadIntegracionPruebas : IDisposable
             usuarios, perfiles, unidad, _hash, _secretos, _reloj, cola, auditor, filtradas);
         _sesion = new ServicioSesion(
             usuarios, _repoSesiones, unidad, _hash, _secretos, _reloj, auditor);
-        _cuenta = new ServicioCuenta(
-            usuarios, perfiles, unidad, _hash, _secretos, _reloj, cola, auditor, _sesion, filtradas);
+        _cuenta = ArmadoDeCuentaReal.Crear(
+            ctx, _hash, _secretos, _reloj, cola, auditor, unidad, _sesion, filtradas);
         _perfiles = new ServicioPerfiles(
             usuarios, perfiles, unidad, _reloj, _cifrado, cola, auditor);
     }

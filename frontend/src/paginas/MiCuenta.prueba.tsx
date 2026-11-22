@@ -25,13 +25,22 @@ function json(cuerpo: unknown, estado = 200) {
 
 let llamadas: { ruta: string; metodo: string; cuerpo: unknown }[]
 let alEliminar: () => Response
+/** Lo que responde API-80. Por defecto, sin la verificación en dos pasos. */
+let mfaActivo: boolean | 'falla'
 
 beforeEach(() => {
   llamadas = []
   alEliminar = () => new Response(null, { status: 204 })
+  mfaActivo = false
   olvidarCsrf()
   vi.stubGlobal('fetch', vi.fn(async (ruta: string, opciones?: RequestInit) => {
     if (ruta === '/api/auth/csrf') return json({ token: 't' })
+    if (ruta === '/api/mi/mfa') {
+      llamadas.push({ ruta, metodo: 'GET', cuerpo: undefined })
+      return mfaActivo === 'falla'
+        ? json({}, 500)
+        : json({ activo: mfaActivo, activadoEn: null, codigosDeRespaldoRestantes: 0, obligatorio: false })
+    }
     const metodo = opciones?.method ?? 'GET'
     llamadas.push({ ruta, metodo, cuerpo: opciones?.body ? JSON.parse(String(opciones.body)) : undefined })
     if (ruta === '/api/mi/cuenta' && metodo === 'DELETE') return alEliminar()
@@ -90,13 +99,13 @@ describe('Mi cuenta', () => {
 
   it('con otra contraseña dice por que, junto al campo, y la cuenta sigue', async () => {
     const u = userEvent.setup()
-    alEliminar = () => json({ title: 'Regla de negocio', status: 422, detail: 'La contraseña no es correcta.' }, 422)
+    alEliminar = () => json({ title: 'Regla de negocio', status: 422, detail: 'La contraseña o el código no corresponden.' }, 422)
     const { recargar } = pintar()
 
     await u.type(screen.getByLabelText(T.ETIQUETA_CONTRASENA), 'no-era-esta')
     await u.click(screen.getByRole('button', { name: T.BOTON_ELIMINAR }))
 
-    expect(await screen.findByText('La contraseña no es correcta.')).toBeVisible()
+    expect(await screen.findByText('La contraseña o el código no corresponden.')).toBeVisible()
     expect(screen.queryByText(T.ELIMINADA_TITULO)).not.toBeInTheDocument()
     expect(recargar).not.toHaveBeenCalled()
   })
@@ -114,6 +123,52 @@ describe('Mi cuenta', () => {
     // La sesion paso a 'fuera': la pagina NO manda a /entrar, sigue diciendo que se elimino.
     await waitFor(() => expect(recargar).toHaveBeenCalled())
     expect(screen.queryByText('pagina de entrar')).not.toBeInTheDocument()
+  })
+
+  it('sin la verificacion en dos pasos no pide ningun codigo', async () => {
+    pintar()
+
+    // Primero se espera a que la consulta del estado ya haya respondido.
+    await waitFor(() => expect(llamadas.some((l) => l.ruta === '/api/mi/mfa')).toBe(true))
+    expect(screen.queryByLabelText(T.ETIQUETA_CODIGO)).not.toBeInTheDocument()
+  })
+
+  it('a quien ofrece servicios le dice que se borran su ficha, sus fotos y sus documentos', () => {
+    pintar(PRESTADORA)
+
+    expect(screen.getByText(T.CONSECUENCIA_FICHA)).toBeVisible()
+  })
+
+  it('con la verificacion en dos pasos pide tambien el codigo y lo manda junto a la contraseña', async () => {
+    const u = userEvent.setup()
+    mfaActivo = true
+    pintar()
+
+    const campoCodigo = await screen.findByLabelText(T.ETIQUETA_CODIGO)
+    await u.type(screen.getByLabelText(T.ETIQUETA_CONTRASENA), 'contrasena-larga-1')
+    // Con la contraseña sola no alcanza: el boton espera el codigo.
+    const boton = screen.getByRole('button', { name: T.BOTON_ELIMINAR })
+    expect(boton).toBeDisabled()
+    await u.type(campoCodigo, ' 123456 ')
+    expect(boton).toBeEnabled()
+    await u.click(boton)
+
+    expect(await screen.findByRole('heading', { level: 1, name: T.ELIMINADA_TITULO })).toBeInTheDocument()
+    const borrado = llamadas.find((l) => l.ruta === '/api/mi/cuenta' && l.metodo === 'DELETE')
+    expect(borrado?.cuerpo).toEqual({ contrasena: 'contrasena-larga-1', codigo: '123456' })
+  })
+
+  it('si no se pudo saber si tiene el segundo paso, el rechazo del servidor hace aparecer el campo del codigo', async () => {
+    const u = userEvent.setup()
+    mfaActivo = 'falla'
+    alEliminar = () => json({ title: 'Regla de negocio', status: 422, detail: 'La contraseña o el código no corresponden.' }, 422)
+    pintar()
+
+    expect(screen.queryByLabelText(T.ETIQUETA_CODIGO)).not.toBeInTheDocument()
+    await u.type(screen.getByLabelText(T.ETIQUETA_CONTRASENA), 'contrasena-larga-1')
+    await u.click(screen.getByRole('button', { name: T.BOTON_ELIMINAR }))
+
+    expect(await screen.findByLabelText(T.ETIQUETA_CODIGO)).toBeVisible()
   })
 
   it('sin sesion manda a entrar', () => {

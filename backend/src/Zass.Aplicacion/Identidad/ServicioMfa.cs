@@ -274,6 +274,37 @@ public sealed class ServicioMfa
         return Resultado.Ok();
     }
 
+    // ------------------------------------------------------------ Confirmar una accion de la cuenta
+
+    /// <summary>
+    /// Lo que se responde cuando falla la contrasena o el codigo, sin decir cual de los dos.
+    /// </summary>
+    public const string FalloDeConfirmacion = "La contraseña o el código no corresponden.";
+
+    /// <summary>
+    /// Confirma que quien pide una accion delicada (eliminar la cuenta, cambiar la contrasena) es
+    /// el dueño: la contrasena y, si la cuenta tiene la verificacion en dos pasos activa, tambien
+    /// un codigo (TOTP o de respaldo, que se gasta aqui mismo de forma atomica). Un fallo suma al
+    /// MISMO bloqueo de 10 intentos / 15 minutos del inicio de sesion, y con la cuenta bloqueada no
+    /// se mira nada (ni se gasta un codigo). Devuelve falso en cualquier fallo: el que llama
+    /// responde <see cref="FalloDeConfirmacion"/>, una sola respuesta.
+    /// </summary>
+    public async Task<bool> ConfirmarAsync(
+        Usuario usuario, string? contrasena, string? codigo, string paso, string? ip = null,
+        CancellationToken ct = default)
+    {
+        var ahora = _reloj.Ahora;
+        var correcta = !usuario.EstaBloqueada(ahora)
+            && _hash.Verifica(contrasena ?? "", usuario.HashContrasena)
+            && (!usuario.MfaActivo
+                || await VerificarCodigoAsync(usuario, codigo, ahora, ct) != CodigoAceptado.Ninguno);
+
+        if (correcta) return true;
+
+        await RegistrarFalloAsync(usuario, paso, ip, ct);
+        return false;
+    }
+
     // ------------------------------------------------------------ Piezas
 
     /// <summary>
@@ -302,8 +333,8 @@ public sealed class ServicioMfa
         return CodigoAceptado.Ninguno;
     }
 
-    /// <summary>Suma el fallo al MISMO contador del bloqueo por intentos de la contrasena.</summary>
-    private async Task RegistrarFalloAsync(Usuario usuario, string paso, string? ip, CancellationToken ct)
+    /// <summary>Suma el fallo al MISMO contador del bloqueo por intentos de la contrasena. Guarda.</summary>
+    public async Task RegistrarFalloAsync(Usuario usuario, string paso, string? ip, CancellationToken ct)
     {
         var ahora = _reloj.Ahora;
         var bloqueoAhora = await _usuarios.SumarIntentoFallidoAsync(
