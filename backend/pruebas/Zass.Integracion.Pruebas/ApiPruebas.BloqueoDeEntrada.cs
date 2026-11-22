@@ -140,6 +140,28 @@ public partial class ApiPruebas
     }
 
     /// <summary>
+    /// Los fallos durante el bloqueo no cuentan. Si contaran, quien siga probando contrasenas
+    /// mientras la cuenta esta bloqueada la volveria a bloquear sin fin (la duena no entraria
+    /// nunca) y llenaria la auditoria. El plazo no se mueve y queda UNA entrada de bloqueo.
+    /// </summary>
+    [Fact]
+    public async Task Los_fallos_durante_el_bloqueo_no_alargan_el_bloqueo_ni_lo_repiten()
+    {
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo);
+        await FallarAsync(correo, ServicioSesion.IntentosParaBloquear);
+        var bloqueada = await UsuarioAsync(correo);
+        Assert.NotNull(bloqueada.BloqueadaHasta);
+
+        await FallarAsync(correo, ServicioSesion.IntentosParaBloquear);
+
+        var despues = await UsuarioAsync(correo);
+        Assert.Equal(bloqueada.BloqueadaHasta, despues.BloqueadaHasta);
+        Assert.Equal(0, despues.IntentosFallidos);
+        Assert.Equal(1, await BloqueosAuditadosAsync(despues.Id));
+    }
+
+    /// <summary>
     /// Recuperar la contrasena sigue funcionando con la cuenta bloqueada, y restablecerla la
     /// desbloquea: es la salida de la duena si alguien la dejo fuera a proposito.
     /// </summary>
