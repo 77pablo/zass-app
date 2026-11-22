@@ -15,6 +15,7 @@
 import {
   cabecerasHtml, datosDeFicha, inyectar, metaDeFicha, META_NOINDEX, META_SIN_INDEXAR, origenDelSitio,
 } from '../_comun/seo.js'
+import { ponerSecretoDeOrigen } from '../_comun/origen.js'
 
 /** Lo que genera el generador de slugs del backend (minusculas, digitos, guiones) con margen. */
 const FORMA_DE_SLUG = /^[a-z0-9][a-z0-9-]{0,119}$/
@@ -55,6 +56,7 @@ export async function onRequest({ request, env, params }) {
     // La IP real del visitante, para que el limite de la API no cuente a Cloudflare entero como uno solo.
     const ip = request.headers.get('CF-Connecting-IP')
     if (ip) cabeceras['X-Forwarded-For'] = ip
+    ponerSecretoDeOrigen(cabeceras, env) // P-11
     respuestaApi = await fetch(new URL(`/api/prestadores/${encodeURIComponent(slug)}`, env.API_ORIGEN), {
       headers: cabeceras,
       signal: AbortSignal.timeout(ESPERA_MAXIMA_MS),

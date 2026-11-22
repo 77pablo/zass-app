@@ -292,7 +292,7 @@ public class VerificacionPruebas
         Assert.Equal("Titulo coincide con el documento", v.Detalle);
         Assert.Equal(new DateOnly(2030, 1, 1), v.VigenciaHasta);
         Assert.Equal(_reloj.Ahora, v.ResueltaEn);
-        Assert.Equal("Verificada", c.EtiquetaPublica());
+        Assert.Equal("Verificada", c.EtiquetaPublica(HoraDeChile.DiaLocal(_reloj.Ahora)));
         // RN-S2-08: quien, cuando y por que
         var reg = Assert.Single(_auditoria.Registros);
         Assert.Equal("verificar_credencial", reg.Accion);
@@ -441,7 +441,7 @@ public class VerificacionPruebas
         Assert.Equal("El nombre del documento es otro", v.Detalle);
         Assert.True(v.EsRechazo());
         // 4A.6: el público la sigue viendo como declarada
-        Assert.Equal("Declarada por el usuario", c.EtiquetaPublica());
+        Assert.Equal("Declarada por el usuario", c.EtiquetaPublica(HoraDeChile.DiaLocal(_reloj.Ahora)));
         var reg = Assert.Single(_auditoria.Registros);
         Assert.Equal("rechazar_credencial", reg.Accion);
         Assert.Contains("NoCorresponde", reg.Contexto);

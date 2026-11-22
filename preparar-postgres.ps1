@@ -49,7 +49,8 @@ if ($codigo -ne 0) { Falla "initdb fallo (codigo $codigo). Si quedo una carpeta 
 Set-Content -Path $clave -Value $pass -Encoding ASCII -NoNewline
 Write-Host "[2/4] Clave guardada en $clave (no se muestra)."
 
-Add-Content -Path (Join-Path $datos "postgresql.conf") -Encoding ASCII -Value "`r`nport = $Puerto`r`nlisten_addresses = 'localhost'`r`nmax_connections = 50"
+# La prueba de los 60 cupos concurrentes necesita >60 conexiones; 50 y 100 fallan, 200 pasa. El CI usa 300.
+Add-Content -Path (Join-Path $datos "postgresql.conf") -Encoding ASCII -Value "`r`nport = $Puerto`r`nlisten_addresses = 'localhost'`r`nmax_connections = 200"
 
 Write-Host "[3/4] Arrancando en el puerto $Puerto ..."
 New-Item -ItemType Directory -Force -Path $logs | Out-Null

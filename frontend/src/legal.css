@@ -23,7 +23,7 @@
 .legal ul { padding-left: 1.25rem; }
 .legal li { margin-top: 8px; }
 .legal a { color: var(--pizarra); text-decoration-color: var(--celeste); text-decoration-thickness: 2px; text-underline-offset: 4px; }
-.legal a:hover { text-decoration-color: var(--pizarra); }
+@media (hover: hover) and (pointer: fine) { .legal a:hover { text-decoration-color: var(--pizarra); } }
 
 /* Un dato que falta llenar se ve distinto a proposito: que nadie lo publique sin darse cuenta. */
 .legal .legal-pendiente {

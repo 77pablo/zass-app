@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { ErrorApi } from '../api/cliente'
+import { fechaLarga } from '../funciones/perfil/estadoSuscripcion'
 import { Icono } from '../marco/Icono'
 import { useMeta } from '../marco/useMeta'
 import { useTitulo } from '../marco/useTitulo'
 import {
-  CUPOS_FUNDADOR_TOTALES, type CatalogoDePlanes, type Cotizacion, type Plan,
+  CUPOS_FUNDADOR_TOTALES, type CatalogoDePlanes, type Cotizacion, type CupoTomado, type Plan,
   cotizar, pesos, planes as pedirPlanes, tomarCupoFundador,
 } from '../funciones/planes/servicio'
 import { useSesion } from '../sesion/contexto'
@@ -84,7 +85,6 @@ export function Planes() {
   })
 
   const { estado, usuario } = useSesion()
-  const navegar = useNavigate()
 
   const [catalogo, setCatalogo] = useState<CatalogoDePlanes | null>(null)
   const [cargando, setCargando] = useState(true)
@@ -97,6 +97,7 @@ export function Planes() {
 
   const [tomando, setTomando] = useState(false)
   const [errorAlTomar, setErrorAlTomar] = useState<string | null>(null)
+  const [tomado, setTomado] = useState<CupoTomado | null>(null)
 
   /**
    * CC-04. Una sola clave por visita a esta pantalla, y la misma en cada reintento: es lo
@@ -166,14 +167,9 @@ export function Planes() {
     setTomando(true)
     setErrorAlTomar(null)
     try {
-      const intento = await tomarCupoFundador(clave)
-      if (intento.urlParaPagar === null) {
-        setErrorAlTomar('No pudimos abrir el pago. Vuelve a intentarlo.')
-        return
-      }
-      // La pasarela puede ser nuestra pantalla de prueba o el sitio del banco.
-      if (intento.urlParaPagar.startsWith('/')) navegar(intento.urlParaPagar)
-      else window.location.assign(intento.urlParaPagar)
+      // Sin tarjeta y sin pasarela (20-nov-2026): el cupo queda tuyo al tiro.
+      setTomado(await tomarCupoFundador(clave))
+      void traer()
     } catch (e) {
       // 409: alguien se llevó el último cupo mientras mirabas. Se vuelve a preguntar para
       // que la pantalla deje de ofrecer algo que ya no existe.
@@ -183,7 +179,7 @@ export function Planes() {
       } else {
         setErrorAlTomar(e instanceof ErrorApi
           ? e.mensaje
-          : 'No pudimos abrir el pago. Vuelve a intentarlo.')
+          : 'No pudimos tomar tu cupo. Vuelve a intentarlo.')
       }
     } finally {
       setTomando(false)
@@ -225,7 +221,22 @@ export function Planes() {
       <div className="planes-rejilla">
         {fundador !== null && (
           <TarjetaDePlan plan={fundador} destacado cerrado={cerrado}>
-            {puerta === 'puede' && (
+            {puerta === 'puede' && tomado !== null && (
+              <div className="aviso aviso--atencion" role="status">
+                <p>
+                  <strong>Listo: el cupo N° {tomado.numero} es tuyo.</strong> Tu mes gratis
+                  dura hasta el {fechaLarga(tomado.mesGratisHasta) ?? 'fin del mes'}.
+                </p>
+                {!tomado.tarjetaInscrita && (
+                  <p>
+                    Antes de esa fecha inscribe tu tarjeta en <Link to="/mi-ficha">Mi ficha</Link>;
+                    hoy no se te cobra nada. Si el mes termina sin tarjeta, el cupo queda libre
+                    para otra persona.
+                  </p>
+                )}
+              </div>
+            )}
+            {puerta === 'puede' && tomado === null && (
               <>
                 <button
                   type="button"
@@ -234,12 +245,12 @@ export function Planes() {
                   disabled={tomando}
                 >
                   <Icono nombre="flecha" />
-                  {tomando ? 'Abriendo el pago…' : 'Quiero mi cupo'}
+                  {tomando ? 'Tomando tu cupo…' : 'Quiero mi cupo'}
                 </button>
                 <p className="plan-letra-chica">
-                  Inscribes tu medio de pago hoy y no se te cobra nada: tu primer mes es
-                  gratis. Después, {pesos(fundador.precioMensual)} al mes mientras mantengas
-                  tu suscripción.
+                  No necesitas tarjeta para tomarlo: tu primer mes es gratis. La inscribes antes
+                  de que termine el mes; si no, el cupo queda libre para otra persona. Después,
+                  {' '}{pesos(fundador.precioMensual)} al mes mientras mantengas tu suscripción.
                 </p>
               </>
             )}
@@ -321,25 +332,74 @@ export function Planes() {
 }
 
 /**
- * La vuelta del pago. NO confirma nada por su cuenta: lo que confirma el cupo es el aviso
- * que la pasarela le manda al servidor. Esta pantalla solo pregunta cómo quedó.
+ * La vuelta del pago (API-75). Esta pantalla NO confirma nada: la API ya le preguntó a la
+ * pasarela con su firma y manda aquí con `?resultado=` y uno de cuatro valores fijos. Cualquier
+ * otro valor (o ninguno) se trata como «revisar»: nunca se dice «listo» sin que la API lo diga.
+ * «procesando» (22-nov-2026) es el pago que la pasarela todavía tiene pendiente: no se rechazó,
+ * y el aviso de la pasarela lo cierra solo.
+ * (Textos PROPUESTOS: los aprueba Pablo.)
  */
 export function PlanesListo() {
-  useTitulo('Estamos confirmando tu cupo')
+  const [parametros] = useSearchParams()
+  const resultado = parametros.get('resultado')
+  const caso = resultado === 'aprobado' || resultado === 'rechazado' || resultado === 'procesando'
+    ? resultado
+    : 'revisar'
+
+  const titulo = caso === 'aprobado'
+    ? 'Listo: tu tarjeta quedó inscrita'
+    : caso === 'rechazado'
+      ? 'No pudimos inscribir tu tarjeta'
+      : caso === 'procesando'
+        ? 'Tu pago se está procesando'
+        : 'Estamos confirmando tu tarjeta'
+  useTitulo(titulo)
   // No tiene nada que hacer un buscador aquí: es la vuelta de un pago.
   useMeta({ noindex: true })
 
   return (
     <article className="pagina pagina--angosta">
-      <h1>Estamos confirmando tu cupo</h1>
-      <p className="bloque-texto">
-        Tu medio de pago quedó inscrito y estamos esperando la confirmación. Puede tardar unos
-        segundos.
-      </p>
-      <p className="bloque-texto">
-        Cuando llegue, tu ficha pasa al plan fundador con el primer mes gratis. Lo puedes ver
-        en <Link to="/mi-ficha">Mi ficha</Link>.
-      </p>
+      <h1>{titulo}</h1>
+      {caso === 'aprobado' && (
+        <p className="bloque-texto">
+          Tu cupo de fundador queda asegurado. No se cobró nada: el primer cobro llega cuando
+          termine tu mes gratis. Lo puedes ver en <Link to="/mi-ficha">Mi ficha</Link>.
+        </p>
+      )}
+      {caso === 'rechazado' && (
+        <>
+          <p className="bloque-texto">
+            La pasarela no aceptó la tarjeta y no se cobró nada. Tu cupo sigue siendo tuyo hasta
+            que termine tu mes gratis. Algunos bancos no permiten guardar la tarjeta para pagos
+            automáticos: prueba con otra.
+          </p>
+          <p className="bloque-texto">
+            <Link className="boton" to="/mi-ficha">Probar con otra tarjeta</Link>
+          </p>
+        </>
+      )}
+      {caso === 'procesando' && (
+        <>
+          <p className="bloque-texto">
+            La pasarela todavía no confirma tu pago. No lo intentes de nuevo: cuando se confirme,
+            tu suscripción se actualiza sola.
+          </p>
+          <p className="bloque-texto">
+            Lo puedes ver en <Link to="/mi-ficha">Mi ficha</Link>.
+          </p>
+        </>
+      )}
+      {caso === 'revisar' && (
+        <>
+          <p className="bloque-texto">
+            Estamos esperando la confirmación de la pasarela. Puede tardar unos segundos.
+          </p>
+          <p className="bloque-texto">
+            Cuando llegue, tu tarjeta queda inscrita y tu cupo asegurado. Lo puedes ver en
+            {' '}<Link to="/mi-ficha">Mi ficha</Link>.
+          </p>
+        </>
+      )}
     </article>
   )
 }

@@ -58,12 +58,16 @@ public static class IdDePeticion
     /// <summary>
     /// El mismo identificador en el cuerpo de todo error RFC 7807.
     ///
-    /// No hace falta quitar un <c>traceId</c>: se midio el 17-nov-2026 que ASP.NET 8 no lo pone
-    /// en estos errores, ni siquiera con telemetria encendida (una linea que lo quitaba sobrevivio
-    /// a su mutacion y se borro). Si una version futura empieza a ponerlo, lo ve
-    /// <c>Con_telemetria_encendida_el_error_sigue_trayendo_un_solo_identificador</c>.
+    /// ASP.NET 10 agrega por su cuenta un <c>traceId</c> distinto en cada peticion a
+    /// <c>ProblemDetails.Extensions</c>. Eso rompe las pruebas que comparan respuestas entre sí
+    /// (ApiPruebas, ResenasApiPruebas) y las que esperan un solo identificador (IdDePeticionPruebas).
+    /// Se quita antes de poner el nuestro para que el error tenga siempre un solo <c>idPeticion</c>,
+    /// idéntico entre respuestas iguales.
     /// </summary>
     public static void Configurar(ProblemDetailsOptions opciones) =>
         opciones.CustomizeProblemDetails = c =>
+        {
+            c.ProblemDetails.Extensions.Remove("traceId");
             c.ProblemDetails.Extensions[ClaveDelProblema] = c.HttpContext.TraceIdentifier;
+        };
 }
