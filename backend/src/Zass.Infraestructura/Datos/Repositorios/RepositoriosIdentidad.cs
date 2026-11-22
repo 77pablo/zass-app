@@ -75,6 +75,38 @@ public sealed class RepositorioUsuariosEfCore : IRepositorioUsuarios
         _ctx.Roles.FirstOrDefaultAsync(r => r.Codigo == codigo, ct);
 
     public void Agregar(Usuario usuario) => _ctx.Usuarios.Add(usuario);
+
+    /// <summary>
+    /// Un solo UPDATE: Postgres toma el candado de la fila y, si otro intento la cambio
+    /// mientras esperaba, vuelve a evaluar el WHERE y los CASE con la fila nueva. Por eso
+    /// diez intentos simultaneos cuentan diez y solo uno dispara el bloqueo. Los dos CASE ven
+    /// el valor VIEJO de intentos_fallidos (asi es un UPDATE en SQL), y el RETURNING el nuevo:
+    /// cero solo cuando este intento bloqueo, porque un fallo que no bloquea deja 1 o mas.
+    /// </summary>
+    public async Task<bool> SumarIntentoFallidoAsync(
+        Guid usuarioId, DateTime ahora, int intentosParaBloquear, DateTime bloqueadaHasta,
+        CancellationToken ct = default)
+    {
+        var filas = await _ctx.Database.SqlQuery<bool>($"""
+            UPDATE usuarios
+               SET intentos_fallidos = CASE WHEN intentos_fallidos + 1 >= {intentosParaBloquear}
+                                            THEN 0 ELSE intentos_fallidos + 1 END,
+                   bloqueada_hasta   = CASE WHEN intentos_fallidos + 1 >= {intentosParaBloquear}
+                                            THEN {bloqueadaHasta} ELSE bloqueada_hasta END
+             WHERE id = {usuarioId}
+               AND (bloqueada_hasta IS NULL OR bloqueada_hasta <= {ahora})
+            RETURNING intentos_fallidos = 0 AS "Value"
+            """).ToListAsync(ct);
+        return filas.Count == 1 && filas[0];
+    }
+
+    public async Task<bool> ReiniciarIntentosSiNoBloqueadaAsync(
+        Guid usuarioId, DateTime ahora, CancellationToken ct = default) =>
+        await _ctx.Usuarios
+            .Where(u => u.Id == usuarioId && (u.BloqueadaHasta == null || u.BloqueadaHasta <= ahora))
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(u => u.IntentosFallidos, 0)
+                .SetProperty(u => u.BloqueadaHasta, (DateTime?)null), ct) == 1;
 }
 
 public sealed class RepositorioSesionesEfCore : IRepositorioSesiones

@@ -326,8 +326,15 @@ public sealed class FlowPasarela : IPasarelaDePagos
             return Resultado.Falla<CobroResuelto>(resultado.Codigo!, resultado.Mensaje!);
 
         var response = resultado.Valor;
-        var aprobado = response.Status == 2;
+        var veredicto = VeredictoDe(response.Status);
 
+        // customer/charge devuelve el mismo PaymentStatus que getStatus: un 1 es «pendiente»,
+        // no un rechazo. El intento queda Pendiente y el cobro automatico no lo reintenta.
+        if (veredicto == VeredictoDelCobro.Pendiente)
+            return Resultado.Ok(CobroResuelto.EnCurso(
+                solicitud.IntentoDePagoId, response.FlowOrder.ToString()));
+
+        var aprobado = veredicto == VeredictoDelCobro.Pagado;
         return Resultado.Ok(new CobroResuelto(
             IntentoDePagoId: solicitud.IntentoDePagoId,
             ReferenciaPasarela: response.FlowOrder.ToString(),
@@ -335,6 +342,20 @@ public sealed class FlowPasarela : IPasarelaDePagos
             MontoConfirmado: (int)Math.Round(response.Amount),
             MotivoFallo: aprobado ? null : "Flow rechazo el cobro con la tarjeta inscrita."));
     }
+
+    /// <summary>
+    /// El estado de una orden de Flow (esquema PaymentStatus de la documentacion oficial,
+    /// https://developers.flow.cl/es-openApiFlow.yaml): 1 pendiente de pago, 2 pagada,
+    /// 3 rechazada, 4 anulada. Solo 3 y 4 cierran el intento como fallido. Un valor que no
+    /// esta en la lista NO se lee como rechazo ni como pago: se deja pendiente, porque
+    /// cerrar como fallido algo que pudo cobrarse es justo como se pierde el mes de alguien.
+    /// </summary>
+    internal static VeredictoDelCobro VeredictoDe(int estadoFlow) => estadoFlow switch
+    {
+        2 => VeredictoDelCobro.Pagado,
+        3 or 4 => VeredictoDelCobro.Rechazado,
+        _ => VeredictoDelCobro.Pendiente,
+    };
 
     public async Task<Resultado<CobroResuelto>> LeerConfirmacionAsync(
         AvisoDePasarela aviso, CancellationToken ct = default)
@@ -373,7 +394,11 @@ public sealed class FlowPasarela : IPasarelaDePagos
                 Fallas.Validacion,
                 $"El commerceOrder '{response.CommerceOrder}' no es un identificador valido.");
 
-        var aprobado = response.Status == 2;
+        var veredicto = VeredictoDe(response.Status);
+        if (veredicto == VeredictoDelCobro.Pendiente)
+            return Resultado.Ok(CobroResuelto.EnCurso(intentoId, response.FlowOrder.ToString()));
+
+        var aprobado = veredicto == VeredictoDelCobro.Pagado;
         var montoConfirmado = (int)Math.Round(response.Amount);
 
         // Si el monto tiene decimales distintos de ,00, falla
@@ -387,7 +412,9 @@ public sealed class FlowPasarela : IPasarelaDePagos
             ReferenciaPasarela: response.FlowOrder.ToString(),
             Aprobado: aprobado,
             MontoConfirmado: aprobado ? montoConfirmado : null,
-            MotivoFallo: aprobado ? null : $"Flow reporto estado {response.Status} (no pagado)."));
+            MotivoFallo: aprobado ? null
+                : response.Status == 4 ? "Flow anuló el pago. No se cobró nada."
+                : "Flow rechazó el pago. No se cobró nada."));
     }
 
     private async Task<Resultado<CobroResuelto>> LeerConfirmacionDeInscripcionAsync(string token, CancellationToken ct)

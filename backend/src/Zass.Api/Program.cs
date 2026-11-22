@@ -22,6 +22,7 @@ constructor.Services
     .AgregarLimiteDeTasa(constructor.Configuration)                            // los 4 grupos P, A, G, S (+ Salud)
     .AgregarProxiesDeConfianza()                      // X-Forwarded-*: solo desde redes listadas
     .AgregarAutenticacion(exigirHttps)                // cookie de 15 min + CSRF
+    .AgregarHsts()                                    // 2 anos + subdominios, sin preload
     .AddValidatorsFromAssemblyContaining<ValidadorVerificarCorreo>()
     .AddProblemDetails(o =>                           // RFC 7807 en todos los errores:
     {
@@ -79,6 +80,10 @@ TextosEnCastellano.ConfigurarResolvedor();
 // abrir ningun puerto. Todo lo que no sea Development se trata como produccion.
 ValidacionDeArranque.Exigir(app.Configuration, esProductivo: !app.Environment.IsDevelopment());
 
+// P-11: sin el secreto de origen la API arranca igual, pero que quede escrito en el registro.
+if (SecretoDeOrigen.Advertencia(app.Configuration, esProductivo: !app.Environment.IsDevelopment()) is { } aviso)
+    app.Logger.LogWarning("{Aviso}", aviso);
+
 // `dotnet Zass.Api.dll --migrar`: aplica migraciones y termina (ver Migrador).
 if (Migrador.Solicitado(args))
     return await Migrador.AplicarAsync(app.Services, app.Logger);
@@ -105,6 +110,11 @@ if (exigirHttps)
     app.UseHsts();
     app.UseHttpsRedirection();
 }
+
+// P-11: con Zass:SecretoDeOrigen, lo que no llega por la Function de Cloudflare recibe 403.
+// Despues de las cabeceras y del HSTS (el 403 las lleva); antes del limitador y los endpoints.
+// Sin la opcion no registra nada.
+app.UsarSecretoDeOrigen(app.Configuration);
 
 app.UseRateLimiter();
 app.UseAuthentication();

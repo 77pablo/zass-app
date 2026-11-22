@@ -5896,6 +5896,10 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasColumnType("character varying(100)")
                         .HasColumnName("apellido");
 
+                    b.Property<DateTime?>("BloqueadaHasta")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("bloqueada_hasta");
+
                     b.Property<string>("Correo")
                         .IsRequired()
                         .HasColumnType("citext")
@@ -5919,6 +5923,10 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("hash_contrasena");
+
+                    b.Property<int>("IntentosFallidos")
+                        .HasColumnType("integer")
+                        .HasColumnName("intentos_fallidos");
 
                     b.Property<DateTime?>("MayorDeEdadConfirmadoEn")
                         .HasColumnType("timestamp with time zone")

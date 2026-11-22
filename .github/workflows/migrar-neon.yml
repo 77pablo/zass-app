@@ -29,17 +29,25 @@ permissions:
 
 jobs:
   migrar:
+    # Entorno «migraciones»: solo desde main y con la APROBACION de Pablo en cada corrida.
+    # Antes cualquiera con escritura podia lanzarlo escribiendo MIGRAR (auditoria del 22-nov).
+    environment: migraciones
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Comprobar la confirmacion
+        # Lo que se escribe en el formulario va por una variable, NO interpolado dentro del guion:
+        # interpolado, un texto con comillas podia inyectar comandos en el runner.
+        env:
+          CONFIRMO: ${{ inputs.confirmo }}
+          QUIEN: ${{ github.actor }}
         run: |
           set -euo pipefail
-          if [ "${{ inputs.confirmo }}" != "MIGRAR" ]; then
-            echo "DETENIDO: hay que escribir MIGRAR para confirmar. Se escribio: '${{ inputs.confirmo }}'" >&2
+          if [ "$CONFIRMO" != "MIGRAR" ]; then
+            echo "DETENIDO: hay que escribir MIGRAR para confirmar." >&2
             exit 1
           fi
-          echo "Confirmado por ${{ github.actor }}."
+          echo "Confirmado por $QUIEN."
 
       - uses: actions/checkout@v7
 

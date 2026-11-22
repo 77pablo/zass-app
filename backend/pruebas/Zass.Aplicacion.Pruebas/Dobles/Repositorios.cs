@@ -110,6 +110,33 @@ public sealed class RepositorioUsuariosEnMemoria : IRepositorioUsuarios
         Task.FromResult(_base.Roles.FirstOrDefault(r => r.Codigo == codigo));
 
     public void Agregar(Usuario usuario) => _base.Usuarios.Add(usuario);
+
+    // Las mismas reglas que el UPDATE atomico de RepositorioUsuariosEfCore.
+    public Task<bool> SumarIntentoFallidoAsync(
+        Guid usuarioId, DateTime ahora, int intentosParaBloquear, DateTime bloqueadaHasta,
+        CancellationToken ct = default)
+    {
+        var u = _base.Usuarios.FirstOrDefault(x => x.Id == usuarioId);
+        if (u is null || u.EstaBloqueada(ahora)) return Task.FromResult(false);
+        if (u.IntentosFallidos + 1 >= intentosParaBloquear)
+        {
+            u.IntentosFallidos = 0;
+            u.BloqueadaHasta = bloqueadaHasta;
+            return Task.FromResult(true);
+        }
+        u.IntentosFallidos++;
+        return Task.FromResult(false);
+    }
+
+    public Task<bool> ReiniciarIntentosSiNoBloqueadaAsync(
+        Guid usuarioId, DateTime ahora, CancellationToken ct = default)
+    {
+        var u = _base.Usuarios.FirstOrDefault(x => x.Id == usuarioId);
+        if (u is null || u.EstaBloqueada(ahora)) return Task.FromResult(false);
+        u.IntentosFallidos = 0;
+        u.BloqueadaHasta = null;
+        return Task.FromResult(true);
+    }
 }
 
 public sealed class RepositorioSesionesEnMemoria : IRepositorioSesiones

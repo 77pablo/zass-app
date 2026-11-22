@@ -84,6 +84,7 @@ describe('PagoSimulado', () => {
     [{ aprobado: true }, 'aprobado'],
     [{ aprobado: false }, 'rechazado'],
     [{}, 'revisar'],
+    [{ aprobado: false, pendiente: true }, 'procesando'],
   ])('si la API contesta %j, vuelve con ?resultado=%s', async (respuesta, resultado) => {
     respuestaDelAviso = respuesta
     pintar(`/pago/inscripcion?intento=${INTENTO}&referencia=sim-x&monto=0&firma=f`)

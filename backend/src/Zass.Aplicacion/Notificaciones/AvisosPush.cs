@@ -28,7 +28,8 @@ public static class AvisosPush
         or TipoNotificacion.CitaCancelada or TipoNotificacion.CitaReprogramada
         or TipoNotificacion.Recordatorio24h or TipoNotificacion.Recordatorio2h
         or TipoNotificacion.ResenaNueva or TipoNotificacion.ResenaRespondida
-        or TipoNotificacion.CredencialResuelta or TipoNotificacion.PerfilPublicado or TipoNotificacion.TarjetaActivada
+        or TipoNotificacion.CredencialResuelta or TipoNotificacion.CredencialVencida
+        or TipoNotificacion.PerfilPublicado or TipoNotificacion.TarjetaActivada
         or TipoNotificacion.SuscripcionPorVencer or TipoNotificacion.SuscripcionVencida
         or TipoNotificacion.CobroRechazado;
 

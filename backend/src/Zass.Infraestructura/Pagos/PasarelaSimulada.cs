@@ -79,6 +79,12 @@ public sealed class PasarelaSimulada : IPasarelaDePagos
     public const string EstadoAprobado = "aprobado";
     public const string EstadoRechazado = "rechazado";
 
+    /// <summary>
+    /// La pasarela todavia no tiene veredicto (el «1 pendiente de pago» de Flow). Existe para
+    /// recorrer el camino del pago pendiente igual que se recorre el del rechazo.
+    /// </summary>
+    public const string EstadoPendiente = "pendiente";
+
     private readonly ILogger<PasarelaSimulada> _registro;
     private readonly IOptions<OpcionesZass> _opciones;
 
@@ -252,6 +258,10 @@ public sealed class PasarelaSimulada : IPasarelaDePagos
         // deducirse del monto. Cualquier valor distinto de 'aprobado' es un rechazo: ante
         // un campo que no se entiende, no se regala un mes.
         var declarado = aviso.Campo(CampoEstado);
+        if (declarado is not null
+            && declarado.Equals(EstadoPendiente, StringComparison.OrdinalIgnoreCase))
+            return Task.FromResult(Resultado.Ok(CobroResuelto.EnCurso(intentoId, referencia)));
+
         var aprobado = declarado is null
             ? monto % 100 != MontoQueRechaza
             : declarado.Equals(EstadoAprobado, StringComparison.OrdinalIgnoreCase);

@@ -28,6 +28,12 @@ services:
       # menos de 32 caracteres, la API NO ARRANCA en produccion. Valor aleatorio, 32+ caracteres.
       - key: Zass__SecretoAvisoPagos
         sync: false
+      # P-11: el secreto que la Function de Cloudflare manda en X-Origen-Zass. Con él puesto, la
+      # API responde 403 a lo que no llega por Cloudflare (salvo /api/salud y los dos avisos de
+      # Flow). OPCIONAL: sin él la API arranca igual y lo advierte en el registro. El MISMO valor
+      # que SECRETO_ORIGEN en Cloudflare Pages, y se pone DESPUÉS de esa (DESPLIEGUE-API.md, 4.1).
+      - key: Zass__SecretoDeOrigen
+        sync: false
       # --- Configuración no secreta pero que depende de tu cuenta ---
       - key: Zass__ProxiesDeConfianza
         sync: false         # rangos de Cloudflare + red del balanceador de Render (ver guía)

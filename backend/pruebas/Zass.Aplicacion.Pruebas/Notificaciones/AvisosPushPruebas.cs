@@ -20,7 +20,9 @@ public class AvisosPushPruebas
     [Fact]
     public void Todos_los_demas_tipos_van_por_push()
     {
-        // Decision del 21-nov: citas, resenas, credencial, ficha, suscripcion y cobro. Un tipo
+        // Decision del 21-nov: citas, resenas, credencial, ficha, suscripcion y cobro.
+        // CredencialVencida (22-nov, CS-06) va por push como CredencialResuelta: es un cambio de
+        // estado de su credencial (CS-07: «por su canal preferido»), sin token ni nada que recuperar. Un tipo
         // nuevo que se agregue sin decidir su canal deja esta prueba roja.
         var sinPush = Enum.GetValues<TipoNotificacion>().Where(t => !AvisosPush.AdmitePush(t));
         // RegistroConRutExistente (#197, 22-nov) tampoco va por push: es un aviso de seguridad con

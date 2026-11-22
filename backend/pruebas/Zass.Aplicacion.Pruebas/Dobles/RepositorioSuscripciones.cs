@@ -217,6 +217,25 @@ public sealed class RepositorioSuscripcionesEnMemoria : IRepositorioSuscripcione
     public Task<bool> ClaveDeIntentoUsadaAsync(string clave, CancellationToken ct = default) =>
         Task.FromResult(_base.IntentosDePago.Any(i => i.ClaveIdempotencia == clave));
 
+    public Task<bool> HayIntentoConCuponPendienteAsync(
+        Guid perfilPrestadorId, DateTime desde, CancellationToken ct = default) =>
+        Task.FromResult(_base.IntentosDePago.Any(
+            i => i.PerfilPrestadorId == perfilPrestadorId
+                 && i.CodigoCupon != null
+                 && i.Estado == EstadoIntentoPago.Pendiente
+                 && i.CreadoEn > desde));
+
+    public Task<EstadoCuenta?> EstadoDeCuentaDePerfilAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        var usuarioId = _base.PerfilesPrestador.FirstOrDefault(p => p.Id == perfilPrestadorId)?.UsuarioId;
+        var usuario = _base.Usuarios.FirstOrDefault(u => u.Id == usuarioId);
+        // Un perfil sembrado sin usuario en estas pruebas cuenta como cuenta activa: el doble no
+        // obliga a sembrar el usuario en cada prueba de cobro que no trata de la cuenta.
+        if (usuarioId is null) return Task.FromResult<EstadoCuenta?>(null);
+        return Task.FromResult<EstadoCuenta?>(usuario?.Estado ?? EstadoCuenta.Activa);
+    }
+
     public Task<IReadOnlyList<IntentoDePago>> IntentosPorPrefijoDeClaveAsync(
         string prefijo, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<IntentoDePago>>(_base.IntentosDePago

@@ -203,6 +203,7 @@ public partial class ApiPruebas
             mayorDeEdad = true, correo = duena, contrasena = "contrasena-larga-1", nombre = "Ana", rol = "buscador",
         });
         Assert.Equal(HttpStatusCode.Created, alta.StatusCode);
+        await MarcarVerificadaAsync(duena);   // el aviso de RUT solo va a un correo verificado (22-nov)
 
         var otroRegistro = await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {

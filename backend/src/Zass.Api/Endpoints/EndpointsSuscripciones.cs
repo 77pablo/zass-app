@@ -177,6 +177,23 @@ public static class EndpointsSuscripciones
             .AddEndpointFilter<FiltroIdempotencia>()
             .RequireRateLimiting(Tasa.Sensible)
             .WithName("API-76");
+
+        // API-78 - Cancela la RENOVACION de la suscripcion (22-nov-2026). Sin cuerpo: el perfil
+        // sale de la sesion. La suscripcion sigue vigente hasta su fecha (ya esta pagada) y
+        // despues vence sin cobrarse; si era fundador, al vencer pierde el cupo (RN-S7-13).
+        // Idempotente por naturaleza: cancelar dos veces deja lo mismo.
+        grupo.MapPost("/suscripcion/cancelar", async (
+                IServicioSuscripciones suscripciones,
+                ServicioPerfiles perfiles, ClaimsPrincipal quien) =>
+            {
+                var mio = await MiPerfil(perfiles, quien);
+                if (!mio.Exito) return Respuestas.Problema(mio);
+
+                return Respuestas.DeResultado(
+                    await suscripciones.CancelarRenovacionAsync(mio.Valor!.Id));
+            })
+            .RequireRateLimiting(Tasa.Sensible)
+            .WithName("API-78");
     }
 
     private static void MapearAvisos(RouteGroupBuilder grupo)
@@ -211,8 +228,8 @@ public static class EndpointsSuscripciones
         // la persona a una pantalla, en vez de dejarla mirando un JSON.
         //
         // Sin sesion y sin CSRF, por lo mismo que API-70: el POST viene de flow.cl. Y la
-        // redireccion va SIEMPRE a /planes/listo de nuestro sitio, con un resultado de tres
-        // valores fijos: nada de lo que trae la peticion decide a donde se va (sin redirector
+        // redireccion va SIEMPRE a /planes/listo de nuestro sitio, con un resultado de cuatro
+        // valores fijos (aprobado, rechazado, procesando, revisar): nada de lo que trae la peticion decide a donde se va (sin redirector
         // abierto).
         grupo.MapMethods("/vuelta", new[] { HttpMethods.Get, HttpMethods.Post }, async (
                 HttpRequest peticion, IServicioCobros cobros,
@@ -295,13 +312,19 @@ public static class EndpointsSuscripciones
 }
 
 /// <summary>
-/// API-75. Lo que la pantalla de vuelta necesita saber, en tres palabras fijas. Nunca el motivo
+/// API-75. Lo que la pantalla de vuelta necesita saber, en cuatro palabras fijas. Nunca el motivo
 /// ni el estado interno: la URL queda en el historial del navegador.
 /// </summary>
 public static class ResultadoDeLaVuelta
 {
     public const string Aprobado = "aprobado";
     public const string Rechazado = "rechazado";
+
+    /// <summary>
+    /// La pasarela todavia no tiene veredicto (el «pendiente de pago» de Flow). El intento sigue
+    /// abierto y el siguiente aviso lo cierra. La pantalla dice «tu pago se está procesando».
+    /// </summary>
+    public const string Procesando = "procesando";
 
     /// <summary>
     /// No se pudo confirmar ahora (aviso ilegible, intento desconocido, la pasarela no contesto).
@@ -311,6 +334,7 @@ public static class ResultadoDeLaVuelta
 
     public static string De(Resultado<ConfirmacionDto> confirmacion) =>
         !confirmacion.Exito || confirmacion.Valor is null ? Revisar
+        : confirmacion.Valor.Pendiente ? Procesando
         : confirmacion.Valor.Aprobado ? Aprobado
         : Rechazado;
 }

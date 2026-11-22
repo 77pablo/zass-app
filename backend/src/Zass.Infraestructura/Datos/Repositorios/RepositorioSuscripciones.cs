@@ -167,6 +167,22 @@ public sealed class RepositorioSuscripcionesEfCore : IRepositorioSuscripciones
     public Task<bool> ClaveDeIntentoUsadaAsync(string clave, CancellationToken ct = default) =>
         _ctx.IntentosDePago.AnyAsync(i => i.ClaveIdempotencia == clave, ct);
 
+    public Task<bool> HayIntentoConCuponPendienteAsync(
+        Guid perfilPrestadorId, DateTime desde, CancellationToken ct = default) =>
+        _ctx.IntentosDePago.AnyAsync(
+            i => i.PerfilPrestadorId == perfilPrestadorId
+                 && i.CodigoCupon != null
+                 && i.Estado == EstadoIntentoPago.Pendiente
+                 && i.CreadoEn > desde,
+            ct);
+
+    public async Task<EstadoCuenta?> EstadoDeCuentaDePerfilAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default) =>
+        await _ctx.PerfilesPrestador
+            .Where(p => p.Id == perfilPrestadorId)
+            .Select(p => (EstadoCuenta?)p.Usuario.Estado)
+            .FirstOrDefaultAsync(ct);
+
     public async Task<IReadOnlyList<IntentoDePago>> IntentosPorPrefijoDeClaveAsync(
         string prefijo, CancellationToken ct = default) =>
         // StartsWith se traduce a LIKE 'prefijo%' con los comodines escapados, y usa el
