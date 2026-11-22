@@ -23,10 +23,17 @@ public class Plan
     public int PrecioMensual { get; set; }
     public short DiasPrueba { get; set; } = 30;
     public int MaxServicios { get; set; } = 10;
-    /// <summary>Coincide con los tres planes sembrados (1). El tope real se lee de la fila del plan.</summary>
+    /// <summary>Coincide con los planes basicos (prueba y Esencial: 1). El tope real se lee de la fila del plan: Fundador y Profesional 3, Equipo 10.</summary>
     public int MaxTarjetas { get; set; } = 1;
     public bool PermiteCredenciales { get; set; } = true;
     public bool Activo { get; set; } = true;
+
+    /// <summary>Maximo de fotos de trabajos que puede subir el prestador.</summary>
+    public int MaxFotosTrabajos { get; set; } = 0;
+    /// <summary>Si el plan permite ver estadisticas de la ficha.</summary>
+    public bool PermiteEstadisticas { get; set; } = false;
+    /// <summary>Si la verificacion del prestador es prioritaria.</summary>
+    public bool VerificacionPrioritaria { get; set; } = false;
 }
 
 /// <summary>TBL-30. La suscripcion de un prestador. Un prestador, una suscripcion vigente.</summary>
@@ -78,11 +85,52 @@ public class Suscripcion
     }
 
     /// <summary>Extiende el periodo tras un pago confirmado. La llamara la pasarela.</summary>
-    public void RegistrarPeriodoPagado(DateTime ahora, int meses = 1)
+    /// <param name="esCobroAutomatico">
+    /// True si es un cobro automatico (incluye cobro tardio). En ese caso, la extension
+    /// se calcula desde el VigenteHasta de la suscripcion TAL COMO ESTA (VencerExpiradasAsync
+    /// solo cambia Estado, no VigenteHasta). False para pagos manuales: desde hoy si ya vencio.
+    /// </param>
+    /// <param name="planPagado">
+    /// El plan que se PAGO (el del intento). Desde el 22-nov-2026 la suscripcion pasa a ese
+    /// plan: antes solo se movian la fecha y el estado, y quien pagaba Profesional seguia con
+    /// el plan de prueba (sin fotos, sin estadisticas, con los topes de la prueba). Nulo deja
+    /// el plan como estaba (los pagos registrados a mano, sin intento).
+    ///
+    /// <para>
+    /// El tiempo que quedaba NO se prorratea: el mes pagado se suma encima, como siempre, y el
+    /// plan nuevo rige desde ya sobre todo el periodo. Subir de plan regala, como mucho, los
+    /// dias que quedaban con el plan mejor; bajar los deja correr con el plan mas barato. Es
+    /// lo mas simple que no le quita a nadie un dia pagado.
+    /// </para>
+    /// </param>
+    public void RegistrarPeriodoPagado(
+        DateTime ahora, int meses = 1, bool esCobroAutomatico = false, short? planPagado = null)
     {
-        var baseFecha = VigenteHasta > ahora ? VigenteHasta : ahora;
+        var baseFecha = esCobroAutomatico
+            ? VigenteHasta
+            : (VigenteHasta > ahora ? VigenteHasta : ahora);
         VigenteHasta = baseFecha.AddMonths(meses);
         Estado = EstadoSuscripcion.Activa;
+        if (planPagado is { } plan) PlanId = plan;
+    }
+
+    /// <summary>
+    /// La persona pidio no renovar. NO es <see cref="RenovacionAutomatica"/> lo que se mira,
+    /// a proposito: esa columna nace en falso con la prueba y nada la ponia en verdadero, asi
+    /// que hoy vale falso en TODAS las suscripciones, tambien en las de los fundadores con
+    /// tarjeta. Mirarla dejaria de cobrarles a todos. La marca de la cancelacion es la fecha.
+    /// </summary>
+    public bool RenovacionCancelada => CanceladaEn is not null;
+
+    /// <summary>
+    /// Cancela la RENOVACION y nada mas: la suscripcion sigue vigente hasta
+    /// <see cref="VigenteHasta"/> (ya esta pagada) y despues vence sin cobrarse. Idempotente:
+    /// la fecha de la primera cancelacion no se pisa.
+    /// </summary>
+    public void CancelarRenovacion(DateTime ahora)
+    {
+        CanceladaEn ??= ahora;
+        RenovacionAutomatica = false;
     }
 }
 

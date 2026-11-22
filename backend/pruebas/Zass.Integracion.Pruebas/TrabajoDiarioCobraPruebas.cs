@@ -121,16 +121,27 @@ public class TrabajoDiarioCobraPruebas
 
         public Task<Resultado<Guid>> RegistrarPeriodoPagadoAsync(
             Guid suscripcionId, int meses = 1, int montoPagado = 0, string? referencia = null,
-            Guid? intentoDePagoId = null, CancellationToken ct = default) =>
+            Guid? intentoDePagoId = null, bool esCobroAutomatico = false, short? planPagado = null,
+            CancellationToken ct = default) =>
             throw new NotSupportedException();
 
         public Task<Resultado> CancelarAsync(Guid suscripcionId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
-        public Task<Resultado> CancelarDePrestadorAsync(Guid perfilPrestadorId, CancellationToken ct = default) =>
+        public Task<Resultado<SuscripcionDto>> CancelarRenovacionAsync(
+            Guid perfilPrestadorId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<Resultado> TerminarPorCuentaEliminadaAsync(
+            Guid perfilPrestadorId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
         public Task<int> VencerExpiradasAsync(CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task AvisarCobroRechazadoAsync(
+            Guid perfilPrestadorId, Guid suscripcionId, DateTime vigenteHasta,
+            CancellationToken ct = default) =>
             throw new NotSupportedException();
 
         public Task<IReadOnlyList<SuscripcionPorVencer>> PorVencerAsync(
@@ -148,6 +159,10 @@ public class TrabajoDiarioCobraPruebas
             Guid perfilPrestadorId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
+        public Task<int> LimiteDeFotosDeTrabajoAsync(
+            Guid perfilPrestadorId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<int> CuposFundadorDisponiblesAsync(CancellationToken ct = default) =>
             throw new NotSupportedException();
 
@@ -156,6 +171,10 @@ public class TrabajoDiarioCobraPruebas
 
         public Task<Resultado<short>> ReservarCupoFundadorAsync(
             Guid perfilPrestadorId, TimeSpan? duracion = null, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<Resultado<CupoTomadoDto>> TomarCupoFundadorAsync(
+            Guid perfilPrestadorId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
         public Task<Resultado> ConfirmarCupoFundadorAsync(

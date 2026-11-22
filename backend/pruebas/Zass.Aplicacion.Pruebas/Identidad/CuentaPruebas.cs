@@ -28,13 +28,14 @@ public class CuentaPruebas
         var usuarios = new RepositorioUsuariosEnMemoria(_base);
         var perfiles = new RepositorioPerfilesEnMemoria(_base);
         var sesiones = new RepositorioSesionesEnMemoria(_base);
+        var filtradas = new ContrasenasFiltradasNunca();
 
         _registro = new ServicioRegistro(
-            usuarios, perfiles, _base, _hash, _secretos, _reloj, _cola, _auditoria);
+            usuarios, perfiles, _base, _hash, _secretos, _reloj, _cola, _auditoria, filtradas);
         _sesiones = new ServicioSesion(
             usuarios, sesiones, _base, _hash, _secretos, _reloj, _auditoria);
         _cuenta = new ServicioCuenta(
-            usuarios, perfiles, _base, _hash, _secretos, _reloj, _cola, _auditoria, _sesiones);
+            usuarios, perfiles, _base, _hash, _secretos, _reloj, _cola, _auditoria, _sesiones, filtradas);
     }
 
     /// <summary>Registra de verdad, con el servicio real: asi el token es el que se emite.</summary>

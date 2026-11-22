@@ -87,7 +87,7 @@ public class ResenasApiPruebas : IAsyncLifetime
 
         var alta = await p.Http.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo, contrasena = Contrasena, nombre = "Persona de prueba", rol,
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo, contrasena = Contrasena, nombre = "Persona de prueba", rol,
         });
         Assert.Equal(HttpStatusCode.Created, alta.StatusCode);
 
@@ -790,13 +790,27 @@ public class ResenasApiPruebas : IAsyncLifetime
     // ------------------------------------------------------------- reportar y moderar
 
     [Fact]
-    public async Task Un_reporte_grave_oculta_la_reseña_de_la_lectura_publica_y_del_recuento_al_instante()
+    public async Task Dos_reportes_graves_de_personas_distintas_ocultan_la_reseña_de_la_lectura_publica_y_del_recuento_al_instante()
     {
         var (autor, prestador, contactoId) = await ConContactoMaduroAsync();
         var id = await PublicadaAsync(autor, contactoId);
+        var primera = await UnaPersonaAsync("buscador");
+        var segunda = await UnaPersonaAsync("buscador");
 
-        var rep = await prestador.EnviarAsync(HttpMethod.Post, $"/api/resenas/{id}/reporte",
+        // Auditoría 22-nov: el prestador reseñado no reporta las reseñas de su propio perfil.
+        var delDueno = await prestador.EnviarAsync(HttpMethod.Post, $"/api/resenas/{id}/reporte",
+            new { motivo = "LenguajeDeOdio", detalle = "No me gustó lo que dice." });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, delDueno.StatusCode);
+
+        // Un solo reporte grave: va a la cola, pero la reseña sigue a la vista.
+        var rep1 = await primera.EnviarAsync(HttpMethod.Post, $"/api/resenas/{id}/reporte",
             new { motivo = "LenguajeDeOdio", detalle = "Insultos en el texto." });
+        Assert.Equal(HttpStatusCode.NoContent, rep1.StatusCode);
+        var conUno = (await Visitante().Http.GetFromJsonAsync<JsonDocument>($"/api/prestadores/{prestador.Slug}/resenas"))!.RootElement;
+        Assert.Single(conUno.GetProperty("resenas").EnumerateArray());
+
+        var rep = await segunda.EnviarAsync(HttpMethod.Post, $"/api/resenas/{id}/reporte",
+            new { motivo = "DatosPersonales", detalle = "Trae un teléfono." });
         Assert.Equal(HttpStatusCode.NoContent, rep.StatusCode);
 
         var publica = (await Visitante().Http.GetFromJsonAsync<JsonDocument>($"/api/prestadores/{prestador.Slug}/resenas"))!.RootElement;
@@ -805,7 +819,7 @@ public class ResenasApiPruebas : IAsyncLifetime
         Assert.Equal(0, (await ctx.PerfilesPrestador.AsNoTracking().SingleAsync(p => p.Id == prestador.PerfilId)).TotalResenas);
 
         // El mismo reclamo dos veces es un 409, y el autor no puede reportar la suya.
-        var otra = await prestador.EnviarAsync(HttpMethod.Post, $"/api/resenas/{id}/reporte", new { motivo = "Falsedad" });
+        var otra = await primera.EnviarAsync(HttpMethod.Post, $"/api/resenas/{id}/reporte", new { motivo = "Falsedad" });
         Assert.Equal(HttpStatusCode.Conflict, otra.StatusCode);
         var propia = await autor.EnviarAsync(HttpMethod.Post, $"/api/resenas/{id}/reporte", new { motivo = "Falsedad" });
         Assert.Equal(HttpStatusCode.UnprocessableEntity, propia.StatusCode);
@@ -841,7 +855,8 @@ public class ResenasApiPruebas : IAsyncLifetime
     {
         var (autor, prestador, contactoId) = await ConContactoMaduroAsync();
         var id = await PublicadaAsync(autor, contactoId, 1);
-        await prestador.EnviarAsync(HttpMethod.Post, $"/api/resenas/{id}/reporte", new { motivo = "Falsedad", detalle = "No fue cliente." });
+        var reportante = await UnaPersonaAsync("buscador");
+        await reportante.EnviarAsync(HttpMethod.Post, $"/api/resenas/{id}/reporte", new { motivo = "Falsedad", detalle = "No fue cliente." });
         var mod = await UnaPersonaAsync("buscador", tambienModerador: true);
 
         var colaRespuesta = await mod.Http.GetAsync("/api/interno/reportes/cola");
@@ -889,7 +904,8 @@ public class ResenasApiPruebas : IAsyncLifetime
         var contactoId = await IdAsync(c);
         await EnvejecerContactoAsync(contactoId, TimeSpan.FromDays(8));
         var id = await PublicadaAsync(mod, contactoId);
-        await prestador.EnviarAsync(HttpMethod.Post, $"/api/resenas/{id}/reporte", new { motivo = "Falsedad" });
+        var reportante = await UnaPersonaAsync("buscador");
+        await reportante.EnviarAsync(HttpMethod.Post, $"/api/resenas/{id}/reporte", new { motivo = "Falsedad" });
         Guid reporteId;
         using (var ctx = ContextoDePrueba.Crear())
             reporteId = (await ctx.ReportesResena.AsNoTracking().SingleAsync(r => r.ResenaId == id)).Id;
@@ -900,6 +916,28 @@ public class ResenasApiPruebas : IAsyncLifetime
 
         Assert.DoesNotContain(cola.EnumerateArray(), f => f.GetProperty("reporteId").GetGuid() == reporteId);
         Assert.Equal(HttpStatusCode.NotFound, resolver.StatusCode);
+    }
+
+    [Fact]
+    public async Task Tras_mantener_quien_reporto_recibe_409_y_la_reseña_sigue_a_la_vista()
+    {
+        var (autor, prestador, contactoId) = await ConContactoMaduroAsync();
+        var id = await PublicadaAsync(autor, contactoId);
+        var reportante = await UnaPersonaAsync("buscador");
+        var mod = await UnaPersonaAsync("buscador", tambienModerador: true);
+        await reportante.EnviarAsync(HttpMethod.Post, $"/api/resenas/{id}/reporte", new { motivo = "LenguajeDeOdio" });
+        Guid reporteId;
+        using (var ctx = ContextoDePrueba.Crear())
+            reporteId = (await ctx.ReportesResena.AsNoTracking().SingleAsync(r => r.ResenaId == id)).Id;
+        var mantener = await mod.EnviarAsync(HttpMethod.Post, $"/api/interno/reportes/{reporteId}/resolver",
+            new { decision = "mantener", motivo = "Revisada: no hay lenguaje de odio en el texto." });
+        Assert.Equal(HttpStatusCode.NoContent, mantener.StatusCode);
+
+        var otraVez = await reportante.EnviarAsync(HttpMethod.Post, $"/api/resenas/{id}/reporte", new { motivo = "DatosPersonales" });
+
+        Assert.Equal(HttpStatusCode.Conflict, otraVez.StatusCode);
+        var publica = (await Visitante().Http.GetFromJsonAsync<JsonDocument>($"/api/prestadores/{prestador.Slug}/resenas"))!.RootElement;
+        Assert.Single(publica.GetProperty("resenas").EnumerateArray());
     }
 
     // ------------------------------------------------------------- contacto
@@ -935,5 +973,36 @@ public class ResenasApiPruebas : IAsyncLifetime
         Assert.False(sin.GetProperty("elegible").GetBoolean());
         Assert.Equal("SinContacto", sin.GetProperty("motivo").GetString());
         Assert.Equal(HttpStatusCode.BadRequest, sinParametro.StatusCode);
+    }
+
+    /// <summary>
+    /// API-47 no puede ser un oráculo de perfiles que no se ven (auditoría del 21-nov-2026).
+    /// Antes, un perfil en borrador respondía 200 con <c>SinContacto</c> y uno inexistente 404:
+    /// bastaba mirar el código para saber qué identificador era un perfil sin publicar. Ahora los
+    /// dos responden lo MISMO, igual que la lectura pública de reseñas.
+    /// </summary>
+    [Theory]
+    [InlineData(EstadoPerfil.Borrador)]
+    [InlineData(EstadoPerfil.Despublicado)]
+    public async Task Elegibilidad_de_un_perfil_no_publicado_responde_igual_que_uno_inexistente(EstadoPerfil estado)
+    {
+        var prestador = await UnaPersonaAsync("prestador");
+        var autor = await UnaPersonaAsync("buscador");
+        Guid perfilId;
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var perfil = await ctx.PerfilesPrestador.SingleAsync(x => x.UsuarioId == prestador.UsuarioId);
+            perfil.Estado = estado;
+            perfil.RubroId = 1;
+            await ctx.SaveChangesAsync();
+            perfilId = perfil.Id;
+        }
+
+        var oculto = await autor.Http.GetAsync($"/api/mi/elegibilidad?perfilId={perfilId}");
+        var inexistente = await autor.Http.GetAsync($"/api/mi/elegibilidad?perfilId={Guid.NewGuid()}");
+
+        Assert.Equal(HttpStatusCode.NotFound, inexistente.StatusCode);
+        Assert.Equal(inexistente.StatusCode, oculto.StatusCode);
+        Assert.Equal(await CuerpoComparable.De(inexistente), await CuerpoComparable.De(oculto));
     }
 }

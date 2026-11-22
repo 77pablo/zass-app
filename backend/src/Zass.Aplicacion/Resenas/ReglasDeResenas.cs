@@ -21,6 +21,13 @@ public static class ReglasDeResenas
     public const int MotivoResolucionMaximo = 1000;
     public const int MaximoClave = 100;
 
+    /// <summary>
+    /// RN-S5-08 tras la auditoría del 22-nov-2026 (decisión de Pablo): cuántas personas distintas
+    /// tienen que reportar una reseña con motivo grave para que se oculte sin esperar al moderador.
+    /// Con menos, la reseña va a la cola (graves primero) y sigue visible.
+    /// </summary>
+    public const int ReportesGravesParaOcultar = 2;
+
     /// <summary>RN-S5-02 y la tabla de elegibilidad: un contacto sin cita espera 7 días.</summary>
     public static readonly TimeSpan VentanaDeContacto = TimeSpan.FromDays(7);
 

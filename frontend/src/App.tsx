@@ -9,8 +9,15 @@ import { MiAgenda } from './paginas/MiAgenda'
 import { MiCuenta } from './paginas/MiCuenta'
 import { MiFicha } from './paginas/MiFicha'
 import { MisCitas } from './paginas/MisCitas'
+import { MisGuardados } from './paginas/MisGuardados'
+import { Avisos } from './paginas/Avisos'
 import { MisResenas } from './paginas/MisResenas'
 import { MisTarjetas } from './paginas/MisTarjetas'
+import { MesaDeVerificacion } from './paginas/MesaDeVerificacion'
+import { IndiceInterno, PuertaInterna, SoloSeccion } from './paginas/PanelInterno'
+import { ReportesDeResenas } from './paginas/ReportesDeResenas'
+import { EmitirTarjetas } from './paginas/EmitirTarjetas'
+import { Auditoria } from './paginas/Auditoria'
 import { NoEncontrada } from './paginas/NoEncontrada'
 import { OfrecerServicios } from './paginas/OfrecerServicios'
 import { Oficios } from './paginas/Oficios'
@@ -24,6 +31,7 @@ import { ResenasDelPrestador } from './paginas/ResenasDelPrestador'
 import { Terminos } from './paginas/Terminos'
 import { RecuperarContrasena, RestablecerContrasena, VerificarCorreo } from './paginas/Recuperacion'
 import { AvisoDeTarjeta, TarjetaEnMayusculas } from './paginas/AvisoDeTarjeta'
+import { ActivarTarjeta } from './paginas/ActivarTarjeta'
 
 /**
  * Un sitio de varias paginas, no una pagina larga: cada seccion vive en su propia ruta y se
@@ -59,6 +67,10 @@ export function App() {
         <Route path="mis-tarjetas" element={<MisTarjetas />} />
         {/* CS-04: eliminar la cuenta. La API existia; la pantalla no (Ley 21.719, derecho de supresion). */}
         <Route path="mi-cuenta" element={<MiCuenta />} />
+        {/* CS-08 y CU-04: la gente guardada y lo que la persona suele buscar. */}
+        <Route path="mis-guardados" element={<MisGuardados />} />
+        {/* ES-3: activar los avisos push en este navegador. En ES-4 pasa a «Mi cuenta». */}
+        <Route path="avisos" element={<Avisos />} />
         <Route path="ofrecer-servicios" element={<OfrecerServicios />} />
         <Route path="verificar-correo" element={<VerificarCorreo />} />
         <Route path="recuperar-contrasena" element={<RecuperarContrasena />} />
@@ -66,7 +78,19 @@ export function App() {
         <Route path="tarjeta/no-valida" element={<AvisoDeTarjeta aviso="no-valida" />} />
         <Route path="tarjeta/no-disponible" element={<AvisoDeTarjeta aviso="no-disponible" />} />
         <Route path="tarjeta/sin-activar" element={<AvisoDeTarjeta aviso="sin-activar" />} />
+        {/* CU-19: API-54 trae aqui una tarjeta emitida, con su segmento, para activarla. */}
+        <Route path="tarjeta/sin-activar/:segmento" element={<ActivarTarjeta />} />
         <Route path="t/:segmento" element={<TarjetaEnMayusculas />} />
+        {/* JQ-11/12: sin un rol interno, todo /interno responde como una página que no existe; y cada
+            sección, sin el rol que pide su API. */}
+        <Route path="interno" element={<PuertaInterna />}>
+          <Route index element={<IndiceInterno />} />
+          <Route path="verificacion" element={<SoloSeccion seccion="verificacion"><MesaDeVerificacion /></SoloSeccion>} />
+          <Route path="reportes" element={<SoloSeccion seccion="moderacion"><ReportesDeResenas /></SoloSeccion>} />
+          <Route path="tarjetas" element={<SoloSeccion seccion="administracion"><EmitirTarjetas /></SoloSeccion>} />
+          <Route path="auditoria" element={<SoloSeccion seccion="administracion"><Auditoria /></SoloSeccion>} />
+          <Route path="*" element={<NoEncontrada />} />
+        </Route>
         <Route path="*" element={<NoEncontrada />} />
       </Route>
     </Routes>

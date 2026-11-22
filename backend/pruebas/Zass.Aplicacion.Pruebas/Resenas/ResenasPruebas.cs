@@ -30,6 +30,7 @@ public class ResenasPruebas
     private readonly Usuario _ana;          // buscadora, la que opina
     private readonly Usuario _luis;         // dueño del perfil reseñado
     private readonly Usuario _mod;          // moderadora
+    private readonly Usuario _eva;          // buscadora ajena al perfil: la que reporta
     private readonly PerfilPrestador _perfil;
 
     public ResenasPruebas()
@@ -42,6 +43,7 @@ public class ResenasPruebas
         _ana = UnUsuario("buscador");
         _luis = UnUsuario("prestador");
         _mod = UnUsuario("moderador");
+        _eva = UnUsuario("buscador");
         _perfil = UnPerfil(_luis);
     }
 
@@ -138,6 +140,32 @@ public class ResenasPruebas
 
         Assert.Equal(primero.Valor, segundo.Valor);
         Assert.Equal(Ahora, Assert.Single(_repo.Contactos).OcurridoEn);
+    }
+
+    // JQ-5: la ficha registra al tocar WhatsApp, llamar o correo, y dos toques casi a la vez no
+    // pueden dejar dos filas. La carrera de verdad se mide contra PostgreSQL (integración); aquí
+    // se fija que el registro pase por el cerrojo del prestador y por una transacción.
+    [Fact]
+    public async Task Registrar_un_contacto_toma_el_cerrojo_del_prestador_y_confirma()
+    {
+        var r = await _servicio.RegistrarContactoAsync(_ana.Id, _perfil.Id, OrigenContacto.Ficha, CanalContacto.Whatsapp);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(1, _repo.Cerrojos);
+        Assert.Equal(1, _repo.Confirmadas);
+        Assert.Equal(CanalContacto.Whatsapp, Assert.Single(_repo.Contactos).Canal);
+    }
+
+    [Fact]
+    public async Task Un_segundo_registro_tambien_pasa_por_el_cerrojo_y_devuelve_el_primero()
+    {
+        var primero = await _servicio.RegistrarContactoAsync(_ana.Id, _perfil.Id, OrigenContacto.Ficha, CanalContacto.Whatsapp);
+        var segundo = await _servicio.RegistrarContactoAsync(_ana.Id, _perfil.Id, OrigenContacto.Ficha, CanalContacto.Telefono);
+
+        Assert.Equal(primero.Valor, segundo.Valor);
+        Assert.Equal(2, _repo.Cerrojos);
+        // Se guarda solo el primer canal: es una interacción, no un toque.
+        Assert.Equal(CanalContacto.Whatsapp, Assert.Single(_repo.Contactos).Canal);
     }
 
     [Fact]
@@ -1069,27 +1097,30 @@ public class ResenasPruebas
     {
         var resena = await UnaPublicada();
 
-        var r = await _servicio.ReportarAsync(resena.Id, _luis.Id, MotivoReporte.Falsedad, "  No fue mi cliente  ");
+        var r = await _servicio.ReportarAsync(resena.Id, _eva.Id, MotivoReporte.Falsedad, "  No fue mi cliente  ");
 
         Assert.True(r.Exito, r.Mensaje);
         Assert.Equal(EstadoResena.Publicada, resena.Estado);
         var reporte = Assert.Single(_repo.Reportes);
         Assert.Equal(EstadoReporte.Abierto, reporte.Estado);
         Assert.Equal("No fue mi cliente", reporte.Detalle);
-        Assert.Equal(_luis.Id, reporte.ReportadoPor);
+        Assert.Equal(_eva.Id, reporte.ReportadoPor);
         Assert.Equal(1, Recargado().TotalResenas);
     }
 
     [Theory]
     [InlineData(MotivoReporte.DatosPersonales)]
     [InlineData(MotivoReporte.LenguajeDeOdio)]
-    public async Task Un_motivo_grave_oculta_la_reseña_en_el_acto_y_la_saca_del_recuento(MotivoReporte motivo)
+    public async Task Dos_reportes_graves_de_personas_distintas_ocultan_la_reseña_en_el_acto_y_la_sacan_del_recuento(MotivoReporte motivo)
     {
         var resena = await UnaPublicada(cal: 5);
         await UnaPublicada(autor: UnUsuario("buscador"), cal: 3);
         Assert.Equal(4.0m, Recargado().PromedioCalificacion);
 
-        var r = await _servicio.ReportarAsync(resena.Id, _luis.Id, motivo, null);
+        var primero = await _servicio.ReportarAsync(resena.Id, _eva.Id, motivo, null);
+        Assert.True(primero.Exito);
+        Assert.Equal(EstadoResena.Publicada, resena.Estado);                 // con uno solo, no
+        var r = await _servicio.ReportarAsync(resena.Id, UnUsuario("buscador").Id, MotivoReporte.LenguajeDeOdio, null);
 
         Assert.True(r.Exito);
         Assert.Equal(EstadoResena.OcultaEnModeracion, resena.Estado);
@@ -1106,7 +1137,7 @@ public class ResenasPruebas
     {
         var resena = await UnaPublicada();
 
-        await _servicio.ReportarAsync(resena.Id, _luis.Id, motivo, null);
+        await _servicio.ReportarAsync(resena.Id, _eva.Id, motivo, null);
 
         Assert.Equal(EstadoResena.Publicada, resena.Estado);
     }
@@ -1117,8 +1148,8 @@ public class ResenasPruebas
         var resena = await UnaPublicada();
 
         var propia = await _servicio.ReportarAsync(resena.Id, _ana.Id, MotivoReporte.FueraDeTema, null);
-        await _servicio.ReportarAsync(resena.Id, _luis.Id, MotivoReporte.FueraDeTema, null);
-        var repetido = await _servicio.ReportarAsync(resena.Id, _luis.Id, MotivoReporte.Falsedad, null);
+        await _servicio.ReportarAsync(resena.Id, _eva.Id, MotivoReporte.FueraDeTema, null);
+        var repetido = await _servicio.ReportarAsync(resena.Id, _eva.Id, MotivoReporte.Falsedad, null);
 
         Assert.Equal(Fallas.ReglaDeNegocio, propia.Codigo);
         Assert.Equal(Fallas.Conflicto, repetido.Codigo);
@@ -1133,7 +1164,7 @@ public class ResenasPruebas
         var viva = await UnaPublicada(autor: UnUsuario("buscador"));
         var sin = UnUsuario("buscador", verificado: false);
 
-        Assert.Equal(Fallas.NoEncontrado, (await _servicio.ReportarAsync(retirada.Id, _luis.Id, MotivoReporte.Falsedad, null)).Codigo);
+        Assert.Equal(Fallas.NoEncontrado, (await _servicio.ReportarAsync(retirada.Id, _eva.Id, MotivoReporte.Falsedad, null)).Codigo);
         Assert.Equal(Fallas.ReglaDeNegocio, (await _servicio.ReportarAsync(viva.Id, sin.Id, MotivoReporte.Falsedad, null)).Codigo);
         Assert.Empty(_repo.Reportes);
     }
@@ -1143,9 +1174,104 @@ public class ResenasPruebas
     {
         var resena = await UnaPublicada();
 
-        var r = await _servicio.ReportarAsync(resena.Id, _luis.Id, MotivoReporte.Falsedad, Texto(1001));
+        var r = await _servicio.ReportarAsync(resena.Id, _eva.Id, MotivoReporte.Falsedad, Texto(1001));
 
         Assert.Equal(Fallas.Validacion, r.Codigo);
+    }
+
+
+    // ------------------------------------------------------------- auditoría 22-nov · reportes
+
+    [Theory]
+    [InlineData(MotivoReporte.LenguajeDeOdio)]
+    [InlineData(MotivoReporte.Falsedad)]
+    public async Task El_prestador_reseñado_no_reporta_las_reseñas_de_su_propio_perfil(MotivoReporte motivo)
+    {
+        var resena = await UnaPublicada(cal: 1);
+
+        var r = await _servicio.ReportarAsync(resena.Id, _luis.Id, motivo, null);
+
+        Assert.Equal(Fallas.ReglaDeNegocio, r.Codigo);
+        Assert.Contains("propio perfil", r.Mensaje);
+        Assert.Empty(_repo.Reportes);
+        Assert.Equal(EstadoResena.Publicada, resena.Estado);
+        Assert.Equal(1, Recargado().TotalResenas);
+        Assert.Equal(1.0m, Recargado().PromedioCalificacion);
+    }
+
+    [Fact]
+    public async Task El_prestador_reseñado_no_suma_el_segundo_reporte_grave()
+    {
+        var resena = await UnaPublicada(cal: 1);
+        await _servicio.ReportarAsync(resena.Id, _eva.Id, MotivoReporte.LenguajeDeOdio, null);
+
+        var r = await _servicio.ReportarAsync(resena.Id, _luis.Id, MotivoReporte.LenguajeDeOdio, null);
+
+        Assert.Equal(Fallas.ReglaDeNegocio, r.Codigo);
+        Assert.Equal(EstadoResena.Publicada, resena.Estado);
+    }
+
+    [Theory]
+    [InlineData(MotivoReporte.DatosPersonales)]
+    [InlineData(MotivoReporte.LenguajeDeOdio)]
+    public async Task Un_solo_reporte_grave_no_oculta_y_va_primero_a_la_cola(MotivoReporte motivo)
+    {
+        var resena = await UnaPublicada(cal: 1);
+        var otra = await UnaPublicada(autor: UnUsuario("buscador"));
+        await _servicio.ReportarAsync(otra.Id, _eva.Id, MotivoReporte.Falsedad, null);
+        _reloj.Avanzar(TimeSpan.FromMinutes(1));
+
+        var r = await _servicio.ReportarAsync(resena.Id, _eva.Id, motivo, null);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(EstadoResena.Publicada, resena.Estado);
+        Assert.Equal(2, Recargado().TotalResenas);
+        Assert.Contains(_auditoria.Registros, a => a.Accion == "resena.reportada" && a.Contexto!.Contains("\"ocultada\":false"));
+        var cola = (await _servicio.ColaDeReportesAsync(_mod.Id)).Valor!;
+        Assert.Equal(resena.Id, cola[0].ResenaId);
+        Assert.Equal(EstadoResena.Publicada, cola[0].EstadoResena);
+    }
+
+    [Fact]
+    public async Task Un_grave_y_uno_no_grave_de_personas_distintas_no_ocultan()
+    {
+        var resena = await UnaPublicada();
+
+        await _servicio.ReportarAsync(resena.Id, _eva.Id, MotivoReporte.Falsedad, null);
+        await _servicio.ReportarAsync(resena.Id, UnUsuario("buscador").Id, MotivoReporte.LenguajeDeOdio, null);
+
+        Assert.Equal(EstadoResena.Publicada, resena.Estado);
+    }
+
+    [Fact]
+    public async Task Tras_mantener_quien_reporto_no_vuelve_a_reportar_pero_otra_persona_si()
+    {
+        var resena = await UnaPublicada();
+        await _servicio.ReportarAsync(resena.Id, _eva.Id, MotivoReporte.LenguajeDeOdio, null);
+        await _servicio.ResolverReporteAsync(_repo.Reportes.Single().Id, _mod.Id, false, "Revisada: no hay odio en el texto.");
+
+        var otraVez = await _servicio.ReportarAsync(resena.Id, _eva.Id, MotivoReporte.DatosPersonales, null);
+        var otra = await _servicio.ReportarAsync(resena.Id, UnUsuario("buscador").Id, MotivoReporte.DatosPersonales, null);
+
+        Assert.Equal(Fallas.Conflicto, otraVez.Codigo);
+        Assert.Contains("decidió mantenerla", otraVez.Mensaje);
+        Assert.True(otra.Exito, otra.Mensaje);
+        Assert.Equal(2, _repo.Reportes.Count);
+        Assert.Equal(EstadoResena.Publicada, resena.Estado);   // el reporte cerrado no cuenta para ocultar
+    }
+
+    [Fact]
+    public async Task Tras_mantener_una_quien_reporto_puede_reportar_otra_reseña()
+    {
+        // Control: el bloqueo es solo para la reseña que se MANTUVO tras SU reporte.
+        var a = await UnaPublicada();
+        var b = await UnaPublicada(autor: UnUsuario("buscador"));
+        await _servicio.ReportarAsync(a.Id, _eva.Id, MotivoReporte.Falsedad, null);
+        await _servicio.ResolverReporteAsync(_repo.Reportes.Single().Id, _mod.Id, false, "Revisada: se mantiene completa.");
+
+        var r = await _servicio.ReportarAsync(b.Id, _eva.Id, MotivoReporte.Falsedad, null);
+
+        Assert.True(r.Exito, r.Mensaje);
     }
 
     // ------------------------------------------------------------- API-52 · cola
@@ -1165,9 +1291,9 @@ public class ResenasPruebas
     {
         var a = await UnaPublicada();
         var b = await UnaPublicada(autor: UnUsuario("buscador"));
-        await _servicio.ReportarAsync(a.Id, _luis.Id, MotivoReporte.Falsedad, null);
+        await _servicio.ReportarAsync(a.Id, _eva.Id, MotivoReporte.Falsedad, null);
         _reloj.Avanzar(TimeSpan.FromMinutes(1));
-        await _servicio.ReportarAsync(b.Id, _luis.Id, MotivoReporte.LenguajeDeOdio, null);
+        await _servicio.ReportarAsync(b.Id, _eva.Id, MotivoReporte.LenguajeDeOdio, null);
 
         var cola = (await _servicio.ColaDeReportesAsync(_mod.Id)).Valor!;
 
@@ -1187,10 +1313,10 @@ public class ResenasPruebas
         var reportadaPorEl = await UnaPublicada(autor: UnUsuario("buscador"));
         var ajena = await UnaPublicada(autor: UnUsuario("buscador"));
 
-        await _servicio.ReportarAsync(propiaDelMod.Id, _luis.Id, MotivoReporte.Falsedad, null);
+        await _servicio.ReportarAsync(propiaDelMod.Id, _eva.Id, MotivoReporte.Falsedad, null);
         await _servicio.ReportarAsync(enSuPerfil.Id, _ana.Id, MotivoReporte.Falsedad, null);
         await _servicio.ReportarAsync(reportadaPorEl.Id, _mod.Id, MotivoReporte.Falsedad, null);
-        await _servicio.ReportarAsync(ajena.Id, _luis.Id, MotivoReporte.Falsedad, null);
+        await _servicio.ReportarAsync(ajena.Id, _eva.Id, MotivoReporte.Falsedad, null);
 
         var cola = (await _servicio.ColaDeReportesAsync(_mod.Id)).Valor!;
 
@@ -1202,7 +1328,7 @@ public class ResenasPruebas
     public async Task Un_reporte_resuelto_sale_de_la_cola()
     {
         var a = await UnaPublicada();
-        await _servicio.ReportarAsync(a.Id, _luis.Id, MotivoReporte.Falsedad, null);
+        await _servicio.ReportarAsync(a.Id, _eva.Id, MotivoReporte.Falsedad, null);
         var id = _repo.Reportes.Single().Id;
 
         await _servicio.ResolverReporteAsync(id, _mod.Id, false, "Se revisó y la reseña es legítima.");
@@ -1215,7 +1341,7 @@ public class ResenasPruebas
     private async Task<(Resena Resena, ReporteResena Reporte)> UnReclamo(MotivoReporte motivo = MotivoReporte.Falsedad, int cal = 5)
     {
         var resena = await UnaPublicada(autor: UnUsuario("buscador"), cal: cal);
-        await _servicio.ReportarAsync(resena.Id, _luis.Id, motivo, null);
+        await _servicio.ReportarAsync(resena.Id, _eva.Id, motivo, null);
         return (resena, _repo.Reportes.Last());
     }
 
@@ -1246,6 +1372,8 @@ public class ResenasPruebas
     public async Task Mantener_devuelve_a_la_vista_una_reseña_que_estaba_oculta_y_vuelve_a_contarla()
     {
         var (resena, reporte) = await UnReclamo(MotivoReporte.LenguajeDeOdio, cal: 2);
+        await _servicio.ReportarAsync(resena.Id, UnUsuario("buscador").Id, MotivoReporte.DatosPersonales, null);
+        Assert.Equal(EstadoResena.OcultaEnModeracion, resena.Estado);
         Assert.Equal(0, Recargado().TotalResenas);
 
         var r = await _servicio.ResolverReporteAsync(reporte.Id, _mod.Id, false, "No hay lenguaje de odio en el texto.");
@@ -1262,7 +1390,9 @@ public class ResenasPruebas
     {
         var (resena, primero) = await UnReclamo(MotivoReporte.Falsedad);
         var otro = UnUsuario("buscador");
-        await _servicio.ReportarAsync(resena.Id, otro.Id, MotivoReporte.DatosPersonales, null);     // este la oculta
+        await _servicio.ReportarAsync(resena.Id, otro.Id, MotivoReporte.DatosPersonales, null);
+        await _servicio.ReportarAsync(resena.Id, UnUsuario("buscador").Id, MotivoReporte.LenguajeDeOdio, null);
+        Assert.Equal(EstadoResena.OcultaEnModeracion, resena.Estado);                          // dos graves la ocultan
 
         await _servicio.ResolverReporteAsync(primero.Id, _mod.Id, false, "Revisada completa: se mantiene.");
 
@@ -1275,7 +1405,7 @@ public class ResenasPruebas
     {
         _mod.Roles.Add(new UsuarioRol { UsuarioId = _mod.Id, Rol = _base.Roles.First(r => r.Codigo == "buscador") });
         var propia = await UnaPublicada(autor: _mod);
-        await _servicio.ReportarAsync(propia.Id, _luis.Id, MotivoReporte.Falsedad, null);
+        await _servicio.ReportarAsync(propia.Id, _eva.Id, MotivoReporte.Falsedad, null);
         var reporte = _repo.Reportes.Single();
 
         var r = await _servicio.ResolverReporteAsync(reporte.Id, _mod.Id, true, "Intento retirar la mía propia.");

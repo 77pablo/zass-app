@@ -181,8 +181,13 @@ public class SuscripcionesPruebas
         Assert.Single(_base.Suscripciones);
     }
 
+    // INVERTIDA A PROPOSITO el 22-nov-2026 (N3). Hasta entonces se llamaba
+    // «Quien_tuvo_una_vencida_puede_empezar_otra» y CONSAGRABA el defecto: como API-22 acepta
+    // publicar un perfil ya publicado, dejar vencer y volver a publicar daba otros 30 dias
+    // gratis, cada mes. La prueba gratis es UNA por perfil: publicar sigue funcionando (exito),
+    // pero no nace otra suscripcion y el perfil queda fuera de la busqueda hasta que pague.
     [Fact]
-    public async Task Quien_tuvo_una_vencida_puede_empezar_otra()
+    public async Task Quien_tuvo_una_vencida_NO_empieza_otra_prueba_gratis()
     {
         var p = UnPrestador();
         ConSuscripcion(p.Id, EstadoSuscripcion.Vencida, Ahora.AddDays(-30));
@@ -190,8 +195,8 @@ public class SuscripcionesPruebas
         var r = await _servicio.IniciarPruebaAsync(p.Id);
 
         Assert.True(r.Exito);
-        Assert.Equal(2, _base.Suscripciones.Count);
-        Assert.True(await _servicio.EstaVigenteAsync(p.Id));
+        Assert.Single(_base.Suscripciones);
+        Assert.False(await _servicio.EstaVigenteAsync(p.Id));
     }
 
     [Fact]
@@ -325,6 +330,7 @@ public class SuscripcionesPruebas
     }
 
     // CS-04: el prestador elimino su cuenta. Sin reembolso (decision de Pablo, 17-nov-2026).
+    // Desde el merge con #211 lo hace TerminarPorCuentaEliminadaAsync, dentro de ServicioCuenta.EliminarAsync.
 
     [Fact]
     public async Task Eliminar_la_cuenta_cancela_la_suscripcion_vigente_y_no_renueva()
@@ -333,7 +339,7 @@ public class SuscripcionesPruebas
         var s = ConSuscripcion(p.Id, EstadoSuscripcion.Activa, Ahora.AddDays(20));
         s.RenovacionAutomatica = true;
 
-        var r = await _servicio.CancelarDePrestadorAsync(p.Id);
+        var r = await _servicio.TerminarPorCuentaEliminadaAsync(p.Id);
 
         Assert.True(r.Exito, r.Mensaje);
         Assert.Equal(EstadoSuscripcion.Cancelada, s.Estado);
@@ -348,7 +354,7 @@ public class SuscripcionesPruebas
         var p = UnPrestador();
         var vencida = ConSuscripcion(p.Id, EstadoSuscripcion.Vencida, Ahora.AddDays(-5));
 
-        var r = await _servicio.CancelarDePrestadorAsync(p.Id);
+        var r = await _servicio.TerminarPorCuentaEliminadaAsync(p.Id);
 
         Assert.True(r.Exito, r.Mensaje);
         Assert.Equal(EstadoSuscripcion.Vencida, vencida.Estado);
@@ -362,7 +368,7 @@ public class SuscripcionesPruebas
         ConSuscripcion(p.Id, EstadoSuscripcion.Activa, Ahora.AddDays(20));
         var ajena = ConSuscripcion(otro.Id, EstadoSuscripcion.Activa, Ahora.AddDays(20));
 
-        await _servicio.CancelarDePrestadorAsync(p.Id);
+        await _servicio.TerminarPorCuentaEliminadaAsync(p.Id);
 
         Assert.Equal(EstadoSuscripcion.Activa, ajena.Estado);
     }

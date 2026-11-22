@@ -15,6 +15,7 @@ import { useLocation } from 'react-router-dom'
 export interface MenuMovil {
   abierto: boolean
   alternar: () => void
+  cerrar: () => void
 }
 
 export const ContextoDelMenuMovil = createContext<MenuMovil | null>(null)
@@ -23,7 +24,7 @@ export function useEstadoDelMenu(): MenuMovil {
   const { pathname } = useLocation()
   const [abiertoEn, setAbiertoEn] = useState<string | null>(null)
   const abierto = abiertoEn === pathname
-  return { abierto, alternar: () => setAbiertoEn(abierto ? null : pathname) }
+  return { abierto, alternar: () => setAbiertoEn(abierto ? null : pathname), cerrar: () => setAbiertoEn(null) }
 }
 
 /**

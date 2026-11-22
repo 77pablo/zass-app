@@ -22,6 +22,7 @@ constructor.Services
     .AgregarLimiteDeTasa(constructor.Configuration)                            // los 4 grupos P, A, G, S (+ Salud)
     .AgregarProxiesDeConfianza()                      // X-Forwarded-*: solo desde redes listadas
     .AgregarAutenticacion(exigirHttps)                // cookie de 15 min + CSRF
+    .AgregarHsts()                                    // 2 anos + subdominios, sin preload
     .AddValidatorsFromAssemblyContaining<ValidadorVerificarCorreo>()
     .AddProblemDetails(o =>                           // RFC 7807 en todos los errores:
     {
@@ -69,12 +70,19 @@ if (!TextosEnCastellano.FijarIdiomaDeValidacion())
     app.Logger.LogWarning(
         "Sin datos de idioma (globalizacion invariante): los mensajes de validacion saldran en ingles.");
 
+// Registrar el resolvedor de nombres en castellano para FluentValidation.
+TextosEnCastellano.ConfigurarResolvedor();
+
 // Se valida DESPUES de Build y con app.Configuration: ahi ya estan todas las fuentes
 // (variables de entorno de Render, y los ajustes que inyectan las pruebas). Falla antes de
 // *Diseño original: Key Vault con identidad administrada. Desplegado: variables de entorno
 // de Render, porque no documentado.
 // abrir ningun puerto. Todo lo que no sea Development se trata como produccion.
 ValidacionDeArranque.Exigir(app.Configuration, esProductivo: !app.Environment.IsDevelopment());
+
+// P-11: sin el secreto de origen la API arranca igual, pero que quede escrito en el registro.
+if (SecretoDeOrigen.Advertencia(app.Configuration, esProductivo: !app.Environment.IsDevelopment()) is { } aviso)
+    app.Logger.LogWarning("{Aviso}", aviso);
 
 // `dotnet Zass.Api.dll --migrar`: aplica migraciones y termina (ver Migrador).
 if (Migrador.Solicitado(args))
@@ -90,6 +98,8 @@ app.UsarIdDePeticion();
 // El orden importa: las cabeceras primero, para que acompanen incluso a una respuesta
 // de error o de limite de tasa.
 app.UsarCabecerasDeSeguridad();
+// Lo que la sesion ve no lo guarda ningun cache, salvo que el endpoint diga otra cosa.
+app.UsarCacheControlPrivado();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
@@ -101,9 +111,17 @@ if (exigirHttps)
     app.UseHttpsRedirection();
 }
 
+// P-11: con Zass:SecretoDeOrigen, lo que no llega por la Function de Cloudflare recibe 403.
+// Despues de las cabeceras y del HSTS (el 403 las lleva); antes del limitador y los endpoints.
+// Sin la opcion no registra nada.
+app.UsarSecretoDeOrigen(app.Configuration);
+
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
+// ES-2: cuentas sin los datos del registro completo. Despues de la autorizacion: necesita al
+// usuario ya autenticado y responde 428 antes de que el endpoint haga nada.
+app.UsarFiltroDatosDeCuenta();
 app.UseAntiforgery();
 
 if (app.Environment.IsDevelopment())
@@ -118,7 +136,8 @@ app.MapearGeografia();
 app.MapearBusqueda();
 app.MapearMapaDelSitio();
 app.MapearCredenciales();
-app.MapearSalud();                                    // /api/salud/lista (readiness)
+app.MapearArchivos();                                  // API-72, API-72-quitar, API-73 (JQ-9)
+app.MapearSalud();                                   // /api/salud/lista (readiness)
 
 app.MapearAgenda();                                    // ANCLAJE MOD-06 Agenda
 
@@ -126,7 +145,9 @@ app.MapearResenas();
 app.MapearSuscripciones();                               // API-66 a API-70 (S7 suscripciones y pagos)
 
 app.MapearVerificacion();
+app.MapearAuditoria();
 
+app.MapearNotificaciones();                             // API-45 y su baja y clave (ES-3, push)
 app.MapearTarjetas();                                  // API-54 /t/{segmento} (CS-18)
 
 // Sonda de vida. Sin sesion y con el limite publico: tambien es un endpoint.

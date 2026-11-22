@@ -2,6 +2,8 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting.Internal;
 using Npgsql;
 using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Puertos;
@@ -240,13 +242,19 @@ public class ResenasIntegracionPruebas : IDisposable
         var moderador = AyudasResenas.NuevoUsuario(Ctx, "moderador");
         await Ctx.SaveChangesAsync();
 
+        var segundaPersona = AyudasResenas.NuevoUsuario(Ctx);
+        await Ctx.SaveChangesAsync();
+
         var rep = await _servicio.ReportarAsync(a.Id, reportante.Id, MotivoReporte.LenguajeDeOdio, null);
+        Assert.True(rep.Exito, rep.Mensaje);
+        Assert.Equal(1, (await PerfilDeNuevo(perfil.Id)).TotalResenas);       // con un solo grave, a la vista
+        rep = await _servicio.ReportarAsync(a.Id, segundaPersona.Id, MotivoReporte.DatosPersonales, null);
         Assert.True(rep.Exito, rep.Mensaje);
         var oculta = await PerfilDeNuevo(perfil.Id);
         Assert.Equal(0, oculta.TotalResenas);
         Assert.Null(oculta.PromedioCalificacion);
 
-        var reporteId = (await Ctx.ReportesResena.AsNoTracking().SingleAsync(r => r.ResenaId == a.Id)).Id;
+        var reporteId = (await Ctx.ReportesResena.AsNoTracking().FirstAsync(r => r.ResenaId == a.Id)).Id;
         Assert.True((await _servicio.ResolverReporteAsync(reporteId, moderador.Id, false, "Se revisó: no hay odio en el texto.")).Exito);
         Assert.Equal(1, (await PerfilDeNuevo(perfil.Id)).TotalResenas);
 
@@ -608,13 +616,21 @@ public class ResenasIntegracionPruebas : IDisposable
     [Fact]
     public void El_contenedor_resuelve_el_servicio_de_reseñas_y_su_repositorio()
     {
+        const string SecretoAvisoValido =
+            "secreto-de-prueba-del-aviso-0123456789ab"; // 40 caracteres
+
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Zass:CadenaConexion"] = Conexion.Cadena,
             ["Zass:ClaveDireccionesBase64"] =
                 Convert.ToBase64String(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray()),
+            ["Zass:SecretoAvisoPagos"] = SecretoAvisoValido,
         }).Build();
-        using var proveedor = new ServiceCollection().AgregarZass(config)
+        using var proveedor = new ServiceCollection()
+            .AddSingleton<IConfiguration>(config)
+            .AddLogging()
+            .AddSingleton<IHostEnvironment>(new HostingEnvironment { EnvironmentName = "Development" })
+            .AgregarZass(config)
             .BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
         using var ambito = proveedor.CreateScope();
 
@@ -735,6 +751,58 @@ public class ResenasConcurrenciaPruebas : IAsyncLifetime
         Assert.Equal(1, await verificar.Resenas.CountAsync(r => r.AutorId == autor.Id));
     }
 
+    /// <summary>
+    /// JQ-5: la ficha registra el contacto al tocar WhatsApp, llamar o correo, y dos toques casi a
+    /// la vez (o dos pestañas) llegan como dos peticiones simultáneas. La pausa antes de guardar
+    /// ensancha el hueco entre «no hay contacto abierto» y el INSERT: sin el cerrojo del prestador,
+    /// las dos leen la tabla vacía y quedan dos filas; con él, la segunda espera y encuentra la primera.
+    /// </summary>
+    [Fact]
+    public async Task Dos_registros_de_contacto_a_la_vez_dejan_una_sola_fila()
+    {
+        var (perfil, _) = await UnPrestador();
+        Usuario autor;
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            autor = AyudasResenas.NuevoUsuario(ctx);
+            await ctx.SaveChangesAsync();
+            _usuarios.Add(autor.Id);
+        }
+
+        static async Task<Resultado<Guid>> Registrar(Guid autorId, Guid perfilId, CanalContacto canal)
+        {
+            using var ctx = ContextoDePrueba.Crear();
+            var lenta = new UnidadQueTardaAntesDeGuardar(new UnidadDeTrabajoEfCore(ctx));
+            return await AyudasResenas.Servicio(ctx, new RelojUtc(), lenta)
+                .RegistrarContactoAsync(autorId, perfilId, OrigenContacto.Ficha, canal);
+        }
+
+        var resultados = await Task.WhenAll(
+            Task.Run(() => Registrar(autor.Id, perfil.Id, CanalContacto.Whatsapp)),
+            Task.Run(() => Registrar(autor.Id, perfil.Id, CanalContacto.Telefono)));
+
+        Assert.All(resultados, r => Assert.True(r.Exito, r.Mensaje));
+        Assert.Single(resultados.Select(r => r.Valor).Distinct());
+        using var verificar = ContextoDePrueba.Crear();
+        Assert.Equal(1, await verificar.Contactos.CountAsync(c => c.BuscadorId == autor.Id));
+    }
+
+    /// <summary>Guarda de verdad, pero después de una pausa: deja abierta la ventana de la carrera.</summary>
+    private sealed class UnidadQueTardaAntesDeGuardar : IUnidadDeTrabajo
+    {
+        private readonly IUnidadDeTrabajo _real;
+        public UnidadQueTardaAntesDeGuardar(IUnidadDeTrabajo real) => _real = real;
+        public async Task<int> GuardarAsync(CancellationToken ct = default)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(300), ct);
+            return await _real.GuardarAsync(ct);
+        }
+
+        public Task<T> EnTransaccionAsync<T>(
+            Func<CancellationToken, Task<T>> cuerpo, CancellationToken ct = default) =>
+            _real.EnTransaccionAsync(cuerpo, ct);
+    }
+
     [Fact]
     public async Task Un_rechazo_deja_registrado_el_intento_y_ninguna_reseña_con_transaccion_real()
     {
@@ -828,12 +896,14 @@ public class ResenasConcurrenciaPruebas : IAsyncLifetime
         var (perfil, _) = await UnPrestador();
         var gente = new List<(Usuario Autor, Contacto Contacto)>();
         for (var i = 0; i < 6; i++) gente.Add(await UnBuscadorConContacto(perfil));
-        Usuario reportante;
+        Usuario reportante, reportante2;
         using (var ctx = ContextoDePrueba.Crear())
         {
             reportante = AyudasResenas.NuevoUsuario(ctx);
+            reportante2 = AyudasResenas.NuevoUsuario(ctx);
             await ctx.SaveChangesAsync();
             _usuarios.Add(reportante.Id);
+            _usuarios.Add(reportante2.Id);
         }
 
         // Primero 3 ya publicadas; después, a la vez: 3 publicaciones nuevas, 3 ediciones y 3 reportes graves.
@@ -853,19 +923,21 @@ public class ResenasConcurrenciaPruebas : IAsyncLifetime
                 await AyudasResenas.Servicio(ctx, new RelojUtc()).EditarAsync(new EditarResenaCmd(
                     id, autor.Id, 1, "Cambié de idea: el trabajo tuvo varios problemas serios.", null, false));
             }));
+            // Auditoría 22-nov: ocultar pide dos reportes graves de personas distintas.
             if (i < 2)
-                tareas.Add(Task.Run(async () =>
-                {
-                    using var ctx = ContextoDePrueba.Crear();
-                    await AyudasResenas.Servicio(ctx, new RelojUtc())
-                        .ReportarAsync(id, reportante.Id, MotivoReporte.LenguajeDeOdio, null);
-                }));
+                foreach (var quien in new[] { reportante, reportante2 })
+                    tareas.Add(Task.Run(async () =>
+                    {
+                        using var ctx = ContextoDePrueba.Crear();
+                        await AyudasResenas.Servicio(ctx, new RelojUtc())
+                            .ReportarAsync(id, quien.Id, MotivoReporte.LenguajeDeOdio, null);
+                    }));
         }
         await Task.WhenAll(tareas);
 
         using var verificar = ContextoDePrueba.Crear();
         Assert.Equal(0, await AyudasResenas.DesvioAsync(verificar, perfil.Id));
         var p = await verificar.PerfilesPrestador.AsNoTracking().SingleAsync(x => x.Id == perfil.Id);
-        Assert.Equal(4, p.TotalResenas);       // 6 reseñas, menos las 2 que el reporte grave ocultó
+        Assert.Equal(4, p.TotalResenas);       // 6 reseñas, menos las 2 que los dos reportes graves ocultaron
     }
 }

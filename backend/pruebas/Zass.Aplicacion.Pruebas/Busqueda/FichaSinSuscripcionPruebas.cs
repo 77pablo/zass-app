@@ -51,7 +51,8 @@ public class FichaSinSuscripcionPruebas
             // borraria justo la regla que esta clase prueba.
             new ServicioSuscripciones(
                 new RepositorioSuscripcionesEnMemoria(_base), _base, _reloj, auditor, new ColaEnMemoria()),
-            _reloj);
+            _reloj,
+            new ServicioFotosDeTrabajoFalso());
     }
 
     /// <summary>Publicado y con los cuatro canales de contacto llenos: hay algo que apagar.</summary>

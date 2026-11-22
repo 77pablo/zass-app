@@ -57,4 +57,34 @@ public sealed class RepositorioTarjetasEfCore : IRepositorioTarjetas
             nfc?.En30 ?? 0, qr?.En30 ?? 0,
             nfc?.Total ?? 0, qr?.Total ?? 0);
     }
+
+    /// <summary>
+    /// API-55. SELECT ... FOR UPDATE sobre la fila de la tarjeta.
+    /// Solo devuelve si esta en estado Emitida. El perfil se carga aparte para
+    /// evitar que el Include genere una consulta aparte sin el bloqueo.
+    /// </summary>
+    public async Task<Tarjeta?> TomarParaActivarAsync(string urlEstable, CancellationToken ct = default)
+    {
+        var tarjeta = await _ctx.Tarjetas
+            .FromSqlInterpolated($"SELECT t.* FROM tarjetas t WHERE t.url_estable = {urlEstable} AND t.estado = 'Emitida' FOR UPDATE")
+            .FirstOrDefaultAsync(ct);
+        if (tarjeta is not null)
+        {
+            // Cargar el perfil explícitamente dentro de la misma transacción
+            await _ctx.Entry(tarjeta).Reference(t => t.PerfilPrestador).LoadAsync(ct);
+        }
+        return tarjeta;
+    }
+
+    /// <summary>
+    /// Comprueba si existe una tarjeta con esa URL estable (cualquier estado).
+    /// Usado para distinguir "no existe" de "ya activada/vencida" sin revelar cual.
+    /// </summary>
+    public async Task<bool> ExistePorUrlEstableAsync(string urlEstable, CancellationToken ct = default)
+    {
+        return await _ctx.Tarjetas.AnyAsync(t => t.UrlEstable == urlEstable, ct);
+    }
+
+    /// <summary>API-59. Agrega una tarjeta nueva en estado Emitida.</summary>
+    public void Agregar(Tarjeta tarjeta) => _ctx.Tarjetas.Add(tarjeta);
 }

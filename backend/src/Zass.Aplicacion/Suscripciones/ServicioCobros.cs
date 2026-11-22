@@ -31,6 +31,12 @@ public sealed class ServicioCobros : IServicioCobros
     /// </summary>
     public const short MesesPorCobro = 1;
 
+    /// <summary>
+    /// Mientras un intento con cupon siga Pendiente y tenga menos de esto, no se abre otro con
+    /// cupon para el mismo perfil. Es la reserva del cupo fundador (25 min) con margen.
+    /// </summary>
+    public static readonly TimeSpan VentanaDeIntentoConCupon = TimeSpan.FromMinutes(30);
+
     private readonly IRepositorioSuscripciones _repo;
     private readonly IServicioSuscripciones _suscripciones;
     private readonly IPasarelaDePagos _pasarela;
@@ -174,12 +180,17 @@ public sealed class ServicioCobros : IServicioCobros
         if (string.IsNullOrWhiteSpace(cmd.ClaveIdempotencia))
             return Resultado.Falla<IntentoDePagoDto>(
                 Fallas.Validacion, "Falta la clave de idempotencia de la solicitud.");
+        if (EsClaveReservada(cmd.ClaveIdempotencia))
+            return ClaveReservada();
 
         // CC-04, antes de abrir nada: el doble envio devuelve el MISMO intento. Se vuelve
         // a comprobar dentro de la transaccion, porque entre esta lectura y el INSERT cabe
-        // otra solicitud con la misma clave.
-        if (await _repo.IntentoPorClaveAsync(cmd.ClaveIdempotencia, ct) is { } yaExiste)
+        // otra solicitud con la misma clave. Solo cuenta el intento PROPIO: una clave que ya
+        // uso otro prestador es un conflicto, y no se devuelve nada de ese intento.
+        if (await _repo.IntentoPorClaveAsync(cmd.ClaveIdempotencia, cmd.PerfilPrestadorId, ct) is { } yaExiste)
             return await RetomarAsync(yaExiste, ct);
+        if (await _repo.ClaveDeIntentoUsadaAsync(cmd.ClaveIdempotencia, ct))
+            return ClaveAjena();
 
         var calculo = await CalcularAsync(cmd.PerfilPrestadorId, cmd.CodigoPlan, cmd.CodigoCupon, ct);
         if (!calculo.Exito || calculo.Valor is null)
@@ -195,10 +206,27 @@ public sealed class ServicioCobros : IServicioCobros
                 Fallas.Conflicto,
                 "Publica tu perfil antes de pagar: la suscripción nace al publicarlo.");
 
+        // RN-S7-08 (22-nov-2026). «Ya canjeo» se mira arriba, pero el canje nace al PAGAR: sin
+        // esto se podian abrir dos intentos con el mismo cupon y pagar los dos. Se rechaza el
+        // segundo mientras el primero siga Pendiente y reciente. NO se anula el anterior: puede
+        // estar pagandose en otra pestaña, y anularlo es justo como un pago se queda sin
+        // acreditar. Pasada la ventana se deja pasar (un intento abandonado no puede bloquear
+        // el cupon para siempre); si aun asi se pagan los dos, la confirmacion acredita los
+        // dos y crea UN canje (ver ResolverAsync).
+        if (c.Cupon is not null
+            && await _repo.HayIntentoConCuponPendienteAsync(
+                cmd.PerfilPrestadorId, _reloj.Ahora - VentanaDeIntentoConCupon, ct))
+            return Resultado.Falla<IntentoDePagoDto>(
+                Fallas.Conflicto,
+                "Ya tienes un pago con código de descuento en curso. Termínalo o espera "
+                + $"{(int)VentanaDeIntentoConCupon.TotalMinutes} minutos para empezar otro.");
+
         var intento = await _trabajo.EnTransaccionAsync(async t =>
         {
-            if (await _repo.IntentoPorClaveAsync(cmd.ClaveIdempotencia, t) is { } carrera)
+            if (await _repo.IntentoPorClaveAsync(cmd.ClaveIdempotencia, cmd.PerfilPrestadorId, t) is { } carrera)
                 return carrera;
+            if (await _repo.ClaveDeIntentoUsadaAsync(cmd.ClaveIdempotencia, t))
+                return ClaveAjenaEnCarrera;
 
             // El cupo fundador se RESERVA al empezar a pagar, no al confirmar: si se
             // reservara despues, dos personas podrian pagar por el cupo 50 y una se
@@ -243,6 +271,8 @@ public sealed class ServicioCobros : IServicioCobros
             return nuevo;
         }, ct);
 
+        if (ReferenceEquals(intento, ClaveAjenaEnCarrera)) return ClaveAjena();
+
         // Null solo sale de la reserva fallida: alguien se llevo el ultimo cupo entre la
         // cotizacion y el cobro. Se vuelve a preguntar el estado para contarlo con el
         // mensaje de cierre, y no con un «no se pudo».
@@ -274,12 +304,16 @@ public sealed class ServicioCobros : IServicioCobros
     private async Task<Resultado<IntentoDePagoDto>> PedirElCobroAsync(
         IntentoDePago intento, Plan plan, bool nueva, CancellationToken ct)
     {
+        var correo = await _repo.CorreoDelUsuarioDePerfilAsync(intento.PerfilPrestadorId, ct);
         var cobro = await _pasarela.IniciarCobroAsync(
             new SolicitudDeCobro(
                 IntentoDePagoId: intento.Id,
                 Monto: intento.Monto,
                 Moneda: intento.Moneda,
-                Descripcion: $"ZASS! {plan.Nombre} - {MesesPorCobro} mes"),
+                Descripcion: $"ZASS! {plan.Nombre} - {MesesPorCobro} mes")
+            {
+                CorreoDelPagador = correo,
+            },
             ct);
 
         if (!cobro.Exito || cobro.Valor is null)
@@ -325,11 +359,15 @@ public sealed class ServicioCobros : IServicioCobros
         if (string.IsNullOrWhiteSpace(claveIdempotencia))
             return Resultado.Falla<IntentoDePagoDto>(
                 Fallas.Validacion, "Falta la clave de idempotencia de la solicitud.");
+        if (EsClaveReservada(claveIdempotencia))
+            return ClaveReservada();
 
         // CC-04, igual que el cobro: el doble clic devuelve el MISMO intento y no toma un
-        // segundo cupo.
-        if (await _repo.IntentoPorClaveAsync(claveIdempotencia, ct) is { } yaExiste)
+        // segundo cupo. Y como alli, solo el intento propio.
+        if (await _repo.IntentoPorClaveAsync(claveIdempotencia, perfilPrestadorId, ct) is { } yaExiste)
             return await RetomarAsync(yaExiste, ct);
+        if (await _repo.ClaveDeIntentoUsadaAsync(claveIdempotencia, ct))
+            return ClaveAjena();
 
         // Se reusa el calculo por dos cosas que si importan —que el perfil exista y que el
         // plan fundador este ABIERTO (RN-S7-06)—, y por ninguna mas: el monto de una
@@ -346,10 +384,20 @@ public sealed class ServicioCobros : IServicioCobros
                 Fallas.Conflicto,
                 "Publica tu perfil antes de tomar tu cupo: la suscripción nace al publicarlo.");
 
+        // Desde el 20-nov-2026 el cupo se toma sin tarjeta (API-69) y esto es SOLO inscribir
+        // la tarjeta de quien ya tiene su cupo. Sin este control, inscribir una tarjeta seria
+        // otra puerta para tomar un cupo, y con un mes gratis que no pasa por TomarCupo.
+        if (await _repo.CupoFundadorDeAsync(perfilPrestadorId, ct) is null)
+            return Resultado.Falla<IntentoDePagoDto>(
+                Fallas.Conflicto,
+                "Primero toma tu cupo de fundador en la página de planes; la tarjeta se inscribe después.");
+
         var intento = await _trabajo.EnTransaccionAsync(async t =>
         {
-            if (await _repo.IntentoPorClaveAsync(claveIdempotencia, t) is { } carrera)
+            if (await _repo.IntentoPorClaveAsync(claveIdempotencia, perfilPrestadorId, t) is { } carrera)
                 return carrera;
+            if (await _repo.ClaveDeIntentoUsadaAsync(claveIdempotencia, t))
+                return ClaveAjenaEnCarrera;
 
             // El cupo se reserva al EMPEZAR, por el mismo motivo que en el cobro: si se
             // reservara al confirmar, dos personas podrian inscribirse por el cupo 50.
@@ -384,6 +432,8 @@ public sealed class ServicioCobros : IServicioCobros
             return nuevo;
         }, ct);
 
+        if (ReferenceEquals(intento, ClaveAjenaEnCarrera)) return ClaveAjena();
+
         // Null solo sale de la reserva fallida: alguien se llevo el ultimo cupo entre la
         // comprobacion y la reserva.
         if (intento is null)
@@ -415,10 +465,14 @@ public sealed class ServicioCobros : IServicioCobros
     private async Task<Resultado<IntentoDePagoDto>> PedirLaInscripcionAsync(
         IntentoDePago intento, Plan plan, bool nueva, CancellationToken ct)
     {
+        var correo = await _repo.CorreoDelUsuarioDePerfilAsync(intento.PerfilPrestadorId, ct);
         var inscripcion = await _pasarela.IniciarInscripcionAsync(
             new SolicitudDeInscripcion(
                 IntentoDePagoId: intento.Id,
-                Descripcion: $"ZASS! {plan.Nombre} - inscripcion del medio de pago"),
+                Descripcion: $"ZASS! {plan.Nombre} - inscripcion del medio de pago")
+            {
+                CorreoDelPagador = correo,
+            },
             ct);
 
         if (!inscripcion.Exito || inscripcion.Valor is null)
@@ -432,6 +486,47 @@ public sealed class ServicioCobros : IServicioCobros
 
         return Resultado.Ok(ADto(intento, plan.Codigo, nueva));
     }
+
+    /// <summary>
+    /// CC-04: la clave existe, pero es de OTRO perfil. Conflicto neutro: no dice de quien es
+    /// ni devuelve su intento (antes salia entero, con su UrlParaPagar), y se responde antes
+    /// de llegar al indice unico <c>ux_intento_pago_clave</c>, que lo convertiria en un 500.
+    /// </summary>
+    /// <summary>
+    /// CC-04. Las claves de <c>intentos_de_pago</c> las ponen DOS autores en la misma columna:
+    /// el cliente (API-68, API-76) y el servidor (el cobro automatico,
+    /// <see cref="ClaveDeCobroAutomatico"/>). El espacio del servidor se reserva: si un
+    /// cliente pudiera crear un intento con la clave <c>cobro-automatico:{suscripcion}:{periodo}</c>
+    /// de OTRA persona, el indice unico <c>ux_intento_pago_clave</c> y la comprobacion de
+    /// «ya existe» harian que el cobro automatico de esa persona se saltara (auditoria del
+    /// 21-nov-2026). Filtrar por dueño en el cobro automatico no basta: el indice unico es
+    /// global y el INSERT chocaria igual. Por eso se cierra la puerta de entrada.
+    ///
+    /// <para>
+    /// Sin distinguir mayusculas: una variante en mayusculas no choca con el indice, pero
+    /// tampoco es una clave que un cliente legitimo genere, y rechazarla no cuesta nada.
+    /// </para>
+    /// </summary>
+    public static bool EsClaveReservada(string clave) =>
+        PrefijosReservados.Any(p => clave.StartsWith(p, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Los prefijos que solo escribe el servidor en <c>intentos_de_pago</c>.</summary>
+    private static readonly string[] PrefijosReservados = [PrefijoCobroAutomatico];
+
+    private static Resultado<IntentoDePagoDto> ClaveReservada() => Resultado.Falla<IntentoDePagoDto>(
+        Fallas.Validacion,
+        "La clave de idempotencia usa un prefijo reservado del servidor. Genera otra (por ejemplo, un UUID).");
+
+    private static Resultado<IntentoDePagoDto> ClaveAjena() => Resultado.Falla<IntentoDePagoDto>(
+        Fallas.Conflicto,
+        "No pudimos procesar esta solicitud de pago. Vuelve a cargar la página e inténtalo de nuevo.");
+
+    /// <summary>
+    /// La marca con que la transaccion avisa «la clave aparecio, y es ajena». No es un intento:
+    /// nunca se guarda, solo se compara por referencia. Hace falta porque el null de esa
+    /// transaccion ya significa otra cosa (la reserva del cupo fallo).
+    /// </summary>
+    private static readonly IntentoDePago ClaveAjenaEnCarrera = new();
 
     private static IntentoDePagoDto ADto(IntentoDePago i, string codigoPlan, bool nueva) =>
         new(i.Id, codigoPlan, i.MontoBruto, i.MontoDescuento, i.Monto, i.CodigoCupon,
@@ -469,6 +564,8 @@ public sealed class ServicioCobros : IServicioCobros
     /// </summary>
     public static int DiasAntesDeVencer => ServicioSuscripciones.DiasDeAviso.Max();
 
+    private const string PrefijoCobroAutomatico = "cobro-automatico:";
+
     /// <summary>
     /// CC-04. La clave del cobro automatico, determinista: la suscripcion y el periodo
     /// que se esta cobrando.
@@ -489,20 +586,88 @@ public sealed class ServicioCobros : IServicioCobros
     /// </para>
     /// </summary>
     public static string ClaveDeCobroAutomatico(Guid suscripcionId, DateTime vigenteHasta) =>
-        $"cobro-automatico:{suscripcionId:D}:{vigenteHasta:yyyy-MM-dd}";
+        $"{PrefijoCobroAutomatico}{suscripcionId:D}:{vigenteHasta:yyyy-MM-dd}";
+
+    /// <summary>
+    /// ES-1. La clave del reintento diario tras un rechazo: la del periodo mas el DIA en que
+    /// se reintenta, en hora de Chile. Una por dia y por periodo, por la misma razon que la de
+    /// arriba: correr el trabajo dos veces el mismo dia reintenta UNA vez. Comparte el prefijo
+    /// con la del periodo, y asi <see cref="IRepositorioSuscripciones.IntentosPorPrefijoDeClaveAsync"/>
+    /// trae juntos el cobro y sus reintentos.
+    /// </summary>
+    public static string ClaveDeReintento(string claveDelPeriodo, DateOnly dia) =>
+        $"{claveDelPeriodo}:reintento:{dia:yyyy-MM-dd}";
 
     public async Task<ResumenDeCobros> CobrarVencimientosAsync(CancellationToken ct = default)
     {
         // La misma consulta que usa el aviso, con el mismo umbral. Si algun dia cambia
         // DiasDeAviso, el cobro se mueve con el y no se queda en otro calendario.
-        var porVencer = await _suscripciones.PorVencerAsync(DiasAntesDeVencer, ct);
+        var porVencerDto = await _suscripciones.PorVencerAsync(DiasAntesDeVencer, ct);
 
-        int cobradas = 0, rechazadas = 0, sinMedio = 0, yaIntentadas = 0, paraRevisar = 0;
+        var contadores = new ContadoresCobro();
 
-        foreach (var cercana in porVencer)
+        // Procesar suscripciones por vencer (cobro normal)
+        // Primero traemos las suscripciones completas
+        var porVencer = new List<Suscripcion>();
+        foreach (var dto in porVencerDto)
         {
-            var s = await _repo.PorIdAsync(cercana.SuscripcionId, ct);
-            if (s is null) continue;
+            var s = await _repo.PorIdAsync(dto.SuscripcionId, ct);
+            if (s is not null) porVencer.Add(s);
+        }
+        await ProcesarSuscripcionesAsync(porVencer, esCobroTardio: false, ct, contadores);
+
+        // Procesar suscripciones vencidas en los ultimos 7 dias (cobro tardio)
+        // RN-S7-16: si el trabajo diario no corrio y una suscripcion Activa con medio
+        // de pago inscrito vencio hace 7 dias o menos, se cobra una vez al despertar.
+        var ahora = _reloj.Ahora;
+        var desde = ahora.AddDays(-7);
+        var vencidas = await _repo.ActivasVencidasDesdeAsync(desde, ahora, ct);
+        await ProcesarSuscripcionesAsync(vencidas, esCobroTardio: true, ct, contadores);
+
+        // Los contadores de arriba son numeros y nada mas: este resumen lo lee cualquiera
+        // que mire trabajos_de_fondo (S7 §6).
+        await _trabajo.GuardarAsync(ct);
+        return new ResumenDeCobros(
+            contadores.Cobradas, contadores.Rechazadas, contadores.SinMedio, contadores.YaIntentadas, contadores.ParaRevisar);
+    }
+
+    /// <summary>
+    /// Contadores mutables para el procesamiento de cobros.
+    /// Evita problemas con records inmutables y ref en metodos async.
+    /// </summary>
+    private sealed class ContadoresCobro
+    {
+        public int Cobradas { get; set; }
+        public int Rechazadas { get; set; }
+        public int SinMedio { get; set; }
+        public int YaIntentadas { get; set; }
+        public int ParaRevisar { get; set; }
+    }
+
+    /// <summary>
+    /// Procesa una lista de suscripciones para cobro (normal o tardio).
+    /// Extrae la logica comun para no duplicar codigo.
+    /// </summary>
+    private async Task ProcesarSuscripcionesAsync(
+        IReadOnlyList<Suscripcion> suscripciones,
+        bool esCobroTardio,
+        CancellationToken ct,
+        ContadoresCobro contadores)
+    {
+        var ahora = _reloj.Ahora;
+        foreach (var s in suscripciones)
+        {
+            // La persona cancelo la renovacion (API-78), o su cuenta ya no existe o esta
+            // suspendida: no se cobra (22-nov-2026). Hasta entonces el filtro era solo estado y
+            // fecha, y a quien eliminaba su cuenta se le seguia cobrando con la tarjeta guardada.
+            if (s.RenovacionCancelada) continue;
+            if (await _repo.EstadoDeCuentaDePerfilAsync(s.PerfilPrestadorId, ct)
+                is null or EstadoCuenta.Eliminada or EstadoCuenta.Suspendida)
+            {
+                _auditor.Registrar(Auditar.Entrada(
+                    "cobro_omitido_cuenta_no_activa", "suscripciones", s.Id, _reloj.Ahora));
+                continue;
+            }
 
             var plan = await _repo.PlanPorIdAsync(s.PlanId, ct);
             if (plan is null) continue;
@@ -511,8 +676,17 @@ public sealed class ServicioCobros : IServicioCobros
             // cupon: un codigo de descuento lo escribe una persona, y aqui no hay nadie
             // escribiendo. Esto tambien es lo que descarta, sin contarlo, a quien esta en
             // el plan de prueba: ese mes es gratis y no se cobra nunca.
-            var calculo = await CalcularAsync(cercana.PerfilPrestadorId, plan.Codigo, null, ct);
-            if (!calculo.Exito || calculo.Valor is null) continue;
+            var calculo = await CalcularAsync(s.PerfilPrestadorId, plan.Codigo, null, ct);
+            if (!calculo.Exito || calculo.Valor is null)
+            {
+                // ES-1. El fundador que perdio su cupo no se cobra al precio fundador: el
+                // calculo lo rechaza. Antes se saltaba en silencio; ahora queda en la
+                // auditoria, que es como se ve en vez de taparse.
+                if (plan.Codigo == ServicioSuscripciones.PlanFundador)
+                    _auditor.Registrar(Auditar.Entrada(
+                        "cobro_omitido_fundador_sin_cupo", "suscripciones", s.Id, _reloj.Ahora));
+                continue;
+            }
 
             // Con QUE se cobra. La suscripcion tiene que traer la referencia del medio de
             // pago que la persona inscribio; sin ella no hay contra que cobrar y NO se
@@ -520,36 +694,59 @@ public sealed class ServicioCobros : IServicioCobros
             // taparse: hoy esta columna no la escribe nadie (ver el informe de C3).
             if (string.IsNullOrWhiteSpace(s.ReferenciaPasarela))
             {
-                sinMedio++;
+                contadores.SinMedio++;
+                var dias = esCobroTardio ? (int)(ahora - s.VigenteHasta).TotalDays : s.DiasRestantes(ahora);
                 _auditor.Registrar(Auditar.Entrada(
                     "cobro_sin_medio_inscrito", "suscripciones", s.Id, _reloj.Ahora,
-                    contexto: new { diasRestantes = cercana.DiasRestantes }));
+                    contexto: new { diasRestantes = dias }));
                 continue;
             }
 
             var clave = ClaveDeCobroAutomatico(s.Id, s.VigenteHasta);
 
-            // Ya hubo un intento para esta suscripcion y este periodo. Da igual como
-            // acabo: no se cobra otra vez hoy. Un rechazo NO se reintenta solo, porque la
-            // politica de reintento y la «gracia» son decision de Pablo y todavia no
-            // existen (RN-S7-10 solo dice que el rechazo es normal).
-            if (await _repo.IntentoPorClaveAsync(clave, ct) is not null)
+            // Ya hubo un intento para esta suscripcion y este periodo.
+            //
+            // ES-1 (decision de Pablo, 20-nov-2026): si TODOS los de este periodo fueron
+            // rechazados, hay gracia hasta el vencimiento con un reintento por dia. Si alguno
+            // esta Pendiente (la pasarela no contesto: no se sabe si cobro) o Pagado, no se
+            // reintenta: reintentar a ciegas lo que no se sabe si se cobro es como se cobra
+            // dos veces. El cobro tardio (RN-S7-16) no reintenta: la gracia termina al vencer.
+            var previos = await _repo.IntentosPorPrefijoDeClaveAsync(clave, ct);
+            var reintento = false;
+            if (previos.Count > 0)
             {
-                yaIntentadas++;
-                continue;
+                if (esCobroTardio || previos.Any(i => i.Estado != EstadoIntentoPago.Fallido))
+                {
+                    contadores.YaIntentadas++;
+                    continue;
+                }
+
+                // Uno por dia, contando el primer intento: si el rechazo fue HOY (en hora de
+                // Chile), la segunda corrida de hoy no reintenta. La clave del reintento es la
+                // garantia si dos procesos llegan a la vez; el dia de creacion cubre el caso
+                // del cobro original, que no lleva el sufijo.
+                var hoy = HoraDeChile.DiaLocal(ahora);
+                clave = ClaveDeReintento(clave, hoy);
+                if (previos.Any(i => i.ClaveIdempotencia == clave
+                                     || HoraDeChile.DiaLocal(i.CreadoEn) == hoy))
+                {
+                    contadores.YaIntentadas++;
+                    continue;
+                }
+                reintento = true;
             }
 
             var intento = await _trabajo.EnTransaccionAsync(async t =>
             {
                 // Entre la lectura de arriba y este INSERT cabe otra corrida, igual que en
                 // IniciarAsync.
-                if (await _repo.IntentoPorClaveAsync(clave, t) is not null)
+                if (await _repo.ClaveDeIntentoUsadaAsync(clave, t))
                     return (IntentoDePago?)null;
 
                 var nuevo = new IntentoDePago
                 {
                     SuscripcionId = s.Id,
-                    PerfilPrestadorId = cercana.PerfilPrestadorId,
+                    PerfilPrestadorId = s.PerfilPrestadorId,
                     PlanId = plan.Id,
                     Meses = MesesPorCobro,
                     MontoBruto = plan.PrecioMensual,
@@ -567,15 +764,26 @@ public sealed class ServicioCobros : IServicioCobros
                 // El cupo fundador NO se toca: quien renueva ya lo tiene confirmado, y
                 // volverle a poner plazo de reserva seria arriesgarse a que el trabajo
                 // diario se lo suelte.
+                var dias = esCobroTardio ? (int)(ahora - s.VigenteHasta).TotalDays : s.DiasRestantes(ahora);
                 _auditor.Registrar(Auditar.Entrada(
                     "cobro_automatico_iniciado", "intentos_de_pago", nuevo.Id, _reloj.Ahora,
                     contexto: new
                     {
                         plan = plan.Codigo,
                         monto = nuevo.Monto,
-                        diasRestantes = cercana.DiasRestantes,
+                        diasRestantes = dias,
                         pasarela = _pasarela.Nombre,
+                        cobro_tardio = esCobroTardio,
+                        reintento,
                     }));
+
+                // RN-S7-16: auditoria especifica para cobro tardio (se crea al iniciar el intento)
+                if (esCobroTardio)
+                {
+                    _auditor.Registrar(Auditar.Entrada(
+                        "cobro_tardio", "suscripciones", s.Id, _reloj.Ahora,
+                        contexto: new { diasDeAtraso = dias }));
+                }
 
                 await _trabajo.GuardarAsync(t);
                 return nuevo;
@@ -583,13 +791,14 @@ public sealed class ServicioCobros : IServicioCobros
 
             if (intento is null)
             {
-                yaIntentadas++;
+                contadores.YaIntentadas++;
                 continue;
             }
 
             // La salida a internet, FUERA de la transaccion, por lo mismo que en
             // PedirElCobroAsync: una llamada de red con una transaccion abierta deja filas
             // bloqueadas el tiempo que tarde la pasarela en contestar.
+            var correo = await _repo.CorreoDelUsuarioDePerfilAsync(s.PerfilPrestadorId, ct);
             var cobro = await _pasarela.CobrarAsync(
                 new SolicitudDeCobro(
                     IntentoDePagoId: intento.Id,
@@ -598,6 +807,7 @@ public sealed class ServicioCobros : IServicioCobros
                     Descripcion: $"ZASS! {plan.Nombre} - {MesesPorCobro} mes")
                 {
                     MedioInscrito = s.ReferenciaPasarela,
+                    CorreoDelPagador = correo,
                 },
                 ct);
 
@@ -606,22 +816,32 @@ public sealed class ServicioCobros : IServicioCobros
             // ciegas lo que no se sabe si se cobro es como se cobra dos veces.
             if (!cobro.Exito || cobro.Valor is null)
             {
-                paraRevisar++;
+                contadores.ParaRevisar++;
                 continue;
             }
 
             // El mismo camino que el aviso de la pasarela. El rechazo deja el intento
             // Fallido y la suscripcion EXACTAMENTE como estaba (RN-S7-10).
             var resuelto = await ResolverAsync(cobro.Valor, ct);
-            if (!resuelto.Exito || resuelto.Valor is null) paraRevisar++;
-            else if (resuelto.Valor.Aprobado) cobradas++;
-            else rechazadas++;
-        }
+            // Pendiente (22-nov-2026) cuenta como «para revisar»: el intento sigue Pendiente, no
+            // se reintenta (ES-1) y no se avisa de un rechazo que no hubo.
+            if (!resuelto.Exito || resuelto.Valor is null || resuelto.Valor.Pendiente)
+                contadores.ParaRevisar++;
+            else if (resuelto.Valor.Aprobado)
+                contadores.Cobradas++;
+            else
+            {
+                contadores.Rechazadas++;
 
-        // Los contadores de arriba son numeros y nada mas: este resumen lo lee cualquiera
-        // que mire trabajos_de_fondo (S7 §6).
-        await _trabajo.GuardarAsync(ct);
-        return new ResumenDeCobros(cobradas, rechazadas, sinMedio, yaIntentadas, paraRevisar);
+                // ES-1. «Actualiza tu tarjeta», uno por periodo (la clave del aviso lo
+                // garantiza aunque el reintento de manana tambien falle). Solo dentro de la
+                // gracia: el cobro tardio ocurre despues del vencimiento, cuando ya no hay
+                // plazo que ofrecer.
+                if (!esCobroTardio)
+                    await _suscripciones.AvisarCobroRechazadoAsync(
+                        s.PerfilPrestadorId, s.Id, s.VigenteHasta, ct);
+            }
+        }
     }
 
     // ------------------------------------------------------------- Confirmar
@@ -679,20 +899,46 @@ public sealed class ServicioCobros : IServicioCobros
             }
 
             if (intento.Estado != EstadoIntentoPago.Pendiente)
+            {
+                // Un «pagado» sobre un intento ya cerrado como fallido no deberia pasar desde que
+                // el pendiente no cierra, pero si pasa es plata cobrada sin mes: que quede a la
+                // vista para revisarla a mano, no solo en el registro de la pasarela.
+                if (r.Aprobado)
+                {
+                    _auditor.Registrar(Auditar.Entrada(
+                        "cobro_pagado_sobre_intento_cerrado", "intentos_de_pago", intento.Id,
+                        _reloj.Ahora, contexto: new { estado = intento.Estado.ToString(), monto = r.MontoConfirmado }));
+                    await _trabajo.GuardarAsync(t);
+                }
                 return Resultado.Falla<ConfirmacionDto>(
                     Fallas.Conflicto,
                     $"Ese cobro ya se cerró como {intento.Estado.ToString().ToLowerInvariant()}. "
                     + "Empieza un pago nuevo.");
+            }
+
+            // La pasarela todavia no sabe (22-nov-2026): el intento NO se cierra. Antes esto caia
+            // en el rechazo de abajo, el intento quedaba Fallido y el aviso de «pagada» que
+            // llegaba despues encontraba «ya se cerró como fallido»: la persona pagaba y no
+            // recibia su mes.
+            if (r.Pendiente)
+            {
+                _auditor.Registrar(Auditar.Entrada(
+                    "cobro_pendiente", "intentos_de_pago", intento.Id, _reloj.Ahora,
+                    contexto: new { referencia = r.ReferenciaPasarela }));
+                await _trabajo.GuardarAsync(t);
+                return Resultado.Ok(new ConfirmacionDto(
+                    intento.Id, Aprobado: false, intento.Estado.ToString(), null,
+                    "Tu pago se está procesando. Cuando la pasarela lo confirme, tu suscripción se actualiza sola.",
+                    Nueva: false, Pendiente: true));
+            }
 
             if (!r.Aprobado)
             {
                 intento.MarcarFallido(_reloj.Ahora, r.MotivoFallo);
 
-                // Una inscripcion rechazada suelta el cupo al tiro en vez de dejarlo
-                // bloqueado los 25 minutos de la reserva: el cupo 50 es escaso y quien no
-                // pudo inscribir su medio de pago no lo esta usando.
-                if (intento.Tipo == TipoDeIntento.Inscripcion)
-                    await _suscripciones.LiberarCupoFundadorAsync(intento.PerfilPrestadorId, t);
+                // Una inscripcion rechazada NO suelta el cupo (20-nov-2026): el cupo se tomo sin
+                // tarjeta y es de la persona hasta que termine su mes gratis. Puede probar con
+                // otra tarjeta; si el mes termina sin ninguna, lo libera el trabajo diario.
 
                 _auditor.Registrar(Auditar.Entrada(
                     "cobro_rechazado", "intentos_de_pago", intento.Id, _reloj.Ahora,
@@ -721,15 +967,50 @@ public sealed class ServicioCobros : IServicioCobros
                     "El monto confirmado no coincide con el del cobro. No se registró nada.");
             }
 
+            // RN-S7-01 y «al cupo 50 se cierra» (decisión de Pablo, 12-nov): una inscripcion solo
+            // hace fundador a quien tiene un cupo. Si la reserva vencio y el cupo lo tomo otra
+            // persona, el aviso puede llegar igual (la persona inscribio la tarjeta tarde):
+            // antes se ignoraba el resultado de confirmar y quedaba un fundador SIN cupo, y se
+            // podian pasar de 50 (defecto 1 del informe JQ-7). Se mira ANTES de marcar pagado.
+            //
+            // Si todavia queda un cupo libre, se le da ese (decisión de Pablo, 20-nov): rechazar
+            // a alguien que ya inscribio su tarjeta mientras sobran cupos no protege nada. Solo
+            // con los 50 tomados se le dice que no alcanzo.
+            if (intento.Tipo == TipoDeIntento.Inscripcion)
+            {
+                var cupo = await _suscripciones.ConfirmarCupoFundadorAsync(intento.PerfilPrestadorId, t);
+                if (!cupo.Exito)
+                {
+                    var otro = await _suscripciones.ReservarCupoFundadorAsync(intento.PerfilPrestadorId, ct: t);
+                    if (otro.Exito)
+                        cupo = await _suscripciones.ConfirmarCupoFundadorAsync(intento.PerfilPrestadorId, t);
+                }
+                if (!cupo.Exito)
+                {
+                    const string sinCupo =
+                        "El cupo que habías reservado venció y mientras tanto se tomaron todos los del plan fundador.";
+                    intento.MarcarFallido(_reloj.Ahora, sinCupo);
+                    _auditor.Registrar(Auditar.Entrada(
+                        "inscripcion_sin_cupo", "intentos_de_pago", intento.Id, _reloj.Ahora,
+                        contexto: new { perfil = intento.PerfilPrestadorId }));
+                    await _trabajo.GuardarAsync(t);
+
+                    // Exito del caso de uso y no del cupo, igual que un rechazo de la tarjeta:
+                    // la pasarela no tiene que reintentar, y la pantalla lo cuenta con calma.
+                    return Resultado.Ok(new ConfirmacionDto(
+                        intento.Id, Aprobado: false, intento.Estado.ToString(), null,
+                        sinCupo + " No se cobró nada.", Nueva: true));
+                }
+            }
+
             intento.MarcarPagado(_reloj.Ahora);
             if (r.ReferenciaPasarela is not null) intento.ReferenciaPasarela = r.ReferenciaPasarela;
 
             // RN-S7-01: una INSCRIPCION no extiende un mes pagado ni crea fila de pago,
-            // porque no se cobro nada. Lo que hace es dejar el cupo definitivo y arrancar
-            // el mes gratis.
+            // porque no se cobro nada. Lo que hace es dejar el cupo definitivo (ya hecho
+            // arriba) y arrancar el mes gratis.
             if (intento.Tipo == TipoDeIntento.Inscripcion)
             {
-                await _suscripciones.ConfirmarCupoFundadorAsync(intento.PerfilPrestadorId, t);
 
                 var cambio = await _suscripciones.PasarAFundadorConMesGratisAsync(
                     intento.SuscripcionId, intento.ReferenciaPasarela, t);
@@ -750,15 +1031,61 @@ public sealed class ServicioCobros : IServicioCobros
 
             // El llamador que faltaba. Toda la regla de vigencia sigue viviendo alli y no
             // aqui: quien paga el dia 25 de un mes de 30 no pierde los 5 que le quedaban.
+            //
+            // La decision de si extender desde el vencimiento original sale del INTENTO:
+            // si es un cobro automatico (ClaveIdempotencia empieza con el prefijo),
+            // se extiende desde el VigenteHasta de la suscripcion TAL COMO ESTA.
+            // VencerExpiradasAsync solo cambia Estado, no VigenteHasta.
+            // Si no es cobro automatico (pago manual), se queda la logica de siempre
+            // (desde hoy si ya vencio).
+            var esCobroAutomatico = intento.ClaveIdempotencia?.StartsWith(PrefijoCobroAutomatico) == true;
+
+            // El plan que se PAGO es el que queda (22-nov-2026). Antes la suscripcion se quedaba
+            // con el plan que tenia: quien pagaba Profesional seguia en «prueba» y no recibia lo
+            // que pago, y el cobro automatico (que lee el plan de la suscripcion) no le cobraba.
+            //
+            // El plan fundador solo con cupo: el cupo se reservo al empezar a pagar, y aqui se
+            // deja definitivo. Si la reserva vencio y se la llevo otro, se prueba con un cupo
+            // libre (igual que la inscripcion); sin ninguno, la persona YA pago y el mes se
+            // acredita igual, pero en el plan mensual (Esencial): nunca un pago sin acreditar, y
+            // nunca un fundador numero 51. Queda auditado para revisarlo a mano.
+            var plan = await _repo.PlanPorIdAsync(intento.PlanId, t);
+            var planQueQueda = plan?.Id;
+            if (plan?.Codigo == ServicioSuscripciones.PlanFundador)
+            {
+                var cupo = await _suscripciones.ConfirmarCupoFundadorAsync(intento.PerfilPrestadorId, t);
+                if (!cupo.Exito
+                    && (await _suscripciones.ReservarCupoFundadorAsync(intento.PerfilPrestadorId, ct: t)).Exito)
+                    cupo = await _suscripciones.ConfirmarCupoFundadorAsync(intento.PerfilPrestadorId, t);
+                if (!cupo.Exito)
+                {
+                    planQueQueda = (await _repo.PlanPorCodigoAsync(ServicioSuscripciones.PlanMensual, t))?.Id;
+                    _auditor.Registrar(Auditar.Entrada(
+                        "cobro_fundador_sin_cupo", "intentos_de_pago", intento.Id, _reloj.Ahora,
+                        contexto: new { monto = intento.Monto, planQueQueda }));
+                }
+            }
+
             var pagado = await _suscripciones.RegistrarPeriodoPagadoAsync(
                 intento.SuscripcionId, intento.Meses, intento.Monto,
-                intento.ReferenciaPasarela, intento.Id, t);
+                intento.ReferenciaPasarela, intento.Id, esCobroAutomatico, planQueQueda, t);
             if (!pagado.Exito)
                 return Resultado.Falla<ConfirmacionDto>(pagado.Codigo!, pagado.Mensaje!);
 
             // El canje nace con el pago y no antes: si naciera al crear el intento, una
             // tarjeta rechazada le quemaria el cupon a quien no llego a pagar nada.
-            if (intento.CodigoCupon is { } codigoCupon)
+            //
+            // Y si YA hay canje (dos intentos con el mismo cupon, pagados los dos), el mes se
+            // acredita igual —la persona pago ese monto— y no se crea un segundo canje: hasta el
+            // 22-nov-2026 el INSERT chocaba con ux_canje_cupon_perfil, la transaccion entera se
+            // deshacia con un 500 y el pago quedaba sin acreditar.
+            var yaCanjeado = intento.CodigoCupon is not null
+                             && await _repo.YaCanjeoCuponAsync(intento.PerfilPrestadorId, t);
+            if (yaCanjeado)
+                _auditor.Registrar(Auditar.Entrada(
+                    "cupon_ya_canjeado_pago_acreditado", "intentos_de_pago", intento.Id, _reloj.Ahora,
+                    contexto: new { cupon = intento.CodigoCupon, descuento = intento.MontoDescuento }));
+            else if (intento.CodigoCupon is { } codigoCupon)
                 _repo.AgregarCanje(new CanjeDeCupon
                 {
                     CodigoCupon = codigoCupon,
@@ -767,11 +1094,6 @@ public sealed class ServicioCobros : IServicioCobros
                     MontoDescontado = intento.MontoDescuento,
                     CanjeadoEn = _reloj.Ahora,
                 });
-
-            // Pagado el cupo fundador, deja de ser una reserva con plazo y es suyo.
-            var plan = await _repo.PlanPorIdAsync(intento.PlanId, t);
-            if (plan?.Codigo == ServicioSuscripciones.PlanFundador)
-                await _suscripciones.ConfirmarCupoFundadorAsync(intento.PerfilPrestadorId, t);
 
             _auditor.Registrar(Auditar.Entrada(
                 "cobro_confirmado", "intentos_de_pago", intento.Id, _reloj.Ahora,

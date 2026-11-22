@@ -18,9 +18,16 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Pedir /api/salud y anotar cuanto tardo
+        env:
+          # La URL directa de Render NO va escrita aqui (el repositorio es publico, P-11): es la
+          # variable de repositorio URL_API (Settings > Secrets and variables > Actions >
+          # Variables), por ejemplo «https://<servicio>.onrender.com/api/salud». /api/salud esta
+          # exenta del secreto de origen, asi que sigue respondiendo 200 aunque la API lo exija.
+          # Sin la variable se pide por zass.cl, que solo sirve con el sitio ABIERTO: en
+          # mantenimiento la Function responde 503 a todo, tambien a esto.
+          URL_API: ${{ vars.URL_API }}
         run: |
-          # URL_API existe solo para probar sin tocar produccion. El workflow no la define.
-          URL="${URL_API:-https://zass-api.onrender.com/api/salud}"
+          URL="${URL_API:-https://zass.cl/api/salud}"
           salida=$(curl -s -o /dev/null --max-time 60 -w '%{http_code} %{time_total}' "$URL" || true)
           codigo=${salida%% *}
           tiempo=${salida##* }

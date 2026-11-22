@@ -145,3 +145,60 @@ describe('service worker', () => {
     expect(post.respondio).toBe(false)
   })
 })
+
+// ES-3 · Avisos push: se muestran con el texto que manda el servidor y, al tocarlos, abren una
+// ruta DE ESTE SITIO (nunca otro dominio, aunque el aviso lo pida).
+describe('avisos push', () => {
+  const datos = (obj) => ({ data: { json: () => obj } })
+
+  beforeEach(() => {
+    self.registration = { showNotification: vi.fn(async () => {}) }
+  })
+
+  it('muestra el aviso con su titulo, texto, etiqueta y la ruta a abrir', async () => {
+    await evento('push', datos({ titulo: 'Tu hora quedó confirmada', cuerpo: 'Con Ana el martes', url: '/mis-citas', etiqueta: 'zass-cita-1' }))
+
+    expect(self.registration.showNotification).toHaveBeenCalledWith('Tu hora quedó confirmada', expect.objectContaining({
+      body: 'Con Ana el martes', tag: 'zass-cita-1', data: { url: '/mis-citas' }, icon: '/icono-zass-192.png',
+    }))
+  })
+
+  it('una url que no es de este sitio se cambia por la portada', async () => {
+    for (const url of ['https://atacante.cl', '//atacante.cl', '/' + String.fromCharCode(92) + 'atacante.cl', 'javascript:alert(1)', 42]) {
+      self.registration.showNotification.mockClear()
+      await evento('push', datos({ titulo: 'x', url }))
+      expect(self.registration.showNotification.mock.calls[0][1].data.url).toBe('/')
+    }
+  })
+
+  it('un aviso sin datos o con datos rotos se muestra igual, con un texto generico', async () => {
+    await evento('push', { data: { json: () => { throw new Error('no es json') } } })
+    await evento('push', {})
+
+    expect(self.registration.showNotification).toHaveBeenCalledTimes(2)
+    expect(self.registration.showNotification.mock.calls[0][0]).toBe('ZASS!')
+  })
+
+  it('al tocarlo, usa la pestaña de ZASS! que ya estaba abierta', async () => {
+    const ventana = { url: ORIGEN + '/buscar', navigate: vi.fn(async () => null), focus: vi.fn(async () => {}) }
+    self.clients.matchAll = vi.fn(async () => [{ url: 'https://otro.cl/' }, ventana])
+    self.clients.openWindow = vi.fn()
+    const cerrar = vi.fn()
+
+    await evento('notificationclick', { notification: { close: cerrar, data: { url: '/mis-citas' } } })
+
+    expect(cerrar).toHaveBeenCalled()
+    expect(ventana.navigate).toHaveBeenCalledWith(ORIGEN + '/mis-citas')
+    expect(ventana.focus).toHaveBeenCalled()
+    expect(self.clients.openWindow).not.toHaveBeenCalled()
+  })
+
+  it('al tocarlo, sin ZASS! abierto, abre una pestaña nueva en la ruta del aviso', async () => {
+    self.clients.matchAll = vi.fn(async () => [])
+    self.clients.openWindow = vi.fn(async () => null)
+
+    await evento('notificationclick', { notification: { close: vi.fn(), data: { url: 'https://atacante.cl' } } })
+
+    expect(self.clients.openWindow).toHaveBeenCalledWith(ORIGEN + '/')
+  })
+})

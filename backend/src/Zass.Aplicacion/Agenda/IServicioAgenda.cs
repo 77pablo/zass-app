@@ -129,6 +129,16 @@ public interface IServicioAgenda
     Task<IReadOnlyList<Zass.Dominio.Agenda.Cita>> CitasEnDisputaAsync(
         int maximo = 200, CancellationToken ct = default);
 
+    // ------------------------------------------------------------- CS-13: reenviar recordatorio
+
+    /// <summary>
+    /// API-44. Reenvia el recordatorio de una cita confirmada y futura. Maximo 5 por cita por dia (Chile).
+    /// Devuelve 202 si se encolo, 409 si ya se llego al limite o la cita no esta en estado valido,
+    /// 404 si no existe o es ajena, 401 sin sesion.
+    /// </summary>
+    Task<Resultado<string>> ReenviarRecordatorioAsync(
+        Guid citaId, Guid usuarioId, Guid? perfilPrestadorId, CancellationToken ct = default);
+
     // ------------------------------------------------------------- A-09: lo que mueve el tiempo
 
     /// <summary>

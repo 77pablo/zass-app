@@ -103,18 +103,22 @@ public class SuscripcionesIntegracionPruebas : IDisposable
     }
 
     /// <summary>
-    /// El valor por omision de <see cref="Plan.MaxTarjetas"/> es el de los planes
-    /// sembrados. Si alguien lo vuelve a cambiar sin cambiar la base, esto cae.
+    /// El valor por omision de <see cref="Plan.MaxTarjetas"/> es el de los planes BASICOS
+    /// (prueba y Esencial, codigo «mensual»). Desde la T67 (20-nov-2026) los planes superiores
+    /// tienen mas tarjetas A PROPOSITO, y su tope se lee de la fila: si alguien cambia el valor
+    /// por omision sin cambiar la base, o el tope de un plan sin migracion, esto cae.
     /// </summary>
     [Fact]
-    public async Task El_valor_por_omision_de_MaxTarjetas_coincide_con_los_planes_sembrados()
+    public async Task El_valor_por_omision_de_MaxTarjetas_coincide_con_los_planes_basicos_y_los_superiores_tienen_el_suyo()
     {
-        var sembrados = await _prueba.Ctx.Planes
-            .Where(p => p.Codigo == "prueba" || p.Codigo == "mensual" || p.Codigo == "fundador")
-            .ToListAsync();
+        var planes = await _prueba.Ctx.Planes.ToDictionaryAsync(p => p.Codigo);
 
-        Assert.Equal(3, sembrados.Count);
-        Assert.All(sembrados, p => Assert.Equal(new Plan().MaxTarjetas, p.MaxTarjetas));
+        Assert.Equal(new Plan().MaxTarjetas, planes["prueba"].MaxTarjetas);
+        Assert.Equal(new Plan().MaxTarjetas, planes["mensual"].MaxTarjetas);
+
+        Assert.Equal(3, planes["fundador"].MaxTarjetas);
+        Assert.Equal(3, planes["profesional"].MaxTarjetas);
+        Assert.Equal(10, planes["equipo"].MaxTarjetas);
     }
 
     // ------------------------------------------------------- Lo que impone la base
@@ -170,9 +174,20 @@ public class SuscripcionesIntegracionPruebas : IDisposable
             });
         await _prueba.Ctx.SaveChangesAsync();
 
+        // N3 (22-nov-2026): con historico NO hay otra prueba gratis (una por perfil). Se
+        // contesta exito (publicar sigue funcionando) pero no nace ninguna suscripcion.
         var r = await _servicio.IniciarPruebaAsync(perfil.Id);
-
         Assert.True(r.Exito, r.Mensaje);
+        Assert.False(await _servicio.EstaVigenteAsync(perfil.Id));
+
+        // El indice parcial sigue sin estorbar: una suscripcion nueva convive con el
+        // historico vencido y cancelado.
+        _prueba.Ctx.Suscripciones.Add(new Suscripcion
+        {
+            PerfilPrestadorId = perfil.Id, PlanId = 1, Estado = EstadoSuscripcion.Activa,
+            IniciaEn = ahora, VigenteHasta = ahora.AddDays(30),
+        });
+        await _prueba.Ctx.SaveChangesAsync();
         Assert.True(await _servicio.EstaVigenteAsync(perfil.Id));
     }
 

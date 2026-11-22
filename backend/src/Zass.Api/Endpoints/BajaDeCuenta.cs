@@ -14,9 +14,10 @@ namespace Zass.Api.Endpoints;
 /// 2. **Las citas futuras se cancelan, y se avisa a la otra parte**, con el mismo
 ///    <see cref="IServicioAgenda.CancelarAsync"/> de siempre: libera la hora, anula los
 ///    recordatorios y manda el aviso. Las pasadas quedan en el historial.
-/// 3. **La suscripción vigente se cancela, sin reembolso**: el cobro recurrente nunca le cobra a
-///    una cuenta que ya no existe.
-/// 4. Recién entonces se anonimiza la cuenta (<see cref="ServicioCuenta.EliminarAsync"/>).
+/// 3. Recién entonces se anonimiza la cuenta (<see cref="ServicioCuenta.EliminarAsync"/>), que
+///    en la MISMA transacción termina la suscripción, sin reembolso: la cancela, olvida el medio
+///    de pago inscrito para que el cobro automático no tenga contra qué cobrar y libera el cupo
+///    fundador (<see cref="IServicioSuscripciones.TerminarPorCuentaEliminadaAsync"/>, PR #211).
 ///
 /// Vive en la API, y no en un módulo de la aplicación, porque coordina tres módulos (Identidad,
 /// Agenda y Suscripciones). Identidad es la base de la que dependen los demás, y llamar desde ahí
@@ -26,14 +27,12 @@ namespace Zass.Api.Endpoints;
 /// No es una sola transacción: cada servicio guarda lo suyo. Por eso el orden importa y cada paso
 /// es idempotente. La contraseña va primero, y si falla no se toca nada. Si algo falla a la mitad,
 /// repetir la baja termina el trabajo: una cita ya cancelada se devuelve igual sin un segundo
-/// aviso (RN-S4-08, por su clave de idempotencia), y una suscripción ya cancelada deja de ser
-/// vigente.
+/// aviso (RN-S4-08, por su clave de idempotencia).
 /// </summary>
 public sealed class BajaDeCuenta(
     ServicioCuenta cuenta,
     ServicioPerfiles perfiles,
     IServicioAgenda agenda,
-    IServicioSuscripciones suscripciones,
     IRelojSistema reloj)
 {
     /// <summary>
@@ -60,12 +59,6 @@ public sealed class BajaDeCuenta(
             var r = await agenda.CancelarAsync(new CancelarCitaCmd(
                 cita.Id, autor, $"baja-de-cuenta:{cita.Id}", MotivoDeCancelacion), ct);
             if (!r.Exito) return Resultado.Falla(r.Codigo!, r.Mensaje!);
-        }
-
-        if (perfilId is not null)
-        {
-            var s = await suscripciones.CancelarDePrestadorAsync(perfilId.Value, ct);
-            if (!s.Exito) return s;
         }
 
         return await cuenta.EliminarAsync(usuarioId, ip, ct);

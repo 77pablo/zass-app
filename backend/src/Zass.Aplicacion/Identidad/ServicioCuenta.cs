@@ -13,7 +13,10 @@ public sealed record MiCuentaDto(
     bool CorreoVerificado,
     EstadoCuenta Estado,
     string[] Roles,
-    DateTime CreadoEn);
+    DateTime CreadoEn,
+    // ES-2: lo que le falta del registro completo («rut», «telefono», «mayorDeEdad»). Vacio si
+    // nada. Mientras no este vacio, la interfaz pide completarlo y la API responde 428.
+    string[]? DatosPendientes = null);
 
 /// <summary>
 /// CS-01 verificar correo, CS-02 recuperar contrasena, CS-04 eliminar cuenta y API-16.
@@ -27,13 +30,9 @@ public sealed class ServicioCuenta
     public static readonly TimeSpan VidaDelTokenDeRecuperacion = TimeSpan.FromHours(1);
 
     /// <summary>
-    /// API-14 responde esto siempre, exista o no el correo. Si distinguiera, cualquiera
-    /// podria averiguar quien tiene cuenta en ZASS! probando correos.
-    /// </summary>
-    /// <summary>
-    /// Lo minimo entre dos reenvios del enlace de verificacion, por cuenta. El limite de
-    /// peticiones protege por IP y aqui eso no alcanza: el daño no lo recibe quien llama, lo
-    /// recibe el dueño del correo.
+    /// Lo minimo entre dos reenvios del enlace de verificacion (API-71) y entre dos enlaces de
+    /// recuperacion (API-14), por cuenta. El limite de peticiones protege por IP y aqui eso no
+    /// alcanza: el daño no lo recibe quien llama, lo recibe el dueño del correo.
     /// </summary>
     public static readonly TimeSpan EsperaEntreReenvios = TimeSpan.FromMinutes(2);
 
@@ -44,6 +43,10 @@ public sealed class ServicioCuenta
     private const string RespuestaDeReenvio =
         "Si ese correo tiene una cuenta sin verificar, le llegará un enlace nuevo.";
 
+    /// <summary>
+    /// API-14 responde esto siempre, exista o no el correo y este o no en la espera. Si
+    /// distinguiera, cualquiera podria averiguar quien tiene cuenta en ZASS! probando correos.
+    /// </summary>
     private const string RespuestaDeRecuperacion =
         "Si ese correo tiene cuenta, le llegará un enlace para crear una contraseña nueva.";
 
@@ -56,12 +59,17 @@ public sealed class ServicioCuenta
     private readonly INotificaciones _avisos;
     private readonly IAuditor _auditor;
     private readonly ServicioSesion _sesiones;
+    private readonly IContrasenasFiltradas _filtradas;
+    private readonly Zass.Aplicacion.Suscripciones.IServicioSuscripciones? _suscripciones;
 
     public ServicioCuenta(
         IRepositorioUsuarios usuarios, IRepositorioPerfiles perfiles, IUnidadDeTrabajo unidad,
         IHashContrasenas hash, IGeneradorSecretos secretos, IRelojSistema reloj,
-        INotificaciones avisos, IAuditor auditor, ServicioSesion sesiones)
+        INotificaciones avisos, IAuditor auditor, ServicioSesion sesiones,
+        IContrasenasFiltradas filtradas,
+        Zass.Aplicacion.Suscripciones.IServicioSuscripciones? suscripciones = null)
     {
+        _suscripciones = suscripciones;
         _usuarios = usuarios;
         _perfiles = perfiles;
         _unidad = unidad;
@@ -71,6 +79,7 @@ public sealed class ServicioCuenta
         _avisos = avisos;
         _auditor = auditor;
         _sesiones = sesiones;
+        _filtradas = filtradas;
     }
 
     // ------------------------------------------------------------------ CS-01
@@ -99,16 +108,38 @@ public sealed class ServicioCuenta
 
     // ------------------------------------------------------------------ CS-02
 
-    /// <summary>CS-02 - Recuperar contrasena, primer paso. API-14.</summary>
+    /// <summary>
+    /// CS-02 - Recuperar contrasena, primer paso. API-14.
+    ///
+    /// <para>
+    /// Lleva la misma **espera minima por cuenta** que <see cref="ReenviarVerificacionAsync"/>
+    /// (<see cref="EsperaEntreReenvios"/>). Sin ella, cada peticion pisaba el token anterior y
+    /// encolaba otro correo: desde varias IP se le llenaba la bandeja a la victima y, ademas,
+    /// se le invalidaba el enlace que acababa de recibir. Durante la espera no se toca nada:
+    /// el enlace vigente sigue sirviendo y no sale otro correo.
+    /// </para>
+    ///
+    /// <para>
+    /// La respuesta es **la misma** exista o no la cuenta y este o no en la espera.
+    /// </para>
+    /// </summary>
     public async Task<Resultado> PedirRecuperacionAsync(
         string correo, string? ip = null, CancellationToken ct = default)
     {
         var usuario = await _usuarios.PorCorreoAsync(Texto.NormalizarCorreo(correo), ct);
+        var ahora = _reloj.Ahora;
 
-        // Si no hay cuenta no se encola nada, pero la respuesta es la misma de siempre.
-        if (usuario is not null && usuario.Estado is not EstadoCuenta.Eliminada)
+        // Cuando se emitio el que ya tiene: el token de recuperacion caduca a la hora de
+        // emitirse. Uno ya usado o vencido no cuenta (restablecer deja el vencimiento en nulo).
+        var emitidoEn = usuario?.TokenRecuperacionExpiraEn?.Subtract(VidaDelTokenDeRecuperacion);
+        var recienEnviado = emitidoEn is not null
+            && usuario!.TokenRecuperacionExpiraEn > ahora
+            && ahora - emitidoEn < EsperaEntreReenvios;
+
+        // Si no hay cuenta, o esta en la espera, no se encola nada, pero la respuesta es la
+        // misma de siempre.
+        if (usuario is not null && usuario.Estado is not EstadoCuenta.Eliminada && !recienEnviado)
         {
-            var ahora = _reloj.Ahora;
             var token = _secretos.NuevoToken();
 
             usuario.TokenRecuperacion = _secretos.HashToken(token);
@@ -120,7 +151,7 @@ public sealed class ServicioCuenta
                 DestinatarioId = usuario.Id,
                 Tipo = TipoNotificacion.RecuperarContrasena,
                 Canal = CanalNotificacion.Correo,
-                ClaveIdempotencia = $"recuperacion:{usuario.Id}:{ahora:yyyyMMddHHmmss}",
+                ClaveIdempotencia = ClaveDeEmision("recuperacion", usuario.Id, ahora),
                 Asunto = "Crear una contrasena nueva en ZASS!",
                 // El token va en una carga estructurada que el enviador purga tras el envio.
                 Cuerpo = CargaDeAviso.ConToken(token),
@@ -187,7 +218,7 @@ public sealed class ServicioCuenta
                 DestinatarioId = usuario.Id,
                 Tipo = TipoNotificacion.CorreoVerificacion,
                 Canal = CanalNotificacion.Correo,
-                ClaveIdempotencia = $"verificacion:{usuario.Id}:{ahora:yyyyMMddHHmmss}",
+                ClaveIdempotencia = ClaveDeEmision("verificacion", usuario.Id, ahora),
                 Asunto = "Confirma tu correo en ZASS!",
                 Cuerpo = CargaDeAviso.ConToken(token),
                 ProgramadaPara = ahora,
@@ -203,6 +234,23 @@ public sealed class ServicioCuenta
     }
 
     /// <summary>
+    /// La clave de idempotencia del aviso de UNA emision de enlace (API-14 y API-71).
+    ///
+    /// <para>
+    /// Antes era <c>{tipo}:{usuario}:{segundo}</c>, sobre el indice unico de
+    /// <c>notificaciones.clave_idempotencia</c>. Dos peticiones en el mismo segundo para una
+    /// cuenta que EXISTE chocaban en ese indice y salian como 500, mientras que para una que no
+    /// existe salian 200: un oraculo de existencia de cuentas. La espera ya no deja pasar dos
+    /// emisiones seguidas, pero dos peticiones simultaneas pueden leer las dos «no hay token
+    /// reciente» antes de que la otra guarde. Por eso la clave lleva ademas un identificador
+    /// propio de la emision: cada enlace es un aviso distinto (el anterior ya no sirve), y la
+    /// base no tiene nada que rechazar.
+    /// </para>
+    /// </summary>
+    private static string ClaveDeEmision(string tipo, Guid usuarioId, DateTime ahora) =>
+        $"{tipo}:{usuarioId}:{ahora:yyyyMMddHHmmss}:{Guid.NewGuid():N}";
+
+    /// <summary>
     /// CS-02, segundo paso. API-15. Revoca TODAS las sesiones, sin perdonar ninguna:
     /// quien llego hasta aqui es porque perdio el control de la cuenta.
     /// </summary>
@@ -216,10 +264,21 @@ public sealed class ServicioCuenta
             return Resultado.Falla(Fallas.NoEncontrado,
                 "Ese enlace para cambiar la contraseña no sirve. Pide uno nuevo.");
 
+        // P19 (T49): rechazar contrasenas que aparecen en filtraciones conocidas (HIBP).
+        if (await _filtradas.EstaFiltradaAsync(contrasenaNueva, ct))
+            return Resultado.Falla(Fallas.Validacion,
+                "Esa contraseña aparece en filtraciones de datos conocidas. Elige otra.");
+
         usuario.HashContrasena = _hash.Hash(contrasenaNueva);
         usuario.TokenRecuperacion = null;
         usuario.TokenRecuperacionExpiraEn = null;
         usuario.ActualizadoEn = _reloj.Ahora;
+
+        // Restablecer desbloquea (bloqueo por intentos, 22-nov-2026): quien tiene el enlace del
+        // correo es la duena de la cuenta, y si alguien la dejo bloqueada a proposito esta es la
+        // salida que no hace esperar los 15 minutos.
+        usuario.IntentosFallidos = 0;
+        usuario.BloqueadaHasta = null;
 
         _auditor.Registrar(Auditar.Entrada(
             "restablecer_contrasena", "usuario", usuario.Id, _reloj.Ahora,
@@ -244,6 +303,11 @@ public sealed class ServicioCuenta
 
         if (!_hash.Verifica(contrasenaActual, usuario.HashContrasena))
             return Resultado.Falla(Fallas.NoAutorizado, "La contraseña actual no es esa.");
+
+        // P19 (T49): rechazar contrasenas que aparecen en filtraciones conocidas (HIBP).
+        if (await _filtradas.EstaFiltradaAsync(contrasenaNueva, ct))
+            return Resultado.Falla(Fallas.Validacion,
+                "Esa contraseña aparece en filtraciones de datos conocidas. Elige otra.");
 
         usuario.HashContrasena = _hash.Hash(contrasenaNueva);
         usuario.ActualizadoEn = _reloj.Ahora;
@@ -297,6 +361,16 @@ public sealed class ServicioCuenta
         var perfil = await _perfiles.PrestadorDeUsuarioAsync(usuarioId, ct);
         perfil?.Despublicar();
 
+        // N3 (22-nov-2026): eliminar la cuenta cancela la suscripcion, olvida la tarjeta y
+        // suelta el cupo fundador. Antes el cobro automatico le seguia cobrando a la cuenta
+        // eliminada con la tarjeta guardada. Cambio MINIMO a proposito: el PR #76 (ES-5) de
+        // Esteban rehace este metodo y lo tiene que integrar.
+        if (perfil is not null && _suscripciones is not null)
+        {
+            var fin = await _suscripciones.TerminarPorCuentaEliminadaAsync(perfil.Id, ct);
+            if (!fin.Exito) return fin;
+        }
+
         usuario.Anonimizar();
         usuario.AnonimizadoEn = _reloj.Ahora;
         usuario.ActualizadoEn = _reloj.Ahora;
@@ -325,6 +399,18 @@ public sealed class ServicioCuenta
             usuario.CorreoVerificado,
             usuario.Estado,
             usuario.Roles.Where(r => r.Rol is not null).Select(r => r.Rol!.Codigo).ToArray(),
-            usuario.CreadoEn));
+            usuario.CreadoEn,
+            DatosDeCuenta.Pendientes(usuario)));
+    }
+
+    /// <summary>
+    /// ES-2. Lo que le falta a la cuenta del registro completo, o vacio. Lo consulta el filtro
+    /// de la API en cada peticion con sesion: una cuenta que no existe no tiene pendientes (la
+    /// rechazara su propio endpoint, como hasta ahora).
+    /// </summary>
+    public async Task<string[]> DatosPendientesAsync(Guid usuarioId, CancellationToken ct = default)
+    {
+        var usuario = await _usuarios.PorIdAsync(usuarioId, ct);
+        return usuario is null ? Array.Empty<string>() : DatosDeCuenta.Pendientes(usuario);
     }
 }
