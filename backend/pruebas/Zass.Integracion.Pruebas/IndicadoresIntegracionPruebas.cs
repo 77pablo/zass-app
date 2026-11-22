@@ -277,7 +277,8 @@ public class IndicadoresApiPruebas : IAsyncLifetime
             await ctx.SaveChangesAsync();
         }
 
-        var sesion = await _cliente.PostAsJsonAsync("/api/auth/sesion", new { correo, contrasena = "contrasena-larga-1" });
+        // #213: el panel exige MFA; el ayudante entra como la pantalla y se lo deja activo.
+        var sesion = await MfaDePrueba.EntrarAsync(_cliente, correo, "contrasena-larga-1");
         Assert.Equal(HttpStatusCode.OK, sesion.StatusCode);
     }
 }
