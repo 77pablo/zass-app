@@ -122,7 +122,7 @@ public class MfaPruebas
         Assert.True(alta.Exito);
         Assert.False(u.MfaActivo);
         var codigo = Totp.Codigo(alta.Valor!.Secreto, Totp.PasoDe(_reloj.Ahora));
-        var conf = await _mfa.ConfirmarAltaAsync(u.Id, new ConfirmarMfaCmd(codigo));
+        var conf = await _mfa.ConfirmarAltaAsync(u.Id, new ConfirmarMfaCmd(Clave, codigo));
         Assert.True(conf.Exito, conf.Mensaje);
         Assert.Equal(10, conf.Valor!.Codigos.Length);
         Assert.True(u.MfaActivo);
@@ -143,11 +143,11 @@ public class MfaPruebas
         var alta = await _mfa.IniciarAltaAsync(u.Id);
 
         // Un codigo malo no activa ni avisa.
-        await _mfa.ConfirmarAltaAsync(u.Id, new ConfirmarMfaCmd("000000"));
+        await _mfa.ConfirmarAltaAsync(u.Id, new ConfirmarMfaCmd(Clave, "000000"));
         Assert.Empty(_cola.Encoladas);
 
         var codigo = Totp.Codigo(alta.Valor!.Secreto, Totp.PasoDe(_reloj.Ahora));
-        Assert.True((await _mfa.ConfirmarAltaAsync(u.Id, new ConfirmarMfaCmd(codigo))).Exito);
+        Assert.True((await _mfa.ConfirmarAltaAsync(u.Id, new ConfirmarMfaCmd(Clave, codigo))).Exito);
 
         var aviso = Assert.Single(_cola.Encoladas);
         Assert.Equal(TipoNotificacion.MfaActivado, aviso.Tipo);
@@ -162,7 +162,7 @@ public class MfaPruebas
         u.QuitarMfa();
         var alta = await _mfa.IniciarAltaAsync(u.Id);
         var viejos = (await _mfa.ConfirmarAltaAsync(u.Id,
-            new ConfirmarMfaCmd(Totp.Codigo(alta.Valor!.Secreto, Totp.PasoDe(_reloj.Ahora))))).Valor!.Codigos;
+            new ConfirmarMfaCmd(Clave, Totp.Codigo(alta.Valor!.Secreto, Totp.PasoDe(_reloj.Ahora))))).Valor!.Codigos;
 
         _reloj.Avanzar(TimeSpan.FromSeconds(60));   // el codigo del alta ya se gasto
         var codigo = Totp.Codigo(alta.Valor.Secreto, Totp.PasoDe(_reloj.Ahora));
@@ -191,5 +191,111 @@ public class MfaPruebas
         Assert.Equal(sinClave.Mensaje, sinCodigo.Mensaje);   // la misma respuesta: no dice cual fallo
         Assert.Equal(2, u.IntentosFallidos);
         Assert.Empty(u.MfaCodigosRespaldo!);                  // no cambio nada
+    }
+
+    [Fact]
+    public async Task Confirmar_el_alta_con_contrasena_mala_falla_no_activa_y_suma_al_bloqueo()
+    {
+        var u = ConMfa();
+        u.QuitarMfa();
+        var alta = await _mfa.IniciarAltaAsync(u.Id);
+        var codigo = Totp.Codigo(alta.Valor!.Secreto, Totp.PasoDe(_reloj.Ahora));
+
+        var r = await _mfa.ConfirmarAltaAsync(u.Id, new ConfirmarMfaCmd("otra-contrasena-9", codigo));
+
+        Assert.False(r.Exito);
+        Assert.False(u.MfaActivo);
+        Assert.Equal(1, u.IntentosFallidos);
+        Assert.Empty(_cola.Encoladas);
+        Assert.Contains(_auditoria.Registros, a => a.Accion == "mfa_fallido");
+    }
+
+    [Fact]
+    public async Task Confirmar_el_alta_con_codigo_malo_da_el_mismo_mensaje_que_con_contrasena_mala()
+    {
+        var u = ConMfa();
+        u.QuitarMfa();
+        var alta = await _mfa.IniciarAltaAsync(u.Id);
+        var codigo = Totp.Codigo(alta.Valor!.Secreto, Totp.PasoDe(_reloj.Ahora));
+
+        var sinClave = await _mfa.ConfirmarAltaAsync(u.Id, new ConfirmarMfaCmd("otra-contrasena-9", codigo));
+        var sinCodigo = await _mfa.ConfirmarAltaAsync(u.Id, new ConfirmarMfaCmd(Clave, "000000"));
+
+        Assert.False(sinCodigo.Exito);
+        Assert.Equal(sinClave.Mensaje, sinCodigo.Mensaje);
+        Assert.Equal(sinClave.Codigo, sinCodigo.Codigo);
+        Assert.Equal(2, u.IntentosFallidos);
+        Assert.False(u.MfaActivo);
+    }
+
+    private static Sesion SesionDe(Usuario u, string hashToken, DateTime ahora) => new()
+    {
+        UsuarioId = u.Id, HashToken = hashToken, CreadaEn = ahora, ExpiraEn = ahora.AddDays(7),
+    };
+
+    [Fact]
+    public async Task Activar_cierra_las_otras_sesiones_y_deja_la_actual()
+    {
+        var u = ConMfa();
+        u.QuitarMfa();
+        var ahora = _reloj.Ahora;
+        var actual = SesionDe(u, _secretos.HashToken("actual"), ahora);
+        var otra = SesionDe(u, _secretos.HashToken("otra"), ahora);
+        _base.Sesiones.AddRange([actual, otra]);
+
+        var alta = await _mfa.IniciarAltaAsync(u.Id);
+        var codigo = Totp.Codigo(alta.Valor!.Secreto, Totp.PasoDe(ahora));
+        var r = await _mfa.ConfirmarAltaAsync(u.Id, new ConfirmarMfaCmd(Clave, codigo), sesionActual: "actual");
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Null(actual.RevocadaEn);
+        Assert.NotNull(otra.RevocadaEn);
+    }
+
+    [Fact]
+    public async Task Desactivar_cierra_las_otras_sesiones_y_deja_la_actual()
+    {
+        var u = ConMfa();
+        var ahora = _reloj.Ahora;
+        var actual = SesionDe(u, _secretos.HashToken("actual"), ahora);
+        var otra = SesionDe(u, _secretos.HashToken("otra"), ahora);
+        _base.Sesiones.AddRange([actual, otra]);
+
+        var r = await _mfa.DesactivarAsync(u.Id,
+            new DesactivarMfaCmd(Clave, Totp.Codigo(SecretoRfc, Totp.PasoDe(ahora))), sesionActual: "actual");
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Null(actual.RevocadaEn);
+        Assert.NotNull(otra.RevocadaEn);
+    }
+
+    [Fact]
+    public async Task Regenerar_cierra_las_otras_sesiones_y_deja_la_actual()
+    {
+        var u = ConMfa();
+        var ahora = _reloj.Ahora;
+        var actual = SesionDe(u, _secretos.HashToken("actual"), ahora);
+        var otra = SesionDe(u, _secretos.HashToken("otra"), ahora);
+        _base.Sesiones.AddRange([actual, otra]);
+
+        var r = await _mfa.RegenerarCodigosAsync(u.Id,
+            new RegenerarCodigosMfaCmd(Clave, Totp.Codigo(SecretoRfc, Totp.PasoDe(ahora))), sesionActual: "actual");
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Null(actual.RevocadaEn);
+        Assert.NotNull(otra.RevocadaEn);
+    }
+
+    [Fact]
+    public async Task Un_fallo_al_desactivar_no_cierra_ninguna_sesion()
+    {
+        var u = ConMfa();
+        var otra = SesionDe(u, _secretos.HashToken("otra"), _reloj.Ahora);
+        _base.Sesiones.Add(otra);
+
+        var r = await _mfa.DesactivarAsync(u.Id, new DesactivarMfaCmd("otra-contrasena-9", "000000"), sesionActual: "actual");
+
+        Assert.False(r.Exito);
+        Assert.Null(otra.RevocadaEn);
     }
 }

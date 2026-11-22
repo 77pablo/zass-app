@@ -312,14 +312,15 @@ public static class EndpointsIdentidad
             .RequireRateLimiting(Tasa.Autenticacion)
             .WithName("API-81");
 
-        // API-82 - Confirma el alta con un codigo y devuelve los 10 codigos de respaldo (una vez).
+        // API-82 - Confirma el alta con la contrasena y un codigo, y devuelve los 10 codigos de respaldo (una vez).
         grupo.MapPost("/mfa/confirmar", async (
                 ConfirmarMfaCmd cmd, ServicioMfa servicio, HttpContext http, ClaimsPrincipal quien) =>
             {
                 var usuarioId = quien.UsuarioId();
                 return usuarioId is null
                     ? Results.Unauthorized()
-                    : Respuestas.DeResultado(await servicio.ConfirmarAltaAsync(usuarioId.Value, cmd, Ip(http)));
+                    : Respuestas.DeResultado(await servicio.ConfirmarAltaAsync(
+                        usuarioId.Value, cmd, Ip(http), http.Request.Cookies[ConfiguracionDeSeguridad.CookieRefresco]));
             })
             .ConValidacion<ConfirmarMfaCmd>()
             .RequireRateLimiting(Tasa.Autenticacion)
@@ -332,7 +333,8 @@ public static class EndpointsIdentidad
                 var usuarioId = quien.UsuarioId();
                 return usuarioId is null
                     ? Results.Unauthorized()
-                    : Respuestas.DeResultado(await servicio.DesactivarAsync(usuarioId.Value, cmd, Ip(http)));
+                    : Respuestas.DeResultado(await servicio.DesactivarAsync(
+                        usuarioId.Value, cmd, Ip(http), http.Request.Cookies[ConfiguracionDeSeguridad.CookieRefresco]));
             })
             .ConValidacion<DesactivarMfaCmd>()
             .RequireRateLimiting(Tasa.Autenticacion)
@@ -345,7 +347,8 @@ public static class EndpointsIdentidad
                 var usuarioId = quien.UsuarioId();
                 return usuarioId is null
                     ? Results.Unauthorized()
-                    : Respuestas.DeResultado(await servicio.RegenerarCodigosAsync(usuarioId.Value, cmd, Ip(http)));
+                    : Respuestas.DeResultado(await servicio.RegenerarCodigosAsync(
+                        usuarioId.Value, cmd, Ip(http), http.Request.Cookies[ConfiguracionDeSeguridad.CookieRefresco]));
             })
             .ConValidacion<RegenerarCodigosMfaCmd>()
             .RequireRateLimiting(Tasa.Autenticacion)
