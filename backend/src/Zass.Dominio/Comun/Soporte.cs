@@ -54,6 +54,21 @@ public class SuscripcionPush
 }
 
 /// <summary>
+/// ES-3b · API-43 (CS-14). Por que canal quiere una persona un tipo de aviso. Solo se guardan las
+/// excepciones: sin fila, el aviso sale por correo y por push (si tiene navegador).
+/// </summary>
+public class PreferenciaAviso
+{
+    public Guid UsuarioId { get; set; }
+    public TipoNotificacion Tipo { get; set; }
+    public bool Correo { get; set; } = true;
+    public bool Push { get; set; } = true;
+    public DateTime ActualizadaEn { get; set; } = DateTime.UtcNow;
+
+    public Usuario? Usuario { get; set; }
+}
+
+/// <summary>
 /// TBL-28. Rastro de acciones sensibles. Solo insercion y lectura.
 /// Nunca guarda contrasenas, tokens, contenido de documentos ni direcciones.
 /// </summary>

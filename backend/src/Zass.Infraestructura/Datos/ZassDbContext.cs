@@ -71,6 +71,7 @@ public class ZassDbContext : DbContext
     // Transversal
     public DbSet<Notificacion> Notificaciones => Set<Notificacion>();
     public DbSet<SuscripcionPush> SuscripcionesPush => Set<SuscripcionPush>();
+    public DbSet<PreferenciaAviso> PreferenciasAviso => Set<PreferenciaAviso>();
 
     /// <summary>
     /// ES-3. Antes de guardar, a cada aviso de correo nuevo que admite push se le agrega su gemela
@@ -1114,6 +1115,16 @@ public class ZassDbContext : DbContext
             e.Property(x => x.ClaveP256dh).HasMaxLength(200).IsRequired();
             e.Property(x => x.ClaveAuth).HasMaxLength(200).IsRequired();
             e.HasIndex(x => x.UsuarioId);
+            e.HasOne(x => x.Usuario).WithMany()
+                .HasForeignKey(x => x.UsuarioId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ES-3b · API-43. Una fila por persona y tipo, solo cuando apago algun canal; se borra con la cuenta.
+        b.Entity<PreferenciaAviso>(e =>
+        {
+            e.ToTable("preferencias_aviso");
+            e.HasKey(x => new { x.UsuarioId, x.Tipo });
+            e.Property(x => x.Tipo).HasConversion<string>().HasMaxLength(30);
             e.HasOne(x => x.Usuario).WithMany()
                 .HasForeignKey(x => x.UsuarioId).OnDelete(DeleteBehavior.Cascade);
         });

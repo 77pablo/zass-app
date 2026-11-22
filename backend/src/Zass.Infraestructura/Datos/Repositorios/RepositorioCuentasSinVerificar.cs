@@ -35,6 +35,7 @@ public sealed class RepositorioCuentasSinVerificarEfCore : IRepositorioCuentasSi
         "disponibilidades", "bloques", "bloqueos_agenda",
         // Las que se borran con la cuenta a propósito: las crea el registro o no son actividad.
         "perfiles_prestador", "perfiles_buscador", "sesiones", "notificaciones", "suscripciones_push",
+        "preferencias_aviso",
     };
 
     /// <summary>La condición «purgable», sobre <c>u</c> (usuarios). Parámetro: @limite.</summary>

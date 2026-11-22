@@ -5160,6 +5160,35 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.ToTable("notificaciones");
                 });
 
+            modelBuilder.Entity("Zass.Dominio.Comun.PreferenciaAviso", b =>
+                {
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("usuario_id");
+
+                    b.Property<string>("Tipo")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("tipo");
+
+                    b.Property<DateTime>("ActualizadaEn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("actualizada_en");
+
+                    b.Property<bool>("Correo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("correo");
+
+                    b.Property<bool>("Push")
+                        .HasColumnType("boolean")
+                        .HasColumnName("push");
+
+                    b.HasKey("UsuarioId", "Tipo")
+                        .HasName("p_k_preferencias_aviso");
+
+                    b.ToTable("preferencias_aviso", (string)null);
+                });
+
             modelBuilder.Entity("Zass.Dominio.Comun.RegistroAuditoria", b =>
                 {
                     b.Property<long>("Id")
@@ -7248,6 +7277,18 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasConstraintName("f_k_notificaciones_usuarios_destinatario_id");
 
                     b.Navigation("Destinatario");
+                });
+
+            modelBuilder.Entity("Zass.Dominio.Comun.PreferenciaAviso", b =>
+                {
+                    b.HasOne("Zass.Dominio.Identidad.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("f_k_preferencias_aviso_usuarios_usuario_id");
+
+                    b.Navigation("Usuario");
                 });
 
             modelBuilder.Entity("Zass.Dominio.Comun.SuscripcionPush", b =>

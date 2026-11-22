@@ -24,8 +24,6 @@ ad047446a534de8f9300a5c309fe55a5a5c1eddf:backend/pruebas/Zass.Integracion.Prueba
 # origen.prueba.js (P-11) - valor de mentira para la cabecera X-Origen-Zass en el primer commit
 # del PR #207. En el commit siguiente se cambio por uno legible ('valor-de-prueba-' x4).
 1df8898d6652620af54a576f2914fa12c0e51756:frontend/src/pruebas-functions/origen.prueba.js:generic-api-key:13
-
-# MFA (22-nov-2026): vector de prueba publico de la RFC 6238 y secreto TOTP ficticio en pruebas de interfaz
-ca75dca724c830f4a964fcd126f019174cb729de:frontend/src/paginas/MiSeguridad.prueba.tsx:generic-api-key:43
-ca75dca724c830f4a964fcd126f019174cb729de:frontend/src/paginas/MiSeguridad.prueba.tsx:generic-api-key:43
+# MFA (rama p/mfa): vector de prueba público del RFC 6238 y un secreto inventado de una prueba de pantalla
 0e58dc4093102b0541b38b2a1978f8195b7bb2bb:backend/pruebas/Zass.Aplicacion.Pruebas/Identidad/MfaPruebas.cs:generic-api-key:12
+ca75dca724c830f4a964fcd126f019174cb729de:frontend/src/paginas/MiSeguridad.prueba.tsx:generic-api-key:43

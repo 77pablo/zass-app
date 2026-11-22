@@ -295,6 +295,175 @@ public class PushIntegracionPruebas : IAsyncLifetime
         Assert.Equal("/mi-ficha", json.GetProperty("url").GetString());
     }
 
+    // ------------------------------------------------------------------ ES-3b · preferencias (API-43)
+
+    internal static async Task PreferirAsync(Guid usuarioId, TipoNotificacion tipo, bool correo, bool push)
+    {
+        using var ctx = ContextoDePrueba.Crear();
+        ctx.PreferenciasAviso.Add(new PreferenciaAviso { UsuarioId = usuarioId, Tipo = tipo, Correo = correo, Push = push });
+        await ctx.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task ES3b_con_el_push_apagado_para_ese_tipo_queda_anulado_sin_enviar_ni_gastar_navegadores()
+    {
+        var u = await UsuarioAsync();
+        await NavegadorAsync(u.Id);
+        await PreferirAsync(u.Id, TipoNotificacion.SuscripcionVencida, correo: true, push: false);
+        await EncolarAsync(Aviso(u.Id, programada: _reloj.Ahora.AddMinutes(-1)));
+        var enviador = new EnviadorFalso();
+
+        await ProcesarAsync(enviador);
+
+        Assert.Empty(enviador.Enviados);
+        var push = await PushDeAsync(u.Id);
+        Assert.Equal(EstadoEnvio.Anulada, push.Estado);
+        Assert.Single(await AvisosDeAsync(u.Id), n => n.Canal == CanalNotificacion.Correo && n.Estado == EstadoEnvio.Programada);
+    }
+
+    [Fact]
+    public async Task ES3b_apagar_solo_el_correo_o_el_push_de_otro_tipo_no_frena_el_push()
+    {
+        var u = await UsuarioAsync();
+        await NavegadorAsync(u.Id);
+        await PreferirAsync(u.Id, TipoNotificacion.SuscripcionVencida, correo: true, push: true);
+        await PreferirAsync(u.Id, TipoNotificacion.CobroRechazado, correo: true, push: false);
+        await EncolarAsync(Aviso(u.Id, programada: _reloj.Ahora.AddMinutes(-1)));
+        var enviador = new EnviadorFalso();
+
+        await ProcesarAsync(enviador);
+
+        Assert.Single(enviador.Enviados);
+        Assert.Equal(EstadoEnvio.Enviada, (await PushDeAsync(u.Id)).Estado);
+    }
+
+    [Fact]
+    public async Task ES3b_el_push_apagado_de_OTRO_tipo_no_frena_este()
+    {
+        // La unica fila es de otro tipo y tiene el push apagado. Si el procesador buscara la
+        // preferencia solo por persona (sin el tipo), la encontraria y anularia este aviso.
+        var u = await UsuarioAsync();
+        await NavegadorAsync(u.Id);
+        await PreferirAsync(u.Id, TipoNotificacion.CobroRechazado, correo: true, push: false);
+        await EncolarAsync(Aviso(u.Id, programada: _reloj.Ahora.AddMinutes(-1)));
+        var enviador = new EnviadorFalso();
+
+        await ProcesarAsync(enviador);
+
+        Assert.Single(enviador.Enviados);
+        Assert.Equal(EstadoEnvio.Enviada, (await PushDeAsync(u.Id)).Estado);
+    }
+
+    [Fact]
+    public async Task Un_navegador_con_endpoint_no_permitido_no_recibe_POST_y_se_borra()
+    {
+        // Sugerencia de Pablo en el #202: la fila entra por otro camino que API-45 (aqui, directo
+        // a la base), asi que el validador nunca la vio. El procesador vuelve a mirar.
+        var u = await UsuarioAsync();
+        var bueno = await NavegadorAsync(u.Id);
+        var malo = await NavegadorAsync(u.Id);
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            await ctx.SuscripcionesPush.Where(s => s.Id == malo.Id)
+                .ExecuteUpdateAsync(x => x.SetProperty(s => s.Endpoint, "https://169.254.169.254/latest/meta-data"));
+        }
+        await EncolarAsync(Aviso(u.Id, programada: _reloj.Ahora.AddMinutes(-1)));
+        var enviador = new EnviadorFalso();
+
+        await ProcesarAsync(enviador);
+
+        Assert.Equal(new[] { bueno.Endpoint }, enviador.Enviados.Select(e => e.Endpoint));
+        Assert.Equal(EstadoEnvio.Enviada, (await PushDeAsync(u.Id)).Estado);
+        using var lee = ContextoDePrueba.Crear();
+        Assert.False(await lee.SuscripcionesPush.AnyAsync(s => s.Id == malo.Id));
+        Assert.True(await lee.SuscripcionesPush.AnyAsync(s => s.Id == bueno.Id));
+    }
+
+    [Fact]
+    public async Task Si_ningun_navegador_esta_permitido_el_aviso_se_anula_sin_enviar()
+    {
+        var u = await UsuarioAsync();
+        var malo = await NavegadorAsync(u.Id);
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            await ctx.SuscripcionesPush.Where(s => s.Id == malo.Id)
+                .ExecuteUpdateAsync(x => x.SetProperty(s => s.Endpoint, "http://fcm.googleapis.com/fcm/send/x"));
+        }
+        await EncolarAsync(Aviso(u.Id, programada: _reloj.Ahora.AddMinutes(-1)));
+        var enviador = new EnviadorFalso();
+
+        await ProcesarAsync(enviador);
+
+        Assert.Empty(enviador.Enviados);
+        var push = await PushDeAsync(u.Id);
+        Assert.Equal(EstadoEnvio.Anulada, push.Estado);
+        using var lee = ContextoDePrueba.Crear();
+        Assert.False(await lee.SuscripcionesPush.AnyAsync(s => s.UsuarioId == u.Id));
+    }
+
+    [Fact]
+    public async Task ES3b_dos_guardados_a_la_vez_del_mismo_tipo_no_chocan()
+    {
+        // Un doble clic: con leer-y-despues-insertar, los dos insertaban y uno caia por la clave
+        // primaria (un 500). Con el upsert, gana el ultimo y queda una sola fila.
+        var u = await UsuarioAsync();
+        var cambio = new[] { new CambioDePreferencia(TipoNotificacion.ResenaNueva, false, true) };
+
+        for (var vuelta = 0; vuelta < 5; vuelta++)
+        {
+            var tareas = Enumerable.Range(0, 4).Select(async _ =>
+            {
+                await using var ctx = ContextoDePrueba.Crear();
+                await new RepositorioPreferenciasAvisoEfCore(ctx).FijarAsync(u.Id, cambio, DateTime.UtcNow);
+            });
+            await Task.WhenAll(tareas);
+        }
+
+        using var lee = ContextoDePrueba.Crear();
+        var fila = await lee.PreferenciasAviso.SingleAsync(p => p.UsuarioId == u.Id);
+        Assert.False(fila.Correo);
+        Assert.True(fila.Push);
+    }
+
+    [Fact]
+    public async Task ES3b_guardar_borra_lo_que_vuelve_al_valor_por_omision_y_actualiza_el_resto_de_una_vez()
+    {
+        var u = await UsuarioAsync();
+        await PreferirAsync(u.Id, TipoNotificacion.ResenaNueva, correo: false, push: false);
+        await PreferirAsync(u.Id, TipoNotificacion.CitaSolicitada, correo: true, push: false);
+
+        await using (var ctx = ContextoDePrueba.Crear())
+            await new RepositorioPreferenciasAvisoEfCore(ctx).FijarAsync(u.Id, new[]
+            {
+                new CambioDePreferencia(TipoNotificacion.ResenaNueva, true, true),
+                new CambioDePreferencia(TipoNotificacion.CitaSolicitada, false, true),
+                new CambioDePreferencia(TipoNotificacion.Recordatorio2h, true, false),
+            }, DateTime.UtcNow);
+
+        using var lee = ContextoDePrueba.Crear();
+        var filas = await lee.PreferenciasAviso.AsNoTracking().Where(p => p.UsuarioId == u.Id)
+            .OrderBy(p => p.Tipo).ToListAsync();
+        Assert.Equal(2, filas.Count);
+        var cita = filas.Single(p => p.Tipo == TipoNotificacion.CitaSolicitada);
+        Assert.False(cita.Correo);
+        Assert.True(cita.Push);
+        var recordatorio = filas.Single(p => p.Tipo == TipoNotificacion.Recordatorio2h);
+        Assert.True(recordatorio.Correo);
+        Assert.False(recordatorio.Push);
+    }
+
+    [Fact]
+    public async Task ES3b_la_gemela_se_crea_igual_con_el_push_apagado_para_que_volver_a_encenderlo_alcance_la_cola()
+    {
+        var u = await UsuarioAsync();
+        await NavegadorAsync(u.Id);
+        await PreferirAsync(u.Id, TipoNotificacion.SuscripcionVencida, correo: true, push: false);
+
+        await EncolarAsync(Aviso(u.Id, programada: _reloj.Ahora.AddHours(5)));
+
+        Assert.Equal(EstadoEnvio.Programada, (await PushDeAsync(u.Id)).Estado);
+    }
+
     [Fact]
     public async Task El_correo_no_lo_toca_el_procesador_de_push()
     {
