@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { Contexto } from '../sesion/contexto'
 import { NoEncontrada } from './NoEncontrada'
 import { Oficios } from './Oficios'
 import { PaginaBuscar } from './PaginaBuscar'
@@ -31,7 +32,14 @@ describe('meta de las paginas', () => {
   /** S2: /buscar heredaba la descripcion de la portada (la de index.html). */
   it('«buscar» tiene descripcion propia, indexable, distinta de la de la portada', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } })))
-    render(<MemoryRouter initialEntries={['/buscar']}><PaginaBuscar /></MemoryRouter>)
+    // /buscar usa los guardados (useFavoritos), que leen la sesion: una visita sin sesion abierta.
+    render(
+      <MemoryRouter initialEntries={['/buscar']}>
+        <Contexto.Provider value={{ estado: 'fuera', usuario: null, recargar: async () => {}, salir: async () => {} }}>
+          <PaginaBuscar />
+        </Contexto.Provider>
+      </MemoryRouter>,
+    )
     expect(descripcion()!.content).toMatch(/busca/i)
     expect(descripcion()!.content).not.toBe(DESCRIPCION_DE_PORTADA)
     expect(robots()).toBeNull()
