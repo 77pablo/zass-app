@@ -95,7 +95,9 @@ export function Privacidad() {
         <p>
           <strong>No usamos publicidad ni herramientas de seguimiento o analítica de terceros.</strong> Un detalle
           técnico: las letras del sitio se cargan desde Google Fonts, así que Google recibe tu dirección IP al
-          abrir una página.
+          abrir una página. Y al crear una cuenta o pedir un cupo fundador usamos Cloudflare Turnstile, un
+          control contra robots: Cloudflare recibe tu dirección IP y datos técnicos del navegador solo para
+          comprobar que eres una persona.
         </p>
 
         <h2>5. Para qué usamos tus datos</h2>

@@ -126,6 +126,12 @@ describe('Privacidad', () => {
     expect(screen.getByText(/Google Fonts/, { exact: false })).toBeInTheDocument()
   })
 
+  // PR #212: el captcha de Cloudflare recibe la IP al crear una cuenta o pedir el cupo; se dice.
+  it('avisa del captcha de Cloudflare (Turnstile) y para qué recibe la IP', () => {
+    enRuta(<Privacidad />)
+    expect(screen.getByText(/Cloudflare Turnstile/, { exact: false })).toBeInTheDocument()
+  })
+
   it('dice como se guarda la contrasena: solo una huella irreversible', () => {
     enRuta(<Privacidad />)
     expect(screen.getByText(/huella cifrada irreversible/)).toBeInTheDocument()
