@@ -219,13 +219,16 @@ public class FlowPasarelaPruebas
     }
 
     /// <summary>
-    /// P4: Lo mismo con status 1, 3 y 4 -> no aprobado (los tres).
+    /// P4: Lo mismo con status 1, 3 y 4 -> no aprobado (los tres). Y desde el 22-nov-2026 (N3)
+    /// el 1 es PENDIENTE, no rechazo: la documentacion oficial (es-openApiFlow.yaml, esquema
+    /// PaymentStatus) dice 1 pendiente de pago, 2 pagada, 3 rechazada, 4 anulada. Leer el 1 como
+    /// rechazo cerraba el intento y el pago que llegaba despues no se acreditaba.
     /// </summary>
     [Theory]
-    [InlineData(1)]
-    [InlineData(3)]
-    [InlineData(4)]
-    public async Task LeerConfirmacion_flow_pago_con_status_no_2_devuelve_No_Aprobado(int status)
+    [InlineData(1, true)]
+    [InlineData(3, false)]
+    [InlineData(4, false)]
+    public async Task LeerConfirmacion_flow_pago_con_status_no_2_devuelve_No_Aprobado(int status, bool pendiente)
     {
         var handler = new HandlerFalso();
         var pasarela = CrearPasarela(handler);
@@ -263,6 +266,51 @@ public class FlowPasarelaPruebas
         Assert.True(resultado.Exito, resultado.Mensaje);
         Assert.False(resultado.Valor!.Aprobado);
         Assert.Equal(intento, resultado.Valor.IntentoDePagoId);
+        Assert.Equal(pendiente, resultado.Valor.Pendiente);
+    }
+
+    /// <summary>
+    /// N3: el estado de Flow en tres desenlaces. Un valor fuera de la lista NO es rechazo ni
+    /// pago: cerrar como fallido algo que pudo cobrarse es como se pierde el mes de alguien.
+    /// </summary>
+    [Theory]
+    [InlineData(1, VeredictoDelCobro.Pendiente)]
+    [InlineData(2, VeredictoDelCobro.Pagado)]
+    [InlineData(3, VeredictoDelCobro.Rechazado)]
+    [InlineData(4, VeredictoDelCobro.Rechazado)]
+    [InlineData(0, VeredictoDelCobro.Pendiente)]
+    [InlineData(9, VeredictoDelCobro.Pendiente)]
+    public void El_estado_de_Flow_se_lee_en_tres_desenlaces(int status, VeredictoDelCobro esperado) =>
+        Assert.Equal(esperado, FlowPasarela.VeredictoDe(status));
+
+    /// <summary>N3: customer/charge con status 1 tampoco es un rechazo.</summary>
+    [Fact]
+    public async Task CobrarAsync_con_status_1_devuelve_Pendiente_y_no_rechazo()
+    {
+        var handler = new HandlerFalso();
+        var pasarela = CrearPasarela(handler);
+        var intento = Guid.NewGuid();
+        handler.Responder = req => Task.FromResult(
+            req.RequestUri!.AbsolutePath == "/api/customer/charge"
+                ? new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(new
+                    {
+                        flowOrder = 77778, commerceOrder = intento.ToString("D"),
+                        status = 1, amount = 5990m, currency = "CLP",
+                    }), Encoding.UTF8, "application/json"),
+                }
+                : new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        var resultado = await pasarela.CobrarAsync(new SolicitudDeCobro(intento, 5990, "CLP", "test")
+        {
+            MedioInscrito = "cust-12345", CorreoDelPagador = "prestador@zass.cl",
+        });
+
+        Assert.True(resultado.Exito, resultado.Mensaje);
+        Assert.True(resultado.Valor!.Pendiente);
+        Assert.False(resultado.Valor.Aprobado);
+        Assert.Equal(VeredictoDelCobro.Pendiente, resultado.Valor.Veredicto);
     }
 
     // ========================================== P5: commerceOrder que no es Guid

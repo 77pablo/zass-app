@@ -1,4 +1,4 @@
-# Lo privado (cuenta, panel interno, flujos de correo) no se indexa; lo publico si.
+# Lo privado (cuenta, flujos de correo) no se indexa; lo publico si.
 User-agent: *
 Disallow: /api/
 Disallow: /mi-ficha
@@ -6,8 +6,8 @@ Disallow: /mi-agenda
 Disallow: /mis-citas
 Disallow: /mis-resenas
 Disallow: /mis-tarjetas
+Disallow: /mis-guardados
 Disallow: /mi-actividad
-Disallow: /interno
 Disallow: /pago/
 Disallow: /planes/listo
 Disallow: /entrar

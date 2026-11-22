@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { ErrorApi } from '../../api/cliente'
 import { registrarse, type RolPublico, type TipoDeCuenta } from './servicio'
-import { esTelefonoChileno, normalizarRut } from './rut'
+import { APELLIDO_MAXIMO, RAZON_SOCIAL_MAXIMA, revisarDatosDeCuenta } from './datosDeCuenta'
 import { Campo } from '../../componentes/Campo'
 import { Aviso } from '../../componentes/Aviso'
 import '../../legal.css'
@@ -11,8 +12,14 @@ const CONTRASENA_MINIMA = 10
 const CONTRASENA_MAXIMA = 128
 const CORREO_MAXIMO = 254
 const NOMBRE_MAXIMO = 150
-const APELLIDO_MAXIMO = 100
-const RAZON_SOCIAL_MAXIMA = 200
+
+/**
+ * El `codigo` con que API-08 responde (409) cuando el RUT ya tiene cuenta (decisión de Pablo,
+ * 21-nov-2026). La cuenta no se crea y a la dueña se le manda un correo: aquí se muestra como
+ * AVISO, no como error, con la salida a «Entrar» y a «Recuperar contraseña». El texto lo pone el
+ * servidor, que es quien sabe que es el mismo siempre.
+ */
+const CODIGO_RUT_CON_CUENTA = 'rut_con_cuenta'
 
 /*
  * Registro completo (decisión de Pablo, 20-nov-2026): además de correo y contraseña, se elige
@@ -38,33 +45,29 @@ export function Registrarse({
   const rol: RolPublico = rolInicial
   const [campos, setCampos] = useState<Record<string, string>>({})
   const [aviso, setAviso] = useState<string>()
+  const [rutConCuenta, setRutConCuenta] = useState<string>()
   const [listo, setListo] = useState(false)
   const [enviando, setEnviando] = useState(false)
 
   const empresa = tipo === 'empresa'
 
   function revisar(): Record<string, string> {
-    const malos: Record<string, string> = {}
-    if (empresa && razonSocial.trim() === '') malos.razonsocial = 'Escribe la razón social.'
+    // Los datos de la cuenta se revisan con la MISMA función que «Completa tus datos» (ES-2).
+    const malos = revisarDatosDeCuenta({ empresa, razonSocial, apellido, rut, telefono, mayorDeEdad })
     if (nombre.trim() === '') malos.nombre = empresa ? 'Escribe el nombre de la persona de contacto.' : 'Escribe tu nombre.'
-    if (!empresa && apellido.trim() === '') malos.apellido = 'Escribe tu apellido.'
-    if (rut.trim() === '') malos.rut = 'Escribe el RUT.'
-    else if (normalizarRut(rut) === null) malos.rut = 'Ese RUT no es válido. Revisa el número y el dígito verificador.'
-    if (telefono.trim() === '') malos.telefono = 'Escribe un teléfono.'
-    else if (!esTelefonoChileno(telefono)) malos.telefono = 'Escribe un teléfono chileno de 9 dígitos, por ejemplo +56 9 1234 5678.'
     if (correo.trim() === '') malos.correo = 'Escribe tu correo.'
     else if (!correo.includes('@')) malos.correo = 'Ese correo no parece válido.'
     // El minimo SI se dice aqui: sin saberlo no hay forma de cumplirlo. Al
     // ingresar se calla, porque ahi solo serviria para orientar a un atacante.
     if (contrasena.length < CONTRASENA_MINIMA)
       malos.contrasena = `Usa al menos ${CONTRASENA_MINIMA} caracteres.`
-    if (!mayorDeEdad) malos.mayordeedad = 'Para crear una cuenta tienes que ser mayor de 18 años.'
     return malos
   }
 
   async function alEnviar(e: FormEvent) {
     e.preventDefault()
     setAviso(undefined)
+    setRutConCuenta(undefined)
 
     const malos = revisar()
     setCampos(malos)
@@ -87,7 +90,10 @@ export function Registrarse({
       setListo(true)
       alRegistrarse()
     } catch (e) {
-      if (e instanceof ErrorApi) {
+      if (e instanceof ErrorApi && e.datos.codigo === CODIGO_RUT_CON_CUENTA) {
+        // No es un error que la persona pueda corregir en el formulario: es una salida.
+        setRutConCuenta(e.mensaje)
+      } else if (e instanceof ErrorApi) {
         // El backend valida de nuevo y puede ver algo que aqui no se vio.
         setCampos(e.campos)
         // El aviso general solo se muestra si el error no cabe en un campo.
@@ -119,6 +125,18 @@ export function Registrarse({
       <p className="bajada">Una sola cuenta para buscar y para ofrecer servicios.</p>
 
       {aviso && <Aviso>{aviso}</Aviso>}
+      {rutConCuenta && (
+        // Informativo, no rojo: la persona no hizo nada malo. role="status" lo lee el lector de
+        // pantalla sin interrumpir como una alerta.
+        <div className="aviso-linea" role="status">
+          <p>{rutConCuenta}</p>
+          <p>
+            <Link to="/entrar">Entrar</Link>
+            {' · '}
+            <Link to="/recuperar-contrasena">Recuperar contraseña</Link>
+          </p>
+        </div>
+      )}
 
       {rol === 'prestador' && (
         <p className="bajada">

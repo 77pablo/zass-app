@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Zass.Dominio.Agenda;
 using Zass.Aplicacion.Identidad;
+using Zass.Aplicacion.Notificaciones;
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Catalogo;
 using Zass.Dominio.Comun;
@@ -26,6 +27,7 @@ public class ZassDbContext : DbContext
     public DbSet<Sesion> Sesiones => Set<Sesion>();
     public DbSet<PerfilPrestador> PerfilesPrestador => Set<PerfilPrestador>();
     public DbSet<PerfilBuscador> PerfilesBuscador => Set<PerfilBuscador>();
+    public DbSet<FotoTrabajo> FotosDeTrabajo => Set<FotoTrabajo>();
 
     // Catalogo y geografia
     public DbSet<Rubro> Rubros => Set<Rubro>();
@@ -68,6 +70,47 @@ public class ZassDbContext : DbContext
 
     // Transversal
     public DbSet<Notificacion> Notificaciones => Set<Notificacion>();
+    public DbSet<SuscripcionPush> SuscripcionesPush => Set<SuscripcionPush>();
+
+    /// <summary>
+    /// ES-3. Antes de guardar, a cada aviso de correo nuevo que admite push se le agrega su gemela
+    /// de push, pero SOLO si el destinatario tiene algun navegador registrado (una consulta para
+    /// todo el lote, y ninguna si no hay avisos nuevos). Va aqui y no en cada caso de uso: son
+    /// trece lugares que encolan, y el dia que se agregue uno mas no hay que acordarse de nada.
+    /// Lo que se encolo ANTES de activar el push lo recoge API-45 (EncolarGemelasPendientesAsync).
+    /// </summary>
+    public override async Task<int> SaveChangesAsync(bool aceptarTodo, CancellationToken ct = default)
+    {
+        await AgregarGemelasPushAsync(ct);
+        return await base.SaveChangesAsync(aceptarTodo, ct);
+    }
+
+    public override int SaveChanges(bool aceptarTodo)
+    {
+        AgregarGemelasPushAsync(default).GetAwaiter().GetResult();
+        return base.SaveChanges(aceptarTodo);
+    }
+
+    private async Task AgregarGemelasPushAsync(CancellationToken ct)
+    {
+        var nuevos = ChangeTracker.Entries<Notificacion>()
+            .Where(e => e.State == EntityState.Added && AvisosPush.LlevaGemela(e.Entity))
+            .Select(e => e.Entity).ToList();
+        if (nuevos.Count == 0) return;
+
+        var claves = ChangeTracker.Entries<Notificacion>()
+            .Select(e => e.Entity.ClaveIdempotencia).ToHashSet();
+        var destinatarios = nuevos.Select(n => n.DestinatarioId).Distinct().ToList();
+        var conPush = (await SuscripcionesPush.AsNoTracking()
+            .Where(s => destinatarios.Contains(s.UsuarioId))
+            .Select(s => s.UsuarioId).Distinct().ToListAsync(ct)).ToHashSet();
+
+        foreach (var aviso in nuevos.Where(n => conPush.Contains(n.DestinatarioId)))
+        {
+            var gemela = AvisosPush.Gemela(aviso);
+            if (claves.Add(gemela.ClaveIdempotencia)) Notificaciones.Add(gemela);
+        }
+    }
     public DbSet<RegistroAuditoria> Auditoria => Set<RegistroAuditoria>();
     public DbSet<TrabajoDeFondo> TrabajosDeFondo => Set<TrabajoDeFondo>();
 
@@ -183,6 +226,16 @@ public class ZassDbContext : DbContext
                 .HasForeignKey<PerfilPrestador>(x => x.UsuarioId)
                 .OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Rubro).WithMany().HasForeignKey(x => x.RubroId);
+        });
+
+        b.Entity<FotoTrabajo>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.PerfilPrestadorId, x.Orden });
+            e.Property(x => x.ClaveAlmacen).HasMaxLength(200).IsRequired();
+            e.HasOne(x => x.PerfilPrestador).WithMany()
+                .HasForeignKey(x => x.PerfilPrestadorId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<PerfilBuscador>(e =>
@@ -738,32 +791,73 @@ public class ZassDbContext : DbContext
                     MaxTarjetas = 1,
                     PermiteCredenciales = true,
                     Activo = true,
+                    MaxFotosTrabajos = 0,
+                    PermiteEstadisticas = false,
+                    VerificacionPrioritaria = false,
                 },
                 new Plan
                 {
                     Id = 2,
                     Codigo = "mensual",
-                    Nombre = "ZASS! Mensual",
-                    Descripcion = "Publica tu perfil, aparece en las búsquedas y recibe solicitudes de hora. Cancela cuando quieras.",
+                    Nombre = "ZASS! Esencial",
+                    Descripcion = "Para empezar: tu ficha en la búsqueda, agenda en línea, reseñas y sello Verificado. Hasta 5 servicios.",
                     PrecioMensual = 7990,
                     DiasPrueba = 0,
-                    MaxServicios = 10,
+                    MaxServicios = 5,
                     MaxTarjetas = 1,
                     PermiteCredenciales = true,
                     Activo = true,
+                    MaxFotosTrabajos = 0,
+                    PermiteEstadisticas = false,
+                    VerificacionPrioritaria = false,
                 },
                 new Plan
                 {
                     Id = 3,
                     Codigo = "fundador",
                     Nombre = "ZASS! Fundador",
-                    Descripcion = "Precio de lanzamiento para las primeras 50 personas, congelado mientras mantengas tu suscripción activa.",
+                    Descripcion = "Todo lo del plan Profesional a precio de lanzamiento, congelado mientras mantengas tu suscripción activa. Solo para las primeras 50 personas.",
                     PrecioMensual = 5990,
                     DiasPrueba = 0,
-                    MaxServicios = 10,
-                    MaxTarjetas = 1,
+                    MaxServicios = 15,
+                    MaxTarjetas = 3,
                     PermiteCredenciales = true,
                     Activo = true,
+                    MaxFotosTrabajos = 12,
+                    PermiteEstadisticas = true,
+                    VerificacionPrioritaria = true,
+                },
+                new Plan
+                {
+                    Id = 4,
+                    Codigo = "profesional",
+                    Nombre = "ZASS! Profesional",
+                    Descripcion = "Para quien vive de su trabajo: estadísticas de tu ficha, fotos de tus trabajos, verificación prioritaria, hasta 15 servicios y 3 tarjetas.",
+                    PrecioMensual = 12990,
+                    DiasPrueba = 0,
+                    MaxServicios = 15,
+                    MaxTarjetas = 3,
+                    PermiteCredenciales = true,
+                    Activo = true,
+                    MaxFotosTrabajos = 12,
+                    PermiteEstadisticas = true,
+                    VerificacionPrioritaria = true,
+                },
+                new Plan
+                {
+                    Id = 5,
+                    Codigo = "equipo",
+                    Nombre = "ZASS! Equipo",
+                    Descripcion = "Para estudios, consultas y talleres: hasta 5 profesionales, cada uno con todo lo del Profesional. Próximamente.",
+                    PrecioMensual = 24990,
+                    DiasPrueba = 0,
+                    MaxServicios = 15,
+                    MaxTarjetas = 10,
+                    PermiteCredenciales = true,
+                    Activo = false,
+                    MaxFotosTrabajos = 12,
+                    PermiteEstadisticas = true,
+                    VerificacionPrioritaria = true,
                 });
         });
 
@@ -1007,6 +1101,20 @@ public class ZassDbContext : DbContext
                 .HasForeignKey(x => x.DestinatarioId).OnDelete(DeleteBehavior.Cascade);
         });
 
+        // ES-3 · API-45. Un endpoint es de una sola cuenta (unico); se borra con la cuenta.
+        b.Entity<SuscripcionPush>(e =>
+        {
+            e.ToTable("suscripciones_push");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Endpoint).HasMaxLength(2048).IsRequired();
+            e.HasIndex(x => x.Endpoint).IsUnique();
+            e.Property(x => x.ClaveP256dh).HasMaxLength(200).IsRequired();
+            e.Property(x => x.ClaveAuth).HasMaxLength(200).IsRequired();
+            e.HasIndex(x => x.UsuarioId);
+            e.HasOne(x => x.Usuario).WithMany()
+                .HasForeignKey(x => x.UsuarioId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         // A-09 · CC-08. El horario y la reserva del planificador, en la base y no en el proceso:
         // con varias replicas de la API, la memoria de una no sabe lo que hizo la otra.
         b.Entity<TrabajoDeFondo>(e =>
@@ -1055,6 +1163,11 @@ public class ZassDbContext : DbContext
 
         // Listas de texto -> text[]
         b.Entity<Resena>().Property(x => x.Aspectos).HasColumnType("text[]");
+        // CU-04. Con valor por omision en la base: las filas que ya existen quedan con la lista
+        // vacia al migrar, y no con un nulo que el modelo no sabria leer.
+        b.Entity<PerfilBuscador>().Property(x => x.RubrosInteres)
+            .HasColumnType("smallint[]")
+            .HasDefaultValueSql("'{}'::smallint[]");
         b.Entity<PerfilBuscador>().Property(x => x.Favoritos)
             .HasConversion(
                 v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),

@@ -335,11 +335,20 @@ public sealed class ServicioAgenda : IServicioAgenda
             return Resultado.Falla<CitaDto>(Fallas.Validacion,
                 $"La nota no puede superar los {LargoMaximoNota} caracteres.");
 
+        // RN-S1-02: sin correo verificado no se agenda. Va ANTES de mirar la clave y de abrir
+        // la transacción: una cuenta con un correo inventado no puede reservar bloques ni
+        // mandarle avisos a ningún prestador.
+        if (!await PuedeAgendarAsync(cmd.BuscadorId, ct))
+            return Resultado.Falla<CitaDto>(Fallas.ReglaDeNegocio, MensajeSinVerificar);
+
         // Flujo 4B, antes de abrir nada: el doble envío devuelve la MISMA cita. Se vuelve a
         // comprobar dentro de la transacción, porque entre esta lectura y el INSERT cabe otra
-        // solicitud con la misma clave.
-        if (await _repo.CitaPorClaveAsync(cmd.ClaveIdempotencia, ct) is { } yaExiste)
+        // solicitud con la misma clave. Solo cuenta la cita PROPIA: una clave que ya usó otra
+        // persona es un conflicto, y no se le muestra nada de esa cita.
+        if (await _repo.CitaPorClaveAsync(cmd.ClaveIdempotencia, cmd.BuscadorId, ct) is { } yaExiste)
             return Resultado.Ok(ADto(yaExiste, nueva: false));
+        if (await _repo.ClaveDeCitaUsadaAsync(cmd.ClaveIdempotencia, ct))
+            return ClaveAjena();
 
         return await _trabajo.EnTransaccionAsync(async t =>
         {
@@ -349,8 +358,10 @@ public sealed class ServicioAgenda : IServicioAgenda
                 return Resultado.Falla<CitaDto>(Fallas.NoEncontrado,
                     "Esa hora ya no existe. Vuelve a cargar el calendario.");
 
-            if (await _repo.CitaPorClaveAsync(cmd.ClaveIdempotencia, t) is { } carrera)
+            if (await _repo.CitaPorClaveAsync(cmd.ClaveIdempotencia, cmd.BuscadorId, t) is { } carrera)
                 return Resultado.Ok(ADto(carrera, nueva: false));
+            if (await _repo.ClaveDeCitaUsadaAsync(cmd.ClaveIdempotencia, t))
+                return ClaveAjena();
 
             // Paso 8 / flujo 4A: con el bloqueo en la mano, el estado que se lee es el real.
             if (bloque.Estado == EstadoBloque.Bloqueado)
@@ -600,11 +611,6 @@ public sealed class ServicioAgenda : IServicioAgenda
             return Resultado.Falla<CitaDto>(Fallas.Validacion,
                 "Falta la clave de idempotencia de la solicitud.");
 
-        // El reintento devuelve la cita que ya nació de esta misma intención. Va fuera de la
-        // transacción para no abrir una por un doble clic.
-        if (await _repo.CitaPorClaveAsync(cmd.ClaveIdempotencia, ct) is { } yaExiste)
-            return Resultado.Ok(ADto(yaExiste, nueva: false));
-
         return await _trabajo.EnTransaccionAsync(async t =>
         {
             // CC-06: si algo imprevisto hace esperar, fallar rápido y con un mensaje claro.
@@ -614,11 +620,25 @@ public sealed class ServicioAgenda : IServicioAgenda
             var quien = QuienEs(cita, cmd.Autor);
             if (quien is Papel.Ninguno)
                 return Resultado.Falla<CitaDto>(Fallas.NoEncontrado, "Esa cita no existe.");
+
+            // RN-S1-02, igual que al agendar: mover la hora es pedir otra, y el buscador sin
+            // correo verificado no la pide. Al prestador no se le exige aquí: es su agenda, y
+            // publicar el perfil ya le pidió el correo verificado.
+            if (quien is Papel.Buscador && !await PuedeAgendarAsync(cmd.Autor.UsuarioId, t))
+                return Resultado.Falla<CitaDto>(Fallas.ReglaDeNegocio, MensajeSinVerificar);
+
             if (cita!.BloqueHorarioId == cmd.BloqueNuevoId)
                 return Resultado.Falla<CitaDto>(Fallas.Validacion, "Esa es la misma hora que ya tienes.");
 
-            if (await _repo.CitaPorClaveAsync(cmd.ClaveIdempotencia, t) is { } carrera)
+            // CC-04: el reintento devuelve la cita que ya nació de esta misma intención. Se
+            // busca DESPUÉS de comprobar que la cita es de quien pide (antes, una clave ajena
+            // devolvía la cita de otro a cualquiera), y solo vale la que nació de ESTA cadena:
+            // la nacida es del mismo buscador y apunta a la misma primera cita.
+            if (await _repo.CitaPorClaveAsync(cmd.ClaveIdempotencia, cita.BuscadorId, t) is { } carrera
+                && carrera.CitaOrigenId == (cita.CitaOrigenId ?? cita.Id))
                 return Resultado.Ok(ADto(carrera, nueva: false));
+            if (await _repo.ClaveDeCitaUsadaAsync(cmd.ClaveIdempotencia, t))
+                return ClaveAjena();
 
             if (cita.Estado != EstadoCita.Confirmada)
                 return Resultado.Falla<CitaDto>(Fallas.Conflicto,
@@ -804,6 +824,34 @@ public sealed class ServicioAgenda : IServicioAgenda
         _repo.CitasEnDisputaAsync(maximo, ct);
 
     // ------------------------------------------------------------- lo compartido
+
+    /// <summary>
+    /// 422 y no 403, igual que publicar el perfil (la otra mitad de RN-S1-02): la pantalla de
+    /// agendar muestra el texto y CONSERVA la hora elegida, que es lo que conviene mientras la
+    /// persona va a verificar su correo. Un 409 le soltaría la hora y recargaría el calendario.
+    /// </summary>
+    private const string MensajeSinVerificar =
+        "Verifica tu correo para pedir una hora. Te enviamos el enlace al crear tu cuenta.";
+
+    /// <summary>
+    /// RN-S1-02: correo verificado y cuenta activa. Es la misma condición que
+    /// <c>ServicioResenas.HabilitadoAsync</c>, sin el rol: agendar no exige ser buscador.
+    /// </summary>
+    private async Task<bool> PuedeAgendarAsync(Guid usuarioId, CancellationToken ct)
+    {
+        var usuario = await _identidad.ObtenerUsuarioAsync(usuarioId, ct);
+        return usuario is { CorreoVerificado: true, Estado: EstadoCuenta.Activa };
+    }
+
+    /// <summary>
+    /// CC-04: la clave existe, pero la usó otra persona (o es de otra cadena de
+    /// reprogramaciones). Es un conflicto NEUTRO: no dice de quién es ni qué cita creó, y se
+    /// responde antes de llegar al índice único, que lo convertiría en un 500. Para el
+    /// cliente es lo mismo que «la hora ya no está»: recarga y genera una clave nueva.
+    /// </summary>
+    private static Resultado<CitaDto> ClaveAjena() => Resultado.Falla<CitaDto>(
+        Fallas.Conflicto,
+        "No pudimos procesar esta solicitud. Vuelve a cargar la página e inténtalo de nuevo.");
 
     private enum Papel { Ninguno, Buscador, Prestador }
 

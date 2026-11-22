@@ -83,7 +83,18 @@ async function leer<T>(r: Response): Promise<T> {
   return (texto === '' ? undefined : JSON.parse(texto)) as T
 }
 
+/**
+ * ES-2. La API responde 428 mientras a la cuenta le faltan los datos del registro completo
+ * (RUT, teléfono, mayoría de edad). El cliente lo avisa con este evento y la sesión se recarga:
+ * así aparece la pantalla para completarlos aunque la sesión se haya cargado antes.
+ */
+export const EVENTO_DATOS_PENDIENTES = 'zass:datos-de-cuenta-pendientes'
+
 async function fallo(r: Response): Promise<ErrorApi> {
+  if (r.status === 428 && typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(EVENTO_DATOS_PENDIENTES))
+  }
+
   // Un 500 puede llegar como pagina HTML. Si se asume JSON, el error real queda
   // tapado por un "Unexpected token <" que no le dice nada a nadie.
   let cuerpo: Record<string, unknown> = {}

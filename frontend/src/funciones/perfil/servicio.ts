@@ -1,4 +1,5 @@
 import { enviar, obtener, subirArchivo } from '../../api/cliente'
+import type { MotivoDeRechazo } from '../interno/servicio'
 
 /** Los enums viajan como texto (JsonStringEnumConverter), no como numero. */
 export type EstadoPerfil = 'Borrador' | 'Publicado' | 'Despublicado'
@@ -157,6 +158,11 @@ export interface MiCredencial {
   documentos: number
   /** JQ-9. Los documentos de respaldo, del más antiguo al más nuevo. */
   respaldo?: MiDocumento[]
+  /**
+   * Solo si está rechazada: el motivo tipificado del último rechazo. Desde el 21-nov-2026 una
+   * rechazada no sale en la ficha pública, así que aquí se dice por qué.
+   */
+  motivoDelRechazo?: MotivoDeRechazo | null
 }
 
 /** JQ-9. Un documento de respaldo como lo ve su dueño: nunca dónde está guardado. */

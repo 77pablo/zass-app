@@ -32,6 +32,10 @@ public interface IServicioSuscripciones
     /// <summary>
     /// Arranca el periodo de prueba. Es idempotente: si ya hay una vigente no crea otra
     /// y devuelve exito igual, porque un doble clic no es un error de nadie.
+    ///
+    /// La prueba gratis es UNA por perfil (22-nov-2026): si el perfil tuvo cualquier
+    /// suscripcion, vencida o cancelada, no se crea otra y se devuelve exito igual. Publicar
+    /// sigue funcionando; el perfil queda fuera de la busqueda (RN-S3-09) hasta que pague.
     /// </summary>
     Task<Resultado> IniciarPruebaAsync(Guid perfilPrestadorId, CancellationToken ct = default);
 
@@ -53,12 +57,34 @@ public interface IServicioSuscripciones
     /// se calcula desde el VigenteHasta de la suscripcion TAL COMO ESTA (VencerExpiradasAsync
     /// solo cambia Estado, no VigenteHasta). False para pagos manuales: desde hoy si ya vencio.
     /// </param>
+    /// <param name="planPagado">
+    /// El plan del intento pagado. La suscripcion pasa a ese plan (22-nov-2026: antes el pago
+    /// no cambiaba el plan). Nulo lo deja como estaba.
+    /// </param>
     Task<Resultado<Guid>> RegistrarPeriodoPagadoAsync(
         Guid suscripcionId, int meses = 1, int montoPagado = 0, string? referencia = null,
-        Guid? intentoDePagoId = null, bool esCobroAutomatico = false, CancellationToken ct = default);
+        Guid? intentoDePagoId = null, bool esCobroAutomatico = false, short? planPagado = null,
+        CancellationToken ct = default);
 
     /// <summary>El prestador deja de pagar por voluntad propia. Sale de la busqueda de inmediato.</summary>
     Task<Resultado> CancelarAsync(Guid suscripcionId, CancellationToken ct = default);
+
+    /// <summary>
+    /// API-78. La persona cancela la RENOVACION de su suscripcion: sigue vigente hasta su
+    /// <c>VigenteHasta</c> (ya esta pagada) y despues vence sin cobrarse. Si era fundador, al
+    /// vencer pierde el cupo (RN-S7-13). Idempotente.
+    /// </summary>
+    Task<Resultado<SuscripcionDto>> CancelarRenovacionAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default);
+
+    /// <summary>
+    /// CS-04. La cuenta se elimina: la suscripcion se cancela YA (sin perfil publicado no hay
+    /// nada que mantener vigente), se olvida el medio de pago inscrito para que el cobro
+    /// automatico no tenga contra que cobrar, y se libera el cupo fundador. NO guarda: lo
+    /// guarda quien llama, en su misma unidad de trabajo.
+    /// </summary>
+    Task<Resultado> TerminarPorCuentaEliminadaAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default);
 
     /// <summary>Trabajo de fondo. Devuelve cuantas marco. Vencer no borra: solo cambia el estado.</summary>
     Task<int> VencerExpiradasAsync(CancellationToken ct = default);
@@ -111,6 +137,13 @@ public interface IServicioSuscripciones
     /// manda el plan inicial, y sin plan inicial el tope es cero.
     /// </summary>
     Task<int> LimiteDeTarjetasAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Cuantas fotos de trabajo permite el plan vigente del prestador. Lo necesita API-XX
+    /// para validar el tope al subir. Mismo criterio que LimiteDeServiciosAsync: sin
+    /// suscripcion vigente manda el plan inicial.
+    /// </summary>
+    Task<int> LimiteDeFotosDeTrabajoAsync(Guid perfilPrestadorId, CancellationToken ct = default);
 
     /// <summary>Cuantos de los 50 cupos del plan fundador quedan disponibles hoy.</summary>
     Task<int> CuposFundadorDisponiblesAsync(CancellationToken ct = default);
@@ -188,7 +221,10 @@ public sealed record SuscripcionDto(
     bool TarjetaInscrita = false,
     // ES-1: dias de gracia que le quedan al fundador cuyo cobro fue rechazado, o nulo si no
     // esta en gracia. «Mi ficha» lo muestra con el enlace para cambiar la tarjeta.
-    int? DiasDeGracia = null);
+    int? DiasDeGracia = null,
+    // 22-nov-2026: la persona cancelo la renovacion. Sigue vigente hasta VigenteHasta y despues
+    // vence sin cobrarse. La pantalla lo dice en vez de prometer un cobro que no va a pasar.
+    bool RenovacionCancelada = false);
 
 /// <summary>El cupo recien tomado y hasta cuando dura el mes gratis.</summary>
 public sealed record CupoTomadoDto(short Numero, DateTime MesGratisHasta, bool TarjetaInscrita);
@@ -232,4 +268,9 @@ public sealed record PlanDto(
     short DiasPrueba,
     int MaxServicios,
     int MaxTarjetas,
-    bool PermiteCredenciales);
+    bool PermiteCredenciales,
+    // Lo que distingue a los planes desde el 20-nov-2026 (Esencial, Profesional, Equipo).
+    // Al final y con valor por omision: agregarlos no rompe a nadie que construya el DTO.
+    int MaxFotosTrabajos = 0,
+    bool PermiteEstadisticas = false,
+    bool VerificacionPrioritaria = false);

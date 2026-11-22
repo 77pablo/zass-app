@@ -192,13 +192,21 @@ public class ApiTarjetasPruebas : IAsyncLifetime
         Assert.Empty(await EscaneosDe(_desactivada, _reemplazada));
     }
 
+    /// <summary>
+    /// CU-19 paso 3: la pagina de «sin activar» lleva el segmento, para que la pantalla de
+    /// activacion sepa que tarjeta activar. Es el mismo segmento que se escaneo, en mayusculas
+    /// como va impreso (hay lectores de QR que lo bajan a minusculas), y nada mas.
+    /// </summary>
     [Fact]
-    public async Task Una_tarjeta_emitida_lleva_a_sin_activar_y_no_cuenta()
+    public async Task Una_tarjeta_emitida_lleva_a_sin_activar_con_su_segmento_y_no_cuenta()
     {
         var r = await Escanear(_emitida.UrlEstable);
+        var enMinusculas = await Escanear(_emitida.UrlEstable.ToLowerInvariant());
 
+        var esperada = $"{EndpointsTarjetas.PaginaSinActivar}/{_emitida.UrlEstable}";
         Assert.Equal(HttpStatusCode.Redirect, r.StatusCode);
-        Assert.Equal(EndpointsTarjetas.PaginaSinActivar, r.Headers.Location?.OriginalString);
+        Assert.Equal(esperada, r.Headers.Location?.OriginalString);
+        Assert.Equal(esperada, enMinusculas.Headers.Location?.OriginalString);
         Assert.Empty(await EscaneosDe(_emitida));
     }
 

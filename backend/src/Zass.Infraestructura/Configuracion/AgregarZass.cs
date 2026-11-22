@@ -19,6 +19,8 @@ using Zass.Aplicacion.Tarjetas;
 using Zass.Aplicacion.Puertos;
 using Zass.Infraestructura.Archivos;
 using Zass.Infraestructura.Correo;
+using Zass.Aplicacion.Notificaciones;
+using Zass.Infraestructura.Push;
 using Zass.Infraestructura.Fondo;
 using Zass.Infraestructura.Pagos;
 using Zass.Infraestructura.Datos;
@@ -313,6 +315,9 @@ public static class RegistroDeServicios
         // --- MOD-01 Identidad ---
         servicios.AddScoped<IServicioIdentidad, ServicioIdentidad>();
         servicios.AddScoped<ServicioRegistro>();
+        // Auditoria 22-nov-2026: la purga de cuentas sin verificar (planificador y registro).
+        servicios.AddScoped<IRepositorioCuentasSinVerificar, RepositorioCuentasSinVerificarEfCore>();
+        servicios.AddScoped<ServicioCuentasSinVerificar>();
         servicios.AddScoped<ServicioSesion>();
         servicios.AddScoped<ServicioCuenta>();
         servicios.AddScoped<ServicioPerfiles>();
@@ -321,6 +326,8 @@ public static class RegistroDeServicios
         servicios.AddScoped<IRepositorioCredenciales, RepositorioCredencialesEfCore>();
         servicios.AddScoped<IServicioCredenciales, ServicioCredenciales>();
         servicios.AddScoped<IServicioVerificacion, ServicioVerificacion>();
+        // CS-06: el planificador vence las verificadas pasadas de fecha (auditoria 22-nov-2026).
+        servicios.AddScoped<ServicioVencimientoCredenciales>();
 
         // DECISION DE PRODUCTO REVISABLE (etapa de lanzamiento, sin MOD-08): permite enviar a
         // revision sin documentos. Falso por omision. Se lee al RESOLVER, no al registrar, por la
@@ -331,10 +338,11 @@ public static class RegistroDeServicios
                 .GetValue(OpcionesVerificacion.ClaveDeConfiguracion, false),
         });
 
-        // --- MOD-08 Archivos (JQ-9): la foto del perfil y los documentos de respaldo ---
+        // --- MOD-08 Archivos (JQ-9): la foto del perfil, fotos de trabajos y los documentos de respaldo ---
         servicios.AddSingleton<IProcesadorDeImagenes, ProcesadorDeImagenesImageSharp>();
         servicios.AddSingleton<IAlmacenDeArchivos>(sp => ElegirAlmacen(sp));
         servicios.AddScoped<ServicioFotoDePerfil>();
+        servicios.AddScoped<IServicioFotosDeTrabajo, ServicioFotosDeTrabajo>();
 
         // --- MOD-03 Catalogo ---
         servicios.AddScoped<IServicioCatalogo, ServicioCatalogo>();
@@ -464,6 +472,27 @@ public static class RegistroDeServicios
         });
         servicios.AddScoped<ProcesadorDeCorreo>();
         servicios.AddHostedService<TrabajoDeCorreo>();
+
+        // --- ES-3 · Avisos push (Web Push con VAPID) ---
+        // Sin claves queda apagado; con media configuracion la aplicacion no arranca.
+        servicios.AddOptions<OpcionesPush>()
+            .Bind(configuracion.GetSection(OpcionesPush.Seccion))
+            .ValidateOnStart();
+        servicios.AddSingleton<IValidateOptions<OpcionesPush>, ValidadorOpcionesPush>();
+        servicios.AddSingleton<IEnviadorDePush>(sp =>
+        {
+            var o = sp.GetRequiredService<IOptions<OpcionesPush>>().Value;
+            if (!o.Activo) return new EnviadorPushNulo();
+            var http = new HttpClient(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) })
+            {
+                Timeout = TimeSpan.FromSeconds(o.TiempoLimiteHttpSegundos),
+            };
+            return new EnviadorWebPush(http, Options.Create(o));
+        });
+        servicios.AddScoped<ProcesadorDePush>();
+        servicios.AddHostedService<TrabajoDePush>();
+        servicios.AddScoped<IRepositorioPush, RepositorioPushEfCore>();
+        servicios.AddScoped<ServicioAvisosPush>();
 
         // --- Alertas al administrador ---
         servicios.AddScoped<IAlertasAdministrador, AlertasAdministrador>();

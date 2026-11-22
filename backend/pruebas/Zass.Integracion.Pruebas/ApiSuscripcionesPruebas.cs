@@ -260,6 +260,11 @@ public class ApiSuscripcionesPruebas : IAsyncLifetime
         Assert.Equal("revisar", Zass.Api.Endpoints.ResultadoDeLaVuelta.De(
             Zass.Dominio.Comun.Resultado.Falla<Zass.Aplicacion.Suscripciones.ConfirmacionDto>(
                 Zass.Dominio.Comun.Fallas.NoEncontrado, "Ese cobro no existe.")));
+
+        // N3 (22-nov-2026): la cuarta palabra. Un pago pendiente en la pasarela NO es un rechazo.
+        Assert.Equal("procesando", Zass.Api.Endpoints.ResultadoDeLaVuelta.De(Zass.Dominio.Comun.Resultado.Ok(
+            new Zass.Aplicacion.Suscripciones.ConfirmacionDto(
+                Guid.NewGuid(), false, "Pendiente", null, "", false, Pendiente: true))));
     }
 
     private async Task<string> TokenCsrfAsync()

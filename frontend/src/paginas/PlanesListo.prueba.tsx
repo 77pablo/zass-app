@@ -29,6 +29,15 @@ describe('La vuelta de inscribir la tarjeta (API-75)', () => {
     expect(screen.getByRole('link', { name: 'Probar con otra tarjeta' })).toHaveAttribute('href', '/mi-ficha')
   })
 
+  // 22-nov-2026: el pago que la pasarela tiene pendiente (el «1» de Flow) no es un rechazo.
+  it('con «procesando» dice que el pago se está procesando y no lo trata como rechazo', () => {
+    enLaVuelta('?resultado=procesando')
+
+    expect(screen.getByRole('heading', { name: 'Tu pago se está procesando' })).toBeInTheDocument()
+    expect(screen.getByText(/No lo intentes de nuevo/)).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Probar con otra tarjeta' })).toBeNull()
+  })
+
   it('sin resultado espera la confirmación, sin prometer nada', () => {
     enLaVuelta('')
 

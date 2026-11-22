@@ -160,8 +160,28 @@ public sealed class RepositorioSuscripcionesEfCore : IRepositorioSuscripciones
         _ctx.IntentosDePago.FirstOrDefaultAsync(i => i.Id == id, ct);
 
     public Task<IntentoDePago?> IntentoPorClaveAsync(
-        string clave, CancellationToken ct = default) =>
-        _ctx.IntentosDePago.FirstOrDefaultAsync(i => i.ClaveIdempotencia == clave, ct);
+        string clave, Guid perfilPrestadorId, CancellationToken ct = default) =>
+        _ctx.IntentosDePago.FirstOrDefaultAsync(
+            i => i.ClaveIdempotencia == clave && i.PerfilPrestadorId == perfilPrestadorId, ct);
+
+    public Task<bool> ClaveDeIntentoUsadaAsync(string clave, CancellationToken ct = default) =>
+        _ctx.IntentosDePago.AnyAsync(i => i.ClaveIdempotencia == clave, ct);
+
+    public Task<bool> HayIntentoConCuponPendienteAsync(
+        Guid perfilPrestadorId, DateTime desde, CancellationToken ct = default) =>
+        _ctx.IntentosDePago.AnyAsync(
+            i => i.PerfilPrestadorId == perfilPrestadorId
+                 && i.CodigoCupon != null
+                 && i.Estado == EstadoIntentoPago.Pendiente
+                 && i.CreadoEn > desde,
+            ct);
+
+    public async Task<EstadoCuenta?> EstadoDeCuentaDePerfilAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default) =>
+        await _ctx.PerfilesPrestador
+            .Where(p => p.Id == perfilPrestadorId)
+            .Select(p => (EstadoCuenta?)p.Usuario.Estado)
+            .FirstOrDefaultAsync(ct);
 
     public async Task<IReadOnlyList<IntentoDePago>> IntentosPorPrefijoDeClaveAsync(
         string prefijo, CancellationToken ct = default) =>

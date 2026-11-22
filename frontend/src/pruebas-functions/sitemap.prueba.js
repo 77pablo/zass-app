@@ -193,9 +193,9 @@ describe('robots.txt', () => {
     expect(robots).toMatch(/^Sitemap: https:\/\/zass\.cl\/sitemap\.xml$/m)
   })
 
-  const RUTAS_DEL_PANEL = ['/mi-ficha', '/mi-agenda', '/mis-citas', '/mis-resenas', '/mis-tarjetas', '/mi-actividad']
+  const RUTAS_DEL_PANEL = ['/mi-ficha', '/mi-agenda', '/mis-citas', '/mis-resenas', '/mis-tarjetas', '/mis-guardados', '/mi-actividad']
 
-  it.each([...RUTAS_DEL_PANEL, '/interno', '/entrar', '/crear-cuenta', '/restablecer-contrasena', '/verificar-correo'])(
+  it.each([...RUTAS_DEL_PANEL, '/entrar', '/crear-cuenta', '/restablecer-contrasena', '/verificar-correo'])(
     'no deja indexar %s', (ruta) => {
       expect(robots).toMatch(new RegExp(`^Disallow: ${ruta}$`, 'm'))
     })
@@ -208,6 +208,13 @@ describe('robots.txt', () => {
     const enApp = [...app.matchAll(/path="(mis?-[^"]*)"/g)].map((m) => `/${m[1]}`)
     expect(enApp.length).toBeGreaterThan(0)
     expect(enApp.filter((r) => !RUTAS_DEL_PANEL.includes(r))).toEqual([])
+  })
+
+  // robots.txt lo lee cualquiera: listar el panel interno le anunciaba su ruta a quien buscara
+  // por donde atacar. Ese panel ya queda fuera del indice por su <meta name="robots" content="noindex">
+  // (PuertaInterna, probado en PanelInterno.prueba.tsx), asi que aqui no se nombra.
+  it('no nombra el panel interno', () => {
+    expect(robots).not.toMatch(/interno/i)
   })
 
   it('deja indexar lo publico', () => {

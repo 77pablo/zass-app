@@ -68,10 +68,45 @@ public sealed class RepositorioUsuariosEfCore : IRepositorioUsuarios
     public Task<bool> ExisteRutAsync(string rut, CancellationToken ct = default) =>
         _ctx.Usuarios.AnyAsync(u => u.Rut == rut, ct);
 
+    public Task<Usuario?> PorRutAsync(string rut, CancellationToken ct = default) =>
+        _ctx.Usuarios.FirstOrDefaultAsync(u => u.Rut == rut, ct);
+
     public Task<Rol?> RolPorCodigoAsync(string codigo, CancellationToken ct = default) =>
         _ctx.Roles.FirstOrDefaultAsync(r => r.Codigo == codigo, ct);
 
     public void Agregar(Usuario usuario) => _ctx.Usuarios.Add(usuario);
+
+    /// <summary>
+    /// Un solo UPDATE: Postgres toma el candado de la fila y, si otro intento la cambio
+    /// mientras esperaba, vuelve a evaluar el WHERE y los CASE con la fila nueva. Por eso
+    /// diez intentos simultaneos cuentan diez y solo uno dispara el bloqueo. Los dos CASE ven
+    /// el valor VIEJO de intentos_fallidos (asi es un UPDATE en SQL), y el RETURNING el nuevo:
+    /// cero solo cuando este intento bloqueo, porque un fallo que no bloquea deja 1 o mas.
+    /// </summary>
+    public async Task<bool> SumarIntentoFallidoAsync(
+        Guid usuarioId, DateTime ahora, int intentosParaBloquear, DateTime bloqueadaHasta,
+        CancellationToken ct = default)
+    {
+        var filas = await _ctx.Database.SqlQuery<bool>($"""
+            UPDATE usuarios
+               SET intentos_fallidos = CASE WHEN intentos_fallidos + 1 >= {intentosParaBloquear}
+                                            THEN 0 ELSE intentos_fallidos + 1 END,
+                   bloqueada_hasta   = CASE WHEN intentos_fallidos + 1 >= {intentosParaBloquear}
+                                            THEN {bloqueadaHasta} ELSE bloqueada_hasta END
+             WHERE id = {usuarioId}
+               AND (bloqueada_hasta IS NULL OR bloqueada_hasta <= {ahora})
+            RETURNING intentos_fallidos = 0 AS "Value"
+            """).ToListAsync(ct);
+        return filas.Count == 1 && filas[0];
+    }
+
+    public async Task<bool> ReiniciarIntentosSiNoBloqueadaAsync(
+        Guid usuarioId, DateTime ahora, CancellationToken ct = default) =>
+        await _ctx.Usuarios
+            .Where(u => u.Id == usuarioId && (u.BloqueadaHasta == null || u.BloqueadaHasta <= ahora))
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(u => u.IntentosFallidos, 0)
+                .SetProperty(u => u.BloqueadaHasta, (DateTime?)null), ct) == 1;
 }
 
 public sealed class RepositorioSesionesEfCore : IRepositorioSesiones
@@ -129,6 +164,41 @@ public sealed class RepositorioPerfilesEfCore : IRepositorioPerfiles
 
     public void Agregar(PerfilPrestador perfil) => _ctx.PerfilesPrestador.Add(perfil);
     public void Agregar(PerfilBuscador perfil) => _ctx.PerfilesBuscador.Add(perfil);
+
+    // Fotos de trabajos (T69)
+    public async Task<int> ContarFotosDeTrabajoAsync(Guid perfilPrestadorId, CancellationToken ct = default) =>
+        await _ctx.FotosDeTrabajo.CountAsync(f => f.PerfilPrestadorId == perfilPrestadorId, ct);
+
+    public async Task<int> ObtenerSiguienteOrdenFotoTrabajoAsync(Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        var maxOrden = await _ctx.FotosDeTrabajo
+            .Where(f => f.PerfilPrestadorId == perfilPrestadorId)
+            .MaxAsync(f => (int?)f.Orden, ct);
+        return (maxOrden ?? -1) + 1;
+    }
+
+    public void AgregarFotoTrabajo(FotoTrabajo foto) => _ctx.FotosDeTrabajo.Add(foto);
+
+    public void EliminarFotoTrabajo(FotoTrabajo foto) => _ctx.FotosDeTrabajo.Remove(foto);
+
+    public async Task<FotoTrabajo?> FotoTrabajoPorIdAsync(Guid id, CancellationToken ct = default) =>
+        await _ctx.FotosDeTrabajo.FirstOrDefaultAsync(f => f.Id == id, ct);
+
+    public async Task<List<FotoTrabajo>> FotosDeTrabajoDePerfilAsync(Guid perfilPrestadorId, CancellationToken ct = default) =>
+        await _ctx.FotosDeTrabajo
+            .Where(f => f.PerfilPrestadorId == perfilPrestadorId)
+            .OrderBy(f => f.Orden).ThenBy(f => f.CreadaEn)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<FotoTrabajoPublicaDto>> FotosDeTrabajoParaFichaAsync(Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        var prefijo = TiposDeArchivo.CarpetaFotos.Length + 1;
+        return await _ctx.FotosDeTrabajo
+            .Where(f => f.PerfilPrestadorId == perfilPrestadorId)
+            .OrderBy(f => f.Orden)
+            .Select(f => new FotoTrabajoPublicaDto(TiposDeArchivo.RutaPublica + f.ClaveAlmacen.Substring(prefijo), f.Orden))
+            .ToListAsync(ct);
+    }
 }
 
 /// <summary>
@@ -154,6 +224,32 @@ public sealed class ColaNotificacionesEfCore : INotificaciones
             .Where(n => n.CitaId == citaId && n.Estado == EstadoEnvio.Programada
                 && (n.Tipo == TipoNotificacion.Recordatorio24h || n.Tipo == TipoNotificacion.Recordatorio2h))
             .ExecuteUpdateAsync(s => s.SetProperty(n => n.Estado, EstadoEnvio.Anulada), ct);
+
+    public Task<Notificacion?> UltimoAsync(Guid destinatarioId, TipoNotificacion tipo, CancellationToken ct = default) =>
+        _ctx.Notificaciones.AsNoTracking()
+            .Where(n => n.DestinatarioId == destinatarioId && n.Tipo == tipo)
+            .OrderByDescending(n => n.ProgramadaPara).ThenByDescending(n => n.Id)
+            .FirstOrDefaultAsync(ct);
+
+    /// <summary>
+    /// <c>ON CONFLICT DO NOTHING</c> sobre el indice unico de la clave (R-18): si otra peticion
+    /// encolo la misma clave un instante antes, esta no inserta nada y no lanza. Con
+    /// <c>Add</c> + <c>SaveChanges</c> la segunda terminaria en un 23505 y en un 500.
+    /// Va por la conexion de este contexto: si hay una transaccion abierta, queda dentro.
+    /// </summary>
+    public async Task<bool> EncolarSiNoExisteAsync(Notificacion aviso, CancellationToken ct = default)
+    {
+        var filas = await _ctx.Database.ExecuteSqlInterpolatedAsync($@"
+            INSERT INTO notificaciones
+                (id, destinatario_id, cita_id, tipo, canal, clave_idempotencia, estado,
+                 asunto, cuerpo, programada_para, intentos)
+            VALUES
+                ({aviso.Id}, {aviso.DestinatarioId}, {aviso.CitaId}, {aviso.Tipo.ToString()},
+                 {aviso.Canal.ToString()}, {aviso.ClaveIdempotencia}, {aviso.Estado.ToString()},
+                 {aviso.Asunto}, {aviso.Cuerpo}, {aviso.ProgramadaPara}, {aviso.Intentos})
+            ON CONFLICT (clave_idempotencia) DO NOTHING", ct);
+        return filas == 1;
+    }
 }
 
 /// <summary>TBL-28. Solo insercion.</summary>

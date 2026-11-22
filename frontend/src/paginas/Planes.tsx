@@ -333,20 +333,26 @@ export function Planes() {
 
 /**
  * La vuelta del pago (API-75). Esta pantalla NO confirma nada: la API ya le preguntó a la
- * pasarela con su firma y manda aquí con `?resultado=` y uno de tres valores fijos. Cualquier
+ * pasarela con su firma y manda aquí con `?resultado=` y uno de cuatro valores fijos. Cualquier
  * otro valor (o ninguno) se trata como «revisar»: nunca se dice «listo» sin que la API lo diga.
+ * «procesando» (22-nov-2026) es el pago que la pasarela todavía tiene pendiente: no se rechazó,
+ * y el aviso de la pasarela lo cierra solo.
  * (Textos PROPUESTOS: los aprueba Pablo.)
  */
 export function PlanesListo() {
   const [parametros] = useSearchParams()
   const resultado = parametros.get('resultado')
-  const caso = resultado === 'aprobado' || resultado === 'rechazado' ? resultado : 'revisar'
+  const caso = resultado === 'aprobado' || resultado === 'rechazado' || resultado === 'procesando'
+    ? resultado
+    : 'revisar'
 
   const titulo = caso === 'aprobado'
     ? 'Listo: tu tarjeta quedó inscrita'
     : caso === 'rechazado'
       ? 'No pudimos inscribir tu tarjeta'
-      : 'Estamos confirmando tu tarjeta'
+      : caso === 'procesando'
+        ? 'Tu pago se está procesando'
+        : 'Estamos confirmando tu tarjeta'
   useTitulo(titulo)
   // No tiene nada que hacer un buscador aquí: es la vuelta de un pago.
   useMeta({ noindex: true })
@@ -369,6 +375,17 @@ export function PlanesListo() {
           </p>
           <p className="bloque-texto">
             <Link className="boton" to="/mi-ficha">Probar con otra tarjeta</Link>
+          </p>
+        </>
+      )}
+      {caso === 'procesando' && (
+        <>
+          <p className="bloque-texto">
+            La pasarela todavía no confirma tu pago. No lo intentes de nuevo: cuando se confirme,
+            tu suscripción se actualiza sola.
+          </p>
+          <p className="bloque-texto">
+            Lo puedes ver en <Link to="/mi-ficha">Mi ficha</Link>.
           </p>
         </>
       )}

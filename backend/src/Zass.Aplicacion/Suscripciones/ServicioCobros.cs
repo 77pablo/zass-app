@@ -31,6 +31,12 @@ public sealed class ServicioCobros : IServicioCobros
     /// </summary>
     public const short MesesPorCobro = 1;
 
+    /// <summary>
+    /// Mientras un intento con cupon siga Pendiente y tenga menos de esto, no se abre otro con
+    /// cupon para el mismo perfil. Es la reserva del cupo fundador (25 min) con margen.
+    /// </summary>
+    public static readonly TimeSpan VentanaDeIntentoConCupon = TimeSpan.FromMinutes(30);
+
     private readonly IRepositorioSuscripciones _repo;
     private readonly IServicioSuscripciones _suscripciones;
     private readonly IPasarelaDePagos _pasarela;
@@ -174,12 +180,17 @@ public sealed class ServicioCobros : IServicioCobros
         if (string.IsNullOrWhiteSpace(cmd.ClaveIdempotencia))
             return Resultado.Falla<IntentoDePagoDto>(
                 Fallas.Validacion, "Falta la clave de idempotencia de la solicitud.");
+        if (EsClaveReservada(cmd.ClaveIdempotencia))
+            return ClaveReservada();
 
         // CC-04, antes de abrir nada: el doble envio devuelve el MISMO intento. Se vuelve
         // a comprobar dentro de la transaccion, porque entre esta lectura y el INSERT cabe
-        // otra solicitud con la misma clave.
-        if (await _repo.IntentoPorClaveAsync(cmd.ClaveIdempotencia, ct) is { } yaExiste)
+        // otra solicitud con la misma clave. Solo cuenta el intento PROPIO: una clave que ya
+        // uso otro prestador es un conflicto, y no se devuelve nada de ese intento.
+        if (await _repo.IntentoPorClaveAsync(cmd.ClaveIdempotencia, cmd.PerfilPrestadorId, ct) is { } yaExiste)
             return await RetomarAsync(yaExiste, ct);
+        if (await _repo.ClaveDeIntentoUsadaAsync(cmd.ClaveIdempotencia, ct))
+            return ClaveAjena();
 
         var calculo = await CalcularAsync(cmd.PerfilPrestadorId, cmd.CodigoPlan, cmd.CodigoCupon, ct);
         if (!calculo.Exito || calculo.Valor is null)
@@ -195,10 +206,27 @@ public sealed class ServicioCobros : IServicioCobros
                 Fallas.Conflicto,
                 "Publica tu perfil antes de pagar: la suscripción nace al publicarlo.");
 
+        // RN-S7-08 (22-nov-2026). «Ya canjeo» se mira arriba, pero el canje nace al PAGAR: sin
+        // esto se podian abrir dos intentos con el mismo cupon y pagar los dos. Se rechaza el
+        // segundo mientras el primero siga Pendiente y reciente. NO se anula el anterior: puede
+        // estar pagandose en otra pestaña, y anularlo es justo como un pago se queda sin
+        // acreditar. Pasada la ventana se deja pasar (un intento abandonado no puede bloquear
+        // el cupon para siempre); si aun asi se pagan los dos, la confirmacion acredita los
+        // dos y crea UN canje (ver ResolverAsync).
+        if (c.Cupon is not null
+            && await _repo.HayIntentoConCuponPendienteAsync(
+                cmd.PerfilPrestadorId, _reloj.Ahora - VentanaDeIntentoConCupon, ct))
+            return Resultado.Falla<IntentoDePagoDto>(
+                Fallas.Conflicto,
+                "Ya tienes un pago con código de descuento en curso. Termínalo o espera "
+                + $"{(int)VentanaDeIntentoConCupon.TotalMinutes} minutos para empezar otro.");
+
         var intento = await _trabajo.EnTransaccionAsync(async t =>
         {
-            if (await _repo.IntentoPorClaveAsync(cmd.ClaveIdempotencia, t) is { } carrera)
+            if (await _repo.IntentoPorClaveAsync(cmd.ClaveIdempotencia, cmd.PerfilPrestadorId, t) is { } carrera)
                 return carrera;
+            if (await _repo.ClaveDeIntentoUsadaAsync(cmd.ClaveIdempotencia, t))
+                return ClaveAjenaEnCarrera;
 
             // El cupo fundador se RESERVA al empezar a pagar, no al confirmar: si se
             // reservara despues, dos personas podrian pagar por el cupo 50 y una se
@@ -242,6 +270,8 @@ public sealed class ServicioCobros : IServicioCobros
             await _trabajo.GuardarAsync(t);
             return nuevo;
         }, ct);
+
+        if (ReferenceEquals(intento, ClaveAjenaEnCarrera)) return ClaveAjena();
 
         // Null solo sale de la reserva fallida: alguien se llevo el ultimo cupo entre la
         // cotizacion y el cobro. Se vuelve a preguntar el estado para contarlo con el
@@ -329,11 +359,15 @@ public sealed class ServicioCobros : IServicioCobros
         if (string.IsNullOrWhiteSpace(claveIdempotencia))
             return Resultado.Falla<IntentoDePagoDto>(
                 Fallas.Validacion, "Falta la clave de idempotencia de la solicitud.");
+        if (EsClaveReservada(claveIdempotencia))
+            return ClaveReservada();
 
         // CC-04, igual que el cobro: el doble clic devuelve el MISMO intento y no toma un
-        // segundo cupo.
-        if (await _repo.IntentoPorClaveAsync(claveIdempotencia, ct) is { } yaExiste)
+        // segundo cupo. Y como alli, solo el intento propio.
+        if (await _repo.IntentoPorClaveAsync(claveIdempotencia, perfilPrestadorId, ct) is { } yaExiste)
             return await RetomarAsync(yaExiste, ct);
+        if (await _repo.ClaveDeIntentoUsadaAsync(claveIdempotencia, ct))
+            return ClaveAjena();
 
         // Se reusa el calculo por dos cosas que si importan —que el perfil exista y que el
         // plan fundador este ABIERTO (RN-S7-06)—, y por ninguna mas: el monto de una
@@ -360,8 +394,10 @@ public sealed class ServicioCobros : IServicioCobros
 
         var intento = await _trabajo.EnTransaccionAsync(async t =>
         {
-            if (await _repo.IntentoPorClaveAsync(claveIdempotencia, t) is { } carrera)
+            if (await _repo.IntentoPorClaveAsync(claveIdempotencia, perfilPrestadorId, t) is { } carrera)
                 return carrera;
+            if (await _repo.ClaveDeIntentoUsadaAsync(claveIdempotencia, t))
+                return ClaveAjenaEnCarrera;
 
             // El cupo se reserva al EMPEZAR, por el mismo motivo que en el cobro: si se
             // reservara al confirmar, dos personas podrian inscribirse por el cupo 50.
@@ -395,6 +431,8 @@ public sealed class ServicioCobros : IServicioCobros
             await _trabajo.GuardarAsync(t);
             return nuevo;
         }, ct);
+
+        if (ReferenceEquals(intento, ClaveAjenaEnCarrera)) return ClaveAjena();
 
         // Null solo sale de la reserva fallida: alguien se llevo el ultimo cupo entre la
         // comprobacion y la reserva.
@@ -448,6 +486,47 @@ public sealed class ServicioCobros : IServicioCobros
 
         return Resultado.Ok(ADto(intento, plan.Codigo, nueva));
     }
+
+    /// <summary>
+    /// CC-04: la clave existe, pero es de OTRO perfil. Conflicto neutro: no dice de quien es
+    /// ni devuelve su intento (antes salia entero, con su UrlParaPagar), y se responde antes
+    /// de llegar al indice unico <c>ux_intento_pago_clave</c>, que lo convertiria en un 500.
+    /// </summary>
+    /// <summary>
+    /// CC-04. Las claves de <c>intentos_de_pago</c> las ponen DOS autores en la misma columna:
+    /// el cliente (API-68, API-76) y el servidor (el cobro automatico,
+    /// <see cref="ClaveDeCobroAutomatico"/>). El espacio del servidor se reserva: si un
+    /// cliente pudiera crear un intento con la clave <c>cobro-automatico:{suscripcion}:{periodo}</c>
+    /// de OTRA persona, el indice unico <c>ux_intento_pago_clave</c> y la comprobacion de
+    /// «ya existe» harian que el cobro automatico de esa persona se saltara (auditoria del
+    /// 21-nov-2026). Filtrar por dueño en el cobro automatico no basta: el indice unico es
+    /// global y el INSERT chocaria igual. Por eso se cierra la puerta de entrada.
+    ///
+    /// <para>
+    /// Sin distinguir mayusculas: una variante en mayusculas no choca con el indice, pero
+    /// tampoco es una clave que un cliente legitimo genere, y rechazarla no cuesta nada.
+    /// </para>
+    /// </summary>
+    public static bool EsClaveReservada(string clave) =>
+        PrefijosReservados.Any(p => clave.StartsWith(p, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Los prefijos que solo escribe el servidor en <c>intentos_de_pago</c>.</summary>
+    private static readonly string[] PrefijosReservados = [PrefijoCobroAutomatico];
+
+    private static Resultado<IntentoDePagoDto> ClaveReservada() => Resultado.Falla<IntentoDePagoDto>(
+        Fallas.Validacion,
+        "La clave de idempotencia usa un prefijo reservado del servidor. Genera otra (por ejemplo, un UUID).");
+
+    private static Resultado<IntentoDePagoDto> ClaveAjena() => Resultado.Falla<IntentoDePagoDto>(
+        Fallas.Conflicto,
+        "No pudimos procesar esta solicitud de pago. Vuelve a cargar la página e inténtalo de nuevo.");
+
+    /// <summary>
+    /// La marca con que la transaccion avisa «la clave aparecio, y es ajena». No es un intento:
+    /// nunca se guarda, solo se compara por referencia. Hace falta porque el null de esa
+    /// transaccion ya significa otra cosa (la reserva del cupo fallo).
+    /// </summary>
+    private static readonly IntentoDePago ClaveAjenaEnCarrera = new();
 
     private static IntentoDePagoDto ADto(IntentoDePago i, string codigoPlan, bool nueva) =>
         new(i.Id, codigoPlan, i.MontoBruto, i.MontoDescuento, i.Monto, i.CodigoCupon,
@@ -578,6 +657,18 @@ public sealed class ServicioCobros : IServicioCobros
         var ahora = _reloj.Ahora;
         foreach (var s in suscripciones)
         {
+            // La persona cancelo la renovacion (API-78), o su cuenta ya no existe o esta
+            // suspendida: no se cobra (22-nov-2026). Hasta entonces el filtro era solo estado y
+            // fecha, y a quien eliminaba su cuenta se le seguia cobrando con la tarjeta guardada.
+            if (s.RenovacionCancelada) continue;
+            if (await _repo.EstadoDeCuentaDePerfilAsync(s.PerfilPrestadorId, ct)
+                is null or EstadoCuenta.Eliminada or EstadoCuenta.Suspendida)
+            {
+                _auditor.Registrar(Auditar.Entrada(
+                    "cobro_omitido_cuenta_no_activa", "suscripciones", s.Id, _reloj.Ahora));
+                continue;
+            }
+
             var plan = await _repo.PlanPorIdAsync(s.PlanId, ct);
             if (plan is null) continue;
 
@@ -649,7 +740,7 @@ public sealed class ServicioCobros : IServicioCobros
             {
                 // Entre la lectura de arriba y este INSERT cabe otra corrida, igual que en
                 // IniciarAsync.
-                if (await _repo.IntentoPorClaveAsync(clave, t) is not null)
+                if (await _repo.ClaveDeIntentoUsadaAsync(clave, t))
                     return (IntentoDePago?)null;
 
                 var nuevo = new IntentoDePago
@@ -732,7 +823,9 @@ public sealed class ServicioCobros : IServicioCobros
             // El mismo camino que el aviso de la pasarela. El rechazo deja el intento
             // Fallido y la suscripcion EXACTAMENTE como estaba (RN-S7-10).
             var resuelto = await ResolverAsync(cobro.Valor, ct);
-            if (!resuelto.Exito || resuelto.Valor is null)
+            // Pendiente (22-nov-2026) cuenta como «para revisar»: el intento sigue Pendiente, no
+            // se reintenta (ES-1) y no se avisa de un rechazo que no hubo.
+            if (!resuelto.Exito || resuelto.Valor is null || resuelto.Valor.Pendiente)
                 contadores.ParaRevisar++;
             else if (resuelto.Valor.Aprobado)
                 contadores.Cobradas++;
@@ -806,10 +899,38 @@ public sealed class ServicioCobros : IServicioCobros
             }
 
             if (intento.Estado != EstadoIntentoPago.Pendiente)
+            {
+                // Un «pagado» sobre un intento ya cerrado como fallido no deberia pasar desde que
+                // el pendiente no cierra, pero si pasa es plata cobrada sin mes: que quede a la
+                // vista para revisarla a mano, no solo en el registro de la pasarela.
+                if (r.Aprobado)
+                {
+                    _auditor.Registrar(Auditar.Entrada(
+                        "cobro_pagado_sobre_intento_cerrado", "intentos_de_pago", intento.Id,
+                        _reloj.Ahora, contexto: new { estado = intento.Estado.ToString(), monto = r.MontoConfirmado }));
+                    await _trabajo.GuardarAsync(t);
+                }
                 return Resultado.Falla<ConfirmacionDto>(
                     Fallas.Conflicto,
                     $"Ese cobro ya se cerró como {intento.Estado.ToString().ToLowerInvariant()}. "
                     + "Empieza un pago nuevo.");
+            }
+
+            // La pasarela todavia no sabe (22-nov-2026): el intento NO se cierra. Antes esto caia
+            // en el rechazo de abajo, el intento quedaba Fallido y el aviso de «pagada» que
+            // llegaba despues encontraba «ya se cerró como fallido»: la persona pagaba y no
+            // recibia su mes.
+            if (r.Pendiente)
+            {
+                _auditor.Registrar(Auditar.Entrada(
+                    "cobro_pendiente", "intentos_de_pago", intento.Id, _reloj.Ahora,
+                    contexto: new { referencia = r.ReferenciaPasarela }));
+                await _trabajo.GuardarAsync(t);
+                return Resultado.Ok(new ConfirmacionDto(
+                    intento.Id, Aprobado: false, intento.Estado.ToString(), null,
+                    "Tu pago se está procesando. Cuando la pasarela lo confirme, tu suscripción se actualiza sola.",
+                    Nueva: false, Pendiente: true));
+            }
 
             if (!r.Aprobado)
             {
@@ -919,15 +1040,52 @@ public sealed class ServicioCobros : IServicioCobros
             // (desde hoy si ya vencio).
             var esCobroAutomatico = intento.ClaveIdempotencia?.StartsWith(PrefijoCobroAutomatico) == true;
 
+            // El plan que se PAGO es el que queda (22-nov-2026). Antes la suscripcion se quedaba
+            // con el plan que tenia: quien pagaba Profesional seguia en «prueba» y no recibia lo
+            // que pago, y el cobro automatico (que lee el plan de la suscripcion) no le cobraba.
+            //
+            // El plan fundador solo con cupo: el cupo se reservo al empezar a pagar, y aqui se
+            // deja definitivo. Si la reserva vencio y se la llevo otro, se prueba con un cupo
+            // libre (igual que la inscripcion); sin ninguno, la persona YA pago y el mes se
+            // acredita igual, pero en el plan mensual (Esencial): nunca un pago sin acreditar, y
+            // nunca un fundador numero 51. Queda auditado para revisarlo a mano.
+            var plan = await _repo.PlanPorIdAsync(intento.PlanId, t);
+            var planQueQueda = plan?.Id;
+            if (plan?.Codigo == ServicioSuscripciones.PlanFundador)
+            {
+                var cupo = await _suscripciones.ConfirmarCupoFundadorAsync(intento.PerfilPrestadorId, t);
+                if (!cupo.Exito
+                    && (await _suscripciones.ReservarCupoFundadorAsync(intento.PerfilPrestadorId, ct: t)).Exito)
+                    cupo = await _suscripciones.ConfirmarCupoFundadorAsync(intento.PerfilPrestadorId, t);
+                if (!cupo.Exito)
+                {
+                    planQueQueda = (await _repo.PlanPorCodigoAsync(ServicioSuscripciones.PlanMensual, t))?.Id;
+                    _auditor.Registrar(Auditar.Entrada(
+                        "cobro_fundador_sin_cupo", "intentos_de_pago", intento.Id, _reloj.Ahora,
+                        contexto: new { monto = intento.Monto, planQueQueda }));
+                }
+            }
+
             var pagado = await _suscripciones.RegistrarPeriodoPagadoAsync(
                 intento.SuscripcionId, intento.Meses, intento.Monto,
-                intento.ReferenciaPasarela, intento.Id, esCobroAutomatico, t);
+                intento.ReferenciaPasarela, intento.Id, esCobroAutomatico, planQueQueda, t);
             if (!pagado.Exito)
                 return Resultado.Falla<ConfirmacionDto>(pagado.Codigo!, pagado.Mensaje!);
 
             // El canje nace con el pago y no antes: si naciera al crear el intento, una
             // tarjeta rechazada le quemaria el cupon a quien no llego a pagar nada.
-            if (intento.CodigoCupon is { } codigoCupon)
+            //
+            // Y si YA hay canje (dos intentos con el mismo cupon, pagados los dos), el mes se
+            // acredita igual —la persona pago ese monto— y no se crea un segundo canje: hasta el
+            // 22-nov-2026 el INSERT chocaba con ux_canje_cupon_perfil, la transaccion entera se
+            // deshacia con un 500 y el pago quedaba sin acreditar.
+            var yaCanjeado = intento.CodigoCupon is not null
+                             && await _repo.YaCanjeoCuponAsync(intento.PerfilPrestadorId, t);
+            if (yaCanjeado)
+                _auditor.Registrar(Auditar.Entrada(
+                    "cupon_ya_canjeado_pago_acreditado", "intentos_de_pago", intento.Id, _reloj.Ahora,
+                    contexto: new { cupon = intento.CodigoCupon, descuento = intento.MontoDescuento }));
+            else if (intento.CodigoCupon is { } codigoCupon)
                 _repo.AgregarCanje(new CanjeDeCupon
                 {
                     CodigoCupon = codigoCupon,
@@ -936,11 +1094,6 @@ public sealed class ServicioCobros : IServicioCobros
                     MontoDescontado = intento.MontoDescuento,
                     CanjeadoEn = _reloj.Ahora,
                 });
-
-            // Pagado el cupo fundador, deja de ser una reserva con plazo y es suyo.
-            var plan = await _repo.PlanPorIdAsync(intento.PlanId, t);
-            if (plan?.Codigo == ServicioSuscripciones.PlanFundador)
-                await _suscripciones.ConfirmarCupoFundadorAsync(intento.PerfilPrestadorId, t);
 
             _auditor.Registrar(Auditar.Entrada(
                 "cobro_confirmado", "intentos_de_pago", intento.Id, _reloj.Ahora,

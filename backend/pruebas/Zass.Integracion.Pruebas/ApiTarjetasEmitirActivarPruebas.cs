@@ -19,7 +19,7 @@ using Zass.Dominio.Tarjetas;
 namespace Zass.Integracion.Pruebas;
 
 /// <summary>
-/// API-59 POST /api/interno/tarjetas (Emitir) y API-55 POST /t/{segmento}/activar (Activar).
+/// API-59 POST /api/interno/tarjetas (Emitir) y API-55 POST /api/mi/tarjetas/{segmento}/activar (Activar).
 /// Pruebas de integración contra zass_pruebas.
 /// </summary>
 public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
@@ -174,7 +174,7 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
 
     private static HttpRequestMessage CrearActivarRequest(HttpClient client, string segmento, string codigo, string csrf)
     {
-        var req = new HttpRequestMessage(HttpMethod.Post, $"/t/{segmento}/activar");
+        var req = new HttpRequestMessage(HttpMethod.Post, $"/api/mi/tarjetas/{segmento}/activar");
         req.Content = JsonContent.Create(new { codigo });
         req.Headers.Add("X-CSRF-Token", csrf);
         return req;
@@ -470,8 +470,73 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
         var (segmento, _) = await EmitirTarjetaAsync(_admin);
 
         // Usar formato valido pero codigo inexistente
-        var r = await _cliente.PostAsJsonAsync($"/t/{segmento}/activar", new { codigo = "AAAA-AAAA-AAAA" });
+        var r = await _cliente.PostAsJsonAsync($"/api/mi/tarjetas/{segmento}/activar", new { codigo = "AAAA-AAAA-AAAA" });
         Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode);
+    }
+
+    /// <summary>
+    /// API-55 es un POST con sesion: sin el token CSRF se rechaza ANTES de mirar la tarjeta, como
+    /// todos los de /api/mi. Antes no llevaba el filtro y una pagina ajena podia activar una
+    /// tarjeta en nombre de quien tuviera la sesion abierta. La tarjeta sigue Emitida.
+    /// </summary>
+    [Fact]
+    public async Task Activar_con_sesion_pero_sin_token_csrf_se_rechaza_y_no_activa_nada()
+    {
+        var (segmento, codigo) = await EmitirTarjetaAsync(_admin);
+
+        var sinToken = new HttpRequestMessage(HttpMethod.Post, $"/api/mi/tarjetas/{segmento}/activar")
+        {
+            Content = JsonContent.Create(new { codigo }),
+        };
+        var r = await _prestador.SendAsync(sinToken);
+
+        Assert.Equal(HttpStatusCode.Forbidden, r.StatusCode);
+        using var ctx = ContextoDePrueba.Crear();
+        var tarjeta = await ctx.Tarjetas.SingleAsync(t => t.UrlEstable == segmento);
+        Assert.Equal(EstadoTarjeta.Emitida, tarjeta.Estado);
+        Assert.Null(tarjeta.PerfilPrestadorId);
+    }
+
+    /// <summary>
+    /// Un segmento que no es de ninguna tarjeta y uno de una tarjeta ya activada responden
+    /// EXACTAMENTE igual (estado y cuerpo, salvo el idPeticion). Antes el primero era un 404
+    /// «Tarjeta no válida» y el segundo un 422 «El código no es válido.»: probar segmentos
+    /// decia cuales son tarjetas reales.
+    /// </summary>
+    [Fact]
+    public async Task Tarjeta_inexistente_y_tarjeta_ya_activada_responden_identico()
+    {
+        var (activada, codigo) = await EmitirTarjetaAsync(_admin);
+        var csrf = await ObtenerCsrfAsync(_prestador);
+        var activar = await _prestador.SendAsync(CrearActivarRequest(_prestador, activada, codigo, csrf));
+        Assert.Equal(HttpStatusCode.OK, activar.StatusCode);
+
+        var inexistente = await SegmentoQueNoExisteAsync();
+
+        var csrfOtro = await ObtenerCsrfAsync(_otroHttp);
+        var rActivada = await _otroHttp.SendAsync(
+            CrearActivarRequest(_otroHttp, activada, "AAAA-AAAA-AAAA", csrfOtro));
+        var rInexistente = await _otroHttp.SendAsync(
+            CrearActivarRequest(_otroHttp, inexistente, "AAAA-AAAA-AAAA", csrfOtro));
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, rActivada.StatusCode);
+        Assert.Equal(rActivada.StatusCode, rInexistente.StatusCode);
+        Assert.Equal(await CuerpoComparable.De(rActivada), await CuerpoComparable.De(rInexistente));
+    }
+
+    /// <summary>Un segmento con la forma de una tarjeta (4-4 del alfabeto sin I, L, O, 0, 1) que no esta en la base.</summary>
+    private static async Task<string> SegmentoQueNoExisteAsync()
+    {
+        const string alfabeto = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+        using var ctx = ContextoDePrueba.Crear();
+        while (true)
+        {
+            var c = Enumerable.Range(0, 8)
+                .Select(_ => alfabeto[System.Security.Cryptography.RandomNumberGenerator.GetInt32(alfabeto.Length)])
+                .ToArray();
+            var segmento = $"{new string(c, 0, 4)}-{new string(c, 4, 4)}";
+            if (!await ctx.Tarjetas.AnyAsync(t => t.UrlEstable == segmento)) return segmento;
+        }
     }
 
     [Fact]
@@ -765,7 +830,7 @@ public class ApiTarjetasBloqueoIntentosPruebas : IAsyncLifetime
 
     private static HttpRequestMessage CrearActivarRequest(string segmento, string codigo, string csrf)
     {
-        var req = new HttpRequestMessage(HttpMethod.Post, $"/t/{segmento}/activar");
+        var req = new HttpRequestMessage(HttpMethod.Post, $"/api/mi/tarjetas/{segmento}/activar");
         req.Content = JsonContent.Create(new { codigo });
         req.Headers.Add("X-CSRF-Token", csrf);
         return req;

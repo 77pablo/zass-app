@@ -84,6 +84,30 @@ public sealed class ProcesadorDeImagenesImageSharp : IProcesadorDeImagenes
         return Resultado.Ok(salida.ToArray());
     }
 
+    public async Task<Resultado<byte[]>> PrepararFotoTrabajoAsync(
+        Stream imagen, int ladoMaximo, CancellationToken ct = default)
+    {
+        var cargada = await CargarAsync(imagen, ct);
+        if (!cargada.Exito) return Resultado.Falla<byte[]>(cargada.Codigo!, cargada.Mensaje!);
+
+        using var img = cargada.Valor!;
+
+        // Redimensiona manteniendo la proporcion, con lado mayor <= ladoMaximo
+        // NO recorta en cuadrado (la foto de trabajo no se ve en circulo)
+        img.Mutate(x => x
+            .AutoOrient()
+            .Resize(new ResizeOptions
+            {
+                Mode = ResizeMode.Max,
+                Size = new Size(ladoMaximo, ladoMaximo)
+            }));
+        QuitarMetadatos(img);
+
+        using var salida = new MemoryStream();
+        await img.SaveAsWebpAsync(salida, CodificadorDeFoto, ct);
+        return Resultado.Ok(salida.ToArray());
+    }
+
     private static async Task<Resultado<Image>> CargarAsync(Stream imagen, CancellationToken ct)
     {
         try
