@@ -23,6 +23,12 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
     /// <summary>El plan de siempre, al que puede pasarse quien no alcanzo cupo fundador.</summary>
     public const string PlanMensual = "mensual";
 
+    /// <summary>Plan profesional: estadisticas, fotos de trabajos, verificacion prioritaria.</summary>
+    public const string PlanProfesional = "profesional";
+
+    /// <summary>Plan equipo: para estudios y talleres, hasta 5 profesionales. Inactivo por ahora.</summary>
+    public const string PlanEquipo = "equipo";
+
     /// <summary>
     /// Con cuanta antelacion se avisa. Dos momentos, como los recordatorios de cita
     /// (RN-S4-07): uno con tiempo para decidir y otro el dia antes, para quien lo dejo pasar.
@@ -97,6 +103,9 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
                 EnPrueba: false, VigenteHasta: null, DiasRestantes: 0,
                 RenovacionAutomatica: false));
 
+        var esFundador = s.Plan?.Codigo == PlanFundador;
+        var tarjeta = !string.IsNullOrWhiteSpace(s.ReferenciaPasarela);
+
         return Resultado.Ok(new SuscripcionDto(
             Plan: s.Plan?.Nombre ?? "desconocido",
             Estado: s.Estado.ToString(),
@@ -104,9 +113,29 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
             EnPrueba: s.EnPrueba(ahora),
             VigenteHasta: s.VigenteHasta,
             DiasRestantes: s.EstaVigente(ahora) ? s.DiasRestantes(ahora) : 0,
-            RenovacionAutomatica: s.RenovacionAutomatica,
-            EsFundador: s.Plan?.Codigo == PlanFundador,
-            TarjetaInscrita: !string.IsNullOrWhiteSpace(s.ReferenciaPasarela)));
+            // Lo que de verdad va a pasar, y no la columna: renovacion_automatica nace en falso
+            // con la prueba y nada la ponia en verdadero (ver Suscripcion.RenovacionCancelada).
+            RenovacionAutomatica: tarjeta && !s.RenovacionCancelada && s.EstaVigente(ahora),
+            EsFundador: esFundador,
+            TarjetaInscrita: tarjeta,
+            DiasDeGracia: esFundador && tarjeta && s.EstaVigente(ahora)
+                && await EnGraciaAsync(s, ct)
+                ? Math.Max(1, s.DiasRestantes(ahora))
+                : null,
+            RenovacionCancelada: s.RenovacionCancelada));
+    }
+
+    /// <summary>
+    /// ES-1. En gracia = el cobro automatico de ESTE periodo se intento, ninguno de sus
+    /// intentos esta pagado ni en curso, y el ultimo fue rechazado. Se deduce de los intentos
+    /// que ya existen: no hace falta una columna que pueda desincronizarse de ellos.
+    /// </summary>
+    private async Task<bool> EnGraciaAsync(Suscripcion s, CancellationToken ct)
+    {
+        var intentos = await _repo.IntentosPorPrefijoDeClaveAsync(
+            ServicioCobros.ClaveDeCobroAutomatico(s.Id, s.VigenteHasta), ct);
+        return intentos.Count > 0
+            && intentos.All(i => i.Estado == EstadoIntentoPago.Fallido);
     }
 
     public async Task<IReadOnlyList<PlanDto>> PlanesActivosAsync(CancellationToken ct = default)
@@ -115,7 +144,8 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
         return planes
             .Select(p => new PlanDto(
                 p.Id, p.Codigo, p.Nombre, p.Descripcion, p.PrecioMensual,
-                p.DiasPrueba, p.MaxServicios, p.MaxTarjetas, p.PermiteCredenciales))
+                p.DiasPrueba, p.MaxServicios, p.MaxTarjetas, p.PermiteCredenciales,
+                p.MaxFotosTrabajos, p.PermiteEstadisticas, p.VerificacionPrioritaria))
             .ToList();
     }
 
@@ -135,6 +165,14 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
         return plan?.MaxTarjetas ?? 0;
     }
 
+    public async Task<int> LimiteDeFotosDeTrabajoAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        var vigente = await _repo.VigenteDePrestadorAsync(perfilPrestadorId, _reloj.Ahora, ct);
+        var plan = vigente?.Plan ?? await _repo.PlanPorCodigoAsync(PlanInicial, ct);
+        return plan?.MaxFotosTrabajos ?? 0;
+    }
+
     // ------------------------------------------------------------- Ciclo de vida
 
     public async Task<Resultado> IniciarPruebaAsync(
@@ -149,6 +187,14 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
         // pero llegar hasta el con un 23505 convertiria un doble clic en un error 500.
         var yaTiene = await _repo.VigenteDePrestadorAsync(perfilPrestadorId, ahora, ct);
         if (yaTiene is not null) return Resultado.Ok();
+
+        // La prueba gratis es UNA por perfil (22-nov-2026). Hasta entonces esto solo miraba la
+        // vigente, y como API-22 acepta publicar un perfil ya publicado, quien dejaba vencer su
+        // suscripcion volvia a publicar y tenia otros 30 dias gratis, cada mes. Con cualquier
+        // suscripcion previa no se crea otra: el perfil queda publicado pero fuera de la
+        // busqueda (RN-S3-09) y la persona tiene que pagar en /planes.
+        if (await _repo.UltimaDePrestadorAsync(perfilPrestadorId, ct) is not null)
+            return Resultado.Ok();
 
         var plan = await _repo.PlanPorCodigoAsync(PlanInicial, ct);
         if (plan is null)
@@ -177,7 +223,8 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
 
     public async Task<Resultado<Guid>> RegistrarPeriodoPagadoAsync(
         Guid suscripcionId, int meses = 1, int montoPagado = 0, string? referencia = null,
-        Guid? intentoDePagoId = null, bool esCobroAutomatico = false, CancellationToken ct = default)
+        Guid? intentoDePagoId = null, bool esCobroAutomatico = false, short? planPagado = null,
+        CancellationToken ct = default)
     {
         var ahora = _reloj.Ahora;
         var s = await _repo.PorIdAsync(suscripcionId, ct);
@@ -194,7 +241,12 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
         // VigenteHasta de la suscripcion TAL COMO ESTA (VencerExpiradasAsync solo cambia
         // Estado, no VigenteHasta). Si es pago manual, la logica de siempre:
         // desde hoy si ya vencio.
-        s.RegistrarPeriodoPagado(ahora, meses, esCobroAutomatico);
+        var planAnterior = s.PlanId;
+        s.RegistrarPeriodoPagado(ahora, meses, esCobroAutomatico, planPagado);
+        if (s.PlanId != planAnterior)
+            _auditor.Registrar(Auditar.Entrada(
+                "suscripcion_cambio_de_plan", "suscripciones", s.Id, ahora,
+                contexto: new { desde = planAnterior, hacia = s.PlanId }));
 
         // PeriodoDesde para el registro de pago: si es cobro automatico, el periodo
         // empieza en el VigenteHasta original; si es manual, en la base que se usara
@@ -244,6 +296,52 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
         return Resultado.Ok();
     }
 
+    public async Task<Resultado<SuscripcionDto>> CancelarRenovacionAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        var ahora = _reloj.Ahora;
+        var s = await _repo.VigenteDePrestadorAsync(perfilPrestadorId, ahora, ct);
+        if (s is null)
+            return Resultado.Falla<SuscripcionDto>(
+                Fallas.Conflicto, "No tienes una suscripción vigente que cancelar.");
+
+        if (!s.RenovacionCancelada)
+        {
+            s.CancelarRenovacion(ahora);
+            _auditor.Registrar(Auditar.Entrada(
+                "suscripcion_renovacion_cancelada", "suscripciones", s.Id, ahora,
+                contexto: new { vigenteHasta = s.VigenteHasta }));
+            await _trabajo.GuardarAsync(ct);
+        }
+
+        return await DePrestadorAsync(perfilPrestadorId, ct);
+    }
+
+    public async Task<Resultado> TerminarPorCuentaEliminadaAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        var ahora = _reloj.Ahora;
+        var s = await _repo.UltimaDePrestadorAsync(perfilPrestadorId, ct);
+        if (s is not null)
+        {
+            if (s.Estado is EstadoSuscripcion.Prueba or EstadoSuscripcion.Activa)
+                s.Estado = EstadoSuscripcion.Cancelada;
+            s.CancelarRenovacion(ahora);
+            // Sin la referencia del medio inscrito, el cobro automatico no tiene contra que
+            // cobrar aunque algun filtro fallara. (La tarjeta sigue guardada en Flow: borrar
+            // el cliente alli es una llamada a la pasarela que este cambio NO hace.)
+            s.ReferenciaPasarela = null;
+            _auditor.Registrar(Auditar.Entrada(
+                "suscripcion_cancelada_por_eliminacion", "suscripciones", s.Id, ahora));
+        }
+
+        if (await _repo.LiberarCupoFundadorAsync(perfilPrestadorId, ct))
+            _auditor.Registrar(Auditar.Entrada(
+                "cupo_fundador_liberado_por_eliminacion", "perfiles_prestador", perfilPrestadorId, ahora));
+
+        return Resultado.Ok();
+    }
+
     public async Task<int> VencerExpiradasAsync(CancellationToken ct = default)
     {
         var ahora = _reloj.Ahora;
@@ -252,8 +350,6 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
 
         var duenos = await _repo.UsuariosDePerfilesAsync(
             expiradas.Select(s => s.PerfilPrestadorId).Distinct().ToList(), ct);
-        var fundador = await _repo.PlanPorCodigoAsync(PlanFundador, ct);
-
         foreach (var s in expiradas)
         {
             s.Vencer();
@@ -261,14 +357,23 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
                 "suscripcion_vencida", "suscripciones", s.Id, ahora,
                 contexto: new { vencioEn = s.VigenteHasta }));
 
-            // Decision de Pablo (20-nov-2026): el cupo se toma sin tarjeta y la tarjeta se pide
-            // al terminar el mes gratis. Si termino sin tarjeta, el cupo vuelve a quedar libre
-            // para otra persona. Con tarjeta no se toca: el cobro tiene sus propias reglas.
-            if (fundador is not null && s.PlanId == fundador.Id
-                && string.IsNullOrWhiteSpace(s.ReferenciaPasarela)
-                && await _repo.LiberarCupoFundadorAsync(s.PerfilPrestadorId, ct))
+            // Decisiones de Pablo (20-nov-2026): el cupo se toma sin tarjeta y la tarjeta se
+            // pide al terminar el mes gratis; y si la tarjeta falla, hay 7 dias de gracia (ES-1).
+            // Llegar aqui es haber vencido sin pagar, con o sin tarjeta: en los dos casos el
+            // cupo vuelve a quedar libre para otra persona. A quien SI pago no le llega este
+            // camino, porque el cobro le movio VigenteHasta antes (corre primero en la misma
+            // tarea del planificador).
+            //
+            // Sin mirar el plan (22-nov-2026): desde que pagar cambia el plan, un fundador puede
+            // haberse pasado a Profesional conservando su cupo para volver al precio congelado.
+            // Ese cupo es suyo MIENTRAS mantenga la suscripcion; al vencer sin pagar se libera
+            // igual que el de quien sigue en el plan fundador.
+            if (await _repo.LiberarCupoFundadorAsync(s.PerfilPrestadorId, ct))
                 _auditor.Registrar(Auditar.Entrada(
-                    "cupo_fundador_liberado_sin_tarjeta", "perfiles_prestador", s.PerfilPrestadorId, ahora));
+                    string.IsNullOrWhiteSpace(s.ReferenciaPasarela)
+                        ? "cupo_fundador_liberado_sin_tarjeta"
+                        : "cupo_fundador_liberado_sin_pago",
+                    "perfiles_prestador", s.PerfilPrestadorId, ahora));
 
             // Quien pierde la visibilidad tiene derecho a saberlo. Si el perfil ya no tiene
             // dueno (cuenta eliminada) no hay a quien avisarle, y vencer sigue siendo correcto.
@@ -286,6 +391,40 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
 
         await _trabajo.GuardarAsync(ct);
         return expiradas.Count;
+    }
+
+    public async Task AvisarCobroRechazadoAsync(
+        Guid perfilPrestadorId, Guid suscripcionId, DateTime vigenteHasta,
+        CancellationToken ct = default)
+    {
+        var clave = $"CobroRechazado:{suscripcionId:D}:{vigenteHasta:yyyy-MM-dd}";
+
+        // El reintento del dia siguiente tambien puede ser rechazado: el que encuentra la
+        // clave no encola nada. Si dos procesos llegaran a la vez, el unico de TBL-27 (R-18)
+        // es la garantia; esto evita llegar hasta el.
+        if (await _avisos.ExisteAsync(clave, ct)) return;
+
+        var duenos = await _repo.UsuariosDePerfilesAsync(new[] { perfilPrestadorId }, ct);
+        if (!duenos.TryGetValue(perfilPrestadorId, out var usuarioId)) return;
+
+        var ahora = _reloj.Ahora;
+        var s = await _repo.PorIdAsync(suscripcionId, ct);
+        if (s is null) return;
+        var dias = Math.Max(1, s.DiasRestantes(ahora));
+        var fundador = (await _repo.PlanPorIdAsync(s.PlanId, ct))?.Codigo == PlanFundador;
+
+        _avisos.Encolar(new Notificacion
+        {
+            DestinatarioId = usuarioId,
+            Tipo = TipoNotificacion.CobroRechazado,
+            ClaveIdempotencia = clave,
+            Asunto = "No pudimos cobrar tu suscripción a ZASS!",
+            Cuerpo = fundador
+                ? CargaDeAviso.ConCampos(("dias", dias.ToString()), ("fundador", "si"))
+                : CargaDeAviso.ConCampos(("dias", dias.ToString())),
+            ProgramadaPara = ahora,
+        });
+        await _trabajo.GuardarAsync(ct);
     }
 
     /// <summary>
@@ -440,6 +579,18 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
                 Fallas.Conflicto,
                 "Tu mes gratis de fundador ya terminó sin una tarjeta inscrita y el cupo se liberó. "
                 + "Puedes suscribirte al plan mensual.");
+
+        // El mes gratis de fundador es para quien viene de la prueba y nunca cambio de plan
+        // (22-nov-2026). Desde que pagar cambia el plan, mirar solo «PlanId == fundador» dejaba
+        // encadenar: fundador sin tarjeta, pierde el cupo, paga un mes de Esencial (el plan pasa
+        // a mensual), lo deja vencer y vuelve a tomar el cupo con OTRO mes gratis. Quien ya pago
+        // otro plan puede pagar el plan fundador directamente (API-68), sin mes gratis.
+        var inicial = await _repo.PlanPorCodigoAsync(PlanInicial, ct);
+        if (inicial is null || s.PlanId != inicial.Id)
+            return Resultado.Falla<CupoTomadoDto>(
+                Fallas.Conflicto,
+                "El mes gratis de fundador es para quien empieza en ZASS!. Mientras queden cupos, "
+                + "puedes pagar el plan fundador directamente.");
 
         var tomado = await _trabajo.EnTransaccionAsync(async t =>
         {

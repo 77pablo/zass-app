@@ -17,7 +17,29 @@ namespace Zass.Aplicacion.Identidad;
 public sealed record RegistrarCuentaCmd(
     string Correo, string Contrasena, string Nombre, string Rol,
     string? Tipo = null, string? Apellido = null, string? Rut = null, string? Telefono = null,
-    string? RazonSocial = null, bool MayorDeEdad = false);
+    string? RazonSocial = null, bool MayorDeEdad = false) : IDatosDeCuenta;
+
+/// <summary>
+/// Los datos de la cuenta que pide el registro completo (20-nov-2026). Los comparten el registro
+/// (API-08) y ES-2, para que los valide UN solo validador (<see cref="ValidadorDatosDeCuenta"/>).
+/// </summary>
+public interface IDatosDeCuenta
+{
+    string? Tipo { get; }
+    string? Apellido { get; }
+    string? Rut { get; }
+    string? Telefono { get; }
+    string? RazonSocial { get; }
+    bool MayorDeEdad { get; }
+}
+
+/// <summary>
+/// ES-2. Los mismos datos que el registro, para una cuenta creada antes del 20-nov-2026 que no
+/// los tiene. Se piden al entrar y no se puede seguir sin ellos.
+/// </summary>
+public sealed record CompletarDatosCuentaCmd(
+    string? Tipo = null, string? Apellido = null, string? Rut = null, string? Telefono = null,
+    string? RazonSocial = null, bool MayorDeEdad = false) : IDatosDeCuenta;
 
 public sealed record CuentaCreadaDto(Guid UsuarioId, string Rol);
 
@@ -35,6 +57,41 @@ public sealed class ServicioRegistro
 
     private static readonly TimeSpan VidaDelToken = TimeSpan.FromHours(24);
 
+    /// <summary>
+    /// ES-2: completar los datos de una cuenta antigua con un RUT que ya usa OTRA cuenta. Desde
+    /// el 21-nov-2026 el registro (API-08) no usa este texto sino <see cref="MensajeRutConCuenta"/>.
+    /// </summary>
+    public const string MensajeRutOcupado =
+        "Ya existe una cuenta con ese RUT. Si es tuya, entra con tu correo.";
+
+    /// <summary>
+    /// API-08 con un RUT que ya tiene cuenta (decision de Pablo, 21-nov-2026). Es SIEMPRE este
+    /// texto, haya salido o no el correo (la espera entre avisos no se nota por fuera), y no
+    /// dice nada de la cuenta original: ni su correo, ni su telefono, ni enmascarados.
+    /// </summary>
+    public const string MensajeRutConCuenta =
+        "Este RUT ya tiene una cuenta en ZASS!. Enviamos un mensaje al correo con que se creó esa " +
+        "cuenta, con un enlace para entrar y otro para crear una contraseña nueva.";
+
+    /// <summary>
+    /// API-08 con un RUT cuya cuenta todavia NO verifico su correo (auditoria 22-nov-2026). No se
+    /// escribe a ese correo: nadie demostro que sea de la dueña del RUT, y podria ser justamente el
+    /// de quien lo registro con un RUT ajeno. Se dice la verdad sin dar datos: la cuenta se borra
+    /// sola si nadie la confirma en 72 horas desde que se creo, y entonces el RUT queda libre.
+    /// </summary>
+    public const string MensajeRutSinConfirmar =
+        "Este RUT tiene un registro que todavía no se ha confirmado. Si no se confirma dentro de " +
+        "72 horas desde que se creó, se borra solo y podrás crear tu cuenta con este RUT. Si es tuyo, " +
+        "busca en tu correo el mensaje para confirmarlo.";
+
+    /// <summary>
+    /// Lo minimo entre dos avisos de «intentaron registrarse con tu RUT» a una misma cuenta. Como
+    /// API-71: el limite de tasa protege por IP, y el daño de este aviso no lo recibe quien llama
+    /// sino la dueña del correo. Una hora y no dos minutos porque el correo no lleva nada que
+    /// caduque (solo enlaces a «Entrar» y a «Recuperar contraseña»): el primero sigue sirviendo.
+    /// </summary>
+    public static readonly TimeSpan EsperaEntreAvisosDeRut = TimeSpan.FromHours(1);
+
     private readonly IRepositorioUsuarios _usuarios;
     private readonly IRepositorioPerfiles _perfiles;
     private readonly IUnidadDeTrabajo _unidad;
@@ -44,12 +101,20 @@ public sealed class ServicioRegistro
     private readonly INotificaciones _avisos;
     private readonly IAuditor _auditor;
     private readonly IContrasenasFiltradas _filtradas;
+    private readonly ServicioCuentasSinVerificar? _sinVerificar;
 
+    /// <param name="sinVerificar">
+    /// Opcional para no tocar las pruebas que no lo necesitan; en la aplicacion siempre esta
+    /// (AgregarZass). Sin el, una cuenta caducada que choca con el registro espera a la purga
+    /// del planificador en vez de liberarse en el acto.
+    /// </param>
     public ServicioRegistro(
         IRepositorioUsuarios usuarios, IRepositorioPerfiles perfiles, IUnidadDeTrabajo unidad,
         IHashContrasenas hash, IGeneradorSecretos secretos, IRelojSistema reloj,
-        INotificaciones avisos, IAuditor auditor, IContrasenasFiltradas filtradas)
+        INotificaciones avisos, IAuditor auditor, IContrasenasFiltradas filtradas,
+        ServicioCuentasSinVerificar? sinVerificar = null)
     {
+        _sinVerificar = sinVerificar;
         _usuarios = usuarios;
         _perfiles = perfiles;
         _unidad = unidad;
@@ -81,16 +146,33 @@ public sealed class ServicioRegistro
 
         // RN-S1-01. Esta comprobacion es por cortesia: la que de verdad manda es el indice
         // unico de la base, porque dos registros a la vez pasarian los dos por aqui.
-        if (await _usuarios.ExisteCorreoAsync(correo, ct))
+        //
+        // Auditoria 22-nov-2026: si el correo lo retiene una cuenta que nunca se verifico y ya
+        // paso su plazo de 72 h, se borra en el acto (si no tiene actividad) y el correo queda libre.
+        if (await _usuarios.ExisteCorreoAsync(correo, ct)
+            && !await LiberarSiCaducoAsync(await _usuarios.PorCorreoAsync(correo, ct), ip, ct))
             return Resultado.Falla<CuentaCreadaDto>(Fallas.Conflicto,
                 "Ya existe una cuenta con ese correo.");
 
         // Una persona o empresa, una cuenta. Igual que el correo: por cortesia, porque la que
         // manda es el indice unico parcial de la base.
         var rut = Rut.Normalizar(cmd.Rut);
-        if (rut is not null && await _usuarios.ExisteRutAsync(rut, ct))
-            return Resultado.Falla<CuentaCreadaDto>(Fallas.Conflicto,
-                "Ya existe una cuenta con ese RUT. Si es tuya, entra con tu correo.");
+        if (rut is not null && await _usuarios.PorRutAsync(rut, ct) is { } duena
+            && !await LiberarSiCaducoAsync(duena, ip, ct))
+        {
+            // Auditoria 22-nov-2026: el aviso de RN-S1-13 va SOLO a un correo verificado. Uno sin
+            // verificar puede ser el de quien registro un RUT ajeno: avisarle seria contarle al
+            // atacante que la dueña intento registrarse. Se responde con la verdad y sin datos.
+            if (!duena.CorreoVerificado)
+            {
+                _auditor.Registrar(Auditar.Entrada(
+                    "registro_con_rut_sin_confirmar", "usuario", duena.Id, _reloj.Ahora, ip: ip));
+                await _unidad.GuardarAsync(ct);
+                return Resultado.Falla<CuentaCreadaDto>(Fallas.RutConCuenta, MensajeRutSinConfirmar);
+            }
+            await AvisarALaDuenaDelRutAsync(duena, ip, ct);
+            return Resultado.Falla<CuentaCreadaDto>(Fallas.RutConCuenta, MensajeRutConCuenta);
+        }
         var tipo = string.Equals(cmd.Tipo, "empresa", StringComparison.OrdinalIgnoreCase)
             ? TipoCuenta.Empresa : TipoCuenta.Particular;
         var razonSocial = tipo == TipoCuenta.Empresa ? Recortar(cmd.RazonSocial) : null;
@@ -163,6 +245,58 @@ public sealed class ServicioRegistro
     }
 
     /// <summary>
+    /// Decision de Pablo (21-nov-2026): un RUT que ya tiene cuenta no crea otra, y en vez de un
+    /// «ya existe» sin salida se le escribe a la cuenta ORIGINAL, a su correo, con el enlace para
+    /// entrar y el de recuperar la contraseña. Quien escribio el formulario no recibe nada: si no
+    /// es la dueña, no se entera de ningun dato de ella.
+    ///
+    /// <para>
+    /// Espera por cuenta (<see cref="EsperaEntreAvisosDeRut"/>): dentro de ella no sale otro
+    /// correo y la respuesta es la misma. Lo que se mira es el ultimo aviso de este tipo en la
+    /// cola, asi que no hace falta columna nueva.
+    /// </para>
+    ///
+    /// <para>
+    /// Dos intentos a la vez: los dos ven el mismo «ultimo aviso» y arman la MISMA clave de
+    /// idempotencia (cuelga del aviso anterior, no del reloj), asi que el indice unico deja
+    /// entrar uno solo, y el otro recibe un falso, no un 500.
+    /// </para>
+    /// </summary>
+    private async Task AvisarALaDuenaDelRutAsync(Usuario duena, string? ip, CancellationToken ct)
+    {
+        // Una cuenta eliminada se anonimiza y suelta el RUT, asi que aqui no deberia llegar; si
+        // llegara, no se le escribe a un correo que ya no es de nadie.
+        if (duena.Estado is EstadoCuenta.Eliminada) return;
+
+        var ahora = _reloj.Ahora;
+        var ultimo = await _avisos.UltimoAsync(duena.Id, TipoNotificacion.RegistroConRutExistente, ct);
+        var recienAvisada = ultimo is not null && ahora - ultimo.ProgramadaPara < EsperaEntreAvisosDeRut;
+
+        var encolado = !recienAvisada && await _avisos.EncolarSiNoExisteAsync(new Notificacion
+        {
+            DestinatarioId = duena.Id,
+            Tipo = TipoNotificacion.RegistroConRutExistente,
+            Canal = CanalNotificacion.Correo,
+            ClaveIdempotencia = $"rut-con-cuenta:{duena.Id:N}:tras:{ultimo?.Id.ToString("N") ?? "ninguno"}",
+            Asunto = "Alguien intentó crear otra cuenta con tu RUT en ZASS!",
+            // Nada que guardar: la plantilla solo necesita el nombre de la dueña y la URL publica.
+            Cuerpo = "{}",
+            ProgramadaPara = ahora,
+        }, ct);
+
+        // Cada intento queda, haya salido correo o no: muchos seguidos contra la misma cuenta es
+        // justo lo que hay que poder ver. Quien lo intento no tiene cuenta: no hay actor, queda la IP.
+        _auditor.Registrar(Auditar.Entrada(
+            "registro_con_rut_existente", "usuario", duena.Id, ahora,
+            contexto: new { avisoEncolado = encolado }, ip: ip));
+        await _unidad.GuardarAsync(ct);
+    }
+
+    private async Task<bool> LiberarSiCaducoAsync(Usuario? cuenta, string? ip, CancellationToken ct) =>
+        cuenta is not null && _sinVerificar is not null
+        && await _sinVerificar.LiberarSiCaducoAsync(cuenta, ip, ct);
+
+    /// <summary>
     /// «Ofrecer mis servicios»: quien ya tiene cuenta (como buscador) activa tambien el rol de prestador, sin
     /// salir ni crear otra cuenta. Una persona busca hoy y ofrece manana; el registro no obliga a elegir una vez.
     /// Mismas reglas que al registrarse (RN-S1-08: solo roles publicos). Es idempotente: si ya es prestador no
@@ -199,6 +333,62 @@ public sealed class ServicioRegistro
         _auditor.Registrar(Auditar.Entrada(
             "activar_prestador", "usuario", usuario.Id, ahora,
             actorId: usuario.Id, contexto: new { rol = rol.Codigo }, ip: ip));
+
+        await _unidad.GuardarAsync(ct);
+        return Resultado.Ok();
+    }
+
+    /// <summary>
+    /// ES-2. Completa los datos que le faltan a una cuenta creada antes del registro completo
+    /// (20-nov-2026): tipo, apellido o razon social, RUT, telefono y la casilla de mayoria de
+    /// edad. Las validaciones de forma son las del registro (<see cref="ValidadorDatosDeCuenta"/>,
+    /// en la API); aqui van las que miran la base, con el mismo mensaje que el registro.
+    ///
+    /// <para>
+    /// Solo LLENA lo que falta: un RUT que la cuenta ya tiene no se cambia por aqui (cambiar el
+    /// RUT de una cuenta seria cambiar de quien es). Si ya estaba completa no hay nada que hacer,
+    /// y se dice: este no es un formulario para editar datos.
+    /// </para>
+    /// </summary>
+    public async Task<Resultado> CompletarDatosAsync(
+        Guid usuarioId, CompletarDatosCuentaCmd cmd, string? ip = null, CancellationToken ct = default)
+    {
+        var usuario = await _usuarios.PorIdAsync(usuarioId, ct);
+        if (usuario is null || usuario.Estado is EstadoCuenta.Suspendida or EstadoCuenta.Eliminada)
+            return Resultado.Falla(Fallas.NoAutorizado, "La sesión no es válida. Vuelve a iniciar sesión.");
+
+        if (DatosDeCuenta.Pendientes(usuario).Length == 0)
+            return Resultado.Falla(Fallas.Conflicto, "Tu cuenta ya tiene sus datos completos.");
+
+        var rut = Rut.Normalizar(cmd.Rut);
+        if (usuario.Rut is not null)
+        {
+            if (rut != usuario.Rut)
+                return Resultado.Falla(Fallas.Validacion,
+                    "El RUT de tu cuenta ya está registrado y no se puede cambiar aquí.");
+        }
+        else if (rut is not null && await _usuarios.ExisteRutAsync(rut, ct))
+        {
+            // Por cortesia, como en el registro: el indice unico parcial es la garantia.
+            return Resultado.Falla(Fallas.Conflicto, MensajeRutOcupado);
+        }
+
+        var ahora = _reloj.Ahora;
+        if (usuario.Rut is null)
+        {
+            var tipo = string.Equals(cmd.Tipo, "empresa", StringComparison.OrdinalIgnoreCase)
+                ? TipoCuenta.Empresa : TipoCuenta.Particular;
+            usuario.Tipo = tipo;
+            usuario.Rut = rut;
+            usuario.Apellido = tipo == TipoCuenta.Particular ? Recortar(cmd.Apellido) : null;
+            usuario.RazonSocial = tipo == TipoCuenta.Empresa ? Recortar(cmd.RazonSocial) : null;
+        }
+        usuario.Telefono ??= Recortar(cmd.Telefono);
+        if (cmd.MayorDeEdad) usuario.MayorDeEdadConfirmadoEn ??= ahora;
+        usuario.ActualizadoEn = ahora;
+
+        _auditor.Registrar(Auditar.Entrada(
+            "datos_de_cuenta_completados", "usuario", usuario.Id, ahora, actorId: usuario.Id, ip: ip));
 
         await _unidad.GuardarAsync(ct);
         return Resultado.Ok();

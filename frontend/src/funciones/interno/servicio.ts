@@ -196,3 +196,55 @@ export function duracion(horas: number): string {
   const dias = Math.round((horas / 24) * 10) / 10
   return `${dias.toLocaleString('es-CL')} días`
 }
+// ---------------------------------------------------------------- JQ-13 · tarjetas y auditoría
+
+/**
+ * API-59. El código viaja UNA vez: la API guarda solo su hash y no lo vuelve a dar. Quien lo
+ * recibe lo tiene solo en memoria (estado de React): nada de localStorage, sessionStorage ni URL.
+ */
+export interface TarjetaEmitida {
+  segmento: string
+  codigo: string
+  venceEn: string
+}
+
+export const emitirTarjeta = () => enviar<TarjetaEmitida>('/api/interno/tarjetas')
+
+/** Una fila de API-61, con lo que la API devuelve y nada más. */
+export interface FilaDeAuditoria {
+  id: number
+  accion: string
+  entidad: string
+  entidadId: string | null
+  actorId: string | null
+  /** jsonb, tal como lo guardó quien auditó. */
+  contexto: string | null
+  ipOrigen: string | null
+  ocurridoEn: string
+}
+
+export interface PaginaDeAuditoria {
+  items: FilaDeAuditoria[]
+  /** Cursor para la página siguiente (más antigua); nulo si no hay más. */
+  siguiente: string | null
+}
+
+/** API-61 exige EXACTAMENTE uno de los dos filtros. */
+export type FiltroDeAuditoria =
+  | { por: 'entidad'; entidad: string; entidadId: string }
+  | { por: 'actor'; actorId: string }
+
+export function consultarAuditoria(filtro: FiltroDeAuditoria, cursor: string | null = null): Promise<PaginaDeAuditoria> {
+  const q = new URLSearchParams()
+  if (filtro.por === 'entidad') {
+    q.set('entidad', filtro.entidad)
+    q.set('entidadId', filtro.entidadId)
+  } else {
+    q.set('actorId', filtro.actorId)
+  }
+  if (cursor) q.set('cursor', cursor)
+  return obtener<PaginaDeAuditoria>(`/api/interno/auditoria?${q.toString()}`)
+}
+
+/** Un Guid como lo acepta la ruta de la API (`Guid?`): se revisa antes de mandarlo. */
+export const esGuid = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s.trim())

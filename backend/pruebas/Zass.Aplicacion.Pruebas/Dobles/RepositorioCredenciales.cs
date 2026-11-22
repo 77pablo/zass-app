@@ -24,7 +24,8 @@ public sealed class RepositorioCredencialesEnMemoria : IRepositorioCredenciales
     public Task<IReadOnlyList<Credencial>> PublicasDePrestadorAsync(Guid perfilPrestadorId, CancellationToken ct = default)
     {
         IReadOnlyList<Credencial> r = _base.Credenciales
-            .Where(c => c.PerfilPrestadorId == perfilPrestadorId && c.Estado != EstadoCredencial.Borrador).ToList();
+            .Where(c => c.PerfilPrestadorId == perfilPrestadorId
+                && c.Estado != EstadoCredencial.Borrador && c.Estado != EstadoCredencial.Rechazada).ToList();
         return Task.FromResult(r);
     }
 
@@ -34,9 +35,29 @@ public sealed class RepositorioCredencialesEnMemoria : IRepositorioCredenciales
     public Task<int> ContarDePrestadorAsync(Guid perfilPrestadorId, CancellationToken ct = default) =>
         Task.FromResult(_base.Credenciales.Count(c => c.PerfilPrestadorId == perfilPrestadorId));
 
-    public Task<bool> TieneVerificadaAsync(Guid perfilPrestadorId, CancellationToken ct = default) =>
+    public Task<bool> TieneVerificadaAsync(Guid perfilPrestadorId, DateOnly hoy, CancellationToken ct = default) =>
         Task.FromResult(_base.Credenciales.Any(
-            c => c.PerfilPrestadorId == perfilPrestadorId && c.Estado == EstadoCredencial.Verificada));
+            c => c.PerfilPrestadorId == perfilPrestadorId && c.TieneSelloVigente(hoy)));
+
+    public Task<IReadOnlyList<CredencialPorVencer>> VerificadasPasadasDeFechaAsync(
+        DateOnly hoy, int limite, CancellationToken ct = default)
+    {
+        IReadOnlyList<CredencialPorVencer> r = _base.Credenciales
+            .Where(c => c.DebeVencer(hoy))
+            .OrderBy(c => c.VenceEn).ThenBy(c => c.Id).Take(limite)
+            .Select(c => new CredencialPorVencer(c.Id,
+                _base.PerfilesPrestador.Single(p => p.Id == c.PerfilPrestadorId).UsuarioId, c.Nombre, c.VenceEn!.Value))
+            .ToList();
+        return Task.FromResult(r);
+    }
+
+    public Task<bool> VencerSiCorrespondeAsync(Guid credencialId, DateOnly hoy, CancellationToken ct = default)
+    {
+        var c = _base.Credenciales.FirstOrDefault(x => x.Id == credencialId);
+        if (c is null || !c.DebeVencer(hoy)) return Task.FromResult(false);
+        c.Revocar();
+        return Task.FromResult(true);
+    }
 
     public void Agregar(Credencial credencial) => _base.Credenciales.Add(credencial);
     public void Eliminar(Credencial credencial) => _base.Credenciales.Remove(credencial);

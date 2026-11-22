@@ -5213,6 +5213,56 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.ToTable("auditoria");
                 });
 
+            modelBuilder.Entity("Zass.Dominio.Comun.SuscripcionPush", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ClaveAuth")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("clave_auth");
+
+                    b.Property<string>("ClaveP256dh")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("clave_p256dh");
+
+                    b.Property<DateTime>("CreadaEn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creada_en");
+
+                    b.Property<string>("Endpoint")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("endpoint");
+
+                    b.Property<DateTime>("UltimoUsoEn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ultimo_uso_en");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("usuario_id");
+
+                    b.HasKey("Id")
+                        .HasName("p_k_suscripciones_push");
+
+                    b.HasIndex("Endpoint")
+                        .IsUnique()
+                        .HasDatabaseName("i_x_suscripciones_push_endpoint");
+
+                    b.HasIndex("UsuarioId")
+                        .HasDatabaseName("i_x_suscripciones_push_usuario_id");
+
+                    b.ToTable("suscripciones_push", (string)null);
+                });
+
             modelBuilder.Entity("Zass.Dominio.Comun.TrabajoDeFondo", b =>
                 {
                     b.Property<string>("Nombre")
@@ -5472,6 +5522,40 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         });
                 });
 
+            modelBuilder.Entity("Zass.Dominio.Identidad.FotoTrabajo", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ClaveAlmacen")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("clave_almacen");
+
+                    b.Property<DateTime>("CreadaEn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creada_en");
+
+                    b.Property<int>("Orden")
+                        .HasColumnType("integer")
+                        .HasColumnName("orden");
+
+                    b.Property<Guid>("PerfilPrestadorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("perfil_prestador_id");
+
+                    b.HasKey("Id")
+                        .HasName("p_k_fotos_de_trabajo");
+
+                    b.HasIndex("PerfilPrestadorId", "Orden")
+                        .HasDatabaseName("i_x_fotos_de_trabajo_perfil_prestador_id_orden");
+
+                    b.ToTable("fotos_de_trabajo");
+                });
+
             modelBuilder.Entity("Zass.Dominio.Identidad.PerfilBuscador", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5499,6 +5583,13 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.Property<short>("RadioPreferidoKm")
                         .HasColumnType("smallint")
                         .HasColumnName("radio_preferido_km");
+
+                    b.PrimitiveCollection<List<short>>("RubrosInteres")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint[]")
+                        .HasColumnName("rubros_interes")
+                        .HasDefaultValueSql("'{}'::smallint[]");
 
                     b.Property<Guid>("UsuarioId")
                         .HasColumnType("uuid")
@@ -5776,6 +5867,10 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasColumnType("character varying(100)")
                         .HasColumnName("apellido");
 
+                    b.Property<DateTime?>("BloqueadaHasta")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("bloqueada_hasta");
+
                     b.Property<string>("Correo")
                         .IsRequired()
                         .HasColumnType("citext")
@@ -5799,6 +5894,10 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("hash_contrasena");
+
+                    b.Property<int>("IntentosFallidos")
+                        .HasColumnType("integer")
+                        .HasColumnName("intentos_fallidos");
 
                     b.Property<DateTime?>("MayorDeEdadConfirmadoEn")
                         .HasColumnType("timestamp with time zone")
@@ -6654,6 +6753,10 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasColumnType("smallint")
                         .HasColumnName("dias_prueba");
 
+                    b.Property<int>("MaxFotosTrabajos")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_fotos_trabajos");
+
                     b.Property<int>("MaxServicios")
                         .HasColumnType("integer")
                         .HasColumnName("max_servicios");
@@ -6672,9 +6775,17 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasColumnType("boolean")
                         .HasColumnName("permite_credenciales");
 
+                    b.Property<bool>("PermiteEstadisticas")
+                        .HasColumnType("boolean")
+                        .HasColumnName("permite_estadisticas");
+
                     b.Property<int>("PrecioMensual")
                         .HasColumnType("integer")
                         .HasColumnName("precio_mensual");
+
+                    b.Property<bool>("VerificacionPrioritaria")
+                        .HasColumnType("boolean")
+                        .HasColumnName("verificacion_prioritaria");
 
                     b.HasKey("Id")
                         .HasName("p_k_planes");
@@ -6691,39 +6802,80 @@ namespace Zass.Infraestructura.Datos.Migraciones
                             Id = (short)1,
                             Activo = true,
                             Codigo = "prueba",
-                            Descripcion = "30 dias para publicar el perfil y aparecer en las busquedas.",
+                            Descripcion = "30 días para publicar tu perfil y aparecer en las búsquedas.",
                             DiasPrueba = (short)30,
+                            MaxFotosTrabajos = 0,
                             MaxServicios = 10,
                             MaxTarjetas = 1,
                             Nombre = "Prueba",
                             PermiteCredenciales = true,
-                            PrecioMensual = 0
+                            PermiteEstadisticas = false,
+                            PrecioMensual = 0,
+                            VerificacionPrioritaria = false
                         },
                         new
                         {
                             Id = (short)2,
                             Activo = true,
                             Codigo = "mensual",
-                            Descripcion = "Publica tu perfil, apareces en las busquedas y recibes solicitudes de hora. 7990 pesos al mes; cancela cuando quieras.",
+                            Descripcion = "Para empezar: tu ficha en la búsqueda, agenda en línea, reseñas y sello Verificado. Hasta 5 servicios.",
                             DiasPrueba = (short)0,
-                            MaxServicios = 10,
+                            MaxFotosTrabajos = 0,
+                            MaxServicios = 5,
                             MaxTarjetas = 1,
-                            Nombre = "ZASS! Mensual",
+                            Nombre = "ZASS! Esencial",
                             PermiteCredenciales = true,
-                            PrecioMensual = 7990
+                            PermiteEstadisticas = false,
+                            PrecioMensual = 7990,
+                            VerificacionPrioritaria = false
                         },
                         new
                         {
                             Id = (short)3,
                             Activo = true,
                             Codigo = "fundador",
-                            Descripcion = "Precio de lanzamiento para las primeras 50 personas: 5990 pesos al mes mientras mantengas tu suscripcion activa.",
+                            Descripcion = "Todo lo del plan Profesional a precio de lanzamiento, congelado mientras mantengas tu suscripción activa. Solo para las primeras 50 personas.",
                             DiasPrueba = (short)0,
-                            MaxServicios = 10,
-                            MaxTarjetas = 1,
+                            MaxFotosTrabajos = 12,
+                            MaxServicios = 15,
+                            MaxTarjetas = 3,
                             Nombre = "ZASS! Fundador",
                             PermiteCredenciales = true,
-                            PrecioMensual = 5990
+                            PermiteEstadisticas = true,
+                            PrecioMensual = 5990,
+                            VerificacionPrioritaria = true
+                        },
+                        new
+                        {
+                            Id = (short)4,
+                            Activo = true,
+                            Codigo = "profesional",
+                            Descripcion = "Para quien vive de su trabajo: estadísticas de tu ficha, fotos de tus trabajos, verificación prioritaria, hasta 15 servicios y 3 tarjetas.",
+                            DiasPrueba = (short)0,
+                            MaxFotosTrabajos = 12,
+                            MaxServicios = 15,
+                            MaxTarjetas = 3,
+                            Nombre = "ZASS! Profesional",
+                            PermiteCredenciales = true,
+                            PermiteEstadisticas = true,
+                            PrecioMensual = 12990,
+                            VerificacionPrioritaria = true
+                        },
+                        new
+                        {
+                            Id = (short)5,
+                            Activo = false,
+                            Codigo = "equipo",
+                            Descripcion = "Para estudios, consultas y talleres: hasta 5 profesionales, cada uno con todo lo del Profesional. Próximamente.",
+                            DiasPrueba = (short)0,
+                            MaxFotosTrabajos = 12,
+                            MaxServicios = 15,
+                            MaxTarjetas = 10,
+                            Nombre = "ZASS! Equipo",
+                            PermiteCredenciales = true,
+                            PermiteEstadisticas = true,
+                            PrecioMensual = 24990,
+                            VerificacionPrioritaria = true
                         });
                 });
 
@@ -7065,6 +7217,18 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.Navigation("Destinatario");
                 });
 
+            modelBuilder.Entity("Zass.Dominio.Comun.SuscripcionPush", b =>
+                {
+                    b.HasOne("Zass.Dominio.Identidad.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("f_k_suscripciones_push_usuarios_usuario_id");
+
+                    b.Navigation("Usuario");
+                });
+
             modelBuilder.Entity("Zass.Dominio.Credenciales.Credencial", b =>
                 {
                     b.HasOne("Zass.Dominio.Credenciales.EntidadCertificadora", "EntidadCertificadora")
@@ -7106,6 +7270,18 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasConstraintName("f_k_verificaciones_credenciales_credencial_id");
 
                     b.Navigation("Credencial");
+                });
+
+            modelBuilder.Entity("Zass.Dominio.Identidad.FotoTrabajo", b =>
+                {
+                    b.HasOne("Zass.Dominio.Identidad.PerfilPrestador", "PerfilPrestador")
+                        .WithMany()
+                        .HasForeignKey("PerfilPrestadorId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("f_k_fotos_de_trabajo_perfiles_prestador_perfil_prestador_id");
+
+                    b.Navigation("PerfilPrestador");
                 });
 
             modelBuilder.Entity("Zass.Dominio.Identidad.PerfilBuscador", b =>

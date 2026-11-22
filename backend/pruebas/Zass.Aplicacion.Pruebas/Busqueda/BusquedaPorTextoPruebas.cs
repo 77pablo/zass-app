@@ -130,7 +130,8 @@ public class BusquedaPorTextoPruebas
             new ServicioCredenciales(new RepositorioCredencialesEnMemoria(_base), _base, _reloj, auditor),
             new ServicioSuscripciones(
                 new RepositorioSuscripcionesEnMemoria(_base), _base, _reloj, auditor, new ColaEnMemoria()),
-            _reloj);
+            _reloj,
+            new ServicioFotosDeTrabajoFalso());
     }
 
     private static CriteriosDeTextoDeBusqueda C(

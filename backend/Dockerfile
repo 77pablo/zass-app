@@ -19,7 +19,23 @@ COPY src/Zass.Api/Zass.Api.csproj src/Zass.Api/
 RUN dotnet restore src/Zass.Api/Zass.Api.csproj
 
 COPY src/ src/
-RUN dotnet publish src/Zass.Api/Zass.Api.csproj -c Release --no-restore -o /publicado /p:UseAppHost=false
+
+# Licencia de ImageSharp (las fotos de perfil, JQ-9). Desde la 4.0 la librería verifica una
+# clave AL COMPILAR en Release: sin ella el publish falla con «No Six Labors license found».
+# En Debug solo avisa, por eso el CI no lo ve. ZASS usa la licencia comunitaria gratuita
+# (empresa con menos de 1 millón de USD al año), que se pide en licensing.sixlabors.com.
+#
+# Render pasa sus variables de entorno a la construcción como build args: basta con crear en
+# Render la variable SIXLABORS_LICENSE_KEY con el texto COMPLETO de la licencia, sin escapar.
+# Va como variable de entorno de MSBuild (no como /p:) para no tener que escapar los «;» que
+# trae la licencia. Solo vive en esta etapa: la imagen final no la lleva.
+#
+# Fuera de Render: docker build --build-arg SIXLABORS_LICENSE_KEY="$(cat sixlabors.lic)" ...
+ARG SIXLABORS_LICENSE_KEY
+RUN test -n "$SIXLABORS_LICENSE_KEY" \
+    || { echo "Falta SIXLABORS_LICENSE_KEY: sin la licencia de ImageSharp no se puede compilar en Release." >&2; exit 1; }
+RUN SixLaborsLicenseKey="$SIXLABORS_LICENSE_KEY" \
+    dotnet publish src/Zass.Api/Zass.Api.csproj -c Release --no-restore -o /publicado /p:UseAppHost=false
 
 # ---------- Etapa 2: ejecutar ----------
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
