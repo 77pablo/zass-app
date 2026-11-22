@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, Outlet } from 'react-router-dom'
 import { puedeEntrarAlPanel, puedeUsar, type SeccionInterna } from '../funciones/interno/servicio'
 import * as T from '../funciones/interno/textos'
@@ -7,6 +7,7 @@ import { PaginaCargando } from '../marco/PaginaCargando'
 import { useMeta } from '../marco/useMeta'
 import { useTitulo } from '../marco/useTitulo'
 import { useSesion } from '../sesion/contexto'
+import { estadoMfa } from '../funciones/identidad/servicio'
 import { NoEncontrada } from './NoEncontrada'
 
 /**
@@ -20,10 +21,33 @@ import { NoEncontrada } from './NoEncontrada'
 export function PuertaInterna() {
   useMeta({ noindex: true })
   const { estado, usuario } = useSesion()
+  const puede = estado === 'dentro' && puedeEntrarAlPanel(usuario)
+  // MFA obligatorio en el panel (22-nov-2026): la API responde 403 `mfa_requerido` a toda la
+  // sección. Aquí se mira antes, para mandar a activarlo en vez de mostrar pantallas que fallan.
+  const [mfaActivo, setMfaActivo] = useState<boolean>()
+
+  useEffect(() => {
+    if (!puede) return
+    let vigente = true
+    estadoMfa().then((e) => { if (vigente) setMfaActivo(e.activo) }, () => { if (vigente) setMfaActivo(false) })
+    return () => { vigente = false }
+  }, [puede])
 
   // Mientras se sabe quién es, nada que nombre al panel: el mismo «Cargando…» de cualquier pantalla.
   if (estado === 'cargando') return <PaginaCargando titulo="Cargando…" />
-  if (estado !== 'dentro' || !puedeEntrarAlPanel(usuario)) return <NoEncontrada />
+  if (!puede) return <NoEncontrada />
+  // Mientras se pregunta, el panel se pinta: la protección real es la API, esto solo orienta.
+  if (mfaActivo === false) {
+    return (
+      <div className="contenedor ficha-pagina">
+        <h1 className="pagina-titulo">{T.TITULO_PANEL}</h1>
+        <p className="bloque-texto">
+          Para usar el panel interno primero tienes que activar la verificación en dos pasos en tu cuenta.
+        </p>
+        <Link className="boton" to="/mi-cuenta/seguridad">Activar la verificación en dos pasos</Link>
+      </div>
+    )
+  }
   return <Outlet />
 }
 

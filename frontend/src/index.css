@@ -1301,3 +1301,14 @@ option { background: var(--blanco); color: var(--pizarra); }
 .tabla-auditoria table { border-collapse: collapse; width: 100%; font-size: 0.875rem; }
 .tabla-auditoria th, .tabla-auditoria td { text-align: left; vertical-align: top; padding: 8px; border-bottom: 1px solid var(--linea-fuerte); }
 .tabla-auditoria code { font-size: 0.75rem; word-break: break-all; }
+
+/* Mi cuenta → Seguridad: los códigos de respaldo de la verificación en dos pasos. */
+.codigos-respaldo {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 1rem 0;
+  padding: 0;
+  list-style: none;
+  font-variant-numeric: tabular-nums;
+}
