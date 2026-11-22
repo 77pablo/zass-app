@@ -90,6 +90,10 @@ public static class ValidacionDeArranque
         // (SecretoDeOrigen.Advertencia): exigirlo tumbaría la API antes de que Cloudflare lo mande.
         problemas.AddRange(SecretoDeOrigen.Problemas(configuracion));
 
+        // --- Captcha Turnstile (N3) --- sin secreto se advierte; con una clave de prueba en
+        // producción, no arranca (dejaría pasar a cualquiera).
+        problemas.AddRange(Turnstile.Problemas(configuracion, esProductivo));
+
         return problemas;
     }
 

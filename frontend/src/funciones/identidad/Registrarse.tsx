@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { ErrorApi } from '../../api/cliente'
 import { registrarse, type RolPublico, type TipoDeCuenta } from './servicio'
+import { Captcha, captchaActivo } from '../../componentes/Captcha'
 import { APELLIDO_MAXIMO, RAZON_SOCIAL_MAXIMA, revisarDatosDeCuenta } from './datosDeCuenta'
 import { Campo } from '../../componentes/Campo'
 import { Aviso } from '../../componentes/Aviso'
@@ -48,6 +49,9 @@ export function Registrarse({
   const [rutConCuenta, setRutConCuenta] = useState<string>()
   const [listo, setListo] = useState(false)
   const [enviando, setEnviando] = useState(false)
+  // N3: el token de Turnstile, de un solo uso. `reinicio` pide otro después de cada envío.
+  const [tokenCaptcha, setTokenCaptcha] = useState<string | null>(null)
+  const [reinicioCaptcha, setReinicioCaptcha] = useState(0)
 
   const empresa = tipo === 'empresa'
 
@@ -72,10 +76,14 @@ export function Registrarse({
     const malos = revisar()
     setCampos(malos)
     if (Object.keys(malos).length > 0) return
+    if (captchaActivo() && tokenCaptcha === null) {
+      setAviso('Antes de crear tu cuenta, completa la verificación de que eres una persona.')
+      return
+    }
 
     setEnviando(true)
     try {
-      await registrarse({
+      const datos = {
         correo: correo.trim(),
         contrasena,
         nombre: nombre.trim(),
@@ -86,7 +94,9 @@ export function Registrarse({
         rut: rut.trim(),
         telefono: telefono.trim(),
         mayorDeEdad,
-      })
+      }
+      if (tokenCaptcha !== null) await registrarse(datos, tokenCaptcha)
+      else await registrarse(datos)
       setListo(true)
       alRegistrarse()
     } catch (e) {
@@ -104,6 +114,8 @@ export function Registrarse({
       }
     } finally {
       setEnviando(false)
+      // El token ya se gastó, saliera bien o mal: se pide otro para el próximo intento.
+      if (tokenCaptcha !== null) setReinicioCaptcha((n) => n + 1)
     }
   }
 
@@ -218,6 +230,8 @@ export function Registrarse({
         <a href="/terminos" target="_blank" rel="noopener">Términos de uso</a> y la{' '}
         <a href="/privacidad" target="_blank" rel="noopener">Política de privacidad</a>.
       </p>
+
+      <Captcha accion="registro" alResolver={setTokenCaptcha} reinicio={reinicioCaptcha} />
 
       <button className="boton" type="submit" disabled={enviando}>
         {enviando ? 'Creando…' : 'Crear cuenta'}

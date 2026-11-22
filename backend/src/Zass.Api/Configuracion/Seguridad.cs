@@ -171,10 +171,21 @@ public static class ConfiguracionDeSeguridad
                     contexto.Response.StatusCode = StatusCodes.Status401Unauthorized;
                     return Task.CompletedTask;
                 };
-                opciones.Events.OnRedirectToAccessDenied = contexto =>
+                opciones.Events.OnRedirectToAccessDenied = async contexto =>
                 {
                     contexto.Response.StatusCode = StatusCodes.Status403Forbidden;
-                    return Task.CompletedTask;
+
+                    // Rol del panel sin MFA (ManejadorRolVigente): el 403 lleva su codigo para que
+                    // la pantalla mande a activarlo. Cualquier otro 403 sigue sin cuerpo.
+                    if (contexto.HttpContext.Items.ContainsKey(MfaRequerido.Marca))
+                        await contexto.Response.WriteAsJsonAsync(new
+                        {
+                            title = "Falta la verificación en dos pasos",
+                            detail = MfaRequerido.Detalle,
+                            status = StatusCodes.Status403Forbidden,
+                            codigo = MfaRequerido.Codigo,
+                            idPeticion = contexto.HttpContext.TraceIdentifier,
+                        }, options: null, contentType: "application/problem+json");
                 };
             });
 

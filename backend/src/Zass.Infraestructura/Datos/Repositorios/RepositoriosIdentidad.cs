@@ -107,6 +107,33 @@ public sealed class RepositorioUsuariosEfCore : IRepositorioUsuarios
             .ExecuteUpdateAsync(s => s
                 .SetProperty(u => u.IntentosFallidos, 0)
                 .SetProperty(u => u.BloqueadaHasta, (DateTime?)null), ct) == 1;
+
+    public Task<Usuario?> PorDesafioMfaAsync(string hashDesafio, CancellationToken ct = default) =>
+        ConRoles().FirstOrDefaultAsync(u => u.MfaDesafioHash == hashDesafio, ct);
+
+    // Las tres siguientes son UNA sentencia cada una: la condicion y el cambio van juntos, y dos
+    // peticiones simultaneas con el mismo codigo no pueden ganar las dos (solo una fila cambia).
+    public async Task<bool> GastarPasoTotpAsync(Guid usuarioId, long paso, CancellationToken ct = default) =>
+        await _ctx.Usuarios
+            .Where(u => u.Id == usuarioId && (u.MfaUltimoPaso == null || u.MfaUltimoPaso < paso))
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.MfaUltimoPaso, (long?)paso), ct) == 1;
+
+    public async Task<bool> GastarCodigoRespaldoAsync(
+        Guid usuarioId, string hashCodigo, CancellationToken ct = default) =>
+        await _ctx.Database.ExecuteSqlAsync($"""
+            UPDATE usuarios
+               SET mfa_codigos_respaldo = array_remove(mfa_codigos_respaldo, {hashCodigo})
+             WHERE id = {usuarioId}
+               AND {hashCodigo} = ANY(mfa_codigos_respaldo)
+            """, ct) == 1;
+
+    public async Task<bool> GastarDesafioMfaAsync(
+        Guid usuarioId, string hashDesafio, DateTime ahora, CancellationToken ct = default) =>
+        await _ctx.Usuarios
+            .Where(u => u.Id == usuarioId && u.MfaDesafioHash == hashDesafio && u.MfaDesafioExpiraEn > ahora)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(u => u.MfaDesafioHash, (string?)null)
+                .SetProperty(u => u.MfaDesafioExpiraEn, (DateTime?)null), ct) == 1;
 }
 
 public sealed class RepositorioSesionesEfCore : IRepositorioSesiones
@@ -214,6 +241,10 @@ public sealed class ColaNotificacionesEfCore : INotificaciones
 
     public Task<bool> ExisteAsync(string claveIdempotencia, CancellationToken ct = default) =>
         _ctx.Notificaciones.AnyAsync(n => n.ClaveIdempotencia == claveIdempotencia, ct);
+
+    public async Task<DateTime?> ProgramadaParaAsync(string claveIdempotencia, CancellationToken ct = default) =>
+        await _ctx.Notificaciones.Where(n => n.ClaveIdempotencia == claveIdempotencia)
+            .Select(n => (DateTime?)n.ProgramadaPara).FirstOrDefaultAsync(ct);
 
     /// <summary>
     /// ExecuteUpdate va directo a la base, pero por la conexion y la transaccion de este mismo

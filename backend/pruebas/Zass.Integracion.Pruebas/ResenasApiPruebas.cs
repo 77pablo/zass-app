@@ -128,7 +128,7 @@ public class ResenasApiPruebas : IAsyncLifetime
         }
 
         // La sesión se abre DESPUÉS de asignar roles: los roles viajan en la cookie.
-        var entrada = await p.Http.PostAsJsonAsync("/api/auth/sesion", new { correo, contrasena = Contrasena });
+        var entrada = await MfaDePrueba.EntrarAsync(p.Http, correo, Contrasena);
         Assert.Equal(HttpStatusCode.OK, entrada.StatusCode);
         return p;
     }

@@ -55,6 +55,12 @@ public interface INotificaciones
     Task<bool> ExisteAsync(string claveIdempotencia, CancellationToken ct = default);
 
     /// <summary>
+    /// JQ-16. Cuándo quedó programado el aviso con esa clave, o nulo si no existe. Sirve para
+    /// esperar un plazo DESDE el aviso (no borrar un borrador al día siguiente de avisar).
+    /// </summary>
+    Task<DateTime?> ProgramadaParaAsync(string claveIdempotencia, CancellationToken ct = default);
+
+    /// <summary>
     /// JQ-3. Anula los recordatorios de la cita que aun esperan en la cola. Corre dentro de la
     /// transaccion abierta (mismo contexto), asi que si el caso de uso se deshace, esto tambien.
     /// El que ya estaba tomado para enviar lo para el procesador, que vuelve a mirar la cita.
@@ -197,6 +203,24 @@ public interface IRepositorioUsuarios
     /// instante. Devuelve falso si lo esta (el bloqueo pudo nacer despues de leer la cuenta).
     /// </summary>
     Task<bool> ReiniciarIntentosSiNoBloqueadaAsync(Guid usuarioId, DateTime ahora, CancellationToken ct = default);
+
+    // --- MFA (decision de Pablo, 22-nov-2026). Las tres son atomicas: gastan o no gastan. ---
+
+    /// <summary>La cuenta cuyo desafio de segundo paso tiene ese hash, o nulo.</summary>
+    Task<Usuario?> PorDesafioMfaAsync(string hashDesafio, CancellationToken ct = default);
+
+    /// <summary>
+    /// Anota <paramref name="paso"/> como el ultimo paso TOTP aceptado, SOLO si es posterior al
+    /// anterior. Devuelve falso si ese codigo (o uno mas nuevo) ya se uso: asi un codigo
+    /// interceptado no sirve una segunda vez, ni siquiera dentro de sus 30 segundos.
+    /// </summary>
+    Task<bool> GastarPasoTotpAsync(Guid usuarioId, long paso, CancellationToken ct = default);
+
+    /// <summary>Quita ese codigo de respaldo de los que quedan. Falso si no estaba (o ya se uso).</summary>
+    Task<bool> GastarCodigoRespaldoAsync(Guid usuarioId, string hashCodigo, CancellationToken ct = default);
+
+    /// <summary>Borra el desafio si es ese y sigue vigente. Falso si ya se uso o vencio.</summary>
+    Task<bool> GastarDesafioMfaAsync(Guid usuarioId, string hashDesafio, DateTime ahora, CancellationToken ct = default);
 }
 
 public interface IRepositorioSesiones
@@ -321,6 +345,14 @@ public interface IRepositorioSuscripciones
     /// de «este ya tiene el suyo».
     /// </summary>
     Task<short?> CupoFundadorDeAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+
+    /// <summary>
+    /// N3. El cupo de ese perfil con su plazo: <c>ReservadoHasta</c> nulo = confirmado. Nulo si
+    /// no tiene. Hace falta para distinguir «reservado y vigente» de «reserva vencida»: desde el
+    /// 22-nov-2026 la tarjeta solo se inscribe sobre una reserva vigente, y una vencida obliga a
+    /// volver a tomar el cupo (con captcha).
+    /// </summary>
+    Task<EstadoCupoFundador?> EstadoCupoFundadorDeAsync(Guid perfilPrestadorId, CancellationToken ct = default);
 
     /// <summary>Deja el cupo de ese perfil sin fecha de vencimiento. False si no tenia cupo.</summary>
     Task<bool> ConfirmarCupoFundadorAsync(Guid perfilPrestadorId, CancellationToken ct = default);
@@ -621,7 +653,8 @@ public sealed record ConteoCrudo(int Id, int Personas);
 public sealed record ConteoDeRegion(string Region, int Personas);
 
 public sealed record RecienLlegadoFila(
-    string Slug, string NombrePublico, string? RubroNombre, string? ZonaPrincipal, bool Verificada);
+    string Slug, string NombrePublico, string? RubroNombre, string? ZonaPrincipal, bool Verificada,
+    string? UrlFoto = null);
 
 public sealed record ResumenCrudo(
     int Total,
@@ -1037,3 +1070,10 @@ public interface IRepositorioTarjetas
 /// <summary>API-58. Lo que el repositorio cuenta, ya agrupado: el servicio no recorre escaneos.</summary>
 public sealed record EscaneosContados(
     int Nfc7, int Qr7, int Nfc30, int Qr30, int NfcTotal, int QrTotal);
+
+/// <summary>N3. Un cupo fundador y su plazo. <c>ReservadoHasta</c> nulo = confirmado.</summary>
+public sealed record EstadoCupoFundador(short Numero, DateTime? ReservadoHasta)
+{
+    public bool Confirmado => ReservadoHasta is null;
+    public bool ReservaVigente(DateTime ahora) => ReservadoHasta is { } h && h > ahora;
+}

@@ -16,6 +16,8 @@ export interface RecienLlegado {
   rubro: string | null
   zona: string | null
   verificada: boolean
+  /** JQ-15: la foto pública (JQ-9); nula si no subió. Puede faltar en una API vieja. */
+  urlFoto?: string | null
 }
 
 export function resumenDeComunidad(): Promise<ResumenDeComunidad> {

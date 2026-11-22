@@ -16,6 +16,18 @@ public sealed record SesionAbiertaDto(
     bool CorreoVerificado);
 
 /// <summary>
+/// Lo que deja la contrasena correcta en una cuenta con MFA: no una sesion, sino un desafio de
+/// corta vida que el segundo paso (API-79) canjea junto al codigo TOTP o de respaldo.
+/// </summary>
+public sealed record DesafioMfaDto(string Desafio, DateTime ExpiraEn);
+
+/// <summary>
+/// API-09. O se abrio la sesion (cuenta sin MFA) o falta el segundo paso. Nunca las dos: el
+/// tipo obliga a quien llama a mirar cual de las dos le toco antes de poner cookies.
+/// </summary>
+public sealed record InicioDeSesion(SesionAbiertaDto? Sesion, DesafioMfaDto? Desafio);
+
+/// <summary>
 /// CU-02 y CS-03. Abre, renueva, cierra y revoca sesiones (API-09 a API-12).
 ///
 /// De la sesion solo se guarda el hash del token de refresco (TBL-04): quien lea la tabla
@@ -32,6 +44,9 @@ public sealed class ServicioSesion
 
     /// <summary>DT-08. El token de acceso dura 15 min; el de refresco, 30 dias.</summary>
     public static readonly TimeSpan VidaDelRefresco = TimeSpan.FromDays(30);
+
+    /// <summary>Cuanto vive el desafio del segundo paso del inicio de sesion (MFA). Un solo uso.</summary>
+    public static readonly TimeSpan VidaDelDesafioMfa = TimeSpan.FromMinutes(5);
 
     /// <summary>
     /// Un mensaje unico para "no existe la cuenta" y para "la contrasena no es esa".
@@ -60,7 +75,26 @@ public sealed class ServicioSesion
         _auditor = auditor;
     }
 
+    /// <summary>
+    /// Para quien solo sabe abrir sesiones de un paso: con MFA activo responde NoAutorizado, porque
+    /// sin el segundo paso no hay sesion. La API usa <see cref="EntrarAsync"/>.
+    /// </summary>
     public async Task<Resultado<SesionAbiertaDto>> IniciarAsync(
+        IniciarSesionCmd cmd, string? ip = null, string? agente = null, CancellationToken ct = default)
+    {
+        var r = await EntrarAsync(cmd, ip, agente, ct);
+        if (!r.Exito) return Resultado.Falla<SesionAbiertaDto>(r.Codigo!, r.Mensaje!);
+        return r.Valor!.Sesion is { } sesion
+            ? Resultado.Ok(sesion)
+            : Resultado.Falla<SesionAbiertaDto>(Fallas.NoAutorizado, "Falta el segundo paso de verificación.");
+    }
+
+    /// <summary>
+    /// API-09, primer paso. Sin MFA abre la sesion. Con MFA, la contrasena correcta NO abre nada:
+    /// deja un desafio de 5 minutos y el contador de intentos fallidos NO vuelve a cero (si
+    /// volviera, quien tiene la contrasena podria alternar contrasena y 9 codigos sin fin).
+    /// </summary>
+    public async Task<Resultado<InicioDeSesion>> EntrarAsync(
         IniciarSesionCmd cmd, string? ip = null, string? agente = null, CancellationToken ct = default)
     {
         var correo = Texto.NormalizarCorreo(cmd.Correo);
@@ -86,7 +120,8 @@ public sealed class ServicioSesion
 
         // La lectura de arriba pudo quedar vieja: otro intento pudo bloquear la cuenta en el
         // medio. El reinicio del contador es atomico y solo pasa si NO esta bloqueada ahora.
-        if (puedeEntrar && !await _usuarios.ReiniciarIntentosSiNoBloqueadaAsync(usuario!.Id, ahora, ct))
+        if (puedeEntrar && !usuario!.MfaActivo
+            && !await _usuarios.ReiniciarIntentosSiNoBloqueadaAsync(usuario.Id, ahora, ct))
         {
             puedeEntrar = false;
             bloqueada = true;
@@ -126,16 +161,27 @@ public sealed class ServicioSesion
                     ip: ip));
 
             await _unidad.GuardarAsync(ct);
-            return Resultado.Falla<SesionAbiertaDto>(Fallas.NoAutorizado, CredencialesInvalidas);
+            return Resultado.Falla<InicioDeSesion>(Fallas.NoAutorizado, CredencialesInvalidas);
         }
 
-        var dto = AbrirSesion(usuario!, ip, agente);
+        if (usuario!.MfaActivo)
+        {
+            // Un desafio nuevo reemplaza al anterior: solo vale el del ultimo inicio.
+            var desafio = _secretos.NuevoToken();
+            var vence = ahora.Add(VidaDelDesafioMfa);
+            usuario.MfaDesafioHash = _secretos.HashToken(desafio);
+            usuario.MfaDesafioExpiraEn = vence;
+            await _unidad.GuardarAsync(ct);
+            return Resultado.Ok(new InicioDeSesion(null, new DesafioMfaDto(desafio, vence)));
+        }
+
+        var dto = AbrirSesion(usuario, ip, agente);
 
         _auditor.Registrar(Auditar.Entrada(
             "inicio_sesion", "usuario", usuario!.Id, ahora, actorId: usuario.Id, ip: ip));
 
         await _unidad.GuardarAsync(ct);
-        return Resultado.Ok(dto);
+        return Resultado.Ok(new InicioDeSesion(dto, null));
     }
 
     /// <summary>API-10. Rota el token: el nuevo nace y el viejo muere en el mismo acto.</summary>
@@ -192,7 +238,8 @@ public sealed class ServicioSesion
         return Resultado.Ok();
     }
 
-    private SesionAbiertaDto AbrirSesion(Usuario usuario, string? ip, string? agente)
+    /// <summary>Tambien la usa el segundo paso (<see cref="ServicioMfa"/>), ya comprobado el codigo.</summary>
+    internal SesionAbiertaDto AbrirSesion(Usuario usuario, string? ip, string? agente)
     {
         var ahora = _reloj.Ahora;
         var token = _secretos.NuevoToken();

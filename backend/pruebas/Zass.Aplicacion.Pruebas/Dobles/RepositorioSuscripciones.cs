@@ -298,6 +298,19 @@ public sealed class RepositorioSuscripcionesEnMemoria : IRepositorioSuscripcione
         }
     }
 
+    public Task<EstadoCupoFundador?> EstadoCupoFundadorDeAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        lock (_base.CuposFundador)
+        {
+            var propio = _base.CuposFundador
+                .FirstOrDefault(c => c.PerfilPrestadorId == perfilPrestadorId);
+            return Task.FromResult(propio is null
+                ? null
+                : new EstadoCupoFundador(propio.Numero, propio.ReservadoHasta));
+        }
+    }
+
     public Task<int> LiberarReservasFundadorVencidasAsync(DateTime ahora, CancellationToken ct = default)
     {
         lock (_base.CuposFundador)
