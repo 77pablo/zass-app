@@ -57,14 +57,14 @@ public class AgendaPruebas
         _buscador = new Usuario
         {
             Correo = "buscador@zass.local", HashContrasena = "x",
-            Nombre = "Ana Pérez", CorreoVerificado = true,
+            Nombre = "Ana Pérez", CorreoVerificado = true, Estado = EstadoCuenta.Activa,
         };
         _base.Usuarios.Add(_buscador);
 
         var duenoPrestador = new Usuario
         {
             Correo = "prestador@zass.local", HashContrasena = "x",
-            Nombre = "Pablo Espinoza", CorreoVerificado = true,
+            Nombre = "Pablo Espinoza", CorreoVerificado = true, Estado = EstadoCuenta.Activa,
         };
         _base.Usuarios.Add(duenoPrestador);
 
@@ -397,6 +397,32 @@ public class AgendaPruebas
         Assert.Null(cambio.EstadoAnterior);
         Assert.Equal(EstadoCita.Confirmada, cambio.EstadoNuevo);
         Assert.Equal(_buscador.Id, cambio.RealizadoPor);
+    }
+
+    /// <summary>
+    /// RN-S1-02 con la misma condición que la elegibilidad de reseñas: correo verificado Y
+    /// cuenta activa. La prueba de integración cubre el correo sin verificar; esta, la cuenta
+    /// suspendida que conserva el correo verificado, y la pendiente de verificación.
+    /// </summary>
+    [Theory]
+    [InlineData(true, EstadoCuenta.Suspendida)]
+    [InlineData(true, EstadoCuenta.Eliminada)]
+    [InlineData(false, EstadoCuenta.PendienteVerificacion)]
+    public async Task Sin_cuenta_activa_y_verificada_no_se_agenda_ni_se_reserva_el_bloque(
+        bool verificado, EstadoCuenta estado)
+    {
+        _buscador.CorreoVerificado = verificado;
+        _buscador.Estado = estado;
+        var bloque = UnBloque();
+
+        var r = await AgendarAsync(bloque);
+
+        Assert.False(r.Exito);
+        Assert.Equal(Fallas.ReglaDeNegocio, r.Codigo);
+        Assert.Contains("Verifica tu correo", r.Mensaje);
+        Assert.Empty(_base.Citas);
+        Assert.Equal(EstadoBloque.Libre, bloque.Estado);
+        Assert.Empty(_avisos.Encoladas);
     }
 
     /// <summary>

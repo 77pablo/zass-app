@@ -1,4 +1,6 @@
-import { Link, NavLink } from 'react-router-dom'
+import { NavLink } from 'react-router-dom'
+import { puedeEntrarAlPanel } from '../funciones/interno/servicio'
+import { ENLACE_MENU as ENLACE_PANEL_INTERNO } from '../funciones/interno/textos'
 import { useSesion } from '../sesion/contexto'
 import { Icono } from './Icono'
 import { useMenuMovil } from './menuMovil'
@@ -10,108 +12,77 @@ const ENLACES = [
   { a: '/profesionales', texto: 'Para profesionales' },
 ]
 
-export function Logo() {
-  return (
-    <Link to="/" className="logo" aria-label="ZASS!, ir al inicio" translate="no">
-      ZAS<em>S!</em>
-    </Link>
-  )
-}
-
+/**
+ * Estilo iPhone (Pablo, 18 y 19-nov-2026). Ya no hay barra con la marca arriba: cada pantalla abre
+ * con su titulo grande (y la barra fina de TituloCompacto.tsx al bajar). La navegacion es UNA sola,
+ * la de pestañas (BarraInferior.tsx: Inicio · Buscar · Entrar/Mis citas · Mas), que en el telefono
+ * flota abajo y en escritorio flota arriba al centro, como en el iPad. Todo lo demas vive en la
+ * hoja «Mas», aqui (id="menu-movil"): en el telefono sube desde abajo; en escritorio cae como un
+ * popover bajo la capsula. Mismos enlaces y mismos destinos que antes.
+ * El sitio conserva su nombre para el lector de pantalla: el <header> se llama «ZASS!» y el
+ * <title> de cada pagina termina en «· ZASS!» (useTitulo.ts).
+ */
 export function Cabecera() {
   const { estado, usuario, salir } = useSesion()
-  // Compartido con la pestaña «Mas» de la barra inferior (menuMovil.tsx).
-  const { abierto, alternar } = useMenuMovil()
+  // El mismo estado que la pestaña «Mas» de la barra de pestañas (menuMovil.tsx): ella abre la hoja.
+  const { abierto } = useMenuMovil()
 
   const esPrestador = usuario?.roles.includes('prestador') ?? false
-
-  const accion = estado === 'dentro' ? (
-    <>
-      <NavLink to="/mis-citas" className="nav-enlace">Mis citas</NavLink>
-      <NavLink to="/mis-resenas" className="nav-enlace">Mis reseñas</NavLink>
-      {esPrestador ? (
-        <>
-          <NavLink to="/mi-ficha" className="nav-enlace">Mi ficha</NavLink>
-          <NavLink to="/mi-agenda" className="nav-enlace">Mi agenda</NavLink>
-          <NavLink to="/mis-tarjetas" className="nav-enlace">Mis tarjetas</NavLink>
-        </>
-      ) : (
-        <NavLink to="/ofrecer-servicios" className="nav-enlace">Ofrecer mis servicios</NavLink>
-      )}
-      <button type="button" className="nav-enlace nav-boton" onClick={() => void salir()}>
-        Salir
-      </button>
-    </>
-  ) : estado === 'fuera' ? (
-    <NavLink to="/entrar" className="nav-entrar">Entrar</NavLink>
-  ) : null
+  // JQ-11: el enlace al panel solo existe para quien puede entrar; para el resto, no hay panel.
+  const vePanel = estado === 'dentro' && puedeEntrarAlPanel(usuario)
 
   return (
-    <header className="cabecera">
-      <div className="contenedor cabecera-fila">
-        <Logo />
-
-        <nav className="nav-escritorio" aria-label="Principal">
-          {ENLACES.map((e) => (
-            <NavLink key={e.a} to={e.a} className="nav-enlace">{e.texto}</NavLink>
-          ))}
-          {accion}
-        </nav>
-
-        <button
-          type="button" className="menu-boton" aria-expanded={abierto} aria-controls="menu-movil"
-          onClick={alternar}
-        >
-          <Icono nombre={abierto ? 'cerrar' : 'menu'} />
-          <span>{abierto ? 'Cerrar' : 'Menú'}</span>
-        </button>
-      </div>
-
+    <header className="cabecera" aria-label="ZASS!">
       {abierto && (
         <nav id="menu-movil" className="menu-movil" aria-label="Principal">
           {ENLACES.map((e) => (
             <NavLink key={e.a} to={e.a} className="menu-enlace">
-              {e.texto}<Icono nombre="flecha" />
+              {e.texto}<Icono nombre="chevron" />
             </NavLink>
           ))}
           {estado === 'dentro' && (
             <NavLink to="/mis-citas" className="menu-enlace">
-              Mis citas<Icono nombre="flecha" />
+              Mis citas<Icono nombre="chevron" />
             </NavLink>
           )}
           {estado === 'dentro' && (
             <NavLink to="/mis-resenas" className="menu-enlace">
-              Mis reseñas<Icono nombre="flecha" />
+              Mis reseñas<Icono nombre="chevron" />
             </NavLink>
           )}
           {estado === 'dentro' && esPrestador && (
             <NavLink to="/mi-ficha" className="menu-enlace">
-              Mi ficha<Icono nombre="flecha" />
+              Mi ficha<Icono nombre="chevron" />
             </NavLink>
           )}
           {estado === 'dentro' && esPrestador && (
             <NavLink to="/mi-agenda" className="menu-enlace">
-              Mi agenda<Icono nombre="flecha" />
+              Mi agenda<Icono nombre="chevron" />
             </NavLink>
           )}
           {estado === 'dentro' && esPrestador && (
             <NavLink to="/mis-tarjetas" className="menu-enlace">
-              Mis tarjetas<Icono nombre="flecha" />
+              Mis tarjetas<Icono nombre="chevron" />
             </NavLink>
           )}
           {estado === 'dentro' && !esPrestador && (
             <NavLink to="/ofrecer-servicios" className="menu-enlace">
-              Ofrecer mis servicios<Icono nombre="flecha" />
+              Ofrecer mis servicios<Icono nombre="chevron" />
+            </NavLink>
+          )}
+          {vePanel && (
+            <NavLink to="/interno" className="menu-enlace">
+              {ENLACE_PANEL_INTERNO}<Icono nombre="chevron" />
             </NavLink>
           )}
           {estado === 'dentro' && (
             <button type="button" className="menu-enlace" onClick={() => void salir()}>
-              Salir<Icono nombre="flecha" />
+              Salir<Icono nombre="chevron" />
             </button>
           )}
           {estado === 'fuera' && (
             <NavLink to="/entrar" className="menu-enlace menu-enlace--entrar">
-              Entrar<Icono nombre="flecha" />
+              Entrar<Icono nombre="chevron" />
             </NavLink>
           )}
         </nav>

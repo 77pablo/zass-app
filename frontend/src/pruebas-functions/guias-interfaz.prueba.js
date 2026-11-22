@@ -8,7 +8,6 @@ import { describe, expect, it } from 'vitest'
 
 const SRC = resolve(import.meta.dirname, '..')
 const css = readFileSync(resolve(SRC, 'index.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
-const cabecera = readFileSync(resolve(SRC, 'marco', 'Cabecera.tsx'), 'utf8')
 
 describe('guias de interfaz', () => {
   it('lo que se toca responde sin la demora del doble toque', () => {
@@ -31,7 +30,6 @@ describe('guias de interfaz', () => {
     expect(css).toMatch(/\.barra-lista \{ overscroll-behavior: contain; \}/)
   })
 
-  it('el traductor del navegador no cambia el nombre de la marca', () => {
-    expect(cabecera).toMatch(/className="logo"[^>]*translate="no"/)
-  })
+  // El logo «ZAS<em>S!</em>» con translate="no" ya no existe: con el estilo iPhone (#131) la
+  // cabecera no pinta la marca, solo la nombra para el lector de pantalla (aria-label="ZASS!").
 })

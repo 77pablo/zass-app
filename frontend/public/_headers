@@ -20,3 +20,8 @@
   Cache-Control: no-cache
 /sin-conexion.html
   Cache-Control: no-cache
+
+# RFC 9116: como texto plano, nunca como la pagina de la aplicacion. Vence cada ano (Expires).
+/.well-known/security.txt
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: public, max-age=86400

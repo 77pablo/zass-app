@@ -127,7 +127,8 @@ for (const [vista, tamano] of VISTAS) {
     if (medidas.chicos.length) malos.push(`objetivos chicos: ${medidas.chicos.join('; ')}`)
     const reales = errores.filter((e) => !(nombre.includes('no-existe') && e.includes('404')))
     if (reales.length) malos.push(`errores de consola: ${[...new Set(reales)].join(' | ')}`)
-    if (!medidas.fuente.some((f) => f.includes('Montserrat'))) malos.push('Montserrat NO cargo')
+    // Estilo iPhone (18-nov-2026): la letra es la del sistema; que Montserrat no vuelva a aparecer.
+    if (medidas.fuente.some((f) => f.includes('Montserrat'))) malos.push('Montserrat volvio a aparecer')
     if (filtrado) malos.push(`el HTML lleva algo que no debe salir: «${filtrado[0]}»`)
     if (medidas.amarillo.toLowerCase() !== '#f6c81e') malos.push(`el amarillo de la marca cambio: ${medidas.amarillo}`)
     problemas += malos.length

@@ -226,7 +226,7 @@ public static class EndpointsResenas
         // ---------------------------------------------------------------- internos (grupo S)
 
         var interno = app.MapGroup("/api/interno");
-        interno.RequireAuthorization(p => p.RequireRole(Roles.Moderador));
+        interno.RequireAuthorization(Politicas.Moderador);   // rol revalidado en base (RolVigente)
         interno.AddEndpointFilter<FiltroCsrf>();
 
         // API-52 · la cola de reportes abiertos, sin los propios.

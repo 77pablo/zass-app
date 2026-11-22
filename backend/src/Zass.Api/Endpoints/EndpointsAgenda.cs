@@ -333,6 +333,25 @@ public static class EndpointsAgenda
             })
             .RequireRateLimiting(Tasa.General)
             .WithName("API-42b");
+
+        // API-44 - CS-13: reenviar recordatorio de una cita.
+        // SOLO BACKEND: el buscador O el prestador pueden pedirlo; le llega a AMBOS con la
+        // misma plantilla del recordatorio automático. Máximo 5 por cita por día (Chile).
+        // Devuelve 202 Accepted si se encoló.
+        grupo.MapPost("/recordatorio", async (
+                Guid id, IServicioAgenda agenda, IServicioIdentidad identidad, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+
+                var perfilId = await identidad.PerfilPrestadorIdAsync(usuarioId.Value);
+                var r = await agenda.ReenviarRecordatorioAsync(id, usuarioId.Value, perfilId);
+                return r.Exito
+                    ? Results.Accepted("", new { mensaje = r.Valor })
+                    : Respuestas.Problema(r);
+            })
+            .RequireRateLimiting(Tasa.General)
+            .WithName("API-44");
     }
 
     private static IResult FaltaLaClave() => Results.Problem(

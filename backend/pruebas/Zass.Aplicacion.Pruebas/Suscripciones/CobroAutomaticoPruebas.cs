@@ -44,6 +44,7 @@ public class CobroAutomaticoPruebas
     private readonly BaseEnMemoria _base = new();
     private readonly RelojFijo _reloj = new(Lanzamiento);
     private readonly PasarelaFalsa _pasarela = new();
+    private readonly ColaEnMemoria _cola = new();
     private readonly ServicioSuscripciones _suscripciones;
     private readonly ServicioCobros _cobros;
 
@@ -51,7 +52,7 @@ public class CobroAutomaticoPruebas
     {
         var repo = new RepositorioSuscripcionesEnMemoria(_base);
         _suscripciones = new ServicioSuscripciones(
-            repo, _base, _reloj, new AuditoriaEnMemoria(), new ColaEnMemoria());
+            repo, _base, _reloj, new AuditoriaEnMemoria(), _cola);
         _cobros = new ServicioCobros(
             repo, _suscripciones, _pasarela, _base, _reloj, new AuditoriaEnMemoria());
 
@@ -72,6 +73,7 @@ public class CobroAutomaticoPruebas
         var perfil = new PerfilPrestador { Id = Guid.NewGuid(), UsuarioId = Guid.NewGuid() };
         _base.PerfilesPrestador.Add(perfil);
         _suscripciones.IniciarPruebaAsync(perfil.Id).GetAwaiter().GetResult();
+        Assert.True(_suscripciones.TomarCupoFundadorAsync(perfil.Id).GetAwaiter().GetResult().Exito);
 
         var inscripcion = _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "ins-" + perfil.Id)
             .GetAwaiter().GetResult();
@@ -433,5 +435,191 @@ public class CobroAutomaticoPruebas
 
         Assert.Equal(1, resumen.Cobradas);
         Assert.Equal(7990, Assert.Single(_base.Pagos).Monto);
+    }
+
+    // ------------------------------------------------- ES-1: la gracia de 7 dias
+
+    /// <summary>
+    /// Lo que corre el planificador cada dia, en su orden: primero cobrar, despues vencer y
+    /// avisar (Planificador.Tareas). Las pruebas de la gracia necesitan las dos mitades.
+    /// </summary>
+    private async Task CorreElDia()
+    {
+        await _cobros.CobrarVencimientosAsync();
+        await _suscripciones.CorrerDiarioAsync();
+    }
+
+    private void UnDiaDespues() => _reloj.Avanzar(TimeSpan.FromDays(1));
+
+    private List<IntentoDePago> LosCobros(Guid perfilId) =>
+        _base.IntentosDePago
+            .Where(i => i.PerfilPrestadorId == perfilId && i.Tipo == TipoDeIntento.Cobro)
+            .ToList();
+
+    private List<Notificacion> AvisosDeCobroRechazado() =>
+        _cola.Encoladas.Where(n => n.Tipo == TipoNotificacion.CobroRechazado).ToList();
+
+    private CupoFundador? CupoDe(Guid perfilId) =>
+        _base.CuposFundador.SingleOrDefault(c => c.PerfilPrestadorId == perfilId);
+
+    /// <summary>
+    /// El rechazo manda «actualiza tu tarjeta» UNA vez por periodo: el reintento de manana,
+    /// rechazado tambien, no manda otro.
+    /// </summary>
+    [Fact]
+    public async Task ES1_falla_el_cobro_sale_un_correo_y_no_dos()
+    {
+        var perfil = UnFundadorDelLanzamiento();
+        ConMedioInscrito(perfil.Id);
+        _pasarela.RechazaElCobro = true;
+
+        DiasAntesDelFinDelMesGratis(7);
+        await CorreElDia();
+        UnDiaDespues();
+        await CorreElDia();
+
+        Assert.Equal(2, _pasarela.CobrosRecurrentes);           // si hubo reintento
+        var aviso = Assert.Single(AvisosDeCobroRechazado());     // pero un solo correo
+        Assert.Equal(perfil.UsuarioId, aviso.DestinatarioId);
+        Assert.Contains("fundador", aviso.Cuerpo);
+    }
+
+    /// <summary>
+    /// Se reintenta una vez por dia y no mas: correr el trabajo dos veces el dia del
+    /// reintento sale UNA vez a la pasarela, con la clave «…:reintento:yyyy-MM-dd».
+    /// </summary>
+    [Fact]
+    public async Task ES1_el_reintento_es_uno_por_dia_con_su_clave()
+    {
+        var perfil = UnFundadorDelLanzamiento();
+        var s = ConMedioInscrito(perfil.Id);
+        _pasarela.RechazaElCobro = true;
+
+        DiasAntesDelFinDelMesGratis(7);                    // 16-dic, 09:00 de Chile
+        await _cobros.CobrarVencimientosAsync();
+        UnDiaDespues();                                     // 17-dic
+        await _cobros.CobrarVencimientosAsync();
+        await _cobros.CobrarVencimientosAsync();
+
+        Assert.Equal(2, _pasarela.CobrosRecurrentes);
+        var claves = LosCobros(perfil.Id).Select(i => i.ClaveIdempotencia).ToList();
+        Assert.Equal(2, claves.Count);
+        Assert.Contains(
+            $"cobro-automatico:{s.Id:D}:2026-12-23:reintento:2026-12-17", claves);
+    }
+
+    /// <summary>
+    /// El reintento de manana paga: el fundador conserva su cupo y su precio, y el mes se
+    /// extiende desde el vencimiento, no desde hoy.
+    /// </summary>
+    [Fact]
+    public async Task ES1_el_reintento_del_dia_siguiente_paga_y_conserva_el_cupo()
+    {
+        var perfil = UnFundadorDelLanzamiento();
+        ConMedioInscrito(perfil.Id);
+        _pasarela.RechazaElCobro = true;
+
+        DiasAntesDelFinDelMesGratis(7);
+        await CorreElDia();
+        _pasarela.RechazaElCobro = false;
+        UnDiaDespues();
+        await CorreElDia();
+
+        var pago = Assert.Single(_base.Pagos);
+        Assert.Equal(5990, pago.Monto);
+        Assert.Equal(new DateTime(2027, 1, 23, 12, 0, 0, DateTimeKind.Utc), SuscripcionDe(perfil.Id).VigenteHasta);
+        Assert.NotNull(CupoDe(perfil.Id));
+
+        // Pasado el vencimiento original, sigue: el diario no lo vence ni le suelta el cupo.
+        _reloj.Avanzar(FinDelMesGratis.AddDays(1) - _reloj.Ahora);
+        await CorreElDia();
+        Assert.True(SuscripcionDe(perfil.Id).EstaVigente(_reloj.Ahora));
+        Assert.NotNull(CupoDe(perfil.Id));
+    }
+
+    /// <summary>
+    /// Pasan los 7 dias sin pago: la suscripcion vence, el cupo queda libre aunque tenga
+    /// tarjeta, y no se le cobra nada mas, ni a precio fundador ni a ningun otro (decision de
+    /// Pablo, 20-nov-2026: no hay paso automatico al Mensual).
+    /// </summary>
+    [Fact]
+    public async Task ES1_pasan_los_7_dias_sin_pago_pierde_el_cupo_y_no_se_cobra_mas()
+    {
+        var perfil = UnFundadorDelLanzamiento();
+        ConMedioInscrito(perfil.Id);
+        _pasarela.RechazaElCobro = true;
+
+        DiasAntesDelFinDelMesGratis(7);
+        for (var dia = 0; dia < 7; dia++)
+        {
+            await CorreElDia();
+            UnDiaDespues();
+        }
+        // Ya es el 23-dic a las 12:00 UTC: justo el vencimiento.
+        _reloj.Avanzar(TimeSpan.FromHours(1));
+        await CorreElDia();
+
+        Assert.Equal(7, _pasarela.CobrosRecurrentes);    // el del dia -7 y seis reintentos
+        Assert.Empty(_base.Pagos);
+        Assert.Equal(EstadoSuscripcion.Vencida, SuscripcionDe(perfil.Id).Estado);
+        Assert.Null(CupoDe(perfil.Id));
+
+        // Y despues no se le vuelve a cobrar nada.
+        _pasarela.RechazaElCobro = false;
+        for (var dia = 0; dia < 10; dia++)
+        {
+            UnDiaDespues();
+            await CorreElDia();
+        }
+        Assert.Equal(7, _pasarela.CobrosRecurrentes);
+        Assert.Empty(_base.Pagos);
+    }
+
+    /// <summary>
+    /// Si la pasarela no contesto (intento Pendiente: no se sabe si cobro), no se reintenta.
+    /// Reintentar a ciegas lo que quiza ya se cobro es como se cobra dos veces.
+    /// </summary>
+    [Fact]
+    public async Task ES1_no_se_reintenta_si_hay_un_intento_pendiente()
+    {
+        var perfil = UnFundadorDelLanzamiento();
+        ConMedioInscrito(perfil.Id);
+        _pasarela.FallaAlCobrar = true;
+
+        DiasAntesDelFinDelMesGratis(7);
+        await _cobros.CobrarVencimientosAsync();
+        Assert.Equal(EstadoIntentoPago.Pendiente, Assert.Single(LosCobros(perfil.Id)).Estado);
+
+        _pasarela.FallaAlCobrar = false;
+        UnDiaDespues();
+        var resumen = await _cobros.CobrarVencimientosAsync();
+
+        Assert.Equal(1, resumen.YaIntentadas);
+        Assert.Single(LosCobros(perfil.Id));
+        Assert.Equal(1, _pasarela.CobrosRecurrentes);
+        Assert.Empty(AvisosDeCobroRechazado());
+    }
+
+    /// <summary>
+    /// «Mi ficha» sabe cuantos dias de gracia quedan, y deja de decirlo en cuanto paga.
+    /// </summary>
+    [Fact]
+    public async Task ES1_mi_ficha_ve_los_dias_de_gracia_mientras_dura()
+    {
+        var perfil = UnFundadorDelLanzamiento();
+        ConMedioInscrito(perfil.Id);
+
+        DiasAntesDelFinDelMesGratis(10);
+        Assert.Null((await _suscripciones.DePrestadorAsync(perfil.Id)).Valor!.DiasDeGracia);
+
+        _pasarela.RechazaElCobro = true;
+        DiasAntesDelFinDelMesGratis(7);
+        await CorreElDia();
+        Assert.Equal(7, (await _suscripciones.DePrestadorAsync(perfil.Id)).Valor!.DiasDeGracia);
+
+        UnDiaDespues();
+        _pasarela.RechazaElCobro = false;
+        await CorreElDia();
+        Assert.Null((await _suscripciones.DePrestadorAsync(perfil.Id)).Valor!.DiasDeGracia);
     }
 }

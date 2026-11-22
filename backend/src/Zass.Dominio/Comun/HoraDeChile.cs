@@ -24,7 +24,7 @@ public static class HoraDeChile
 {
     /// <summary>
     /// Se intenta primero el identificador IANA, que es el que funciona en Linux y en el
-    /// contenedor de producción, y después el de Windows. .NET 8 traduce entre los dos con
+    /// contenedor de producción, y después el de Windows. .NET 10 traduce entre los dos con
     /// ICU, pero una imagen recortada puede no traerlo: probar los dos evita que la agenda
     /// muera al desplegar por una diferencia de nombre.
     /// </summary>

@@ -37,6 +37,20 @@ public interface IServicioTarjetas
     /// </summary>
     Task<Resultado<EstadisticasDeTarjetaDto>> EstadisticasAsync(
         Guid perfilPrestadorId, Guid tarjetaId, CancellationToken ct = default);
+
+    /// <summary>
+    /// API-59 (CU-19, CU-20). Emite una tarjeta nueva con su codigo de activacion.
+    /// Devuelve el codigo EN CLARO una sola vez (201). Tasa S. Requiere rol Administrador.
+    /// </summary>
+    Task<Resultado<EmitirTarjetaResultado>> EmitirAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// API-55 (CU-19). Activa la tarjeta con codigo de un solo uso.
+    /// Implementa CC-05: consumo atomico con bloqueo de fila. Tasa A.
+    /// Requiere sesion prestador con perfil publicado.
+    /// </summary>
+    Task<Resultado<ActivarTarjetaResultado>> ActivarAsync(
+        string segmento, string codigo, Guid perfilPrestadorId, string? ipOrigen, CancellationToken ct = default);
 }
 
 /// <summary>El slug viene solo con <see cref="DestinoTarjeta.Ficha"/>; en los demas es nulo.</summary>
@@ -52,6 +66,21 @@ public sealed record MiTarjetaDto(
     string Estado,
     DateTime? ActivadaEn,
     DateTime? DesactivadaEn);
+
+/// <summary>
+/// Resultado de API-59: codigo en claro (solo esta vez), segmento y vencimiento.
+/// </summary>
+public sealed record EmitirTarjetaResultado(
+    string Segmento,
+    string Codigo,
+    DateTime VenceEn);
+
+/// <summary>
+/// Resultado de API-55: mensaje y URL de la ficha.
+/// </summary>
+public sealed record ActivarTarjetaResultado(
+    string Mensaje,
+    string UrlFicha);
 
 public sealed record ConteoPorMedio(int Nfc, int Qr)
 {
