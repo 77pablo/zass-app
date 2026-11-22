@@ -144,6 +144,13 @@ public sealed class ProcesadorDePush
             return;
         }
 
+        // ES-3b · API-43: la persona apago el push para este tipo (se mira al enviar, como el correo).
+        if (!await _ctx.SaleAsync(aviso, CanalNotificacion.Push, ct))
+        {
+            await CerrarAsync(aviso, EstadoEnvio.Anulada, null, ahora, ct);
+            return;
+        }
+
         var mensaje = MensajesPush.Para(aviso.Tipo, aviso.Cuerpo, cita);
         if (mensaje is null)
         {
@@ -152,6 +159,20 @@ public sealed class ProcesadorDePush
         }
 
         var destinos = await _ctx.SuscripcionesPush.Where(s => s.UsuarioId == aviso.DestinatarioId).ToListAsync(ct);
+
+        // Segunda capa contra SSRF (sugerencia de Pablo en el #202): el validador de API-45 ya
+        // filtra los endpoints, pero una fila que entre por otro camino (un script, una migracion,
+        // un cambio futuro) no paso por el. No se le hace POST: se borra. El endpoint no se registra
+        // en el log (es un dato de capacidad: quien lo tiene puede mandarle avisos a esa persona).
+        var noPermitidos = destinos.Where(s => !AvisosPush.EndpointPermitido(s.Endpoint)).ToList();
+        if (noPermitidos.Count > 0)
+        {
+            _ctx.SuscripcionesPush.RemoveRange(noPermitidos);
+            destinos = destinos.Except(noPermitidos).ToList();
+            _log.LogWarning("Push: {N} navegador(es) con un endpoint fuera de la lista permitida, borrados sin enviar (aviso {Id}).",
+                noPermitidos.Count, aviso.Id);
+        }
+
         if (destinos.Count == 0)
         {
             await CerrarAsync(aviso, EstadoEnvio.Anulada, null, ahora, ct);

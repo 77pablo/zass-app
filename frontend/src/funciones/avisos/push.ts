@@ -63,13 +63,27 @@ async function registro(entorno: EntornoPush): Promise<ServiceWorkerRegistration
   }
 }
 
+/**
+ * Como estan los avisos en este navegador. Si ya hay suscripcion, ademas la VUELVE A REGISTRAR en
+ * la API (API-45 es idempotente): que el navegador la tenga no prueba que el servidor tambien. El
+ * servidor pudo borrarla (410, el tope de 10) o puede estar a nombre de OTRA cuenta (un computador
+ * compartido donde la baja al salir no alcanzo a llegar); en los dos casos la persona veria
+ * «activo» y no le llegaria nada, o le llegaria a otro. Si el registro falla, se informa
+ * «inactivo» para que pueda volver a activarlos.
+ */
 export async function estadoPush(entorno: EntornoPush = entornoReal()): Promise<EstadoPush> {
   const reg = await registro(entorno)
   if (!reg?.pushManager) return 'no-soportado'
   if ((await clavePublica()) === null) return 'sin-clave'
   if (entorno.permiso() === 'denied') return 'bloqueado'
   const suscripcion = await reg.pushManager.getSubscription()
-  return suscripcion !== null && entorno.permiso() === 'granted' ? 'activo' : 'inactivo'
+  if (suscripcion === null || entorno.permiso() !== 'granted') return 'inactivo'
+  try {
+    await enviar('/api/mi/notificaciones/push', aCmd(suscripcion))
+    return 'activo'
+  } catch {
+    return 'inactivo'
+  }
 }
 
 /** Lo que la API espera (RegistrarPushCmd): el endpoint y las dos claves del navegador. */
