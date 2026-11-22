@@ -164,7 +164,7 @@ Content-Security-Policy:
 | Cabecera | API (código) | Frontend (`_headers`) | Doc | Estado |
 |---|---|---|---|:--:|
 | `Content-Security-Policy` | `default-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'` | `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' ...` | Incluye Azure Blob y api.zass.cl | ⚠️ |
-| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains; preload` | `max-age=31536000; includeSubDomains` | Coincide | ✅ |
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains; preload` | `max-age=63072000; includeSubDomains` (2 años, sin `preload`; hasta el 21-nov-2026 producción mandaba `max-age=2592000` porque `UseHsts` pisaba el valor) | Más largo; `preload` queda como decisión de Pablo | ✅ |
 | `X-Content-Type-Options` | `nosniff` | `nosniff` | Coincide | ✅ |
 | `X-Frame-Options` | `DENY` | `DENY` | Coincide | ✅ |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` | `strict-origin-when-cross-origin` | Coincide | ✅ |

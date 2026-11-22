@@ -269,7 +269,7 @@ public partial class ApiPruebas : IAsyncLifetime
 
         var alta = await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo, contrasena = "contrasena-larga-1", nombre = "Pablo Espinoza", rol = "prestador",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo, contrasena = "contrasena-larga-1", nombre = "Pablo Espinoza", rol = "prestador",
         });
         Assert.Equal(HttpStatusCode.Created, alta.StatusCode);
 
@@ -394,7 +394,7 @@ public partial class ApiPruebas : IAsyncLifetime
     {
         var respuesta = await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo = "no-es-un-correo", contrasena = "corta",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo = "no-es-un-correo", contrasena = "corta",
             nombre = "", rol = "administrador",
         });
 
@@ -407,12 +407,76 @@ public partial class ApiPruebas : IAsyncLifetime
         Assert.DoesNotContain("no-es-un-correo", cuerpo);
     }
 
+    // ------------------------------------- registro completo (decision de Pablo, 20-nov-2026)
+
+    [Fact]
+    public async Task Registrar_una_empresa_guarda_sus_datos_y_el_RUT_normalizado()
+    {
+        var correo = NuevoCorreo();
+        var cuerpoRut = Random.Shared.Next(70_000_000, 99_999_999);
+        var t = cuerpoRut.ToString();
+        var rut = $"{t[..2]}.{t[2..5]}.{t[5..]}-{Zass.Aplicacion.Comun.Rut.DigitoVerificador(cuerpoRut)}";   // con puntos, como lo escribe la gente
+
+        var respuesta = await _cliente.PostAsJsonAsync("/api/auth/registro", new
+        {
+            correo, contrasena = "contrasena-larga-1", nombre = "Ana Contacto", rol = "prestador",
+            tipo = "empresa", razonSocial = "Gasfiteria de Prueba SpA", rut,
+            telefono = "22 345 6789", mayorDeEdad = true,
+        });
+
+        Assert.Equal(HttpStatusCode.Created, respuesta.StatusCode);
+        using var ctx = ContextoDePrueba.Crear();
+        var u = await ctx.Usuarios.AsNoTracking().SingleAsync(x => x.Correo == correo);
+        Assert.Equal(TipoCuenta.Empresa, u.Tipo);
+        Assert.Equal($"{cuerpoRut}-{Zass.Aplicacion.Comun.Rut.DigitoVerificador(cuerpoRut)}", u.Rut);
+        Assert.Equal("Gasfiteria de Prueba SpA", u.RazonSocial);
+        Assert.NotNull(u.MayorDeEdadConfirmadoEn);
+        var perfil = await ctx.PerfilesPrestador.AsNoTracking().SingleAsync(p => p.UsuarioId == u.Id);
+        Assert.Equal("Gasfiteria de Prueba SpA", perfil.NombrePublico);
+    }
+
+    [Fact]
+    public async Task Un_RUT_ya_registrado_devuelve_409_y_no_crea_otra_cuenta()
+    {
+        var rut = DatosDeRegistro.Rut();
+        object Cuerpo(string correo) => new
+        {
+            correo, contrasena = "contrasena-larga-1", nombre = "Ana", rol = "buscador",
+            tipo = "particular", apellido = "Rojas", rut, telefono = "+56 9 1234 5678", mayorDeEdad = true,
+        };
+        Assert.Equal(HttpStatusCode.Created,
+            (await _cliente.PostAsJsonAsync("/api/auth/registro", Cuerpo(NuevoCorreo()))).StatusCode);
+
+        var segundo = NuevoCorreo();
+        var r = await _cliente.PostAsJsonAsync("/api/auth/registro", Cuerpo(segundo));
+
+        Assert.Equal(HttpStatusCode.Conflict, r.StatusCode);
+        using var ctx = ContextoDePrueba.Crear();
+        Assert.False(await ctx.Usuarios.AnyAsync(x => x.Correo == segundo));
+    }
+
+    [Fact]
+    public async Task Sin_tipo_RUT_telefono_ni_mayoria_de_edad_devuelve_400_con_cada_campo()
+    {
+        var r = await _cliente.PostAsJsonAsync("/api/auth/registro", new
+        {
+            correo = NuevoCorreo(), contrasena = "contrasena-larga-1", nombre = "Ana", rol = "buscador",
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
+        var cuerpo = await r.Content.ReadAsStringAsync();
+        Assert.Contains("Tipo", cuerpo);
+        Assert.Contains("Rut", cuerpo);
+        Assert.Contains("Telefono", cuerpo);
+        Assert.Contains("MayorDeEdad", cuerpo);
+    }
+
     [Fact]
     public async Task Pedir_el_rol_administrador_al_registrarse_se_rechaza()
     {
         var respuesta = await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo = NuevoCorreo(), contrasena = "contrasena-larga-1",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo = NuevoCorreo(), contrasena = "contrasena-larga-1",
             nombre = "Colado", rol = "administrador",
         });
 
@@ -1309,7 +1373,7 @@ public partial class ApiPruebas : IAsyncLifetime
             var correo = NuevoCorreo();
             Assert.Equal(HttpStatusCode.Created, (await _cliente.PostAsJsonAsync("/api/auth/registro", new
             {
-                correo, contrasena = "contrasena-larga-1", nombre = "Sin Verificar", rol = "buscador",
+                tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo, contrasena = "contrasena-larga-1", nombre = "Sin Verificar", rol = "buscador",
             })).StatusCode);
 
             // A proposito NO se llama a /api/auth/correo/verificar.
@@ -1439,7 +1503,7 @@ public partial class ApiPruebas : IAsyncLifetime
     public async Task La_vcard_descarga_con_contacto_completo_y_content_type_correcto()
     {
         var slug = await UnaFichaConContactoAsync();
-        using var visitante = UnVisitante();
+        var visitante = _cliente;   // con sesion y correo verificado (RN-S1-09)
 
         var respuesta = await visitante.GetAsync($"/api/prestadores/{slug}/vcard");
 
@@ -1469,7 +1533,8 @@ public partial class ApiPruebas : IAsyncLifetime
     [Fact]
     public async Task La_vcard_slug_inexistente_devuelve_404()
     {
-        using var visitante = UnVisitante();
+        await UnPrestadorConSesionAsync();
+        var visitante = _cliente;   // con sesion verificada: sin ella responde 401 antes de buscar
 
         var respuesta = await visitante.GetAsync("/api/prestadores/este-slug-no-existe-para-nadie/vcard");
 
@@ -1529,7 +1594,7 @@ public partial class ApiPruebas : IAsyncLifetime
                 .SetProperty(x => x.VigenteHasta, DateTime.UtcNow.AddDays(-1)));
         await ctx.SaveChangesAsync();
 
-        using var visitante = UnVisitante();
+        var visitante = _cliente;   // con sesion verificada: el 404 tiene que ser por la suscripcion
         var respuestaVcard = await visitante.GetAsync($"/api/prestadores/{slug}/vcard");
         var respuestaInexistente = await visitante.GetAsync("/api/prestadores/este-slug-no-existe-para-nadie/vcard");
 
@@ -1540,11 +1605,75 @@ public partial class ApiPruebas : IAsyncLifetime
             await CuerpoComparable.De(respuestaInexistente), await CuerpoComparable.De(respuestaVcard));
     }
 
+    /// <summary>
+    /// La vCard es el contacto: sin sesion NO puede entregarlo. Antes era anonima y, con API-64
+    /// listando todos los slugs, cualquiera bajaba la libreta de contactos de todos los
+    /// prestadores sin crear una cuenta. Y el 401 sale antes de buscar: no dice si la ficha existe.
+    /// </summary>
+    [Fact]
+    public async Task La_vcard_sin_sesion_responde_401_sin_un_solo_dato_de_contacto()
+    {
+        var slug = await UnaFichaConContactoAsync();
+        using var visitante = UnVisitante();
+
+        var respuesta = await visitante.GetAsync($"/api/prestadores/{slug}/vcard");
+        var inexistente = await visitante.GetAsync("/api/prestadores/este-slug-no-existe-para-nadie/vcard");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, respuesta.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, inexistente.StatusCode);
+        var texto = await respuesta.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("1234 5678", texto);
+        Assert.DoesNotContain("912345678", texto);
+        Assert.DoesNotContain("contacto@perez.cl", texto);
+    }
+
+    [Fact]
+    public async Task La_vcard_con_sesion_pero_sin_correo_verificado_responde_403_sin_datos()
+    {
+        var slug = await UnaFichaConContactoAsync();
+        var primero = _cliente;
+        using var sinVerificar = _app.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            HandleCookies = true, AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost"),
+        });
+        _cliente = sinVerificar;
+        try
+        {
+            var correo = NuevoCorreo();
+            await RegistrarAsync(correo);           // a proposito NO se verifica
+            await IniciarSesionAsync(correo);
+
+            var respuesta = await _cliente.GetAsync($"/api/prestadores/{slug}/vcard");
+
+            Assert.Equal(HttpStatusCode.Forbidden, respuesta.StatusCode);
+            var texto = await respuesta.Content.ReadAsStringAsync();
+            Assert.Contains("Verifica tu correo", texto);
+            Assert.DoesNotContain("1234 5678", texto);
+            Assert.DoesNotContain("contacto@perez.cl", texto);
+        }
+        finally
+        {
+            _cliente = primero;
+        }
+    }
+
+    [Fact]
+    public async Task La_vcard_no_se_guarda_en_caches_compartidos()
+    {
+        var slug = await UnaFichaConContactoAsync();
+
+        var respuesta = await _cliente.GetAsync($"/api/prestadores/{slug}/vcard");
+
+        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
+        Assert.True(respuesta.Headers.CacheControl?.NoStore, $"Cache-Control: {respuesta.Headers.CacheControl}");
+        Assert.True(respuesta.Headers.CacheControl?.Private, $"Cache-Control: {respuesta.Headers.CacheControl}");
+    }
+
     [Fact]
     public async Task La_vcard_escapa_coma_punto_y_coma_barra_y_saltos_de_linea()
     {
         var slug = await UnaFichaConContactoAsync();
-        using var visitante = UnVisitante();
+        var visitante = _cliente;   // con sesion y correo verificado (RN-S1-09)
 
         var respuesta = await visitante.GetAsync($"/api/prestadores/{slug}/vcard");
         Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
@@ -1570,7 +1699,7 @@ public partial class ApiPruebas : IAsyncLifetime
         // la MISMA fuente (FichaPublicaAsync) que la ficha, asi que no puede incluir nada que
         // la ficha no muestre.
         var slug = await UnaFichaConContactoAsync();
-        using var visitante = UnVisitante();
+        var visitante = _cliente;   // con sesion y correo verificado (RN-S1-09)
 
         var respuesta = await visitante.GetAsync($"/api/prestadores/{slug}/vcard");
         Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
@@ -2258,7 +2387,7 @@ public partial class ApiPruebas : IAsyncLifetime
     {
         var respuesta = await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo, contrasena = "contrasena-larga-1", nombre = "Pablo Espinoza", rol,
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo, contrasena = "contrasena-larga-1", nombre = "Pablo Espinoza", rol,
         });
         Assert.Equal(HttpStatusCode.Created, respuesta.StatusCode);
     }
@@ -2354,6 +2483,12 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-22",
             "API-22b",
             "API-23",
+            // P-2 y P-3 (21-nov-2026): leer las preferencias (el metodo que faltaba de API-23) y los
+            // favoritos de CS-08, que la matriz de trazabilidad pone sobre API-23.
+            "API-23b",
+            "API-23-favoritos",
+            "API-23-favorito-guardar",
+            "API-23-favorito-quitar",
             "API-24",
             "API-25",
             // JQ-9: los documentos de respaldo. API-26 es el del documento; quitar y ver son el
@@ -2412,7 +2547,17 @@ public partial class ApiPruebas : IAsyncLifetime
             // terminacion `b` significa «el mismo recurso, el metodo que faltaba», y esto es otro
             // recurso y otra operacion. Documentado en api-rest.md seccion 11.
             "API-71",
+            // La vuelta del navegador desde la pasarela (fase 2 de Flow). Otro recurso que el aviso.
+            "API-75",
+            // Cupo sin tarjeta (20-nov-2026): API-69 toma el cupo y API-76 inscribe la tarjeta.
+            "API-76",
+            // Cancelar la renovacion de la suscripcion (22-nov-2026).
+            "API-78",
 
+            // ES-3 (21-nov-2026): registrar este navegador para push, darlo de baja y la clave VAPID.
+            "API-45",
+            "API-45-baja",
+            "API-45-clave",
             // JQ-9: la foto del perfil (subir, quitar, servirla) y el documento que abre el
             // Verificador con la credencial tomada.
             "API-72",
@@ -2420,10 +2565,17 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-73",
             "API-74",
 
+            // T69: las fotos de trabajos (subir, listar las propias, ordenarlas y quitar una).
+            "API-77",
+            "API-77-listar",
+            "API-77-ordenar",
+            "API-77-quitar",
+
             "API-resenas-publicas",
             "CS-02b",
             "CS-04",
             "CSRF",
+            "ES-2-COMPLETAR-DATOS",   // PUT /api/mi/cuenta/datos (ES-2, 20-nov-2026)
             "MI-SUSCRIPCION",
         };
 

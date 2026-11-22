@@ -33,9 +33,6 @@ public sealed class ServicioFotoDePerfil
     public const int LadoGrande = 288;
     public const int LadoChico = 96;
 
-    /// <summary>De donde la sirve la API. Ver EndpointsArchivos.</summary>
-    public const string RutaPublica = "/api/archivos/fotos/";
-
     private readonly IRepositorioPerfiles _perfiles;
     private readonly IUnidadDeTrabajo _unidad;
     private readonly IAlmacenDeArchivos _almacen;
@@ -58,8 +55,8 @@ public sealed class ServicioFotoDePerfil
     /// <summary>La clave de almacenamiento que corresponde a una UrlFoto nuestra, o nulo si no es nuestra.</summary>
     public static string? ClaveDe(string? urlFoto)
     {
-        if (urlFoto is null || !urlFoto.StartsWith(RutaPublica, StringComparison.Ordinal)) return null;
-        var clave = TiposDeArchivo.CarpetaFotos + "/" + urlFoto[RutaPublica.Length..];
+        if (urlFoto is null || !urlFoto.StartsWith(TiposDeArchivo.RutaPublica, StringComparison.Ordinal)) return null;
+        var clave = TiposDeArchivo.CarpetaFotos + "/" + urlFoto[TiposDeArchivo.RutaPublica.Length..];
         return TiposDeArchivo.EsClaveValida(clave) ? clave : null;
     }
 
@@ -119,7 +116,7 @@ public sealed class ServicioFotoDePerfil
 
         // No se sube la Version (CC-02): cambiar la foto no tiene que invalidar el formulario de
         // datos que la persona pueda tener abierto en otra pestaña.
-        perfil.UrlFoto = RutaPublica + clave[(TiposDeArchivo.CarpetaFotos.Length + 1)..];
+        perfil.UrlFoto = TiposDeArchivo.RutaPublica + clave[(TiposDeArchivo.CarpetaFotos.Length + 1)..];
         perfil.ActualizadoEn = _reloj.Ahora;
 
         _auditor.Registrar(Auditar.Entrada(

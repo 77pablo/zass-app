@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { ErrorApi } from '../api/cliente'
 import { fichaPublica, type FichaPublica } from '../funciones/busqueda/servicio'
+import { BotonGuardar } from '../funciones/buscador/BotonGuardar'
+import { useFavoritos } from '../funciones/buscador/useFavoritos'
 import { registrarContacto, type CanalContacto } from '../funciones/resenas/servicio'
 import { Icono } from '../marco/Icono'
 import { Monograma } from '../marco/Monograma'
@@ -40,6 +42,8 @@ export function Ficha() {
   // API-46 una sola vez por ficha y visita: el servidor ya devuelve el contacto abierto, pero
   // cada toque de mas gastaria peticiones del limite sin cambiar nada.
   const registrado = useRef<string | null>(null)
+  // CS-08: el boton de guardar. Los hooks van antes de los `return` tempranos de mas abajo.
+  const favoritos = useFavoritos()
 
   useEffect(() => {
     let vigente = true
@@ -143,6 +147,16 @@ export function Ficha() {
                   </span>
                 )}
               </div>
+              <div className="fila-etiquetas">
+                <BotonGuardar
+                  perfilId={ficha.id} nombre={ficha.nombrePublico}
+                  despues={`/prestadores/${slug}`} favoritos={favoritos}
+                />
+                {favoritos.guardado(ficha.id) && (
+                  <Link className="enlace" to="/mis-guardados">Ver tus guardados</Link>
+                )}
+              </div>
+              {favoritos.error && <p className="aviso-linea" role="alert">{favoritos.error}</p>}
             </div>
           </header>
 
@@ -216,6 +230,20 @@ export function Ficha() {
                     <li>
                       <a className="boton boton--lleno" href={sitio} rel="noreferrer noopener" target="_blank">
                         <Icono nombre="mundo" />Ver su sitio web
+                      </a>
+                    </li>
+                  )}
+                  {/*
+                    CS-19: el contacto a la libreta del teléfono (API-07). Solo si hay algo que
+                    guardar: una vCard con el puro nombre no sirve. El servidor exige lo mismo que
+                    para ver estos botones (sesión y correo verificado), así que el enlace solo
+                    aparece donde va a funcionar. No registra un contacto (API-46): guardarlo no
+                    es hablar con nadie, igual que abrir el sitio web.
+                  */}
+                  {(c.telefono || wasap || c.correo) && (
+                    <li>
+                      <a className="boton" href={`/api/prestadores/${encodeURIComponent(slug)}/vcard`} download>
+                        <Icono nombre="persona" />Guardar contacto
                       </a>
                     </li>
                   )}

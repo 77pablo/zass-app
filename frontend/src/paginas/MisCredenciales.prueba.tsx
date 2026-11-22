@@ -63,6 +63,24 @@ describe('Tus credenciales', () => {
     expect(screen.getByText(texto, { selector: '.sello, .dato' })).toBeInTheDocument()
   })
 
+  // Decisión de Pablo (21-nov-2026): una rechazada no sale en la ficha; su dueño ve el motivo y
+  // que no se muestra. Las demás no dicen nada de eso.
+  it('una rechazada dice el motivo y que no se muestra en la ficha', () => {
+    render(<MisCredenciales
+      credenciales={[{ ...una('Rechazada', 'Falsa'), motivoDelRechazo: 'SospechaAdulteracion' }, una('EnRevision', 'Otra')]}
+      alCambiar={() => {}} />)
+
+    expect(screen.getByText(/Motivo: Sospecha de adulteración\. No se muestra en tu ficha pública\./)).toBeInTheDocument()
+    expect(screen.getAllByText(/No se muestra en tu ficha pública/)).toHaveLength(1)
+  })
+
+  it('una rechazada sin motivo conocido igual dice que no se muestra', () => {
+    render(<MisCredenciales credenciales={[una('Rechazada')]} alCambiar={() => {}} />)
+
+    expect(screen.getByText('No se muestra en tu ficha pública.')).toBeInTheDocument()
+    expect(screen.queryByText(/Motivo:/)).toBeNull()
+  })
+
   it('un borrador explica qué es la revisión, y sin borradores no lo dice', () => {
     const { rerender } = render(<MisCredenciales credenciales={[una('Borrador')]} alCambiar={() => {}} />)
     expect(screen.getByText(/Adjunta el documento que lo respalda y envíalo a revisión/)).toBeInTheDocument()

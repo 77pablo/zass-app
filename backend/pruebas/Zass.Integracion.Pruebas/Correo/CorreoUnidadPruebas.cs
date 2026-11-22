@@ -174,6 +174,54 @@ public class CorreoUnidadPruebas
         }
     }
 
+    // ------------------------------------------------- ES-1: cobro rechazado
+
+    [Theory]
+    [InlineData(1, "mañana")]
+    [InlineData(4, "en 4 días")]
+    public void ES1_el_aviso_de_cobro_rechazado_dice_el_plazo_y_lleva_a_cambiar_la_tarjeta(int dias, string esperado)
+    {
+        var r = Plantillas.Renderizar(TipoNotificacion.CobroRechazado, "Ana",
+            "https://zass.cl/", CargaDeAviso.ConCampos(("dias", dias.ToString())))!;
+
+        Assert.Contains(esperado, r.Texto);
+        Assert.Contains("ZASS!", r.Asunto);
+        Assert.Contains("https://zass.cl/mi-ficha", r.Texto);
+        Assert.Contains("href=\"https://zass.cl/mi-ficha\"", r.Html);
+        Assert.Contains("Actualizar mi tarjeta", r.Html);
+        Assert.Contains("cada día", r.Texto);
+    }
+
+    /// <summary>Al fundador se le dice lo que pierde; a quien no lo es, no se le promete un cupo.</summary>
+    [Fact]
+    public void ES1_solo_al_fundador_se_le_dice_que_pierde_el_cupo()
+    {
+        var fundador = Plantillas.Renderizar(TipoNotificacion.CobroRechazado, "Ana", "https://zass.cl",
+            CargaDeAviso.ConCampos(("dias", "3"), ("fundador", "si")))!;
+        var mensual = Plantillas.Renderizar(TipoNotificacion.CobroRechazado, "Ana", "https://zass.cl",
+            CargaDeAviso.ConCampos(("dias", "3")))!;
+
+        Assert.Contains("cupo de fundador", fundador.Texto);
+        Assert.DoesNotContain("cupo", mensual.Texto);
+        Assert.Contains("deja de aparecer", mensual.Texto);
+    }
+
+    /// <summary>
+    /// Un aviso de cobro que no sale es peor que uno sin la cifra exacta: sin dias en la carga
+    /// se renderiza igual, con «pronto».
+    /// </summary>
+    [Fact]
+    public void ES1_el_aviso_de_cobro_rechazado_sin_dias_sale_igual()
+    {
+        var r = Plantillas.Renderizar(
+            TipoNotificacion.CobroRechazado, "Ana", "https://zass.cl", CargaDeAviso.Purgada);
+
+        Assert.NotNull(r);
+        Assert.Contains("pronto", r!.Texto);
+        Assert.True(Plantillas.TienePlantilla(TipoNotificacion.CobroRechazado));
+        Assert.False(Plantillas.LlevaToken(TipoNotificacion.CobroRechazado));
+    }
+
     [Fact]
     public void Un_tipo_sin_plantilla_no_se_renderiza()
     {
@@ -354,6 +402,10 @@ public class CorreoUnidadPruebas
             TipoNotificacion.CitaReprogramada,
             // El planificador (A-09), desde JQ-3.
             TipoNotificacion.Recordatorio24h, TipoNotificacion.Recordatorio2h,
+            // ServicioRegistro, desde el 21-nov-2026: registro con un RUT que ya tiene cuenta.
+            TipoNotificacion.RegistroConRutExistente,
+            // El planificador (CS-06), desde el 22-nov-2026: credencial verificada que vencio.
+            TipoNotificacion.CredencialVencida,
             // ServicioBorradoresAbandonados, desde JQ-16.
             TipoNotificacion.BorradorPorEliminarse,
         };
@@ -365,6 +417,33 @@ public class CorreoUnidadPruebas
         var huecos = encolados.Except(pendientes).Where(t => !Plantillas.TienePlantilla(t)).ToArray();
 
         Assert.Empty(huecos);
+    }
+
+    // ------------------------------------------------------- RUT con cuenta (21-nov-2026)
+
+    /// <summary>
+    /// El aviso a la dueña de un RUT: los dos enlaces (entrar y pedir contraseña nueva), ningun
+    /// token (no lo pidio ella), el nombre escapado y nunca en el asunto. No pide nada de la carga.
+    /// </summary>
+    [Fact]
+    public void El_aviso_de_RUT_con_cuenta_lleva_entrar_y_recuperar_y_ningun_secreto()
+    {
+        Assert.True(Plantillas.TienePlantilla(TipoNotificacion.RegistroConRutExistente));
+        Assert.False(Plantillas.LlevaToken(TipoNotificacion.RegistroConRutExistente));
+
+        foreach (var carga in new[] { "", "{}", CargaDeAviso.Purgada })
+            Assert.NotNull(Plantillas.Renderizar(TipoNotificacion.RegistroConRutExistente, "Ana", "https://zass.cl/", carga));
+
+        var r = Plantillas.Renderizar(TipoNotificacion.RegistroConRutExistente, "Luis <b>Pérez</b>", "https://zass.cl/", "{}")!;
+        Assert.Equal("Alguien intentó crear otra cuenta con tu RUT en ZASS!", r.Asunto);
+        Assert.Contains("https://zass.cl/entrar", r.Texto);
+        Assert.Contains("https://zass.cl/recuperar-contrasena", r.Texto);
+        Assert.Contains("href=\"https://zass.cl/entrar\"", r.Html);
+        Assert.Contains("href=\"https://zass.cl/recuperar-contrasena\"", r.Html);
+        Assert.DoesNotContain("token", r.Texto, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Si no fuiste tú", r.Texto);
+        Assert.DoesNotContain("Luis", r.Asunto);
+        Assert.DoesNotContain("<b>Pérez</b>", r.Html);
     }
 
     // ------------------------------------------------------------ recordatorios (JQ-3)

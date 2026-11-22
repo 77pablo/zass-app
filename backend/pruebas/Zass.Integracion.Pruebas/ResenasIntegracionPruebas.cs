@@ -242,13 +242,19 @@ public class ResenasIntegracionPruebas : IDisposable
         var moderador = AyudasResenas.NuevoUsuario(Ctx, "moderador");
         await Ctx.SaveChangesAsync();
 
+        var segundaPersona = AyudasResenas.NuevoUsuario(Ctx);
+        await Ctx.SaveChangesAsync();
+
         var rep = await _servicio.ReportarAsync(a.Id, reportante.Id, MotivoReporte.LenguajeDeOdio, null);
+        Assert.True(rep.Exito, rep.Mensaje);
+        Assert.Equal(1, (await PerfilDeNuevo(perfil.Id)).TotalResenas);       // con un solo grave, a la vista
+        rep = await _servicio.ReportarAsync(a.Id, segundaPersona.Id, MotivoReporte.DatosPersonales, null);
         Assert.True(rep.Exito, rep.Mensaje);
         var oculta = await PerfilDeNuevo(perfil.Id);
         Assert.Equal(0, oculta.TotalResenas);
         Assert.Null(oculta.PromedioCalificacion);
 
-        var reporteId = (await Ctx.ReportesResena.AsNoTracking().SingleAsync(r => r.ResenaId == a.Id)).Id;
+        var reporteId = (await Ctx.ReportesResena.AsNoTracking().FirstAsync(r => r.ResenaId == a.Id)).Id;
         Assert.True((await _servicio.ResolverReporteAsync(reporteId, moderador.Id, false, "Se revisó: no hay odio en el texto.")).Exito);
         Assert.Equal(1, (await PerfilDeNuevo(perfil.Id)).TotalResenas);
 
@@ -890,12 +896,14 @@ public class ResenasConcurrenciaPruebas : IAsyncLifetime
         var (perfil, _) = await UnPrestador();
         var gente = new List<(Usuario Autor, Contacto Contacto)>();
         for (var i = 0; i < 6; i++) gente.Add(await UnBuscadorConContacto(perfil));
-        Usuario reportante;
+        Usuario reportante, reportante2;
         using (var ctx = ContextoDePrueba.Crear())
         {
             reportante = AyudasResenas.NuevoUsuario(ctx);
+            reportante2 = AyudasResenas.NuevoUsuario(ctx);
             await ctx.SaveChangesAsync();
             _usuarios.Add(reportante.Id);
+            _usuarios.Add(reportante2.Id);
         }
 
         // Primero 3 ya publicadas; después, a la vez: 3 publicaciones nuevas, 3 ediciones y 3 reportes graves.
@@ -915,19 +923,21 @@ public class ResenasConcurrenciaPruebas : IAsyncLifetime
                 await AyudasResenas.Servicio(ctx, new RelojUtc()).EditarAsync(new EditarResenaCmd(
                     id, autor.Id, 1, "Cambié de idea: el trabajo tuvo varios problemas serios.", null, false));
             }));
+            // Auditoría 22-nov: ocultar pide dos reportes graves de personas distintas.
             if (i < 2)
-                tareas.Add(Task.Run(async () =>
-                {
-                    using var ctx = ContextoDePrueba.Crear();
-                    await AyudasResenas.Servicio(ctx, new RelojUtc())
-                        .ReportarAsync(id, reportante.Id, MotivoReporte.LenguajeDeOdio, null);
-                }));
+                foreach (var quien in new[] { reportante, reportante2 })
+                    tareas.Add(Task.Run(async () =>
+                    {
+                        using var ctx = ContextoDePrueba.Crear();
+                        await AyudasResenas.Servicio(ctx, new RelojUtc())
+                            .ReportarAsync(id, quien.Id, MotivoReporte.LenguajeDeOdio, null);
+                    }));
         }
         await Task.WhenAll(tareas);
 
         using var verificar = ContextoDePrueba.Crear();
         Assert.Equal(0, await AyudasResenas.DesvioAsync(verificar, perfil.Id));
         var p = await verificar.PerfilesPrestador.AsNoTracking().SingleAsync(x => x.Id == perfil.Id);
-        Assert.Equal(4, p.TotalResenas);       // 6 reseñas, menos las 2 que el reporte grave ocultó
+        Assert.Equal(4, p.TotalResenas);       // 6 reseñas, menos las 2 que los dos reportes graves ocultaron
     }
 }

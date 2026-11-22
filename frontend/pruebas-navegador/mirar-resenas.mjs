@@ -17,6 +17,16 @@ import { mkdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { chromium } from 'playwright'
 
+/** RUT valido al azar (modulo 11): el registro lo exige y es unico desde el 20-nov-2026. */
+function rutAlAzar() {
+  const cuerpo = 10_000_000 + Math.floor(Math.random() * 89_999_999)
+  let suma = 0, factor = 2
+  for (let n = cuerpo; n > 0; n = Math.floor(n / 10)) { suma += (n % 10) * factor; factor = factor === 7 ? 2 : factor + 1 }
+  const resto = 11 - (suma % 11)
+  return `${cuerpo}-${resto === 11 ? '0' : resto === 10 ? 'K' : resto}`
+}
+
+
 const BASE = 'https://localhost:5173'
 const raiz = resolve(import.meta.dirname, '..', '..')
 const carpeta = process.argv[2] ?? resolve(raiz, 'registros', 'capturas')
@@ -76,7 +86,7 @@ const foto = (n) => pagina.screenshot({ path: resolve(carpeta, `resenas-${n}.png
 try {
   // --- La autora: una cuenta de verdad, creada por la API ----------------------------------
   const registro = await contexto.request.post(`${BASE}/api/auth/registro`, {
-    data: { correo: correoAutor, contrasena: clave, nombre: 'Rosa Resenadora', rol: 'buscador' },
+    data: { correo: correoAutor, contrasena: clave, nombre: 'Rosa', rol: 'buscador', tipo: 'particular', apellido: 'Resenadora', rut: rutAlAzar(), telefono: '+56 9 1234 5678', mayorDeEdad: true },
   })
   comprobar('la cuenta de la autora se crea', registro.status() === 201, `HTTP ${registro.status()}`)
   sql(`UPDATE usuarios SET correo_verificado = true WHERE correo::text = '${correoAutor}'`)

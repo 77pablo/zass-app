@@ -147,8 +147,13 @@ public sealed class RepositorioAgendaEfCore : IRepositorioAgenda
         Completa().FirstOrDefaultAsync(c => c.Id == id, ct);
 
     public Task<Cita?> CitaPorClaveAsync(
+        string claveIdempotencia, Guid buscadorId, CancellationToken ct = default) =>
+        Completa().FirstOrDefaultAsync(
+            c => c.ClaveIdempotencia == claveIdempotencia && c.BuscadorId == buscadorId, ct);
+
+    public Task<bool> ClaveDeCitaUsadaAsync(
         string claveIdempotencia, CancellationToken ct = default) =>
-        Completa().FirstOrDefaultAsync(c => c.ClaveIdempotencia == claveIdempotencia, ct);
+        _ctx.Citas.AnyAsync(c => c.ClaveIdempotencia == claveIdempotencia, ct);
 
     public Task<int> CitasActivasEntreAsync(
         Guid buscadorId, Guid perfilPrestadorId, CancellationToken ct = default) =>

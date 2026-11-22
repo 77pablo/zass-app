@@ -50,4 +50,13 @@ public static class Trabajos
 
     /// <summary>JQ-16 (CU-05 4D.3): avisar y borrar los borradores de credencial abandonados.</summary>
     public const string Borradores = "borradores-abandonados";
+
+    /// <summary>CS-06 · T8 de la credencial: pasar a «vencida» las verificadas con vence_en &lt; hoy.</summary>
+    public const string CredencialesVencidas = "credenciales-vencidas-diario";
+
+    /// <summary>
+    /// Auditoria 22-nov-2026: borrar las cuentas que siguen sin verificar el correo pasadas 72 h
+    /// desde su creacion, para que no retengan un RUT o un correo ajeno para siempre.
+    /// </summary>
+    public const string CuentasSinVerificar = "cuentas-sin-verificar";
 }

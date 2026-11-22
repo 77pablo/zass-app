@@ -29,6 +29,16 @@ public static class Plantillas
     public static string EnlaceDeRecuperacion(string urlPublica, string token) =>
         $"{urlPublica.TrimEnd('/')}/restablecer-contrasena?token={Uri.EscapeDataString(token)}";
 
+    /// <summary>La pantalla para entrar con correo y contraseña.</summary>
+    public static string EnlaceDeEntrada(string urlPublica) => $"{urlPublica.TrimEnd('/')}/entrar";
+
+    /// <summary>
+    /// La pantalla donde se PIDE un enlace para crear una contraseña nueva (API-14). No lleva
+    /// token: el token lo manda API-14 cuando la persona lo pide ahi.
+    /// </summary>
+    public static string EnlaceParaPedirContrasena(string urlPublica) =>
+        $"{urlPublica.TrimEnd('/')}/recuperar-contrasena";
+
     /// <summary>El panel del prestador, donde se ve y se renueva la suscripcion.</summary>
     public static string EnlaceDelPanel(string urlPublica) => $"{urlPublica.TrimEnd('/')}/mi-ficha";
 
@@ -67,6 +77,7 @@ public static class Plantillas
              or TipoNotificacion.ResenaRespondida
              or TipoNotificacion.SuscripcionPorVencer
              or TipoNotificacion.SuscripcionVencida
+             or TipoNotificacion.CobroRechazado
              or TipoNotificacion.PerfilPublicado
              or TipoNotificacion.CitaSolicitada
              or TipoNotificacion.CitaConfirmada
@@ -75,6 +86,8 @@ public static class Plantillas
              or TipoNotificacion.CitaReprogramada
              or TipoNotificacion.Recordatorio24h
              or TipoNotificacion.Recordatorio2h
+             or TipoNotificacion.RegistroConRutExistente
+             or TipoNotificacion.CredencialVencida
              or TipoNotificacion.BorradorPorEliminarse;
 
     /// <summary>
@@ -98,12 +111,28 @@ public static class Plantillas
             CargaDeAviso.LeerToken(carga) is { } t ? Recuperacion(nombre, EnlaceDeRecuperacion(urlPublica, t)) : null,
         TipoNotificacion.SuscripcionPorVencer =>
             int.TryParse(CargaDeAviso.LeerCampo(carga, "dias"), out var d)
-                ? PorVencer(nombre, d, EnlaceDelPanel(urlPublica)) : null,
+                ? CargaDeAviso.LeerCampo(carga, "sinTarjeta") == "si"
+                    ? MesGratisSinTarjeta(nombre, d, EnlaceDelPanel(urlPublica))
+                    : PorVencer(nombre, d, EnlaceDelPanel(urlPublica))
+                : null,
         TipoNotificacion.SuscripcionVencida => Vencida(nombre, EnlaceDelPanel(urlPublica)),
         TipoNotificacion.BorradorPorEliminarse =>
             CargaDeAviso.LeerCampo(carga, "credencial") is { } credencial
             && DateOnly.TryParseExact(CargaDeAviso.LeerCampo(carga, "borrarEl"), "yyyy-MM-dd", out var borrarEl)
                 ? BorradorPorEliminarse(nombre, credencial, borrarEl, EnlaceDelPanel(urlPublica)) : null,
+        // No pide nada de la carga: los dos enlaces son fijos.
+        TipoNotificacion.RegistroConRutExistente => RegistroConRutExistente(
+            nombre, EnlaceDeEntrada(urlPublica), EnlaceParaPedirContrasena(urlPublica)),
+        // Sin nombre de credencial en la carga sale igual, con «una de tus credenciales».
+        TipoNotificacion.CredencialVencida => CredencialVencida(
+            nombre, CargaDeAviso.LeerCampo(carga, "credencial"), EnlaceDelPanel(urlPublica)),
+        // Sin dias en la carga sale igual, con «pronto»: un aviso de cobro que no llega es peor
+        // que uno sin la cifra exacta.
+        TipoNotificacion.CobroRechazado => CobroRechazado(
+            nombre,
+            int.TryParse(CargaDeAviso.LeerCampo(carga, "dias"), out var dr) ? dr : null,
+            CargaDeAviso.LeerCampo(carga, "fundador") == "si",
+            EnlaceDelPanel(urlPublica)),
         // Con el slug se enlaza su ficha publica, que es lo que querra abrir y compartir. Sin el
         // —los avisos encolados ANTES de que existiera esta plantilla llevan una frase suelta en vez
         // de una carga JSON— se enlaza su panel: sigue siendo util y no se pierde el aviso.
@@ -185,9 +214,94 @@ public static class Plantillas
     }
 
     /// <summary>
+    /// Decision de Pablo (21-nov-2026): alguien intento crear una cuenta con el RUT de esta. Va
+    /// al correo de la cuenta original. No dice nada de quien lo intento (no lo sabemos, y el
+    /// correo que escribio en el formulario no es de la dueña). Texto PROPUESTO: lo aprueba Pablo.
+    /// </summary>
+    public static CorreoRenderizado RegistroConRutExistente(string nombre, string enlaceEntrar, string enlaceContrasena)
+    {
+        const string parrafo =
+            "Alguien intentó crear una cuenta nueva en ZASS! con el RUT de tu cuenta. No la creamos: "
+            + "cada RUT tiene una sola cuenta, y la tuya sigue igual. Si fuiste tú, no necesitas otra: "
+            + "entra con este correo.";
+        const string otra = "Si no recuerdas tu contraseña, puedes crear una nueva aquí:";
+        const string pie =
+            "Si no fuiste tú, puedes ignorar este mensaje: nadie entró a tu cuenta ni cambió nada.";
+        var texto =
+            $"Hola {nombre}:\n\n" +
+            $"{parrafo}\n\n" +
+            $"Para entrar:\n\n{enlaceEntrar}\n\n" +
+            $"{otra}\n\n{enlaceContrasena}\n\n" +
+            $"{pie}\n\n" +
+            "— El equipo de ZASS!";
+        var html = Marco(
+            "Intentaron crear otra cuenta con tu RUT",
+            $"Hola {H(nombre)}:",
+            parrafo,
+            "Entrar a mi cuenta", enlaceEntrar,
+            pie,
+            otra, enlaceContrasena);
+        return new("Alguien intentó crear otra cuenta con tu RUT en ZASS!", texto, html);
+    }
+
+    /// <summary>
+    /// CS-06 / T8 (auditoria 22-nov-2026): el planificador vencio una credencial verificada. Le
+    /// dice al prestador que el sello ya no se ve y como recuperarlo (renovar = documento nuevo,
+    /// T9). El nombre de la credencial es SUYO (lo escribio el), asi que puede ir en el cuerpo;
+    /// nunca en el asunto. Texto PROPUESTO: lo aprueba Pablo.
+    /// </summary>
+    public static CorreoRenderizado CredencialVencida(string nombre, string? credencial, string enlace)
+    {
+        var cual = string.IsNullOrWhiteSpace(credencial) ? "Una de tus credenciales" : $"Tu credencial «{credencial}»";
+        var parrafo =
+            $"{cual} llegó a su fecha de vencimiento, así que ya no muestra el sello «Verificada» en tu "
+            + "ficha: ahora aparece como «Declarada por el usuario». Para recuperar el sello, súbela "
+            + "renovada y la volveremos a revisar.";
+        var texto =
+            $"Hola {nombre}:\n\n" +
+            $"{parrafo}\n\n" +
+            $"Puedes hacerlo aquí:\n\n{enlace}\n\n" +
+            "— El equipo de ZASS!";
+        var html = Marco(
+            "Venció una de tus credenciales",
+            $"Hola {H(nombre)}:",
+            parrafo,
+            "Renovar mi credencial", enlace,
+            "Si ya la renovaste, ignora este mensaje.");
+        return new("Venció una de tus credenciales en ZASS!", texto, html);
+    }
+
+    /// <summary>
     /// RN-S3-09 apaga el perfil al dejar de pagar. Este aviso existe para que eso no ocurra
     /// por sorpresa: sin el, el prestador se enteraria porque dejan de llamarlo.
     /// </summary>
+    /// <summary>
+    /// Fundador en su mes gratis y sin tarjeta (20-nov-2026). Lo que importa decirle: que si no
+    /// la inscribe pierde el cupo, y que inscribirla hoy no cobra nada.
+    /// </summary>
+    public static CorreoRenderizado MesGratisSinTarjeta(string nombre, int dias, string enlace)
+    {
+        var cuando = dias <= 1 ? "mañana" : $"en {dias} días";
+        var parrafo =
+            $"Tu mes gratis de fundador en ZASS! termina {cuando} y todavía no inscribes tu tarjeta. "
+            + "Inscríbela antes para mantener tu cupo y tu precio congelado: hoy no se te cobra nada. "
+            + "Si el mes termina sin tarjeta, el cupo queda libre para otra persona y tu ficha deja de "
+            + "aparecer en las búsquedas.";
+        var texto =
+            $"Hola {nombre}:\n\n" +
+            $"{parrafo}\n\n" +
+            $"Puedes inscribirla aquí:\n\n{enlace}\n\n" +
+            "Si ya la inscribiste, ignora este mensaje.\n\n" +
+            "— El equipo de ZASS!";
+        var html = Marco(
+            $"Tu mes gratis termina {cuando}",
+            $"Hola {H(nombre)}:",
+            parrafo,
+            "Inscribir mi tarjeta", enlace,
+            "Si ya la inscribiste, ignora este mensaje.");
+        return new($"Tu mes gratis de ZASS! termina {cuando}", texto, html);
+    }
+
     public static CorreoRenderizado PorVencer(string nombre, int dias, string enlace)
     {
         var cuando = dias <= 1 ? "mañana" : $"en {dias} días";
@@ -234,6 +348,41 @@ public static class Plantillas
             "Ir a mi ficha", enlace,
             "Si ya no necesitas esa credencial, no tienes que hacer nada.");
         return new("Tu borrador de credencial se eliminará pronto", texto, html);
+    }
+
+    /// <summary>
+    /// ES-1. El cobro automatico fue rechazado y hay plazo hasta el vencimiento. Texto
+    /// PROPUESTO: lo aprueba Pablo en el PR.
+    /// </summary>
+    public static CorreoRenderizado CobroRechazado(string nombre, int? dias, bool fundador, string enlace)
+    {
+        var plazo = dias switch
+        {
+            null => "pronto",
+            <= 1 => "mañana",
+            _ => $"en {dias} días",
+        };
+        var consecuencia = fundador
+            ? "Si no se puede cobrar antes de que venza, pierdes tu cupo de fundador y tu precio "
+              + "congelado, y tu ficha deja de aparecer en las búsquedas."
+            : "Si no se puede cobrar antes de que venza, tu ficha deja de aparecer en las búsquedas.";
+        var parrafo =
+            "No pudimos cobrar la mensualidad de tu suscripción a ZASS! con tu tarjeta. "
+            + $"Tu suscripción vence {plazo} y lo volveremos a intentar cada día hasta entonces. "
+            + consecuencia;
+        var texto =
+            $"Hola {nombre}:\n\n" +
+            $"{parrafo}\n\n" +
+            $"Puedes actualizar tu tarjeta aquí:\n\n{enlace}\n\n" +
+            "Si ya la actualizaste, ignora este mensaje.\n\n" +
+            "— El equipo de ZASS!";
+        var html = Marco(
+            "No pudimos cobrar tu suscripción",
+            $"Hola {H(nombre)}:",
+            parrafo,
+            "Actualizar mi tarjeta", enlace,
+            "Si ya la actualizaste, ignora este mensaje.");
+        return new("No pudimos cobrar tu suscripción a ZASS!", texto, html);
     }
 
     /// <summary>Ya venció: la ficha dejó de aparecer. Se dice sin rodeos y sin culpar a nadie.</summary>
@@ -498,9 +647,15 @@ public static class Plantillas
     private static string H(string s) => WebUtility.HtmlEncode(s);
 
     private static string Marco(string titulo, string saludo, string parrafo,
-        string textoBoton, string enlace, string aviso)
+        string textoBoton, string enlace, string aviso,
+        string? textoOtroEnlace = null, string? otroEnlace = null)
     {
         var e = H(enlace);
+        // Un segundo enlace, como texto y no como boton: solo lo usa el aviso del RUT repetido.
+        var otro = textoOtroEnlace is not null && otroEnlace is not null
+            ? $"<p style=\"margin:0 0 12px;font-size:14px;\">{H(textoOtroEnlace)}<br>"
+              + $"<a href=\"{H(otroEnlace)}\" style=\"color:{Tinta};word-break:break-all;\">{H(otroEnlace)}</a></p>\n"
+            : "";
         return $"""
 <!DOCTYPE html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{H(titulo)}</title></head>
@@ -514,7 +669,7 @@ public static class Plantillas
 <p style="margin:0 0 24px;">{H(parrafo)}</p>
 <p style="margin:0 0 24px;"><a href="{e}" style="display:inline-block;background:{Amarillo};color:{Tinta};font-weight:bold;text-decoration:none;padding:12px 24px;border-radius:6px;">{H(textoBoton)}</a></p>
 <p style="margin:0 0 12px;font-size:14px;">Si el botón no funciona, copia y pega este enlace en tu navegador:<br><a href="{e}" style="color:{Tinta};word-break:break-all;">{e}</a></p>
-<p style="margin:0;font-size:14px;">{H(aviso)}</p>
+{otro}<p style="margin:0;font-size:14px;">{H(aviso)}</p>
 </td></tr></table></td></tr></table></body></html>
 """;
     }

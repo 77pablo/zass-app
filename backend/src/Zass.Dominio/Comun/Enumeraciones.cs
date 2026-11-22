@@ -4,6 +4,9 @@ namespace Zass.Dominio.Comun;
 
 public enum EstadoCuenta { PendienteVerificacion, Activa, Suspendida, Eliminada }
 
+/// <summary>Quien abre la cuenta: una persona o una empresa (decision de Pablo, 20-nov-2026).</summary>
+public enum TipoCuenta { Particular, Empresa }
+
 public enum EstadoPerfil { Borrador, Publicado, Despublicado }
 
 public enum ModoAgenda { Automatico, Manual }
@@ -54,6 +57,14 @@ public enum TipoNotificacion
     Recordatorio24h, Recordatorio2h,
     ResenaNueva, ResenaRespondida, CredencialResuelta, TarjetaActivada,
     SuscripcionPorVencer, SuscripcionVencida,
+    // ES-1: el cobro automatico de la mensualidad fue rechazado. Uno por periodo.
+    CobroRechazado,
+    // 21-nov-2026 (decision de Pablo): alguien intento registrarse con el RUT de esta cuenta.
+    // Va al correo de la cuenta original, nunca al que se escribio en el formulario.
+    RegistroConRutExistente,
+    // 22-nov-2026 (auditoria, CS-06 / T8): el planificador vencio una credencial verificada y
+    // el sello ya no se muestra. Va al prestador dueño, por correo y push.
+    CredencialVencida,
     /// <summary>JQ-16 · CU-05 4D.3: el borrador de una credencial se borrará por inactividad.</summary>
     BorradorPorEliminarse
 }

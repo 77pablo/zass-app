@@ -127,7 +127,10 @@ public sealed class ServicioResenas : IServicioResenas
                 false, null, MotivoDeNoElegibilidad.CuentaNoHabilitada, MensajeCuentaNoHabilitada, null));
 
         var perfil = await _repo.PerfilAsync(perfilPrestadorId, ct);
-        if (perfil is null)
+        // Igual que la lectura pública: un perfil que no está publicado responde EXACTAMENTE
+        // como uno que no existe. Si no, este endpoint sería un oráculo para saber qué
+        // identificadores corresponden a perfiles en borrador (auditoría del 21-nov-2026).
+        if (perfil is null || perfil.Estado != EstadoPerfil.Publicado)
             return Resultado.Falla<ResultadoElegibilidad>(Fallas.NoEncontrado, "No encontramos a ese prestador.");
 
         if (await _identidad.EsMismaPersonaAsync(perfil.UsuarioId, buscadorId, ct))
@@ -447,6 +450,16 @@ public sealed class ServicioResenas : IServicioResenas
         if (inicial.AutorId == autorId)
             return Resultado.Falla(Fallas.ReglaDeNegocio, "No puedes reportar tu propia reseña.");
 
+        // Auditoría 22-nov (decisión de Pablo): el prestador reseñado NO reporta las reseñas de su
+        // propio perfil. Antes podía marcar «lenguaje de odio» cada reseña mala y su nota subía sola.
+        // Su herramienta es responder (API-50). Se mira con EsMismaPersonaAsync, la misma
+        // regla que impide al moderador resolver lo propio (RN-S5-09).
+        var perfilResenado = await _repo.PerfilAsync(inicial.PerfilPrestadorId, ct);
+        if (perfilResenado is not null
+            && await _identidad.EsMismaPersonaAsync(perfilResenado.UsuarioId, autorId, ct))
+            return Resultado.Falla(Fallas.ReglaDeNegocio,
+                "No puedes reportar las reseñas de tu propio perfil. Puedes responderlas.");
+
         var ahora = _reloj.Ahora;
         return await _repo.EnTransaccionAsync(async () =>
         {
@@ -457,6 +470,13 @@ public sealed class ServicioResenas : IServicioResenas
 
             if (await _repo.TieneReporteAbiertoAsync(resenaId, autorId, ct))
                 return Resultado.Falla(Fallas.Conflicto, "Ya reportaste esta reseña; un moderador la está revisando.");
+
+            // Auditoría 22-nov: quien ya vio a un moderador MANTENER esta reseña tras su reporte no la
+            // vuelve a reportar. Sin esto, «mantener» cerraba el reporte y el mismo usuario podía
+            // reabrir el ciclo (y, con un motivo grave, ocultarla otra vez) sin límite.
+            if (await _repo.TieneReporteMantenidoAsync(resenaId, autorId, ct))
+                return Resultado.Falla(Fallas.Conflicto,
+                    "Un moderador ya revisó tu reporte de esta reseña y decidió mantenerla.");
 
             var reporte = new ReporteResena
             {
@@ -469,14 +489,22 @@ public sealed class ServicioResenas : IServicioResenas
             };
             _repo.Agregar(reporte);
 
-            // RN-S5-08 y CS-17: el motivo grave oculta la reseña aquí mismo, en la misma
-            // transacción, sin esperar a ningún humano. El "menos de 1 minuto" de la regla se
-            // cumple por construcción: no hay cola ni trabajo de fondo de por medio.
+            // RN-S5-08 y CS-17, con el cambio de la auditoría del 22-nov (decisión de Pablo): para
+            // ocultar al instante hacen falta reportes GRAVES ABIERTOS de al menos
+            // ReportesGravesParaOcultar personas distintas. Con uno solo, la reseña va a la cola del
+            // moderador (graves primero) y sigue visible: un único reporte —el de un competidor, por
+            // ejemplo— ya no basta para bajar una reseña ajena. Se cuenta dentro del cerrojo del
+            // prestador, así que dos reportes simultáneos no se saltan el umbral. Al resolver, todos
+            // los reportes abiertos se cierran: después de un «mantener» la cuenta vuelve a cero.
             var oculta = false;
             if (reporte.EsGrave() && resena.Estado == EstadoResena.Publicada)
             {
-                resena.Ocultar();
-                oculta = true;
+                var otrasPersonas = await _repo.ReportantesGravesAbiertosAsync(resenaId, ct);
+                if (otrasPersonas.Count(id => id != autorId) + 1 >= ReglasDeResenas.ReportesGravesParaOcultar)
+                {
+                    resena.Ocultar();
+                    oculta = true;
+                }
             }
 
             _auditor.Registrar(Auditar.Entrada(

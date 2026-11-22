@@ -127,7 +127,7 @@ public class TextosEnCastellanoPruebas : IAsyncLifetime
         await SinIngles(await ComoEnRender(c =>
             c.PostAsJsonAsync("/api/auth/registro", new
             {
-                correo = $"corta-{Guid.NewGuid():N}@zass.local", contrasena = "abc",
+                tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo = $"corta-{Guid.NewGuid():N}@zass.local", contrasena = "abc",
                 nombre = "Ana Pérez", rol = "buscador",
             })),
             "contrasena corta");
@@ -179,7 +179,7 @@ public class TextosEnCastellanoPruebas : IAsyncLifetime
         var contrasenaCorta = await ComoEnRender(c =>
             c.PostAsJsonAsync("/api/auth/registro", new
             {
-                correo = $"test-{Guid.NewGuid():N}@zass.local",
+                tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo = $"test-{Guid.NewGuid():N}@zass.local",
                 contrasena = "abc",
                 nombre = "Test",
                 rol = "buscador"
