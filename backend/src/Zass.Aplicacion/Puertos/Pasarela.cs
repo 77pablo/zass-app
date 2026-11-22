@@ -230,9 +230,48 @@ public sealed record AvisoDePasarela(IReadOnlyDictionary<string, string> Campos)
 /// a internet; si no coinciden no se extiende nada. Nulo si la pasarela no lo informa, y
 /// entonces no hay nada que comparar.
 /// </param>
+/// <remarks>
+/// Hay TRES desenlaces y no dos (22-nov-2026): pagado, rechazado/anulado y <b>pendiente</b>.
+/// Flow, por ejemplo, contesta <c>payment/getStatus</c> con 1 = pendiente de pago, 2 = pagada,
+/// 3 = rechazada, 4 = anulada (es-openApiFlow.yaml, esquema PaymentStatus). Hasta esa fecha el
+/// puerto solo tenia <see cref="Aprobado"/>, y un 1 se leia como rechazo: el intento se cerraba
+/// Fallido, el aviso posterior con 2 encontraba «ya se cerró como fallido» y la persona pagaba
+/// sin recibir su mes. Pendiente NO cierra el intento: se espera el siguiente aviso.
+/// </remarks>
 public sealed record CobroResuelto(
     Guid IntentoDePagoId,
     string? ReferenciaPasarela,
     bool Aprobado,
     int? MontoConfirmado,
-    string? MotivoFallo);
+    string? MotivoFallo)
+{
+    /// <summary>
+    /// La pasarela todavia no sabe como termino (medio asincronico, o la persona volvio antes
+    /// de terminar). Con esto en verdadero, <see cref="Aprobado"/> es falso y NO significa
+    /// rechazo. Va como propiedad y no como parametro posicional para no cambiarle la forma
+    /// al registro que ya usan los adaptadores y sus pruebas.
+    /// </summary>
+    public bool Pendiente { get; init; }
+
+    /// <summary>El desenlace, en uno de tres valores.</summary>
+    public VeredictoDelCobro Veredicto =>
+        Pendiente ? VeredictoDelCobro.Pendiente
+        : Aprobado ? VeredictoDelCobro.Pagado
+        : VeredictoDelCobro.Rechazado;
+
+    /// <summary>Un cobro del que la pasarela todavia no tiene veredicto.</summary>
+    public static CobroResuelto EnCurso(Guid intentoDePagoId, string? referenciaPasarela) =>
+        new(intentoDePagoId, referenciaPasarela, Aprobado: false, MontoConfirmado: null,
+            MotivoFallo: null) { Pendiente = true };
+}
+
+/// <summary>Los tres desenlaces de un cobro, tal como los informa la pasarela.</summary>
+public enum VeredictoDelCobro
+{
+    /// <summary>Cobrado. Se acredita el mes.</summary>
+    Pagado,
+    /// <summary>Todavia sin veredicto. El intento sigue Pendiente y se espera otro aviso.</summary>
+    Pendiente,
+    /// <summary>Rechazado o anulado. El intento se cierra Fallido.</summary>
+    Rechazado,
+}
