@@ -7,7 +7,11 @@ services:
   - type: web
     name: zass-api
     runtime: docker
-    plan: free              # verifica el plan gratuito vigente en la página de Render
+    # Plan pagado desde el 20-nov-2026 (Pablo): 0.5 CPU / 512 MB, US$ 7 al mes. En el plan free la
+    # API se dormia a los ~15 min sin trafico, y con ella el Planificador (cobros) y el envio de
+    # correos. NO volver a `free`: el servicio es «Blueprint managed» y este valor manda.
+    # `0.5c-512mb` es el nombre nuevo del antiguo `starter` (Render, ago-2026).
+    plan: 0.5c-512mb
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     healthCheckPath: /api/salud/lista
@@ -20,6 +24,16 @@ services:
         sync: false         # formato Npgsql de Neon, con SSL Mode=Require
       - key: Zass__ClaveDireccionesBase64
         sync: false         # 32 bytes en Base64; GUÁRDALA fuera de Render también
+      # Firma del aviso de pago (#133, P16). OBLIGATORIA desde el 19-nov-2026: sin ella, o con
+      # menos de 32 caracteres, la API NO ARRANCA en produccion. Valor aleatorio, 32+ caracteres.
+      - key: Zass__SecretoAvisoPagos
+        sync: false
+      # P-11: el secreto que la Function de Cloudflare manda en X-Origen-Zass. Con él puesto, la
+      # API responde 403 a lo que no llega por Cloudflare (salvo /api/salud y los dos avisos de
+      # Flow). OPCIONAL: sin él la API arranca igual y lo advierte en el registro. El MISMO valor
+      # que SECRETO_ORIGEN en Cloudflare Pages, y se pone DESPUÉS de esa (DESPLIEGUE-API.md, 4.1).
+      - key: Zass__SecretoDeOrigen
+        sync: false
       # --- Configuración no secreta pero que depende de tu cuenta ---
       - key: Zass__ProxiesDeConfianza
         sync: false         # rangos de Cloudflare + red del balanceador de Render (ver guía)

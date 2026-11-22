@@ -5,6 +5,8 @@ import { useCatalogo } from '../api/useCargado'
 import {
   buscarTexto, type CriteriosDeTexto, type OrdenDeTexto, type PaginaDeTexto, type ResultadoDeTexto,
 } from '../funciones/busqueda/servicio'
+import { BotonGuardar } from '../funciones/buscador/BotonGuardar'
+import { useFavoritos } from '../funciones/buscador/useFavoritos'
 import { BarraDeBusqueda } from '../marco/BarraDeBusqueda'
 import { ResultadosEsqueleto } from '../marco/Esqueleto'
 import { Icono } from '../marco/Icono'
@@ -67,6 +69,9 @@ function desdePagina(clave: string, p: PaginaDeTexto, antes: ResultadoDeTexto[] 
 export function PaginaBuscar() {
   const [params, setParams] = useSearchParams()
   const catalogo = useCatalogo()
+  // CS-08: guardar desde los resultados, sin abrir la ficha. Sin cuenta, vuelve a ESTA busqueda.
+  const favoritos = useFavoritos()
+  const aqui = `/buscar${params.toString() === '' ? '' : `?${params.toString()}`}`
 
   const q = params.get('q') ?? ''
   const zona = params.get('zona') ?? ''
@@ -275,21 +280,24 @@ export function PaginaBuscar() {
         {punto && (
           <div className="radio-barra" role="group" aria-label="¿Hasta qué distancia?">
             <span className="radio-titulo">¿Hasta qué distancia?</span>
-            {RADIOS.map((km) => (
+            {/* Estilo iPhone: las opciones van juntas en un control segmentado (solo presentacion). */}
+            <span className="segmentado">
+              {RADIOS.map((km) => (
+                <button
+                  key={km} type="button" className="chip chip--radio"
+                  aria-pressed={radio === km}
+                  onClick={() => cambiar({ radio: radio === km ? null : String(km) })}
+                >
+                  {km} km
+                </button>
+              ))}
               <button
-                key={km} type="button" className="chip chip--radio"
-                aria-pressed={radio === km}
-                onClick={() => cambiar({ radio: radio === km ? null : String(km) })}
+                type="button" className="chip chip--radio" aria-pressed={radio === null}
+                onClick={() => cambiar({ radio: null })}
               >
-                {km} km
+                Todo Chile
               </button>
-            ))}
-            <button
-              type="button" className="chip chip--radio" aria-pressed={radio === null}
-              onClick={() => cambiar({ radio: null })}
-            >
-              Todo Chile
-            </button>
+            </span>
           </div>
         )}
 
@@ -311,6 +319,7 @@ export function PaginaBuscar() {
           {cargando && <><p className="solo-lector" role="status">Buscando…</p><ResultadosEsqueleto /></>}
           {actual?.error && <p className="aviso-linea" role="alert">{actual.error}</p>}
           {actual?.aviso && <p className="aviso-linea" role="status">{actual.aviso}</p>}
+          {favoritos.error && <p className="aviso-linea" role="alert">{favoritos.error}</p>}
 
           {actual && !actual.error && actual.resultados.length === 0 && (
             <div className="vacio">
@@ -357,7 +366,12 @@ export function PaginaBuscar() {
                       verificada: r.tieneCredencialVerificada,
                       detalle: r.totalResenas > 0 ? reputacion(r.promedioCalificacion, r.totalResenas) : null,
                       descripcion: r.descripcion,
+                      foto: r.urlFoto,
                     }} />
+                    {/* Fuera de la tarjeta y no dentro: toda la tarjeta es un enlace, y un boton
+                        dentro de un enlace no se puede usar con el teclado ni lo anuncia bien un
+                        lector de pantalla. Donde se ve lo decide el estilo (nota para Joaquin). */}
+                    <BotonGuardar perfilId={r.perfilId} nombre={r.nombrePublico} despues={aqui} favoritos={favoritos} />
                   </li>
                 ))}
               </ul>

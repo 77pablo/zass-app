@@ -1,6 +1,8 @@
 # ZASS! — estado del desarrollo
 
-**Última sesión:** 17 de noviembre de 2026: **17 PR fusionados y `d57550d` DESPLEGADO y comprobado en producción**. Hay un índice nuevo en Neon y una segunda IA trabajando con un plan escrito. Ver **«Sesión del 17-nov-2026»** justo debajo.
+**Última sesión:** 18 de noviembre de 2026: **la interfaz de la guía v3 terminada en `main`**, tres PR de interfaz en borrador (#106, #107 y el #98 arreglado) y la tanda 8 de la otra IA preparada sin lanzar. Ver **«Sesión del 18-nov-2026 — interfaz»** justo debajo.
+
+**Sesión anterior:** 17 de noviembre de 2026: **17 PR fusionados y `d57550d` DESPLEGADO y comprobado en producción**. Hay un índice nuevo en Neon y una segunda IA trabajando con un plan escrito. Ver **«Sesión del 17-nov-2026»** justo debajo.
 
 **Sesión anterior:** 15 de noviembre de 2026 (madrugada), cuando quedó **producción al día**: Neon migrada, desplegada y comprobada desde fuera.
 
@@ -28,6 +30,67 @@ Este archivo existe para retomar sin reconstruir contexto. Dice **qué está hec
 comprobado**, **qué no**, y **el siguiente paso exacto**.
 
 ---
+
+## Sesión del 20-nov-2026 — JQ-9: fotos y documentos (rama `archivos/jq9-fotos-documentos`)
+
+**Qué quedó (hecho y comprobado):**
+
+| Pieza | Detalle |
+|---|---|
+| Almacenamiento | Puerto `IAlmacenDeArchivos` con tres implementaciones: carpeta local (desarrollo y pruebas), **R2 de Cloudflare** (balde privado, por la API de S3) y deshabilitado (Producción sin R2: subir responde 503 y la API arranca igual). Se elige con `Zass:Archivos:Proveedor` |
+| Foto de perfil | API-72 (subir/cambiar), API-72-quitar, API-73 (servirla). Se lee el tipo real, se endereza, se recorta en cuadrado y se guarda en **WebP de 288 y 96 px sin metadatos** (el GPS del celular no llega al disco). Pesa ~4 KB y ~1 KB. Caché inmutable; el navegador elige el tamaño con `srcset` |
+| Documentos de respaldo | API-26 (adjuntar), API-26-quitar, API-26-ver (su dueño) y API-74 (el Verificador, **solo con la credencial tomada**, y queda en auditoría). PDF, JPG o PNG, 10 MB, 5 por credencial. Las imágenes se vuelven a codificar. Se sirven con `CSP: sandbox` y `no-store`. Borrar la credencial se lleva sus archivos |
+| Interfaz | Foto en Mi ficha, en la ficha pública y en la búsqueda (`Monograma`); adjuntar, abrir y quitar documentos, y el botón «Enviar a revisión» (el `2ab306c` del 13-nov), en Mis credenciales |
+| Pruebas | Integración: 18 nuevas, y Aplicación 1001/1001, Arquitectura 20/20. Interfaz 720 y más. **Mutaciones: 10 de backend y 4 de interfaz, todas caen** |
+| Navegador | Recorrido en Chrome a 390 px: subir la foto y verla en la ficha y en la búsqueda; adjuntar un PDF, abrirlo en el visor de Chrome (se ve, con la `sandbox` puesta) y quitarlo |
+
+**Decisiones de Pablo pendientes (están en el PR):**
+1. **Antivirus** (CU-05 paso 8 / RN-S2-05): NO está. El documento queda `Disponible` al pasar las validaciones.
+2. **R2:** crear el balde privado y poner en Render `Zass__Archivos__Proveedor=r2` y `Zass__Archivos__R2CuentaId`, `R2ClaveAcceso`, `R2Secreto`, `R2Balde`.
+3. **Licencia de ImageSharp** (Six Labors Split License): gratis bajo US$1 M de facturación anual.
+4. **Los textos nuevos** (están en el cuerpo del PR).
+
+**Encontrado de paso:** el #148 trajo una prueba (`Reenvios_cuentan_por_dia_de_Chile_no_por_dia_UTC`) que deja un prestador publicado en la base de pruebas, y según el orden tumba las 23 de `BusquedaIntegracionPruebas` (ya tumbó el CI del #155 una vez). La corrige la T56h.
+
+---
+
+## Sesión del 18-nov-2026 — interfaz
+
+**Comprobado con `git` y `gh`, no de memoria.** El plan `zass-tareas\DISENO-INTERFAZ-GUIA-V3.md` está
+**completo en `main`**: paleta (#89), esqueletos (#96), barra inferior (#95), filtros en el celular (#99),
+íconos (#100) e instalable/sin conexión (#97). Las mejoras de celular también: campos de 16 px o más,
+sin destello al tocar, `dvh` y el área del notch.
+
+### PR de interfaz en borrador (ninguno se fusiona sin que Pablo vea las capturas)
+
+| PR | Qué | Estado |
+|---|---|---|
+| **#103** | Guías de interfaz de Vercel | Capturas revisadas: **sin defectos**. La barra inferior ya no tapa el campo con el teclado abierto |
+| **#98** | Compartir la ficha y búsquedas recientes | **Arreglado el 18-nov** (`8b579ef`): merge de `main` (los 4 íconos) y la lista ya no queda bajo la barra inferior (≤880 px). 667/667, 6 mutaciones. `merge-tree` limpio contra `main` y contra el #92. **Falta verlo en un iPhone real** |
+| **#106** | Reseña desde «Mis citas», nombre del prestador como enlace, comuna **y** distancia en la tarjeta, meta propia de `/buscar` | 653/653, 7 mutaciones. **El cambio de la tarjeta cubre JQ-10**: Pablo decidió dejarlo en el #106 y avisarle a Joaquín (nota en `PLAN-JOAQUIN.md`) |
+| **#107** | Escape cierra el menú móvil y devuelve el foco; «Sé el primero en ofrecerlo» en oficios vacíos | 653/653, 11 mutaciones. Sin tocar `Cabecera.tsx` |
+
+Capturas en `C:\Users\pdani\zass-capturas\` (con la API interceptada: no hubo backend).
+
+### El #92 de Joaquín
+CI verde, sin conflictos con `main`, y `quien_falto` ya está en Neon (15-nov). **Lo único que lo bloquea
+es el texto de privacidad**, que hoy ya es inexacto (el botón «Ya me atendió» guardaba un contacto
+antes del #92). Orden propuesto: privacidad → #92 → #98.
+
+### Preparado, sin aplicar (Pablo: «prepárala, no la ejecutes»)
+`zass-tareas\PREPARADO-COMUNAS-Y-PRIVACIDAD.md`: la nueva fila «Quien busca» de la política y una sola
+invitación en `/comunas`. Y `zass-tareas\TANDA-8-IA-2.md`: T33 a T39 para la otra IA, ninguna en la
+interfaz ni en el carril de Joaquín. **La T36 es la urgente:** el `Planificador` vive dentro de la API, que
+en el plan gratis de Render duerme, y `despertar-api.yml` solo corre del 22 al 24 de noviembre: el
+23-dic nadie cobraría.
+
+### Decisiones pendientes de Pablo
+1. Textos: «Dejar una reseña»; la descripción de `/buscar`; «Sé el primero en ofrecerlo» o «¿Lo ejerces? Súmate».
+2. Aplicar lo preparado (privacidad y `/comunas`), y el plazo de retención de los datos.
+3. Lanzar la tanda 8 («lanza la tanda 8»).
+4. Dos detalles de `main`: las fechas salen «25 De Noviembre», con «De» en mayúscula, y el «¿No tienes cuenta? Crea una» de `/entrar`.
+5. Recomendado y sin decidir: las notas de los filtros siguen ocultas en el celular hasta activar el filtro.
+6. Para después de #103 y #76: los dos bordes laterales de color de `index.css` (líneas 725 y 935), y la C6 («En ZASS! desde…», va en `Ficha.tsx`).
 
 ## Sesión del 17-nov-2026 — 13 PR en `main`, el índice 3.c en Neon, y tres pruebas que mentían
 

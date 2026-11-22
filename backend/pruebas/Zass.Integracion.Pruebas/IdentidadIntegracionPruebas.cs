@@ -47,13 +47,14 @@ public class IdentidadIntegracionPruebas : IDisposable
         var unidad = new UnidadDeTrabajoEfCore(ctx);
         var cola = new ColaNotificacionesEfCore(ctx);
         var auditor = new AuditorEfCore(ctx);
+        var filtradas = new ContrasenasFiltradasNunca();
 
         _registro = new ServicioRegistro(
-            usuarios, perfiles, unidad, _hash, _secretos, _reloj, cola, auditor);
+            usuarios, perfiles, unidad, _hash, _secretos, _reloj, cola, auditor, filtradas);
         _sesion = new ServicioSesion(
             usuarios, _repoSesiones, unidad, _hash, _secretos, _reloj, auditor);
         _cuenta = new ServicioCuenta(
-            usuarios, perfiles, unidad, _hash, _secretos, _reloj, cola, auditor, _sesion);
+            usuarios, perfiles, unidad, _hash, _secretos, _reloj, cola, auditor, _sesion, filtradas);
         _perfiles = new ServicioPerfiles(
             usuarios, perfiles, unidad, _reloj, _cifrado, cola, auditor);
     }

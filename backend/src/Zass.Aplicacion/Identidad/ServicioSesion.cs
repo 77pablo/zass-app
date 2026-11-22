@@ -24,6 +24,12 @@ public sealed record SesionAbiertaDto(
 /// </summary>
 public sealed class ServicioSesion
 {
+    /// <summary>Fallos seguidos que bloquean la cuenta (decision de Pablo, 22-nov-2026).</summary>
+    public const int IntentosParaBloquear = 10;
+
+    /// <summary>Cuanto dura el bloqueo, contado desde el fallo que lo disparo. Fijo.</summary>
+    public static readonly TimeSpan DuracionDelBloqueo = TimeSpan.FromMinutes(15);
+
     /// <summary>DT-08. El token de acceso dura 15 min; el de refresco, 30 dias.</summary>
     public static readonly TimeSpan VidaDelRefresco = TimeSpan.FromDays(30);
 
@@ -59,39 +65,74 @@ public sealed class ServicioSesion
     {
         var correo = Texto.NormalizarCorreo(cmd.Correo);
         var usuario = await _usuarios.PorCorreoAsync(correo, ct);
+        var ahora = _reloj.Ahora;
 
-        // Se verifica el hash incluso cuando la cuenta no existe. Si no, el tiempo de
-        // respuesta diria cuales correos estan registrados y cuales no.
+        // Se verifica el hash incluso cuando la cuenta no existe, y tambien cuando esta
+        // bloqueada. Si no, el tiempo de respuesta diria cuales correos estan registrados, o
+        // en que momento la cuenta quedo bloqueada.
         var contrasenaCorrecta = usuario is not null
             && _hash.Verifica(cmd.Contrasena, usuario.HashContrasena);
         if (usuario is null)
             _hash.Verifica(cmd.Contrasena, _hash.Hash("sin-cuenta"));
 
+        // Bloqueo por intentos (decision de Pablo, 22-nov-2026). Bloqueada, NO entra aunque la
+        // contrasena sea la buena, y responde exactamente lo mismo que una contrasena mala.
+        var bloqueada = usuario is not null && usuario.EstaBloqueada(ahora);
+
         var puedeEntrar = usuario is not null
             && contrasenaCorrecta
+            && !bloqueada
             && usuario.Estado is EstadoCuenta.Activa or EstadoCuenta.PendienteVerificacion;
+
+        // La lectura de arriba pudo quedar vieja: otro intento pudo bloquear la cuenta en el
+        // medio. El reinicio del contador es atomico y solo pasa si NO esta bloqueada ahora.
+        if (puedeEntrar && !await _usuarios.ReiniciarIntentosSiNoBloqueadaAsync(usuario!.Id, ahora, ct))
+        {
+            puedeEntrar = false;
+            bloqueada = true;
+        }
 
         if (!puedeEntrar)
         {
+            // Todo intento fallido de una cuenta que existe suma uno. Con la cuenta que no
+            // existe se hace el mismo viaje a la base con un id vacio, que no toca ninguna fila:
+            // asi los dos caminos tardan lo mismo.
+            var bloqueoAhora = await _usuarios.SumarIntentoFallidoAsync(
+                usuario?.Id ?? Guid.Empty, ahora, IntentosParaBloquear, ahora.Add(DuracionDelBloqueo), ct);
+
             // El correo se guarda con hash: alcanza para correlacionar intentos sin
             // convertir la auditoria en una lista de correos registrados.
-            await RegistrarAsync(Auditar.Entrada(
-                "inicio_sesion_fallido", "usuario", usuario?.Id, _reloj.Ahora,
+            _auditor.Registrar(Auditar.Entrada(
+                "inicio_sesion_fallido", "usuario", usuario?.Id, ahora,
                 actorId: usuario?.Id,
                 contexto: new
                 {
                     correoHash = _secretos.HashToken(correo),
-                    motivo = Motivo(usuario, contrasenaCorrecta),
+                    motivo = Motivo(usuario, contrasenaCorrecta, bloqueada),
                 },
-                ip: ip), ct);
+                ip: ip));
 
+            // Una entrada por bloqueo, para que el administrador vea los ataques (ver el
+            // filtro por accion en el panel de auditoria). No se manda correo al administrador
+            // aqui: tardaria lo bastante para que el decimo intento se distinga de los demas.
+            if (bloqueoAhora)
+                _auditor.Registrar(Auditar.Entrada(
+                    "cuenta_bloqueada_por_intentos", "usuario", usuario!.Id, ahora,
+                    contexto: new
+                    {
+                        intentos = IntentosParaBloquear,
+                        bloqueadaHasta = ahora.Add(DuracionDelBloqueo),
+                    },
+                    ip: ip));
+
+            await _unidad.GuardarAsync(ct);
             return Resultado.Falla<SesionAbiertaDto>(Fallas.NoAutorizado, CredencialesInvalidas);
         }
 
         var dto = AbrirSesion(usuario!, ip, agente);
 
         _auditor.Registrar(Auditar.Entrada(
-            "inicio_sesion", "usuario", usuario!.Id, _reloj.Ahora, actorId: usuario.Id, ip: ip));
+            "inicio_sesion", "usuario", usuario!.Id, ahora, actorId: usuario.Id, ip: ip));
 
         await _unidad.GuardarAsync(ct);
         return Resultado.Ok(dto);
@@ -175,15 +216,10 @@ public sealed class ServicioSesion
         return new SesionAbiertaDto(usuario.Id, token, expira, roles, usuario.CorreoVerificado);
     }
 
-    private async Task RegistrarAsync(RegistroAuditoria entrada, CancellationToken ct)
-    {
-        _auditor.Registrar(entrada);
-        await _unidad.GuardarAsync(ct);
-    }
-
-    private static string Motivo(Usuario? usuario, bool contrasenaCorrecta) => usuario switch
+    private static string Motivo(Usuario? usuario, bool contrasenaCorrecta, bool bloqueada) => usuario switch
     {
         null => "sin_cuenta",
+        _ when bloqueada => "bloqueada",
         _ when !contrasenaCorrecta => "contrasena",
         { Estado: EstadoCuenta.Suspendida } => "suspendida",
         { Estado: EstadoCuenta.Eliminada } => "eliminada",

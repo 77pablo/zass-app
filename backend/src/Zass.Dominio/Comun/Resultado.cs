@@ -53,4 +53,23 @@ public static class Fallas
     public const string ReglaDeNegocio = "regla_de_negocio";
     public const string Validacion = "validacion";
     public const string VersionDesactualizada = "version_desactualizada";
+
+    /// <summary>E-413 de CU-05: el archivo pasa el tope. El mensaje dice el tamaño real y el límite.</summary>
+    public const string ArchivoDemasiadoGrande = "archivo_demasiado_grande";
+
+    /// <summary>E-415 de CU-05: el contenido no es de un tipo aceptado (se mira por dentro, no el nombre).</summary>
+    public const string TipoDeArchivoNoAceptado = "tipo_de_archivo_no_aceptado";
+
+    /// <summary>
+    /// E-507 de CU-05: el almacenamiento no guardó, o todavía no está configurado. No es culpa de
+    /// quien sube y puede reintentar; por eso no es un 4xx.
+    /// </summary>
+    public const string AlmacenamientoNoDisponible = "almacenamiento_no_disponible";
+
+    /// <summary>
+    /// API-08 con un RUT que ya tiene cuenta (decision de Pablo, 21-nov-2026). Es un 409 como
+    /// cualquier conflicto, pero lleva su propio codigo para que la pantalla lo muestre como
+    /// aviso y no como error: la cuenta no se crea y a la duena se le manda un correo.
+    /// </summary>
+    public const string RutConCuenta = "rut_con_cuenta";
 }

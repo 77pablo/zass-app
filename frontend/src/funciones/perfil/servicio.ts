@@ -1,4 +1,5 @@
-import { enviar, obtener } from '../../api/cliente'
+import { enviar, obtener, subirArchivo } from '../../api/cliente'
+import type { MotivoDeRechazo } from '../interno/servicio'
 
 /** Los enums viajan como texto (JsonStringEnumConverter), no como numero. */
 export type EstadoPerfil = 'Borrador' | 'Publicado' | 'Despublicado'
@@ -28,6 +29,8 @@ export interface MiPerfil {
   publicadoEn: string | null
   /** Lo que falta para publicar, en palabras: "el rubro", "al menos un servicio"... */
   faltaParaPublicar: string[]
+  /** JQ-9. La foto, si subió una: una ruta de la propia API. */
+  urlFoto?: string | null
 }
 
 /** Lo que se edita. Los vacios se mandan como nulos: "" se guardaria como un dato de cero caracteres. */
@@ -79,6 +82,14 @@ export interface Suscripcion {
   vigenteHasta: string | null
   diasRestantes: number
   renovacionAutomatica: boolean
+  /** Cupo sin tarjeta (20-nov-2026). Opcionales: una API vieja no los manda. */
+  esFundador?: boolean
+  tarjetaInscrita?: boolean
+  /**
+   * ES-1. Días que le quedan al fundador cuyo cobro fue rechazado para que se le pueda cobrar
+   * antes de perder el cupo. Nulo (o ausente, en una API vieja) si no está en gracia.
+   */
+  diasDeGracia?: number | null
 }
 
 const PERFIL = '/api/mi/perfil-prestador'
@@ -145,6 +156,24 @@ export interface MiCredencial {
   estado: EstadoDeCredencial
   tieneRespaldo: boolean
   documentos: number
+  /** JQ-9. Los documentos de respaldo, del más antiguo al más nuevo. */
+  respaldo?: MiDocumento[]
+  /**
+   * Solo si está rechazada: el motivo tipificado del último rechazo. Desde el 21-nov-2026 una
+   * rechazada no sale en la ficha pública, así que aquí se dice por qué.
+   */
+  motivoDelRechazo?: MotivoDeRechazo | null
+}
+
+/** JQ-9. Un documento de respaldo como lo ve su dueño: nunca dónde está guardado. */
+export interface MiDocumento {
+  id: string
+  /** El nombre con que lo subió, solo para reconocerlo. */
+  nombre: string
+  tipoMime: string
+  tamanoBytes: number
+  estado: 'Subiendo' | 'EnAnalisis' | 'Disponible' | 'RechazadoSeguridad'
+  subidoEn: string
 }
 
 export interface DatosDeCredencial {
@@ -162,7 +191,59 @@ export async function crearCredencial(datos: DatosDeCredencial): Promise<void> {
   await enviar('/api/mi/credenciales', { ...datos, entidadId: null })
 }
 
+/**
+ * API-27. Manda a revision una credencial propia. No lleva cuerpo: la credencial se dice en la
+ * ruta y la persona se decide con la sesion.
+ *
+ * La API contesta 204 y NO devuelve la credencial, asi que quien llama tiene que volver a pedir
+ * la lista con `misCredenciales()` para ver el estado nuevo.
+ *
+ * Si la bandera de lanzamiento `Zass:Verificacion:PermitirSinDocumentos` esta apagada, una
+ * credencial sin respaldo se rechaza con 422 (RN-S2-01) en vez de pasar a revision.
+ */
+export async function enviarCredencialARevision(id: string): Promise<void> {
+  await enviar(`/api/mi/credenciales/${encodeURIComponent(id)}/enviar`)
+}
+
 /** API-28. Elimina la credencial y sus archivos. */
 export async function eliminarCredencial(id: string): Promise<void> {
   await enviar(`/api/mi/credenciales/${encodeURIComponent(id)}`, undefined, 'DELETE')
 }
+
+/** JQ-9 (API-72). Sube o reemplaza la foto del perfil; devuelve la ruta nueva. */
+export async function subirFoto(archivo: File): Promise<string> {
+  const r = await subirArchivo<{ urlFoto: string }>('/api/mi/foto', archivo)
+  return r.urlFoto
+}
+
+/** JQ-9 (API-72-quitar). Quita la foto: la ficha vuelve a mostrar las iniciales. */
+export async function quitarFoto(): Promise<void> {
+  await enviar('/api/mi/foto', undefined, 'DELETE')
+}
+
+/** JQ-9 (API-26). Adjunta un documento de respaldo a una credencial propia. */
+export function subirDocumento(credencialId: string, archivo: File): Promise<MiDocumento> {
+  return subirArchivo<MiDocumento>(
+    `/api/mi/credenciales/${encodeURIComponent(credencialId)}/documentos`, archivo)
+}
+
+/** JQ-9 (API-26-quitar). */
+export async function quitarDocumento(credencialId: string, documentoId: string): Promise<void> {
+  await enviar(
+    `/api/mi/credenciales/${encodeURIComponent(credencialId)}/documentos/${encodeURIComponent(documentoId)}`,
+    undefined, 'DELETE')
+}
+
+/**
+ * JQ-9 (API-26-ver). La dirección para ABRIR un documento propio en una pestaña nueva. Es un
+ * enlace y no una descarga hecha con fetch: la API lo sirve con la sesión de la cookie y con su
+ * propia CSP aislada, y el navegador lo muestra en su visor.
+ */
+export const urlDeDocumento = (credencialId: string, documentoId: string): string =>
+  `/api/mi/credenciales/${encodeURIComponent(credencialId)}/documentos/${encodeURIComponent(documentoId)}`
+
+/** Lo que aceptan los selectores de archivo. El servidor vuelve a mirar el tipo por dentro. */
+export const ACEPTA_FOTO = 'image/jpeg,image/png,image/webp'
+export const ACEPTA_DOCUMENTO = 'application/pdf,image/jpeg,image/png'
+/** Lo mismo que el servidor (10 MB): así se avisa antes de gastar la subida. */
+export const TAMANO_MAXIMO = 10 * 1024 * 1024
