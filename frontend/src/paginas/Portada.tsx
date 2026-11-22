@@ -1,7 +1,9 @@
-import { useCallback, useRef, type PointerEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { personasEnZona } from '../api/comunidad'
 import { useCatalogo, useComunidad, type Cargado } from '../api/useCargado'
+import type { Rubro, Zona } from '../api/catalogo'
+import { miPerfilBuscador, type MiPerfilBuscador } from '../funciones/buscador/servicio'
 import { Aparece } from '../marco/Aparece'
 import { BarraDeBusqueda } from '../marco/BarraDeBusqueda'
 import { Icono } from '../marco/Icono'
@@ -12,6 +14,8 @@ import { capitalizar, EJEMPLOS, personas } from '../marco/texto'
 import { useContador } from '../marco/useContador'
 import { useTitulo } from '../marco/useTitulo'
 import { useVisto } from '../marco/useVisto'
+import { etiquetaDeZona } from '../marco/zonas'
+import { useSesion } from '../sesion/contexto'
 
 /** Un numero grande con su etiqueta. Sube cuando entra en pantalla; el valor final va en el texto accesible. */
 function Cifra({ valor, etiqueta }: { valor: number; etiqueta: string }) {
@@ -30,7 +34,7 @@ function Cifra({ valor, etiqueta }: { valor: number; etiqueta: string }) {
 /**
  * Lo que la portada tiene que decir mientras no hay datos.
  *
- * Casi todas sus secciones viven tras un `&&` (el mapa, la cinta, las cifras, los recien
+ * Casi todas sus secciones viven tras un `&&` (el mapa, las cifras, los recien
  * llegados): sin datos no se ven, y sin esto desaparecian SIN UNA PALABRA. La API duerme
  * (Render, plan gratis, ~15 min), asi que la primera visita del dia veia media portada muda.
  * Mismo patron que /oficios y /comunas: que esta cargando, que fallo, y como reintentar.
@@ -64,7 +68,56 @@ function EstadoDeLaPortada({ cargas }: { cargas: Cargado<unknown>[] }) {
   return null
 }
 
-const OFICIOS_EN_CINTA = ['abogado', 'contador', 'gasfiter', 'arquitecto', 'electricista', 'corredor', 'pintor', 'tasador', 'ingeniero', 'técnico']
+/**
+ * CU-04. Lo que la persona dijo que suele buscar, como punto de partida: su comuna y sus oficios,
+ * cada uno un enlace a /buscar ya armado. Sin sesion, o sin nada guardado, no hay nada que decir.
+ */
+function useLoQueSueleBuscar(): MiPerfilBuscador | null {
+  const { estado, usuario } = useSesion()
+  const usuarioId = estado === 'dentro' ? usuario?.id ?? null : null
+  const [mio, setMio] = useState<{ usuarioId: string; perfil: MiPerfilBuscador } | null>(null)
+
+  useEffect(() => {
+    if (usuarioId === null) return
+    let vigente = true
+    miPerfilBuscador()
+      .then((perfil) => { if (vigente) setMio({ usuarioId, perfil }) })
+      // Si falla, la portada sigue igual que sin cuenta: esto es un atajo, no la pagina.
+      .catch(() => {})
+    return () => { vigente = false }
+  }, [usuarioId])
+
+  return mio !== null && mio.usuarioId === usuarioId ? mio.perfil : null
+}
+
+function ParaTi({ perfil, zonas, rubros }: { perfil: MiPerfilBuscador; zonas: Zona[]; rubros: Rubro[] }) {
+  const zona = zonas.find((z) => z.id === perfil.zonaInteresId)
+  const oficios = perfil.rubrosInteres
+    .map((id) => rubros.find((r) => r.id === id))
+    .filter((r): r is Rubro => r !== undefined)
+  if (!zona && oficios.length === 0) return null
+
+  const enLaZona = zona ? `&zona=${zona.id}` : ''
+  return (
+    <ul className="atajos entra" style={{ '--d': '380ms' } as React.CSSProperties} aria-label="Lo que sueles buscar">
+      {zona && (
+        <li>
+          <Link className="chip" to={`/buscar?zona=${zona.id}`}>
+            <Icono nombre="pin" />Gente en {etiquetaDeZona(zona)}
+          </Link>
+        </li>
+      )}
+      {oficios.map((r) => (
+        <li key={r.id}>
+          <Link className="chip" to={`/buscar?q=${encodeURIComponent(r.nombre)}${enLaZona}`}>
+            {capitalizar(r.nombre)}{zona && ` en ${zona.nombre}`}
+          </Link>
+        </li>
+      ))}
+      <li><Link className="enlace" to="/mis-guardados">Cambiar</Link></li>
+    </ul>
+  )
+}
 
 /**
  * La portada es corta a proposito: dice que es ZASS!, deja buscar en una barra, muestra la ciudad y la gente real
@@ -82,6 +135,7 @@ export function Portada() {
   const total = comunidad.datos?.total ?? 0
 
   const datosComunidad = comunidad.datos
+  const loQueBusca = useLoQueSueleBuscar()
   const conteo = useCallback((id: number) => personasEnZona(datosComunidad, id), [datosComunidad])
 
   // El foco de luz de la portada sigue al puntero. Es adorno: sin puntero se queda donde esta.
@@ -114,6 +168,8 @@ export function Portada() {
             <div className="entra entra--arriba" style={{ '--d': '320ms' } as React.CSSProperties}>
               <BarraDeBusqueda variante="portada" />
             </div>
+
+            {loQueBusca && <ParaTi perfil={loQueBusca} zonas={zonas} rubros={rubros} />}
 
             <ul className="atajos entra" style={{ '--d': '440ms' } as React.CSSProperties} aria-label="Búsquedas frecuentes">
               {EJEMPLOS.map((e) => (
@@ -148,21 +204,6 @@ export function Portada() {
           )}
         </div>
       </section>
-
-      {rubros.length > 0 && (
-        <div className="cinta" aria-hidden="true">
-          <div className="cinta-pista">
-            {[...rubros, ...rubros].map((r, i) => (
-              <span key={`${r.id}-${i}`} className="cinta-item">{r.nombre}<i /></span>
-            ))}
-          </div>
-          <div className="cinta-pista cinta-pista--inversa">
-            {[...OFICIOS_EN_CINTA, ...OFICIOS_EN_CINTA, ...OFICIOS_EN_CINTA].map((o, i) => (
-              <span key={`${o}-${i}`} className="cinta-chip">{o}</span>
-            ))}
-          </div>
-        </div>
-      )}
 
       {total > 0 && (
         <section className="cifras" aria-label="ZASS! en cifras">

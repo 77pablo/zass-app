@@ -6,7 +6,7 @@ import type { MiCredencial } from '../funciones/perfil/servicio'
 import { hoyISO } from '../marco/texto'
 import { MisCredenciales } from './MisCredenciales'
 
-let llamadas: { ruta: string; metodo?: string; cuerpo?: unknown }[]
+let llamadas: { ruta: string; metodo?: string; cuerpo?: unknown; tipo?: string }[]
 let respuesta: Response
 
 function json(cuerpo: unknown, estado = 200) {
@@ -26,9 +26,19 @@ beforeEach(() => {
   olvidarCsrf()
   vi.stubGlobal('fetch', vi.fn(async (ruta: string, opciones?: RequestInit) => {
     if (ruta === '/api/auth/csrf') return json({ token: 't' })
+    const cuerpo = opciones?.body
+    if (cuerpo instanceof FormData) {
+      // JQ-9: una subida. Se anota el archivo y el Content-Type puesto a mano (no tiene que haber).
+      const archivo = cuerpo.get('archivo') as File
+      llamadas.push({
+        ruta, metodo: opciones?.method, cuerpo: { archivo: archivo.name },
+        tipo: (opciones?.headers as Record<string, string>)['Content-Type'],
+      })
+      return respuesta
+    }
     llamadas.push({
       ruta, metodo: opciones?.method,
-      cuerpo: opciones?.body ? JSON.parse(String(opciones.body)) : undefined,
+      cuerpo: cuerpo ? JSON.parse(String(cuerpo)) : undefined,
     })
     return respuesta
   }))
@@ -53,12 +63,41 @@ describe('Tus credenciales', () => {
     expect(screen.getByText(texto, { selector: '.sello, .dato' })).toBeInTheDocument()
   })
 
-  it('un borrador avisa que todavía no se puede enviar a revisión, y sin borradores no lo dice', () => {
+  // Decisión de Pablo (21-nov-2026): una rechazada no sale en la ficha; su dueño ve el motivo y
+  // que no se muestra. Las demás no dicen nada de eso.
+  it('una rechazada dice el motivo y que no se muestra en la ficha', () => {
+    render(<MisCredenciales
+      credenciales={[{ ...una('Rechazada', 'Falsa'), motivoDelRechazo: 'SospechaAdulteracion' }, una('EnRevision', 'Otra')]}
+      alCambiar={() => {}} />)
+
+    expect(screen.getByText(/Motivo: Sospecha de adulteración\. No se muestra en tu ficha pública\./)).toBeInTheDocument()
+    expect(screen.getAllByText(/No se muestra en tu ficha pública/)).toHaveLength(1)
+  })
+
+  it('una rechazada sin motivo conocido igual dice que no se muestra', () => {
+    render(<MisCredenciales credenciales={[una('Rechazada')]} alCambiar={() => {}} />)
+
+    expect(screen.getByText('No se muestra en tu ficha pública.')).toBeInTheDocument()
+    expect(screen.queryByText(/Motivo:/)).toBeNull()
+  })
+
+  it('un borrador explica qué es la revisión, y sin borradores no lo dice', () => {
     const { rerender } = render(<MisCredenciales credenciales={[una('Borrador')]} alCambiar={() => {}} />)
-    expect(screen.getByText(/todavía no puedes subir documentos ni enviarla a revisión/)).toBeInTheDocument()
+    expect(screen.getByText(/Adjunta el documento que lo respalda y envíalo a revisión/)).toBeInTheDocument()
+    expect(screen.getByText(/solo los ves tú y la persona que lo revisa/)).toBeInTheDocument()
 
     rerender(<MisCredenciales credenciales={[una('Verificada')]} alCambiar={() => {}} />)
-    expect(screen.queryByText(/todavía no puedes subir documentos/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Adjunta el documento que lo respalda/)).not.toBeInTheDocument()
+  })
+
+  // Lo que la pantalla decia hasta hoy: que enviar a revision era imposible. API-27 existe desde
+  // antes, asi que el sello «Verificada» era inalcanzable solo por este texto y por la falta del
+  // boton. El candado es literal a proposito: si alguien vuelve a escribir la frase, cae.
+  it('ya no dice que enviarla a revisión sea imposible', () => {
+    render(<MisCredenciales credenciales={[una('Borrador')]} alCambiar={() => {}} />)
+
+    expect(screen.queryByText(/todavía no puedes subir documentos ni enviarla a revisión/)).toBeNull()
+    expect(screen.queryByText(/no puedes.*enviarla a revisión/)).toBeNull()
   })
 
   it('muestra tipo, entidad y año', () => {
@@ -168,6 +207,192 @@ describe('Tus credenciales', () => {
     await u.click(screen.getByRole('button', { name: /Sí, eliminar/ }))
     await vi.waitFor(() => expect(alCambiar).toHaveBeenCalledTimes(1))
     expect(llamadas).toEqual([{ ruta: '/api/mi/credenciales/id-Abogado', metodo: 'DELETE', cuerpo: undefined }])
+  })
+
+  describe('enviar a revisión (API-27)', () => {
+    it('un borrador se manda con POST a /enviar y sin cuerpo, y avisa para recargar', async () => {
+      const u = userEvent.setup()
+      const alCambiar = vi.fn()
+      render(<MisCredenciales credenciales={[una('Borrador')]} alCambiar={alCambiar} />)
+
+      await u.click(screen.getByRole('button', { name: /^Enviar a revisión/ }))
+
+      await vi.waitFor(() => expect(alCambiar).toHaveBeenCalledTimes(1))
+      // La ruta y el metodo son los de API-27 tal cual: POST /api/mi/credenciales/{id}/enviar.
+      expect(llamadas).toEqual([
+        { ruta: '/api/mi/credenciales/id-Abogado/enviar', metodo: 'POST', cuerpo: undefined },
+      ])
+    })
+
+    it('el identificador va escapado en la ruta', async () => {
+      const u = userEvent.setup()
+      const c = { ...una('Borrador'), id: 'a/b c' }
+      render(<MisCredenciales credenciales={[c]} alCambiar={() => {}} />)
+
+      await u.click(screen.getByRole('button', { name: /^Enviar a revisión/ }))
+
+      await vi.waitFor(() => expect(llamadas).toHaveLength(1))
+      expect(llamadas[0].ruta).toBe('/api/mi/credenciales/a%2Fb%20c/enviar')
+    })
+
+    it.each(['EnRevision', 'Verificada', 'Rechazada', 'Vencida'] as const)(
+      'una credencial %s no ofrece el botón', (estado) => {
+        render(<MisCredenciales credenciales={[una(estado)]} alCambiar={() => {}} />)
+
+        expect(screen.queryByRole('button', { name: /^Enviar a revisión/ })).toBeNull()
+      })
+
+    it('mientras va la llamada el botón dice que está enviando y no se puede pulsar de nuevo', async () => {
+      const u = userEvent.setup()
+      let soltar: (() => void) | undefined
+      const espera = new Promise<void>((r) => { soltar = r })
+      vi.stubGlobal('fetch', vi.fn(async (ruta: string, opciones?: RequestInit) => {
+        if (ruta === '/api/auth/csrf') return json({ token: 't' })
+        llamadas.push({ ruta, metodo: opciones?.method })
+        await espera
+        return respuesta
+      }))
+      render(<MisCredenciales credenciales={[una('Borrador')]} alCambiar={() => {}} />)
+
+      await u.click(screen.getByRole('button', { name: /^Enviar a revisión/ }))
+
+      const boton = await screen.findByRole('button', { name: /^Enviando…/ })
+      expect(boton).toBeDisabled()
+      soltar?.()
+      await vi.waitFor(() => expect(llamadas).toHaveLength(1))
+    })
+
+    // Con la bandera Zass:Verificacion:PermitirSinDocumentos apagada, API-27 contesta 422 si no hay
+    // respaldo. Desde JQ-9 se puede adjuntar, asi que el texto dice que hacer.
+    it('si falta el documento dice que hay que adjuntarlo primero', async () => {
+      const u = userEvent.setup()
+      const alCambiar = vi.fn()
+      respuesta = json({
+        title: 'Regla de negocio',
+        detail: 'Sube al menos un documento de respaldo antes de enviar a revision.',
+      }, 422)
+      render(<MisCredenciales credenciales={[una('Borrador')]} alCambiar={alCambiar} />)
+
+      await u.click(screen.getByRole('button', { name: /^Enviar a revisión/ }))
+
+      expect(await screen.findByText(/primero adjunta un documento que la respalde/)).toBeInTheDocument()
+      expect(screen.queryByText(/Sube al menos un documento/)).toBeNull()
+      expect(alCambiar).not.toHaveBeenCalled()
+      expect(screen.getByRole('button', { name: /^Enviar a revisión/ })).toBeEnabled()
+    })
+
+    it('cualquier otro rechazo muestra el motivo del servidor', async () => {
+      const u = userEvent.setup()
+      respuesta = json({ title: 'Conflicto', detail: 'Esta credencial ya está en revisión.' }, 409)
+      render(<MisCredenciales credenciales={[una('Borrador')]} alCambiar={() => {}} />)
+
+      await u.click(screen.getByRole('button', { name: /^Enviar a revisión/ }))
+
+      expect(await screen.findByText('Esta credencial ya está en revisión.')).toBeInTheDocument()
+    })
+
+    it('el error se muestra junto a la credencial que falló, no junto a la otra', async () => {
+      const u = userEvent.setup()
+      respuesta = json({ title: 'Conflicto', detail: 'Esta credencial ya está en revisión.' }, 409)
+      const uno = una('Borrador', 'Abogado')
+      const dos = una('Borrador', 'Tasador')
+      render(<MisCredenciales credenciales={[uno, dos]} alCambiar={() => {}} />)
+
+      await u.click(screen.getByRole('button', { name: /^Enviar a revisión\s?Tasador/ }))
+
+      const error = await screen.findByText('Esta credencial ya está en revisión.')
+      const fila = error.closest('li')
+      expect(fila?.textContent).toContain('Tasador')
+      expect(fila?.textContent).not.toContain('Abogado')
+    })
+  })
+
+  describe('documentos de respaldo (JQ-9)', () => {
+    const conDocs = (estado: MiCredencial['estado'], cuantos: number): MiCredencial => ({
+      ...una(estado),
+      tieneRespaldo: cuantos > 0,
+      documentos: cuantos,
+      respaldo: Array.from({ length: cuantos }, (_, i) => ({
+        id: `doc-${i}`, nombre: `titulo-${i}.pdf`, tipoMime: 'application/pdf',
+        tamanoBytes: 1_258_291, estado: 'Disponible' as const, subidoEn: '2026-11-20T03:00:00Z',
+      })),
+    })
+    const archivo = (bytes: number, nombre = 'titulo.pdf') =>
+      new File([new Uint8Array(bytes)], nombre, { type: 'application/pdf' })
+
+    it('cada documento se abre en una pestaña aparte por la API, con su peso', () => {
+      render(<MisCredenciales credenciales={[conDocs('Borrador', 1)]} alCambiar={() => {}} />)
+
+      const enlace = screen.getByRole('link', { name: 'titulo-0.pdf' })
+      expect(enlace).toHaveAttribute('href', '/api/mi/credenciales/id-Abogado/documentos/doc-0')
+      expect(enlace).toHaveAttribute('target', '_blank')
+      expect(enlace.getAttribute('rel')).toContain('noopener')
+      expect(screen.getByText('1,2 MB')).toBeInTheDocument()
+    })
+
+    it('adjuntar sube el archivo como formulario, sin Content-Type a mano, y avisa para recargar', async () => {
+      const u = userEvent.setup()
+      const alCambiar = vi.fn()
+      respuesta = json({ id: 'nuevo', nombre: 'titulo.pdf' }, 201)
+      render(<MisCredenciales credenciales={[una('Borrador')]} alCambiar={alCambiar} />)
+
+      await u.upload(screen.getByLabelText(/Adjuntar documento/), archivo(2048))
+
+      await vi.waitFor(() => expect(alCambiar).toHaveBeenCalledTimes(1))
+      expect(llamadas).toEqual([{
+        ruta: '/api/mi/credenciales/id-Abogado/documentos', metodo: 'POST',
+        cuerpo: { archivo: 'titulo.pdf' }, tipo: undefined,
+      }])
+    })
+
+    it('un archivo de más de 10 MB no sale del navegador y se dice que pasa el máximo', async () => {
+      const u = userEvent.setup()
+      render(<MisCredenciales credenciales={[una('Borrador')]} alCambiar={() => {}} />)
+
+      await u.upload(screen.getByLabelText(/Adjuntar documento/), archivo(10 * 1024 * 1024 + 1))
+
+      expect(await screen.findByText(/el máximo es 10 MB/)).toBeInTheDocument()
+      expect(llamadas).toHaveLength(0)
+    })
+
+    it('si el servidor rechaza el archivo, su motivo sale junto a esa credencial', async () => {
+      const u = userEvent.setup()
+      respuesta = json({ title: 'Tipo de archivo no aceptado', detail: 'Usa PDF, JPG o PNG.' }, 415)
+      render(<MisCredenciales credenciales={[una('Borrador', 'Abogado'), una('Borrador', 'Tasador')]} alCambiar={() => {}} />)
+
+      await u.upload(screen.getByLabelText(/Adjuntar documento\s?de Tasador/), archivo(100, 'virus.pdf'))
+
+      const error = await screen.findByText('Usa PDF, JPG o PNG.')
+      expect(error.closest('li')?.textContent).toContain('Tasador')
+      expect(error.closest('li')?.textContent).not.toContain('Abogado')
+    })
+
+    it('quitar manda DELETE a la ruta del documento', async () => {
+      const u = userEvent.setup()
+      const alCambiar = vi.fn()
+      render(<MisCredenciales credenciales={[conDocs('Borrador', 1)]} alCambiar={alCambiar} />)
+
+      await u.click(screen.getByRole('button', { name: /^Quitar\s?titulo-0\.pdf/ }))
+
+      await vi.waitFor(() => expect(alCambiar).toHaveBeenCalledTimes(1))
+      expect(llamadas).toEqual([
+        { ruta: '/api/mi/credenciales/id-Abogado/documentos/doc-0', metodo: 'DELETE', cuerpo: undefined },
+      ])
+    })
+
+    it('una credencial verificada no deja adjuntar ni quitar: es lo que se aprobó', () => {
+      render(<MisCredenciales credenciales={[conDocs('Verificada', 1)]} alCambiar={() => {}} />)
+
+      expect(screen.getByRole('link', { name: 'titulo-0.pdf' })).toBeInTheDocument()
+      expect(screen.queryByLabelText(/Adjuntar documento/)).toBeNull()
+      expect(screen.queryByRole('button', { name: /^Quitar/ })).toBeNull()
+    })
+
+    it('con 5 documentos ya no ofrece adjuntar otro', () => {
+      render(<MisCredenciales credenciales={[conDocs('Borrador', 5)]} alCambiar={() => {}} />)
+
+      expect(screen.queryByLabelText(/Adjuntar documento/)).toBeNull()
+    })
   })
 
   it('«No» cancela la eliminación sin llamar a la API', async () => {

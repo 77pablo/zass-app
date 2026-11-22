@@ -264,8 +264,14 @@ public partial class ApiPruebas
 
     // ------------------------------------------------------------- rechazar y lo que ve cada quien
 
+    /// <summary>
+    /// Desde el 21-nov-2026 (decision de Pablo) una rechazada DESAPARECE de la ficha publica —antes
+    /// salia como «declarada por el usuario», y un titulo falso seguia a la vista—. El dueño la sigue
+    /// viendo en «Mis credenciales», con el motivo tipificado (no el texto del Verificador ni quien).
+    /// Al reenviarla vuelve a estar en revision y a verse como declarada.
+    /// </summary>
     [Fact]
-    public async Task Rechazar_exige_motivo_y_texto_y_el_publico_la_sigue_viendo_como_declarada()
+    public async Task Rechazar_exige_motivo_y_texto_y_la_rechazada_sale_de_la_ficha_publica()
     {
         var (dueno, _) = await UnaCuentaAsync("prestador");
         var (ana, anaId) = await UnaCuentaAsync("buscador", verificador: true);
@@ -292,26 +298,33 @@ public partial class ApiPruebas
         Assert.Equal(EstadoCredencial.Rechazada, c.Estado);
         Assert.Equal(MotivoRechazo.EntidadNoReconocida, Assert.Single(c.Verificaciones).Motivo);
 
-        // El dueño ve su estado interno (como ya mostraba API-24)... pero ni el motivo ni el texto ni quién.
+        // El dueño ve su estado interno y el MOTIVO tipificado (estados-credencial.md §3)... pero ni
+        // el texto del Verificador ni quién la revisó.
         await IniciarSesionAsync(dueno);
         var propias = await (await _cliente.GetAsync("/api/mi/credenciales")).Content.ReadAsStringAsync();
-        Assert.Equal("Rechazada", JsonDocument.Parse(propias).RootElement.EnumerateArray().Single().GetProperty("estado").GetString());
-        Assert.DoesNotContain("EntidadNoReconocida", propias);
+        var propia = JsonDocument.Parse(propias).RootElement.EnumerateArray().Single();
+        Assert.Equal("Rechazada", propia.GetProperty("estado").GetString());
+        Assert.Equal("EntidadNoReconocida", propia.GetProperty("motivoDelRechazo").GetString());
         Assert.DoesNotContain(explicacion, propias);
         Assert.DoesNotContain(anaId.ToString(), propias, StringComparison.OrdinalIgnoreCase);
-        foreach (var interno in new[] { "motivo", "detalle", "verificador", "selloPor", "reservada", "esperandoPrestador", "sinDocumentos" })
+        foreach (var interno in new[] { "detalle", "verificador", "selloPor", "reservada", "esperandoPrestador", "sinDocumentos" })
             Assert.DoesNotContain(interno, propias, StringComparison.OrdinalIgnoreCase);
 
-        // 4A.6: el público sigue viéndola como «declarada», nunca como rechazada.
+        // Decision de Pablo (21-nov-2026): el público ya NO la ve, ni como declarada ni como rechazada.
         using var visitante = UnVisitante();
-        var texto = await (await visitante.GetAsync($"/api/prestadores/{slug}")).Content.ReadAsStringAsync();
-        Assert.Equal("Declarada por el usuario",
-            JsonDocument.Parse(texto).RootElement.GetProperty("credenciales").EnumerateArray().Single().GetProperty("etiqueta").GetString());
+        var ficha = await visitante.GetAsync($"/api/prestadores/{slug}");
+        Assert.Equal(HttpStatusCode.OK, ficha.StatusCode);
+        var texto = await ficha.Content.ReadAsStringAsync();
+        Assert.Empty(JsonDocument.Parse(texto).RootElement.GetProperty("credenciales").EnumerateArray());
+        Assert.DoesNotContain("Abogado titulado", texto);
         NadaInternoEn(texto, anaId, explicacion);
         Assert.DoesNotContain("EntidadNoReconocida", texto);
 
-        // 4A.7: puede corregir y reenviar.
+        // 4A.7: puede corregir y reenviar; en revisión vuelve a verse, como declarada.
         Assert.Equal(HttpStatusCode.NoContent, (await PostConCsrfAsync($"/api/mi/credenciales/{id}/enviar")).StatusCode);
+        var otraVez = await (await visitante.GetAsync($"/api/prestadores/{slug}")).Content.ReadAsStringAsync();
+        Assert.Equal("Declarada por el usuario",
+            JsonDocument.Parse(otraVez).RootElement.GetProperty("credenciales").EnumerateArray().Single().GetProperty("etiqueta").GetString());
     }
 
     // ------------------------------------------------------------- pedir antecedentes
@@ -509,7 +522,7 @@ public class VerificacionSinDocumentosApiPruebas : IAsyncLifetime
         _correos.Add(correo);
         Assert.Equal(HttpStatusCode.Created, (await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo, contrasena = "contrasena-larga-1", nombre = "Pablo Espinoza", rol = "prestador",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo, contrasena = "contrasena-larga-1", nombre = "Pablo Espinoza", rol = "prestador",
         })).StatusCode);
 
         // El token de verificacion llega por el aviso encolado, como en ApiPruebas.
@@ -602,7 +615,7 @@ public class VerificacionSinDocumentosApiPruebas : IAsyncLifetime
         _correos.Add(verificador);
         await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo = verificador, contrasena = "contrasena-larga-1", nombre = "Vera Ficadora", rol = "buscador",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo = verificador, contrasena = "contrasena-larga-1", nombre = "Vera Ficadora", rol = "buscador",
         });
         Guid verificadorId;
         using (var ctx = ContextoDePrueba.Crear())

@@ -3,9 +3,12 @@ import { ErrorApi } from '../api/cliente'
 import { Aviso } from '../componentes/Aviso'
 import { Campo } from '../componentes/Campo'
 import {
-  crearCredencial, eliminarCredencial,
+  ACEPTA_DOCUMENTO, TAMANO_MAXIMO,
+  crearCredencial, eliminarCredencial, enviarCredencialARevision, quitarDocumento, subirDocumento,
+  urlDeDocumento,
   type MiCredencial, type TipoDeCredencial,
 } from '../funciones/perfil/servicio'
+import { MOTIVO } from '../funciones/interno/textos'
 import { Icono } from '../marco/Icono'
 import { etiquetaDeTipo, hoyISO } from '../marco/texto'
 
@@ -30,9 +33,31 @@ function mensajeDe(e: unknown, porDefecto: string): string {
 }
 
 /**
- * CU-05, la parte que no necesita archivos: declarar, ver y eliminar. Subir documentos y enviar a
- * revision esperan a MOD-08; hasta entonces una credencial se queda en borrador, y la pantalla
- * lo dice en vez de prometer una revision que no puede ocurrir.
+ * El 422 de API-27 solo puede ser uno: la credencial no tiene documento de respaldo y la bandera
+ * `Zass:Verificacion:PermitirSinDocumentos` esta apagada (RN-S2-01). Desde JQ-9 se puede subir,
+ * asi que el texto dice que hacer en vez de explicar la regla. (Texto PROPUESTO: lo aprueba Pablo.)
+ */
+function motivoDelEnvio(e: unknown): string {
+  if (e instanceof ErrorApi && e.estado === 422) {
+    return 'Para enviarla a revisión, primero adjunta un documento que la respalde: PDF, JPG o PNG.'
+  }
+  return mensajeDe(e, 'No pudimos enviarla a revisión. Intenta de nuevo.')
+}
+
+/** «1,2 MB» o «340 KB»: para que la persona reconozca cuál subió. */
+function peso(bytes: number): string {
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / 1024 / 1024).toLocaleString('es-CL', { maximumFractionDigits: 1 })} MB`
+  }
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`
+}
+
+/** Hasta 5 por credencial, como el servidor (E-409). */
+const MAXIMO_DOCUMENTOS = 5
+
+/**
+ * CU-05: declarar, adjuntar los documentos de respaldo (JQ-9), enviar a revision y eliminar.
+ * Los documentos solo los ven su dueño y el Verificador que tiene la credencial tomada.
  */
 export function MisCredenciales({
   credenciales, alCambiar,
@@ -41,6 +66,45 @@ export function MisCredenciales({
   const [confirmando, setConfirmando] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string>()
   const [trabajando, setTrabajando] = useState(false)
+  const [enviando, setEnviando] = useState<string | null>(null)
+  // El error va junto a la credencial que lo causo, no arriba: con varias en la lista, un aviso
+  // suelto en la cabecera no dice de cual habla.
+  const [falloEnvio, setFalloEnvio] = useState<{ id: string; mensaje: string } | null>(null)
+  // Igual que el envío: el error de un archivo va junto a SU credencial.
+  const [subiendo, setSubiendo] = useState<string | null>(null)
+  const [falloArchivo, setFalloArchivo] = useState<{ id: string; mensaje: string } | null>(null)
+
+  async function adjuntar(id: string, archivo: File | undefined) {
+    if (!archivo) return
+    setFalloArchivo(null)
+    // El servidor lo vuelve a mirar todo; esto solo evita esperar una subida que va a volver.
+    if (archivo.size > TAMANO_MAXIMO) {
+      setFalloArchivo({ id, mensaje: `El archivo pesa ${peso(archivo.size)} y el máximo es 10 MB.` })
+      return
+    }
+    setSubiendo(id)
+    try {
+      await subirDocumento(id, archivo)
+      alCambiar()
+    } catch (e) {
+      setFalloArchivo({ id, mensaje: mensajeDe(e, 'No pudimos subir el archivo. Intenta de nuevo.') })
+    } finally {
+      setSubiendo(null)
+    }
+  }
+
+  async function quitar(id: string, documentoId: string) {
+    setFalloArchivo(null)
+    setSubiendo(id)
+    try {
+      await quitarDocumento(id, documentoId)
+      alCambiar()
+    } catch (e) {
+      setFalloArchivo({ id, mensaje: mensajeDe(e, 'No pudimos quitar el archivo. Intenta de nuevo.') })
+    } finally {
+      setSubiendo(null)
+    }
+  }
 
   async function eliminar(id: string) {
     setTrabajando(true)
@@ -53,6 +117,20 @@ export function MisCredenciales({
       setAviso(mensajeDe(e, 'No pudimos eliminarla. Intenta de nuevo.'))
     } finally {
       setTrabajando(false)
+    }
+  }
+
+  async function enviarARevision(id: string) {
+    setEnviando(id)
+    setFalloEnvio(null)
+    try {
+      await enviarCredencialARevision(id)
+      // API-27 responde 204, sin la credencial: el estado nuevo se ve al volver a pedir la lista.
+      alCambiar()
+    } catch (e) {
+      setFalloEnvio({ id, mensaje: motivoDelEnvio(e) })
+    } finally {
+      setEnviando(null)
     }
   }
 
@@ -89,6 +167,62 @@ export function MisCredenciales({
                     {[etiquetaDeTipo(c.tipo), c.entidad, c.obtenidaEn.slice(0, 4)].filter(Boolean).join(' · ')}
                   </small>
                   <span className={estado.sello ? 'sello' : 'dato'}>{estado.texto}</span>
+                  {c.estado === 'Rechazada' && (
+                    // Desde el 21-nov-2026 una rechazada no sale en la ficha pública: aquí se dice
+                    // por qué y que no se ve. (Texto PROPUESTO: lo aprueba Pablo.)
+                    <small>
+                      {c.motivoDelRechazo ? `Motivo: ${MOTIVO[c.motivoDelRechazo]}. ` : ''}
+                      No se muestra en tu ficha pública.
+                    </small>
+                  )}
+                  {c.estado === 'Borrador' && (
+                    <button
+                      type="button" className="editar" disabled={enviando !== null}
+                      onClick={() => void enviarARevision(c.id)}
+                    >
+                      <Icono nombre="sello" />
+                      {enviando === c.id ? 'Enviando…' : 'Enviar a revisión'}
+                      <span className="solo-lector"> {c.nombre}</span>
+                    </button>
+                  )}
+                  {falloEnvio?.id === c.id && (
+                    <p className="campo-error" role="alert">{falloEnvio.mensaje}</p>
+                  )}
+
+                  {(c.respaldo ?? []).length > 0 && (
+                    <ul className="respaldo" aria-label={`Documentos de ${c.nombre}`}>
+                      {(c.respaldo ?? []).map((d) => (
+                        <li key={d.id}>
+                          <a href={urlDeDocumento(c.id, d.id)} target="_blank" rel="noopener noreferrer">
+                            {d.nombre}
+                          </a>
+                          <small>{peso(d.tamanoBytes)}</small>
+                          {c.estado !== 'Verificada' && (
+                            <button type="button" className="editar" disabled={subiendo !== null}
+                              onClick={() => void quitar(c.id, d.id)}>
+                              Quitar<span className="solo-lector"> {d.nombre}</span>
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {c.estado !== 'Verificada' && (c.respaldo ?? []).length < MAXIMO_DOCUMENTOS && (
+                    <label className={subiendo !== null ? 'editar adjuntar adjuntar--ocupado' : 'editar adjuntar'}>
+                      <Icono nombre="mas" />
+                      {subiendo === c.id ? 'Subiendo…' : 'Adjuntar documento'}
+                      <span className="solo-lector"> de {c.nombre} (PDF, JPG o PNG, hasta 10 MB)</span>
+                      <input
+                        type="file" className="solo-lector" accept={ACEPTA_DOCUMENTO}
+                        disabled={subiendo !== null}
+                        onChange={(e) => { void adjuntar(c.id, e.target.files?.[0]); e.target.value = '' }}
+                      />
+                    </label>
+                  )}
+                  {falloArchivo?.id === c.id && (
+                    <p className="campo-error" role="alert">{falloArchivo.mensaje}</p>
+                  )}
                 </div>
                 {confirmando === c.id ? (
                   <span className="credencial-confirmar">
@@ -120,8 +254,9 @@ export function MisCredenciales({
 
       {credenciales.some((c) => c.estado === 'Borrador') && (
         <p className="letra-chica">
-          Por ahora una credencial queda como borrador y solo la ves tú: todavía no puedes subir
-          documentos ni enviarla a revisión.
+          Un borrador solo lo ves tú. Adjunta el documento que lo respalda y envíalo a revisión: lo
+          revisamos a mano, uno por uno, y mientras tanto en tu ficha aparece como declarado por ti.
+          Tus documentos solo los ves tú y la persona que lo revisa.
         </p>
       )}
     </section>

@@ -10,7 +10,9 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
+using Zass.Infraestructura.Configuracion;
 
 namespace Zass.Integracion.Pruebas;
 
@@ -22,16 +24,20 @@ namespace Zass.Integracion.Pruebas;
 public sealed class Aplicacion : WebApplicationFactory<Program>
 {
     private readonly Dictionary<string, string?> _ajustes;
+    private readonly IRelojSistema? _reloj;
 
     public Aplicacion(
         int? limiteAutenticacion = null, bool permitirSinDocumentos = true, int? limiteSensible = null,
-        int? limitePublico = null)
+        int? limitePublico = null, IRelojSistema? reloj = null)
     {
         _ajustes = new Dictionary<string, string?>
         {
             ["Zass:CadenaConexion"] = Conexion.Cadena,
             ["Zass:ClaveDireccionesBase64"] =
                 Convert.ToBase64String(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray()),
+
+            // Secreto de 32+ caracteres para firmar/verificar avisos de pago en pruebas.
+            ["Zass:SecretoAvisoPagos"] = Convert.ToBase64String(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray()),
 
             // Las pruebas salen todas de 127.0.0.1 y comparten cupo. Salvo la prueba que
             // mide el limite, las demas lo suben para no estorbarse entre si.
@@ -48,14 +54,35 @@ public sealed class Aplicacion : WebApplicationFactory<Program>
             // la pondria roja sin que nadie entienda por que. Lo que hace se prueba llamandolo
             // directo (CoordinadorDeTrabajos y CorrerDiarioAsync), no esperando su temporizador.
             ["Zass:Fondo:Activo"] = "false",
+
+            // P19 (T49): en pruebas no consultamos HIBP para no salir a internet
+            ["Zass:RevisarContrasenasFiltradas"] = "false",
+
+            // JQ-9: los archivos de las pruebas en su propia carpeta, nunca en la de desarrollo.
+            ["Zass:Archivos:Proveedor"] = "local",
+            ["Zass:Archivos:CarpetaLocal"] = CarpetaDeArchivos,
         };
+        _reloj = reloj;
     }
+
+    /// <summary>Donde guardan los archivos las pruebas (JQ-9). Se puede vaciar sin perder nada.</summary>
+    public static readonly string CarpetaDeArchivos =
+        Path.Combine(Path.GetTempPath(), "zass-archivos-pruebas");
 
     protected override void ConfigureWebHost(IWebHostBuilder constructor)
     {
         constructor.UseEnvironment(Environments.Development);
         constructor.ConfigureAppConfiguration(
             (_, config) => config.AddInMemoryCollection(_ajustes));
+        if (_reloj is not null)
+        {
+            constructor.ConfigureServices(s =>
+            {
+                var descriptor = s.SingleOrDefault(d => d.ServiceType == typeof(IRelojSistema));
+                if (descriptor is not null) s.Remove(descriptor);
+                s.AddSingleton(_reloj);
+            });
+        }
     }
 }
 
@@ -79,6 +106,9 @@ public sealed class AplicacionParaAuditoria : WebApplicationFactory<Program>
             ["Zass:ClaveDireccionesBase64"] =
                 Convert.ToBase64String(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray()),
 
+            // Secreto de 32+ caracteres para firmar/verificar avisos de pago en pruebas.
+            ["Zass:SecretoAvisoPagos"] = Convert.ToBase64String(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray()),
+
             ["Zass:Tasa:A"] = (limiteAutenticacion ?? 10_000).ToString(),
             ["Zass:Tasa:G"] = "10000",
             ["Zass:Tasa:P"] = (limitePublico ?? 10_000).ToString(),
@@ -86,6 +116,8 @@ public sealed class AplicacionParaAuditoria : WebApplicationFactory<Program>
 
             ["Zass:Verificacion:PermitirSinDocumentos"] = permitirSinDocumentos ? "true" : "false",
             ["Zass:Fondo:Activo"] = "false",
+            // P19 (T49): en pruebas no consultamos HIBP para no salir a internet
+            ["Zass:RevisarContrasenasFiltradas"] = "false",
         };
     }
 
@@ -237,7 +269,7 @@ public partial class ApiPruebas : IAsyncLifetime
 
         var alta = await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo, contrasena = "contrasena-larga-1", nombre = "Pablo Espinoza", rol = "prestador",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo, contrasena = "contrasena-larga-1", nombre = "Pablo Espinoza", rol = "prestador",
         });
         Assert.Equal(HttpStatusCode.Created, alta.StatusCode);
 
@@ -362,7 +394,7 @@ public partial class ApiPruebas : IAsyncLifetime
     {
         var respuesta = await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo = "no-es-un-correo", contrasena = "corta",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo = "no-es-un-correo", contrasena = "corta",
             nombre = "", rol = "administrador",
         });
 
@@ -375,12 +407,76 @@ public partial class ApiPruebas : IAsyncLifetime
         Assert.DoesNotContain("no-es-un-correo", cuerpo);
     }
 
+    // ------------------------------------- registro completo (decision de Pablo, 20-nov-2026)
+
+    [Fact]
+    public async Task Registrar_una_empresa_guarda_sus_datos_y_el_RUT_normalizado()
+    {
+        var correo = NuevoCorreo();
+        var cuerpoRut = Random.Shared.Next(70_000_000, 99_999_999);
+        var t = cuerpoRut.ToString();
+        var rut = $"{t[..2]}.{t[2..5]}.{t[5..]}-{Zass.Aplicacion.Comun.Rut.DigitoVerificador(cuerpoRut)}";   // con puntos, como lo escribe la gente
+
+        var respuesta = await _cliente.PostAsJsonAsync("/api/auth/registro", new
+        {
+            correo, contrasena = "contrasena-larga-1", nombre = "Ana Contacto", rol = "prestador",
+            tipo = "empresa", razonSocial = "Gasfiteria de Prueba SpA", rut,
+            telefono = "22 345 6789", mayorDeEdad = true,
+        });
+
+        Assert.Equal(HttpStatusCode.Created, respuesta.StatusCode);
+        using var ctx = ContextoDePrueba.Crear();
+        var u = await ctx.Usuarios.AsNoTracking().SingleAsync(x => x.Correo == correo);
+        Assert.Equal(TipoCuenta.Empresa, u.Tipo);
+        Assert.Equal($"{cuerpoRut}-{Zass.Aplicacion.Comun.Rut.DigitoVerificador(cuerpoRut)}", u.Rut);
+        Assert.Equal("Gasfiteria de Prueba SpA", u.RazonSocial);
+        Assert.NotNull(u.MayorDeEdadConfirmadoEn);
+        var perfil = await ctx.PerfilesPrestador.AsNoTracking().SingleAsync(p => p.UsuarioId == u.Id);
+        Assert.Equal("Gasfiteria de Prueba SpA", perfil.NombrePublico);
+    }
+
+    [Fact]
+    public async Task Un_RUT_ya_registrado_devuelve_409_y_no_crea_otra_cuenta()
+    {
+        var rut = DatosDeRegistro.Rut();
+        object Cuerpo(string correo) => new
+        {
+            correo, contrasena = "contrasena-larga-1", nombre = "Ana", rol = "buscador",
+            tipo = "particular", apellido = "Rojas", rut, telefono = "+56 9 1234 5678", mayorDeEdad = true,
+        };
+        Assert.Equal(HttpStatusCode.Created,
+            (await _cliente.PostAsJsonAsync("/api/auth/registro", Cuerpo(NuevoCorreo()))).StatusCode);
+
+        var segundo = NuevoCorreo();
+        var r = await _cliente.PostAsJsonAsync("/api/auth/registro", Cuerpo(segundo));
+
+        Assert.Equal(HttpStatusCode.Conflict, r.StatusCode);
+        using var ctx = ContextoDePrueba.Crear();
+        Assert.False(await ctx.Usuarios.AnyAsync(x => x.Correo == segundo));
+    }
+
+    [Fact]
+    public async Task Sin_tipo_RUT_telefono_ni_mayoria_de_edad_devuelve_400_con_cada_campo()
+    {
+        var r = await _cliente.PostAsJsonAsync("/api/auth/registro", new
+        {
+            correo = NuevoCorreo(), contrasena = "contrasena-larga-1", nombre = "Ana", rol = "buscador",
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
+        var cuerpo = await r.Content.ReadAsStringAsync();
+        Assert.Contains("Tipo", cuerpo);
+        Assert.Contains("Rut", cuerpo);
+        Assert.Contains("Telefono", cuerpo);
+        Assert.Contains("MayorDeEdad", cuerpo);
+    }
+
     [Fact]
     public async Task Pedir_el_rol_administrador_al_registrarse_se_rechaza()
     {
         var respuesta = await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo = NuevoCorreo(), contrasena = "contrasena-larga-1",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo = NuevoCorreo(), contrasena = "contrasena-larga-1",
             nombre = "Colado", rol = "administrador",
         });
 
@@ -1277,7 +1373,7 @@ public partial class ApiPruebas : IAsyncLifetime
             var correo = NuevoCorreo();
             Assert.Equal(HttpStatusCode.Created, (await _cliente.PostAsJsonAsync("/api/auth/registro", new
             {
-                correo, contrasena = "contrasena-larga-1", nombre = "Sin Verificar", rol = "buscador",
+                tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo, contrasena = "contrasena-larga-1", nombre = "Sin Verificar", rol = "buscador",
             })).StatusCode);
 
             // A proposito NO se llama a /api/auth/correo/verificar.
@@ -1355,6 +1451,293 @@ public partial class ApiPruebas : IAsyncLifetime
             Assert.False(servicio.TryGetProperty("servicioId", out _));
             Assert.False(servicio.TryGetProperty("perfilPrestadorId", out _));
         }
+    }
+
+    // ------------------------------------------------- CU-09 · API-07, la vCard (CS-19)
+
+    /// <summary>
+    /// Prepara un prestador publicado con contacto completo y suscripcion vigente.
+    /// Devuelve el slug.
+    /// </summary>
+    private async Task<string> UnaFichaConContactoAsync()
+    {
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo, rol: "prestador");
+        await VerificarAsync(correo);
+        await IniciarSesionAsync(correo);
+
+        var perfil = await _cliente.GetFromJsonAsync<JsonDocument>("/api/mi/perfil-prestador");
+        var version = perfil!.RootElement.GetProperty("version").GetInt32();
+        var slug = perfil.RootElement.GetProperty("slug").GetString()!;
+
+        var datos = new HttpRequestMessage(HttpMethod.Put, "/api/mi/perfil-prestador")
+        {
+            Content = JsonContent.Create(new
+            {
+                nombrePublico = "Juan Perez, Jr.; Especialista",
+                descripcion = "Experto en reparaciones.",
+                rubroId = (short?)1,
+                telefonoPublico = "+56 9 1234 5678",
+                correoPublico = "contacto@perez.cl",
+                whatsapp = "912345678",
+                sitioWeb = "https://perez.cl",
+                direccion = (string?)null, latitud = (double?)null, longitud = (double?)null,
+                version,
+            }),
+        };
+        datos.Headers.Add("X-CSRF-Token", await TokenCsrfAsync());
+        Assert.Equal(HttpStatusCode.NoContent, (await _cliente.SendAsync(datos)).StatusCode);
+
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await PonerServiciosAsync(new[] { UnServicio(101, duracion: 45) })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await PonerCoberturaAsync(new[] { UnaZona(11, false), UnaZona(1, true) })).StatusCode);
+
+        var publicar = new HttpRequestMessage(HttpMethod.Post, "/api/mi/perfil-prestador/publicar");
+        publicar.Headers.Add("X-CSRF-Token", await TokenCsrfAsync());
+        Assert.Equal(HttpStatusCode.NoContent, (await _cliente.SendAsync(publicar)).StatusCode);
+        return slug;
+    }
+
+    [Fact]
+    public async Task La_vcard_descarga_con_contacto_completo_y_content_type_correcto()
+    {
+        var slug = await UnaFichaConContactoAsync();
+        var visitante = _cliente;   // con sesion y correo verificado (RN-S1-09)
+
+        var respuesta = await visitante.GetAsync($"/api/prestadores/{slug}/vcard");
+
+        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
+        Assert.Equal("text/vcard; charset=utf-8", respuesta.Content.Headers.ContentType?.ToString());
+        Assert.Contains($"attachment; filename={SanitizarSlug(slug)}.vcf", respuesta.Content.Headers.ContentDisposition?.ToString());
+
+        var cuerpo = await respuesta.Content.ReadAsStringAsync();
+        // Normalizar finales de linea para la comparacion
+        var cuerpoNormalizado = cuerpo.Replace("\r\n", "\n").Replace("\r", "\n");
+
+        Assert.Contains("BEGIN:VCARD", cuerpoNormalizado);
+        Assert.Contains("VERSION:3.0", cuerpoNormalizado);
+        // El nombre "Juan Perez, Jr.; Especialista" debe salir con coma y punto y coma escapados
+        Assert.Contains("FN:Juan Perez", cuerpoNormalizado);
+        Assert.Contains("Jr", cuerpoNormalizado);
+        Assert.Contains("Especialista", cuerpoNormalizado);
+        Assert.Contains("TEL;TYPE=VOICE:+56 9 1234 5678", cuerpoNormalizado);
+        Assert.Contains("TEL;TYPE=CELL:912345678", cuerpoNormalizado);
+        Assert.Contains("EMAIL:contacto@perez.cl", cuerpoNormalizado);
+        Assert.Contains("URL:https://perez.cl", cuerpoNormalizado);
+        Assert.Contains("END:VCARD", cuerpoNormalizado);
+        // Verificar que tiene finales de linea (CRLF en el original)
+        Assert.True(cuerpo.Contains("\r\n") || cuerpo.Contains("\n"));
+    }
+
+    [Fact]
+    public async Task La_vcard_slug_inexistente_devuelve_404()
+    {
+        await UnPrestadorConSesionAsync();
+        var visitante = _cliente;   // con sesion verificada: sin ella responde 401 antes de buscar
+
+        var respuesta = await visitante.GetAsync("/api/prestadores/este-slug-no-existe-para-nadie/vcard");
+
+        Assert.Equal(HttpStatusCode.NotFound, respuesta.StatusCode);
+    }
+
+    [Fact]
+    public async Task La_vcard_sin_suscripcion_devuelve_404_indistinguible_de_inexistente()
+    {
+        // Creamos un prestador publicado con contacto
+        var correo = NuevoCorreo();
+        await RegistrarAsync(correo, rol: "prestador");
+        await VerificarAsync(correo);
+        await IniciarSesionAsync(correo);
+
+        var perfil = await _cliente.GetFromJsonAsync<JsonDocument>("/api/mi/perfil-prestador");
+        var version = perfil!.RootElement.GetProperty("version").GetInt32();
+        var slug = perfil.RootElement.GetProperty("slug").GetString()!;
+
+        var datos = new HttpRequestMessage(HttpMethod.Put, "/api/mi/perfil-prestador")
+        {
+            Content = JsonContent.Create(new
+            {
+                nombrePublico = "Prestador Sin Suscripcion",
+                descripcion = "Test",
+                rubroId = (short?)1,
+                telefonoPublico = "+56 9 9999 9999",
+                correoPublico = "sin-sus@test.cl",
+                whatsapp = "999999999",
+                sitioWeb = "https://sin-sus.test",
+                direccion = (string?)null, latitud = (double?)null, longitud = (double?)null,
+                version,
+            }),
+        };
+        datos.Headers.Add("X-CSRF-Token", await TokenCsrfAsync());
+        Assert.Equal(HttpStatusCode.NoContent, (await _cliente.SendAsync(datos)).StatusCode);
+
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await PonerServiciosAsync(new[] { UnServicio(101) })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await PonerCoberturaAsync(new[] { UnaZona(1, true) })).StatusCode);
+
+        var publicar = new HttpRequestMessage(HttpMethod.Post, "/api/mi/perfil-prestador/publicar");
+        publicar.Headers.Add("X-CSRF-Token", await TokenCsrfAsync());
+        Assert.Equal(HttpStatusCode.NoContent, (await _cliente.SendAsync(publicar)).StatusCode);
+
+        // Obtenemos el ID de la suscripcion para vencerla
+        using var ctx = ContextoDePrueba.Crear();
+        var perfilId = (await ctx.PerfilesPrestador.SingleAsync(p => p.Slug == slug)).Id;
+        var suscripcion = await ctx.Suscripciones.SingleAsync(s => s.PerfilPrestadorId == perfilId);
+        var suscripcionId = suscripcion.Id;
+
+        // Vencemos la suscripcion (RN-S6-10)
+        await ctx.Suscripciones.Where(s => s.Id == suscripcionId)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(x => x.Estado, EstadoSuscripcion.Vencida)
+                .SetProperty(x => x.VigenteHasta, DateTime.UtcNow.AddDays(-1)));
+        await ctx.SaveChangesAsync();
+
+        var visitante = _cliente;   // con sesion verificada: el 404 tiene que ser por la suscripcion
+        var respuestaVcard = await visitante.GetAsync($"/api/prestadores/{slug}/vcard");
+        var respuestaInexistente = await visitante.GetAsync("/api/prestadores/este-slug-no-existe-para-nadie/vcard");
+
+        Assert.Equal(HttpStatusCode.NotFound, respuestaVcard.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, respuestaInexistente.StatusCode);
+        // Mismo cuerpo (sin el idPeticion que es aleatorio)
+        Assert.Equal(
+            await CuerpoComparable.De(respuestaInexistente), await CuerpoComparable.De(respuestaVcard));
+    }
+
+    /// <summary>
+    /// La vCard es el contacto: sin sesion NO puede entregarlo. Antes era anonima y, con API-64
+    /// listando todos los slugs, cualquiera bajaba la libreta de contactos de todos los
+    /// prestadores sin crear una cuenta. Y el 401 sale antes de buscar: no dice si la ficha existe.
+    /// </summary>
+    [Fact]
+    public async Task La_vcard_sin_sesion_responde_401_sin_un_solo_dato_de_contacto()
+    {
+        var slug = await UnaFichaConContactoAsync();
+        using var visitante = UnVisitante();
+
+        var respuesta = await visitante.GetAsync($"/api/prestadores/{slug}/vcard");
+        var inexistente = await visitante.GetAsync("/api/prestadores/este-slug-no-existe-para-nadie/vcard");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, respuesta.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, inexistente.StatusCode);
+        var texto = await respuesta.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("1234 5678", texto);
+        Assert.DoesNotContain("912345678", texto);
+        Assert.DoesNotContain("contacto@perez.cl", texto);
+    }
+
+    [Fact]
+    public async Task La_vcard_con_sesion_pero_sin_correo_verificado_responde_403_sin_datos()
+    {
+        var slug = await UnaFichaConContactoAsync();
+        var primero = _cliente;
+        using var sinVerificar = _app.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            HandleCookies = true, AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost"),
+        });
+        _cliente = sinVerificar;
+        try
+        {
+            var correo = NuevoCorreo();
+            await RegistrarAsync(correo);           // a proposito NO se verifica
+            await IniciarSesionAsync(correo);
+
+            var respuesta = await _cliente.GetAsync($"/api/prestadores/{slug}/vcard");
+
+            Assert.Equal(HttpStatusCode.Forbidden, respuesta.StatusCode);
+            var texto = await respuesta.Content.ReadAsStringAsync();
+            Assert.Contains("Verifica tu correo", texto);
+            Assert.DoesNotContain("1234 5678", texto);
+            Assert.DoesNotContain("contacto@perez.cl", texto);
+        }
+        finally
+        {
+            _cliente = primero;
+        }
+    }
+
+    [Fact]
+    public async Task La_vcard_no_se_guarda_en_caches_compartidos()
+    {
+        var slug = await UnaFichaConContactoAsync();
+
+        var respuesta = await _cliente.GetAsync($"/api/prestadores/{slug}/vcard");
+
+        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
+        Assert.True(respuesta.Headers.CacheControl?.NoStore, $"Cache-Control: {respuesta.Headers.CacheControl}");
+        Assert.True(respuesta.Headers.CacheControl?.Private, $"Cache-Control: {respuesta.Headers.CacheControl}");
+    }
+
+    [Fact]
+    public async Task La_vcard_escapa_coma_punto_y_coma_barra_y_saltos_de_linea()
+    {
+        var slug = await UnaFichaConContactoAsync();
+        var visitante = _cliente;   // con sesion y correo verificado (RN-S1-09)
+
+        var respuesta = await visitante.GetAsync($"/api/prestadores/{slug}/vcard");
+        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
+
+        var cuerpo = await respuesta.Content.ReadAsStringAsync();
+        var cuerpoNormalizado = cuerpo.Replace("\r\n", "\n").Replace("\r", "\n");
+
+        // El nombre "Juan Perez, Jr.; Especialista" debe salir con coma y punto y coma escapados
+        // (RFC 2426: coma -> \,  punto y coma -> \;)
+        // Usamos verbatim strings (@"") para que los backslashes sean literales
+        Assert.Contains(@"FN:Juan Perez\, Jr.\; Especialista", cuerpoNormalizado);
+        Assert.Contains(@"N:Juan Perez\, Jr.\; Especialista;;;", cuerpoNormalizado);
+    }
+
+    [Fact]
+    public async Task La_vcard_no_incluye_canales_no_publicos()
+    {
+        // Este test valida que solo los canales marcados como publicos (los que expone la ficha)
+        // aparecen en la vCard. En el modelo actual, ContactoPublicoDto solo tiene los campos
+        // que el prestador MARCO como publicos (TelefonoPublico, Whatsapp, CorreoPublico, SitioWeb).
+        // No existe concepto de "canal no publico" separado en ContactoPublicoDto: la ficha ya
+        // filtra y solo expone lo publico. Por tanto, este test pasa por diseno: la vCard usa
+        // la MISMA fuente (FichaPublicaAsync) que la ficha, asi que no puede incluir nada que
+        // la ficha no muestre.
+        var slug = await UnaFichaConContactoAsync();
+        var visitante = _cliente;   // con sesion y correo verificado (RN-S1-09)
+
+        var respuesta = await visitante.GetAsync($"/api/prestadores/{slug}/vcard");
+        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
+
+        var cuerpo = await respuesta.Content.ReadAsStringAsync();
+        // Solo los 4 canales publicos pueden aparecer (los que puso UnaFichaConContactoAsync)
+        Assert.Contains("TEL;TYPE=VOICE:+56 9 1234 5678", cuerpo);
+        Assert.Contains("TEL;TYPE=CELL:912345678", cuerpo);
+        Assert.Contains("EMAIL:contacto@perez.cl", cuerpo);
+        Assert.Contains("URL:https://perez.cl", cuerpo);
+        // El endpoint tambien incluye la URL de la ficha publica si hay UrlPublica configurada
+        // En pruebas, UrlPublica puede ser null, asi que solo verificamos que no hay canales extra
+        // mas alla de los esperados (VOICE, CELL, EMAIL, URL del sitio, y opcionalmente URL de la ficha)
+        var lineas = cuerpo.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+        var telCount = lineas.Count(l => l.StartsWith("TEL"));
+        var emailCount = lineas.Count(l => l.StartsWith("EMAIL"));
+        var urlCount = lineas.Count(l => l.StartsWith("URL"));
+        Assert.Equal(2, telCount); // VOICE + CELL
+        Assert.Equal(1, emailCount);
+        // URL: puede ser 1 (solo sitioWeb) o 2 (sitioWeb + urlFicha) segun configuracion de UrlPublica
+        Assert.True(urlCount >= 1 && urlCount <= 2);
+    }
+
+    /// <summary>
+    /// Sanea el slug para usarlo como nombre de archivo: solo a-z 0-9 y guion.
+    /// Debe coincidir con la logica del endpoint.
+    /// </summary>
+    private static string SanitizarSlug(string slug)
+    {
+        if (string.IsNullOrWhiteSpace(slug)) return "vcard";
+        var sb = new System.Text.StringBuilder();
+        foreach (var c in slug.ToLowerInvariant())
+        {
+            if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-')
+                sb.Append(c);
+        }
+        var resultado = sb.ToString();
+        return string.IsNullOrWhiteSpace(resultado) ? "vcard" : resultado;
     }
 
     /// <summary>
@@ -2004,7 +2387,7 @@ public partial class ApiPruebas : IAsyncLifetime
     {
         var respuesta = await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo, contrasena = "contrasena-larga-1", nombre = "Pablo Espinoza", rol,
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo, contrasena = "contrasena-larga-1", nombre = "Pablo Espinoza", rol,
         });
         Assert.Equal(HttpStatusCode.Created, respuesta.StatusCode);
     }
@@ -2080,6 +2463,7 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-03",
             "API-04",
             "API-05",
+            "API-07",
             "API-08",
             "API-09",
             "API-10",
@@ -2099,8 +2483,19 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-22",
             "API-22b",
             "API-23",
+            // P-2 y P-3 (21-nov-2026): leer las preferencias (el metodo que faltaba de API-23) y los
+            // favoritos de CS-08, que la matriz de trazabilidad pone sobre API-23.
+            "API-23b",
+            "API-23-favoritos",
+            "API-23-favorito-guardar",
+            "API-23-favorito-quitar",
             "API-24",
             "API-25",
+            // JQ-9: los documentos de respaldo. API-26 es el del documento; quitar y ver son el
+            // mismo recurso con el metodo que faltaba.
+            "API-26",
+            "API-26-quitar",
+            "API-26-ver",
             "API-27",
             "API-28",
             "API-29",
@@ -2120,6 +2515,7 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-41",
             "API-42",
             "API-42b",
+            "API-44",
             "API-46",
             "API-47",
             "API-48",
@@ -2129,9 +2525,12 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-52",
             "API-53",
             "API-54",
+            "API-55",
             "API-56",
             "API-57",
             "API-58",
+            "API-59",
+            "API-61",
             "API-62",
             "API-63",
             "API-64",
@@ -2148,11 +2547,39 @@ public partial class ApiPruebas : IAsyncLifetime
             // terminacion `b` significa «el mismo recurso, el metodo que faltaba», y esto es otro
             // recurso y otra operacion. Documentado en api-rest.md seccion 11.
             "API-71",
+            // La vuelta del navegador desde la pasarela (fase 2 de Flow). Otro recurso que el aviso.
+            "API-75",
+            // Cupo sin tarjeta (20-nov-2026): API-69 toma el cupo y API-76 inscribe la tarjeta.
+            "API-76",
+            // Cancelar la renovacion de la suscripcion (22-nov-2026).
+            "API-78",
+
+            // ES-3 (21-nov-2026): registrar este navegador para push, darlo de baja y la clave VAPID.
+            "API-45",
+            "API-45-baja",
+            "API-45-clave",
+            // ES-3b (21-nov-2026): por que canal llega cada aviso. La documentacion trae solo el PUT;
+            // «-ver» es la lectura que necesita la pantalla.
+            "API-43",
+            "API-43-ver",
+            // JQ-9: la foto del perfil (subir, quitar, servirla) y el documento que abre el
+            // Verificador con la credencial tomada.
+            "API-72",
+            "API-72-quitar",
+            "API-73",
+            "API-74",
+
+            // T69: las fotos de trabajos (subir, listar las propias, ordenarlas y quitar una).
+            "API-77",
+            "API-77-listar",
+            "API-77-ordenar",
+            "API-77-quitar",
 
             "API-resenas-publicas",
             "CS-02b",
             "CS-04",
             "CSRF",
+            "ES-2-COMPLETAR-DATOS",   // PUT /api/mi/cuenta/datos (ES-2, 20-nov-2026)
             "MI-SUSCRIPCION",
         };
 

@@ -13,7 +13,7 @@ import { useTitulo } from '../marco/useTitulo'
  * parece a la de un banco y no lo es, es la clase de cosa que alguien llega a confundir.
  *
  * El aviso se manda a API-70 con los nombres de campo que espera el adaptador simulado
- * (`intento`, `monto`, `estado`, `referencia`). No se inventan aquí: están en
+ * (`intento`, `monto`, `estado`, `referencia`, `firma`). No se inventan aquí: están en
  * `PasarelaSimulada.cs` y si cambian allá, esta pantalla deja de servir.
  *
  * TEXTOS PROPUESTOS, pendientes de aprobación de Pablo.
@@ -29,6 +29,12 @@ export function PagoSimulado() {
   const [parametros] = useSearchParams()
   const navegar = useNavigate()
   const intento = parametros.get('intento') ?? parametros.get('ref') ?? ''
+  const firma = parametros.get('firma') ?? ''
+  // La firma (T48) cubre intento, monto y referencia TAL COMO VIENEN en la dirección que armó
+  // el adaptador: hay que devolverlos sin tocar. Hasta el 19-nov-2026 esta pantalla inventaba
+  // la referencia («prueba-…») y fijaba el monto, y la firma no coincidía nunca.
+  const referencia = parametros.get('referencia') ?? ''
+  const monto = parametros.get('monto') ?? MONTO_DE_LA_INSCRIPCION
 
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -38,13 +44,20 @@ export function PagoSimulado() {
     setEnviando(true)
     setError(null)
     try {
-      await enviar('/api/pagos/aviso', {
+      const confirmacion = await enviar<{ aprobado?: boolean; pendiente?: boolean } | undefined>('/api/pagos/aviso', {
         intento,
-        monto: MONTO_DE_LA_INSCRIPCION,
+        monto,
         estado: aprobado ? 'aprobado' : 'rechazado',
-        referencia: `prueba-${intento.slice(0, 8)}`,
+        referencia,
+        firma,
       })
-      navegar('/planes/listo')
+      // Lo que se muestra al volver lo decide la RESPUESTA de la API, no el botón que se apretó:
+      // antes un rechazo terminaba en «Tu medio de pago quedó inscrito» (defecto 3 de JQ-7).
+      const resultado = confirmacion?.pendiente === true ? 'procesando'
+        : confirmacion?.aprobado === true ? 'aprobado'
+        : confirmacion?.aprobado === false ? 'rechazado'
+          : 'revisar'
+      navegar(`/planes/listo?resultado=${resultado}`)
     } catch {
       setError('La pasarela de prueba no pudo avisar. Vuelve a intentarlo.')
     } finally {
@@ -73,7 +86,7 @@ export function PagoSimulado() {
 
       <h1>Inscribir el medio de pago</h1>
       <p className="bloque-texto">
-        Al inscribirlo, tu cupo de fundador queda confirmado y tu primer mes empieza a correr.
+        Al inscribirlo, tu cupo de fundador queda asegurado para cuando termine tu mes gratis.
         Hoy no se te cobra nada.
       </p>
 

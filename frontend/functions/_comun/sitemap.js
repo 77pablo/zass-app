@@ -3,6 +3,7 @@
  * y arma el XML. Separado de las Functions para poder probarlo sin Cloudflare.
  */
 import { CABECERAS_DE_SEGURIDAD, escaparHtml, origenDelSitio } from './seo.js'
+import { ponerSecretoDeOrigen } from './origen.js'
 
 /** Paginas fijas del sitio. Las privadas (/mi-ficha, /entrar...) NO van: tambien estan en robots.txt. */
 export const RUTAS_ESTATICAS = ['/', '/buscar', '/comunas', '/oficios', '/profesionales', '/planes', '/terminos', '/privacidad']
@@ -35,6 +36,7 @@ export async function listarFichas(env, request) {
     const cabeceras = { accept: 'application/json' }
     const ip = request.headers.get('CF-Connecting-IP')
     if (ip) cabeceras['X-Forwarded-For'] = ip
+    ponerSecretoDeOrigen(cabeceras, env) // P-11
 
     let cuerpo
     try {

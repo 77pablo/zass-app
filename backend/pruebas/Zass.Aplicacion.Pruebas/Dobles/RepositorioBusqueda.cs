@@ -67,6 +67,16 @@ public sealed class RepositorioBusquedaFalso : IRepositorioBusqueda
         return Task.FromResult(r);
     }
 
+    /// <summary>Lo que devolvera TarjetasPorIdAsync. Como el resto: no filtra, devuelve lo que la prueba dejo.</summary>
+    public List<TarjetaFila> Tarjetas { get; } = new();
+
+    public Task<IReadOnlyList<TarjetaFila>> TarjetasPorIdAsync(
+        IReadOnlyList<Guid> perfilIds, DateOnly hoy, CancellationToken ct = default)
+    {
+        IReadOnlyList<TarjetaFila> r = Tarjetas.ToList();
+        return Task.FromResult(r);
+    }
+
     public Task<IReadOnlyList<FilaDeBusqueda>> PorZonaAsync(
         CriteriosDeConsulta criterios, PosicionDeBusqueda? desde,
         CancellationToken ct = default)

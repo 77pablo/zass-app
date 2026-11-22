@@ -59,6 +59,33 @@ describe('obtener', () => {
   })
 })
 
+describe('enviar con keepalive (JQ-5)', () => {
+  it('lo pone en la peticion, tambien en el reintento tras un 403 de CSRF', async () => {
+    fetchFalso
+      .mockResolvedValueOnce(respuesta(200, { token: 'viejo' }))
+      .mockResolvedValueOnce(respuesta(403, { title: 'CSRF' }))
+      .mockResolvedValueOnce(respuesta(200, { token: 'nuevo' }))
+      .mockResolvedValueOnce(respuesta(200, { id: 'c1' }))
+
+    await enviar('/api/contactos', { canal: 'Whatsapp' }, 'POST', {}, { keepalive: true })
+
+    const alContacto = fetchFalso.mock.calls.filter(([ruta]) => ruta === '/api/contactos')
+    expect(alContacto).toHaveLength(2)
+    for (const [, opciones] of alContacto) expect(opciones.keepalive).toBe(true)
+  })
+
+  it('sin pedirlo, la peticion no lo lleva', async () => {
+    fetchFalso
+      .mockResolvedValueOnce(respuesta(200, { token: 'ficha-123' }))
+      .mockResolvedValueOnce(respuesta(200, {}))
+
+    await enviar('/api/mi/contrasena', { contrasenaActual: 'a', contrasenaNueva: 'b' })
+
+    const [, opciones] = fetchFalso.mock.calls[1]
+    expect(opciones.keepalive).toBeUndefined()
+  })
+})
+
 describe('enviar', () => {
   it('pide el token CSRF y lo manda en la cabecera', async () => {
     fetchFalso

@@ -395,4 +395,48 @@ public class CuposFundadorIntegracionPruebas : IDisposable
             await LimpiarConCommitAsync(perfiles, usuarios);
         }
     }
+
+    // ------------------------------- Cupo sin tarjeta (decision de Pablo, 20-nov-2026)
+
+    /// <summary>
+    /// El ciclo entero contra Postgres: tomar el cupo sin tarjeta lo deja definitivo y pasa a
+    /// fundador con el mes gratis; tomarlo otra vez devuelve el mismo; y si el mes termina sin
+    /// tarjeta, el diario lo libera y no se puede volver a tomar.
+    /// </summary>
+    [Fact]
+    public async Task Tomar_sin_tarjeta_y_perderlo_al_vencer_de_punta_a_punta()
+    {
+        var perfil = await UnPrestadorAsync();
+        Assert.True((await _servicio.IniciarPruebaAsync(perfil.Id)).Exito);
+        var antes = DateTime.UtcNow;
+
+        var tomado = await _servicio.TomarCupoFundadorAsync(perfil.Id);
+
+        Assert.True(tomado.Exito, tomado.Mensaje);
+        Assert.Equal((short)1, tomado.Valor!.Numero);
+        Assert.False(tomado.Valor.TarjetaInscrita);
+        var cupo = (await Cupos()).Single(c => c.Numero == 1);
+        Assert.Equal(perfil.Id, cupo.PerfilPrestadorId);
+        Assert.Null(cupo.ReservadoHasta);                                   // definitivo
+        var s = await _prueba.Ctx.Suscripciones.AsNoTracking().Include(x => x.Plan)
+            .SingleAsync(x => x.PerfilPrestadorId == perfil.Id);
+        Assert.Equal("fundador", s.Plan!.Codigo);
+        Assert.True(s.VigenteHasta >= antes.AddDays(ServicioSuscripciones.DiasDeMesGratis).AddMinutes(-1));
+
+        var otraVez = await _servicio.TomarCupoFundadorAsync(perfil.Id);
+        Assert.True(otraVez.Exito);
+        Assert.Equal((short)1, otraVez.Valor!.Numero);
+        Assert.Equal(49, await _servicio.CuposFundadorDisponiblesAsync());
+
+        // Termina el mes gratis sin tarjeta.
+        await _prueba.Ctx.Suscripciones.Where(x => x.PerfilPrestadorId == perfil.Id)
+            .ExecuteUpdateAsync(u => u.SetProperty(x => x.VigenteHasta, DateTime.UtcNow.AddMinutes(-1)));
+        _prueba.Ctx.ChangeTracker.Clear();
+        await _servicio.VencerExpiradasAsync();
+
+        Assert.Null((await Cupos()).Single(c => c.Numero == 1).PerfilPrestadorId);
+        Assert.Equal(50, await _servicio.CuposFundadorDisponiblesAsync());
+        Assert.False(await _servicio.EstaVigenteAsync(perfil.Id));
+        Assert.False((await _servicio.TomarCupoFundadorAsync(perfil.Id)).Exito);
+    }
 }

@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { ErrorApi } from '../api/cliente'
 import { fichaPublica, type FichaPublica } from '../funciones/busqueda/servicio'
+import { BotonGuardar } from '../funciones/buscador/BotonGuardar'
+import { useFavoritos } from '../funciones/buscador/useFavoritos'
+import { registrarContacto, type CanalContacto } from '../funciones/resenas/servicio'
 import { Icono } from '../marco/Icono'
 import { BotonCompartir } from '../marco/BotonCompartir'
 import { Monograma } from '../marco/Monograma'
@@ -37,6 +40,11 @@ export function Ficha() {
   const [intento, setIntento] = useState(0)
   // El contacto depende de la sesion: al entrar o salir hay que pedir la ficha otra vez, o se quedaria el de antes.
   const { estado: estadoSesion } = useSesion()
+  // API-46 una sola vez por ficha y visita: el servidor ya devuelve el contacto abierto, pero
+  // cada toque de mas gastaria peticiones del limite sin cambiar nada.
+  const registrado = useRef<string | null>(null)
+  // CS-08: el boton de guardar. Los hooks van antes de los `return` tempranos de mas abajo.
+  const favoritos = useFavoritos()
 
   useEffect(() => {
     let vigente = true
@@ -106,15 +114,27 @@ export function Ficha() {
   // contacto vacio; aqui solo se DICE, para que no parezca una ficha a medio cargar.
   const alDia = ficha.suscripcionVigente
 
+  /**
+   * JQ-5: tocar WhatsApp, llamar o correo deja constancia del contacto (API-46), que es lo que
+   * arranca los 7 dias para poder reseñar. Va en segundo plano y sin `preventDefault`: el enlace
+   * abre igual, y si el registro falla (cuenta sin rol de buscador, limite de peticiones) no se
+   * le dice nada a quien solo queria escribir. El sitio web no cuenta: no es hablar con nadie.
+   */
+  function alContactar(canal: CanalContacto) {
+    if (ficha === null || registrado.current === ficha.id) return
+    registrado.current = ficha.id
+    void registrarContacto(ficha.id, 'Ficha', canal, { keepalive: true }).catch(() => {})
+  }
+
   return (
     <div className="contenedor ficha-pagina">
       <Link to="/buscar" className="volver">
-        <Icono nombre="flecha" />Seguir buscando
+        <Icono nombre="chevron" />Seguir buscando
       </Link>
 
       <article className="ficha-rejilla">
           <header className="persona">
-            <Monograma nombre={ficha.nombrePublico} tamano="g" />
+            <Monograma nombre={ficha.nombrePublico} tamano="g" foto={ficha.urlFoto} />
             <div>
               <h1>{ficha.nombrePublico}</h1>
               <p className="persona-detalle">
@@ -128,13 +148,21 @@ export function Ficha() {
                   </span>
                 )}
               </div>
-              {/* Como en una app: pasarle la ficha a alguien por WhatsApp con un toque. */}
-              <p className="fila-etiquetas">
+              {/* Como en una app: guardar la ficha o pasársela a alguien por WhatsApp con un toque. */}
+              <div className="fila-etiquetas">
+                <BotonGuardar
+                  perfilId={ficha.id} nombre={ficha.nombrePublico}
+                  despues={`/prestadores/${slug}`} favoritos={favoritos}
+                />
                 <BotonCompartir
                   titulo={`${ficha.nombrePublico} en ZASS!`}
                   texto={[ficha.nombrePublico, ficha.rubro?.nombre && capitalizar(ficha.rubro.nombre), principal?.nombre].filter(Boolean).join(' · ')}
                 />
-              </p>
+                {favoritos.guardado(ficha.id) && (
+                  <Link className="enlace" to="/mis-guardados">Ver tus guardados</Link>
+                )}
+              </div>
+              {favoritos.error && <p className="aviso-linea" role="alert">{favoritos.error}</p>}
             </div>
           </header>
 
@@ -185,21 +213,21 @@ export function Ficha() {
                 <ul className="contacto">
                   {wasap && (
                     <li>
-                      <a className="boton boton--amarillo boton--lleno" href={`https://wa.me/${wasap}`} rel="noreferrer noopener" target="_blank">
+                      <a className="boton boton--amarillo boton--lleno" href={`https://wa.me/${wasap}`} rel="noreferrer noopener" target="_blank" onClick={() => alContactar('Whatsapp')}>
                         <Icono nombre="mensaje" />Escribir por WhatsApp
                       </a>
                     </li>
                   )}
                   {c.telefono && (
                     <li>
-                      <a className="boton boton--lleno" href={`tel:${c.telefono.replace(/[^\d+]/g, '')}`}>
+                      <a className="boton boton--lleno" href={`tel:${c.telefono.replace(/[^\d+]/g, '')}`} onClick={() => alContactar('Telefono')}>
                         <Icono nombre="telefono" />Llamar · {c.telefono}
                       </a>
                     </li>
                   )}
                   {c.correo && (
                     <li>
-                      <a className="boton boton--lleno" href={`mailto:${c.correo}`}>
+                      <a className="boton boton--lleno" href={`mailto:${c.correo}`} onClick={() => alContactar('Correo')}>
                         <Icono nombre="correo" />Escribir un correo
                       </a>
                     </li>
@@ -208,6 +236,20 @@ export function Ficha() {
                     <li>
                       <a className="boton boton--lleno" href={sitio} rel="noreferrer noopener" target="_blank">
                         <Icono nombre="mundo" />Ver su sitio web
+                      </a>
+                    </li>
+                  )}
+                  {/*
+                    CS-19: el contacto a la libreta del teléfono (API-07). Solo si hay algo que
+                    guardar: una vCard con el puro nombre no sirve. El servidor exige lo mismo que
+                    para ver estos botones (sesión y correo verificado), así que el enlace solo
+                    aparece donde va a funcionar. No registra un contacto (API-46): guardarlo no
+                    es hablar con nadie, igual que abrir el sitio web.
+                  */}
+                  {(c.telefono || wasap || c.correo) && (
+                    <li>
+                      <a className="boton" href={`/api/prestadores/${encodeURIComponent(slug)}/vcard`} download>
+                        <Icono nombre="persona" />Guardar contacto
                       </a>
                     </li>
                   )}
