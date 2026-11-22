@@ -28,7 +28,8 @@ public class AvisosPushPruebas
         // RegistroConRutExistente (#197, 22-nov) tampoco va por push: es un aviso de seguridad con
         // el enlace para recuperar la cuenta, y la pantalla del registro promete que llega «al
         // correo con que se creó esa cuenta». Lo que toca recuperar una cuenta no se lee en la
-        // pantalla bloqueada, igual que los dos con token.
+        // pantalla bloqueada, igual que los dos con token. MfaActivado (22-nov) tampoco, por lo mismo:
+        // si no fue la dueña, el aviso trae el enlace para cambiar la contraseña.
         Assert.Equal(new[]
         {
             TipoNotificacion.CorreoVerificacion, TipoNotificacion.RecuperarContrasena,
@@ -36,6 +37,7 @@ public class AvisosPushPruebas
             // BorradorPorEliminarse (JQ-16) se escribio antes de que existiera el push y sale solo
             // por correo, como se diseño. Si debe ir tambien por push es una decision pendiente.
             TipoNotificacion.BorradorPorEliminarse,
+            TipoNotificacion.MfaActivado,
         }, sinPush);
     }
 

@@ -42,6 +42,9 @@ public static class Plantillas
     /// <summary>El panel del prestador, donde se ve y se renueva la suscripcion.</summary>
     public static string EnlaceDelPanel(string urlPublica) => $"{urlPublica.TrimEnd('/')}/mi-ficha";
 
+    /// <summary>«Mi cuenta → Seguridad», donde se activa y se desactiva la verificacion en dos pasos.</summary>
+    public static string EnlaceDeSeguridad(string urlPublica) => $"{urlPublica.TrimEnd('/')}/mi-cuenta/seguridad";
+
     /// <summary>
     /// La ficha publica de un prestador: la que el prestador comparte y donde se leen sus resenas.
     /// Sin slug devuelve el inicio del sitio: el aviso sale igual, solo sin atajo.
@@ -88,7 +91,8 @@ public static class Plantillas
              or TipoNotificacion.Recordatorio2h
              or TipoNotificacion.RegistroConRutExistente
              or TipoNotificacion.CredencialVencida
-             or TipoNotificacion.BorradorPorEliminarse;
+             or TipoNotificacion.BorradorPorEliminarse
+             or TipoNotificacion.MfaActivado;
 
     /// <summary>
     /// Los que llevan un secreto en la carga. Importa porque de esos el cuerpo se purga en
@@ -123,6 +127,9 @@ public static class Plantillas
         // No pide nada de la carga: los dos enlaces son fijos.
         TipoNotificacion.RegistroConRutExistente => RegistroConRutExistente(
             nombre, EnlaceDeEntrada(urlPublica), EnlaceParaPedirContrasena(urlPublica)),
+        // No pide nada de la carga: los dos enlaces son fijos.
+        TipoNotificacion.MfaActivado => MfaActivado(
+            nombre, EnlaceDeSeguridad(urlPublica), EnlaceParaPedirContrasena(urlPublica)),
         // Sin nombre de credencial en la carga sale igual, con «una de tus credenciales».
         TipoNotificacion.CredencialVencida => CredencialVencida(
             nombre, CargaDeAviso.LeerCampo(carga, "credencial"), EnlaceDelPanel(urlPublica)),
@@ -242,6 +249,36 @@ public static class Plantillas
             pie,
             otra, enlaceContrasena);
         return new("Alguien intentó crear otra cuenta con tu RUT en ZASS!", texto, html);
+    }
+
+    /// <summary>
+    /// Decision de Pablo (22-nov-2026): se activo la verificacion en dos pasos. Si no fue la dueña,
+    /// alguien tiene su contraseña: lo primero es cambiarla. Texto PROPUESTO: lo aprueba Pablo.
+    /// </summary>
+    public static CorreoRenderizado MfaActivado(string nombre, string enlaceSeguridad, string enlaceContrasena)
+    {
+        const string parrafo =
+            "Se activó la verificación en dos pasos en tu cuenta de ZASS!: desde ahora, para entrar, "
+            + "además de la contraseña se pide un código de la app de tu teléfono. Si fuiste tú, no "
+            + "tienes que hacer nada más.";
+        const string otra =
+            "Si NO fuiste tú, alguien conoce tu contraseña. Crea una nueva ahora mismo aquí, y después "
+            + "escríbenos respondiendo este correo para quitar la verificación que puso:";
+        const string pie = "Puedes revisar la seguridad de tu cuenta en «Mi cuenta → Seguridad».";
+        var texto =
+            $"Hola {nombre}:\n\n" +
+            $"{parrafo}\n\n" +
+            $"{otra}\n\n{enlaceContrasena}\n\n" +
+            $"{pie}\n\n{enlaceSeguridad}\n\n" +
+            "— El equipo de ZASS!";
+        var html = Marco(
+            "Se activó la verificación en dos pasos",
+            $"Hola {H(nombre)}:",
+            parrafo,
+            "Revisar la seguridad de mi cuenta", enlaceSeguridad,
+            pie,
+            otra, enlaceContrasena);
+        return new("Se activó la verificación en dos pasos en tu cuenta de ZASS!", texto, html);
     }
 
     /// <summary>
