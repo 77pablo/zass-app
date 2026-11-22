@@ -23,6 +23,7 @@ constructor.Services
     .AgregarProxiesDeConfianza()                      // X-Forwarded-*: solo desde redes listadas
     .AgregarAutenticacion(exigirHttps)                // cookie de 15 min + CSRF
     .AgregarHsts()                                    // 2 anos + subdominios, sin preload
+    .AgregarTurnstile()                               // N3: captcha del registro y del cupo fundador
     .AddValidatorsFromAssemblyContaining<ValidadorVerificarCorreo>()
     .AddProblemDetails(o =>                           // RFC 7807 en todos los errores:
     {
@@ -83,6 +84,10 @@ ValidacionDeArranque.Exigir(app.Configuration, esProductivo: !app.Environment.Is
 // P-11: sin el secreto de origen la API arranca igual, pero que quede escrito en el registro.
 if (SecretoDeOrigen.Advertencia(app.Configuration, esProductivo: !app.Environment.IsDevelopment()) is { } aviso)
     app.Logger.LogWarning("{Aviso}", aviso);
+
+// N3: sin el secreto de Turnstile el registro y el cupo fundador no piden captcha. Se advierte.
+if (Turnstile.Advertencia(app.Configuration, esProductivo: !app.Environment.IsDevelopment()) is { } avisoCaptcha)
+    app.Logger.LogWarning("{Aviso}", avisoCaptcha);
 
 // `dotnet Zass.Api.dll --migrar`: aplica migraciones y termina (ver Migrador).
 if (Migrador.Solicitado(args))
@@ -148,6 +153,7 @@ app.MapearVerificacion();
 app.MapearAuditoria();
 app.MapearIndicadores();                               // API-60 (JQ-14)
 
+app.MapearMetricas();                                  // MI-METRICAS (JQ-8)
 app.MapearNotificaciones();                             // API-45 y su baja y clave (ES-3, push)
 app.MapearTarjetas();                                  // API-54 /t/{segmento} (CS-18)
 

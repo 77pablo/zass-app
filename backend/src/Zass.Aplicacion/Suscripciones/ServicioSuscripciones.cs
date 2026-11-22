@@ -37,10 +37,11 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
     /// </summary>
     public static readonly int[] DiasDeAviso = { 7, 1 };
     /// <summary>
-    /// Cuanto se guarda un cupo fundador mientras la persona inscribe su tarjeta. Pasado
-    /// ese plazo sin confirmar, el cupo vuelve a estar disponible para otra persona.
+    /// Cuanto se guarda un cupo fundador mientras la persona inscribe su tarjeta (N3, 22-nov-2026:
+    /// 30 minutos). Pasado ese plazo sin confirmar, el cupo vuelve a estar disponible para otra
+    /// persona: el conteo lo da por libre al instante, y el trabajo diario limpia la fila.
     /// </summary>
-    public static readonly TimeSpan DuracionReservaPorDefecto = TimeSpan.FromMinutes(25);
+    public static readonly TimeSpan DuracionReservaPorDefecto = TimeSpan.FromMinutes(30);
 
     /// <summary>
     /// RN-S7-03. El mes gratis del fundador, en dias.
@@ -592,24 +593,24 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
                 "El mes gratis de fundador es para quien empieza en ZASS!. Mientras queden cupos, "
                 + "puedes pagar el plan fundador directamente.");
 
-        var tomado = await _trabajo.EnTransaccionAsync(async t =>
-        {
-            var numero = await _repo.IntentarReservarCupoFundadorAsync(
-                perfilPrestadorId, _reloj.Ahora, _reloj.Ahora.Add(DuracionReservaPorDefecto), t);
-            if (numero is null) return (short?)null;
-            await _repo.ConfirmarCupoFundadorAsync(perfilPrestadorId, t);
+        // N3 (decision de Pablo del 22-nov-2026, reemplaza la del 20-nov): tomar el cupo ya NO lo
+        // deja definitivo ni arranca el mes gratis. Lo RESERVA por DuracionReservaPorDefecto; lo
+        // confirma la inscripcion de la tarjeta (ServicioCobros.ConfirmarAsync). Sin tarjeta a
+        // tiempo, el cupo vuelve a estar libre. Asi una cuenta falsa no se queda con un cupo un
+        // mes entero: lo retiene media hora, y para volver a tomarlo pasa otra vez por el captcha.
+        //
+        // Una reserva vigente se devuelve TAL CUAL, sin renovar el plazo: si repetir el llamado
+        // la renovara, una cuenta podria retener el cupo para siempre sin inscribir nada.
+        var ahora = _reloj.Ahora;
+        if (await _repo.EstadoCupoFundadorDeAsync(perfilPrestadorId, ct) is { } reserva
+            && reserva.ReservaVigente(ahora))
+            return Resultado.Ok(new CupoTomadoDto(
+                reserva.Numero, MesGratisHasta: null, TarjetaInscrita: false, reserva.ReservadoHasta));
 
-            var mes = await PasarAFundadorConMesGratisAsync(s.Id, medioInscrito: null, t);
-            if (!mes.Exito) throw new InvalidOperationException(mes.Mensaje);
+        var hasta = ahora.Add(DuracionReservaPorDefecto);
+        var numero = await _repo.IntentarReservarCupoFundadorAsync(perfilPrestadorId, ahora, hasta, ct);
 
-            _auditor.Registrar(Auditar.Entrada(
-                "cupo_fundador_tomado", "perfiles_prestador", perfilPrestadorId, _reloj.Ahora,
-                contexto: new { cupo = numero.Value, sinTarjeta = true }));
-            await _trabajo.GuardarAsync(t);
-            return numero;
-        }, ct);
-
-        if (tomado is null)
+        if (numero is null)
         {
             var estado = await EstadoDelPlanFundadorAsync(ct);
             return Resultado.Falla<CupoTomadoDto>(
@@ -618,8 +619,13 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
                 + " Puedes suscribirte al plan mensual.");
         }
 
+        _auditor.Registrar(Auditar.Entrada(
+            "cupo_fundador_reservado", "perfiles_prestador", perfilPrestadorId, ahora,
+            contexto: new { cupo = numero.Value, minutos = (int)DuracionReservaPorDefecto.TotalMinutes }));
+        await _trabajo.GuardarAsync(ct);
+
         return Resultado.Ok(new CupoTomadoDto(
-            tomado.Value, s.VigenteHasta, !string.IsNullOrWhiteSpace(s.ReferenciaPasarela)));
+            numero.Value, MesGratisHasta: null, TarjetaInscrita: false, hasta));
     }
 
     public async Task<Resultado> ConfirmarCupoFundadorAsync(

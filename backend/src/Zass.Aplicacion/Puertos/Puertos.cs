@@ -340,6 +340,14 @@ public interface IRepositorioSuscripciones
     /// </summary>
     Task<short?> CupoFundadorDeAsync(Guid perfilPrestadorId, CancellationToken ct = default);
 
+    /// <summary>
+    /// N3. El cupo de ese perfil con su plazo: <c>ReservadoHasta</c> nulo = confirmado. Nulo si
+    /// no tiene. Hace falta para distinguir «reservado y vigente» de «reserva vencida»: desde el
+    /// 22-nov-2026 la tarjeta solo se inscribe sobre una reserva vigente, y una vencida obliga a
+    /// volver a tomar el cupo (con captcha).
+    /// </summary>
+    Task<EstadoCupoFundador?> EstadoCupoFundadorDeAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+
     /// <summary>Deja el cupo de ese perfil sin fecha de vencimiento. False si no tenia cupo.</summary>
     Task<bool> ConfirmarCupoFundadorAsync(Guid perfilPrestadorId, CancellationToken ct = default);
 
@@ -1055,3 +1063,10 @@ public interface IRepositorioTarjetas
 /// <summary>API-58. Lo que el repositorio cuenta, ya agrupado: el servicio no recorre escaneos.</summary>
 public sealed record EscaneosContados(
     int Nfc7, int Qr7, int Nfc30, int Qr30, int NfcTotal, int QrTotal);
+
+/// <summary>N3. Un cupo fundador y su plazo. <c>ReservadoHasta</c> nulo = confirmado.</summary>
+public sealed record EstadoCupoFundador(short Numero, DateTime? ReservadoHasta)
+{
+    public bool Confirmado => ReservadoHasta is null;
+    public bool ReservaVigente(DateTime ahora) => ReservadoHasta is { } h && h > ahora;
+}

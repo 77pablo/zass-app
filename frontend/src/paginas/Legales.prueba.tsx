@@ -252,4 +252,10 @@ describe('enlaces a las paginas legales', () => {
       expect(a.getAttribute('rel')).toContain('noopener')
     }
   })
+
+  // PR #212: el captcha de Cloudflare recibe la IP al crear una cuenta o pedir el cupo; se dice.
+  it('avisa del captcha de Cloudflare (Turnstile) y para qué recibe la IP', () => {
+    enRuta(<Privacidad />)
+    expect(screen.getByText(/Cloudflare Turnstile/, { exact: false })).toBeInTheDocument()
+  })
 })
