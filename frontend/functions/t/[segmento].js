@@ -7,6 +7,8 @@
  *  - X-Forwarded-For con CF-Connecting-IP, igual que el proxy de /api: si no, la tasa P de la API contaria a
  *    Cloudflare entero como un solo visitante.
  *  - NO se reenvian las cookies ni las demas cabeceras del visitante: el escaneo no exige sesion (RN-S6-07).
+ *    Por eso aqui solo entra GET: la activacion de la tarjeta (API-55, CU-19), que si lleva sesion y CSRF,
+ *    va por /api/mi/tarjetas/{segmento}/activar y el proxy de /api, no por /t/.
  *  - De la respuesta de la API no pasa nada salvo el estado, la Location y Retry-After. Nunca un Set-Cookie.
  *  - La Location tiene que ser una ruta propia ("/..."). Una absoluta, "//otro-sitio" o "/\otro-sitio" (que
  *    algunos navegadores leen como "//") no se sigue: 502.
@@ -15,6 +17,7 @@
  * /T/ (QR que pasan la URL a mayusculas) no llega aqui: lo atiende la app (paginas/AvisoDeTarjeta.tsx).
  */
 import { CABECERAS_DE_SEGURIDAD } from '../_comun/seo.js'
+import { ponerSecretoDeOrigen } from '../_comun/origen.js'
 
 const ESPERA_MAXIMA_MS = 4000
 
@@ -46,6 +49,7 @@ export async function onRequest({ request, env, params }) {
   const cabeceras = new Headers({ 'X-Forwarded-Proto': 'https', 'X-Forwarded-Host': entrada.host })
   const ip = request.headers.get('CF-Connecting-IP')
   if (ip) cabeceras.set('X-Forwarded-For', ip)
+  ponerSecretoDeOrigen(cabeceras, env) // P-11
 
   let respuesta
   try {

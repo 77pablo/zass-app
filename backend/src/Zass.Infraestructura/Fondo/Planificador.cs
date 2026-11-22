@@ -3,6 +3,8 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Zass.Aplicacion.Agenda;
+using Zass.Aplicacion.Credenciales;
+using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Puertos;
 using Zass.Aplicacion.Suscripciones;
 using Zass.Dominio.Comun;
@@ -57,6 +59,17 @@ public sealed class Planificador : BackgroundService
         new(Trabajos.Citas, o => TimeSpan.FromMinutes(o.CitasCadaMinutos),
             async (sp, ct) =>
                 (await sp.GetRequiredService<IServicioAgenda>().AvanzarPorElTiempoAsync(ct)).ToString()),
+
+        // CS-06 · T8 (auditoría 22-nov-2026): vencer las credenciales verificadas pasadas de fecha
+        // y avisar al prestador. Al ritmo de las suscripciones: «cada noche» según estados-credencial.
+        new(Trabajos.CredencialesVencidas, o => TimeSpan.FromHours(o.IntervaloHoras),
+            async (sp, ct) =>
+                (await sp.GetRequiredService<ServicioVencimientoCredenciales>().VencerAsync(ct)).ToString()),
+
+        // Auditoría 22-nov-2026: borrar las cuentas que no verificaron el correo en 72 h.
+        new(Trabajos.CuentasSinVerificar, o => TimeSpan.FromMinutes(o.CuentasSinVerificarCadaMinutos),
+            async (sp, ct) =>
+                (await sp.GetRequiredService<ServicioCuentasSinVerificar>().PurgarVencidasAsync(ct)).ToString()),
     };
 
     private readonly IServiceScopeFactory _ambitos;

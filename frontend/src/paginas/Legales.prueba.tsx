@@ -241,6 +241,23 @@ describe('enlaces a las paginas legales', () => {
     expect(pie.queryByRole('link', { name: 'Ofrecer mis servicios' })).toBeNull()
   })
 
+  // Estilo iPhone, parte 3 (19-nov-2026): el pie se hizo compacto y sin logo. Ningun enlace se pierde:
+  // esta es la lista completa de antes, con su destino.
+  it('el pie compacto conserva todos sus enlaces, con el mismo destino', () => {
+    elPie('fuera')
+    const pie = within(screen.getByRole('contentinfo'))
+    const esperados: [string, string][] = [
+      ['Inicio', '/'], ['Buscar a alguien', '/buscar'], ['Comunas', '/comunas'], ['Oficios', '/oficios'],
+      ['Para profesionales', '/profesionales'], ['Planes y precios', '/planes'], ['Entrar', '/entrar'],
+      ['Crear una cuenta', '/crear-cuenta'], ['Términos de uso', '/terminos'], ['Privacidad', '/privacidad'],
+      ['OpenStreetMap contributors', 'https://www.openstreetmap.org/copyright'],
+    ]
+    for (const [nombre, a] of esperados) expect(pie.getByRole('link', { name: nombre })).toHaveAttribute('href', a)
+    expect(pie.getAllByRole('link')).toHaveLength(esperados.length)
+    // Sin el logo: la marca no se repite.
+    expect(pie.queryByRole('link', { name: /ZASS!/ })).toBeNull()
+  })
+
   it('mientras no se sabe si hay sesion no parpadea ninguna de las dos', () => {
     elPie('cargando')
     const pie = within(screen.getByRole('contentinfo'))

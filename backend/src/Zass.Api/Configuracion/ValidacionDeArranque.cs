@@ -85,6 +85,11 @@ public static class ValidacionDeArranque
         if (saltos is not null && (!int.TryParse(saltos, out var n) || n < 1 || n > 5))
             problemas.Add($"{ProxiesDeConfianza.ClaveSaltos} debe ser un entero de 1 a 5.");
 
+        // --- Secreto de origen (P-11) ---
+        // Si está puesto tiene que servir; si no está, en producción solo se advierte
+        // (SecretoDeOrigen.Advertencia): exigirlo tumbaría la API antes de que Cloudflare lo mande.
+        problemas.AddRange(SecretoDeOrigen.Problemas(configuracion));
+
         return problemas;
     }
 

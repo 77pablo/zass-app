@@ -114,6 +114,43 @@ describe('mi ficha (prestador)', () => {
     expect(screen.queryByText(/Publicada: la ven/)).not.toBeInTheDocument()
   })
 
+  it('fundador sin tarjeta en su mes gratis: le pide inscribirla antes de la fecha', async () => {
+    alPedirSuscripcion = () => json(suscripcionDe({ plan: 'ZASS! Fundador', esFundador: true, tarjetaInscrita: false }))
+    pintar()
+    await cargada()
+
+    expect(screen.getByRole('heading', { name: 'Inscribe tu tarjeta para mantener tu cupo' })).toBeInTheDocument()
+    expect(screen.getByText('12 de diciembre de 2026')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Inscribir mi tarjeta' })).toBeInTheDocument()
+  })
+
+  it('ES-1: fundador con tarjeta rechazada ve los días de gracia y puede cambiarla', async () => {
+    alPedirSuscripcion = () => json(suscripcionDe({
+      plan: 'ZASS! Fundador', esFundador: true, tarjetaInscrita: true, diasDeGracia: 4,
+    }))
+    pintar()
+    await cargada()
+
+    expect(screen.getByRole('heading', { name: 'No pudimos cobrar tu suscripción' })).toBeInTheDocument()
+    expect(screen.getByText('en 4 días')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Actualizar mi tarjeta' })).toBeInTheDocument()
+    expect(screen.queryByText('Inscribe tu tarjeta para mantener tu cupo')).toBeNull()
+  })
+
+  it('fundador con tarjeta, o quien no es fundador, no ve el aviso de la tarjeta', async () => {
+    alPedirSuscripcion = () => json(suscripcionDe({ esFundador: true, tarjetaInscrita: true }))
+    const { unmount } = pintar()
+    await cargada()
+    expect(screen.queryByText('Inscribe tu tarjeta para mantener tu cupo')).toBeNull()
+    unmount()
+
+    alPedirSuscripcion = () => json(suscripcionDe())
+    olvidarCaches()
+    pintar()
+    await cargada()
+    expect(screen.queryByText('Inscribe tu tarjeta para mantener tu cupo')).toBeNull()
+  })
+
   it('cancelada lo dice como cancelada, no como vencida', async () => {
     alPedirSuscripcion = () => json(suscripcionDe({ estado: 'Cancelada', vigente: false, enPrueba: false, diasRestantes: 0 }))
     pintar()

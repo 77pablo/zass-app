@@ -4,8 +4,10 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
 
 namespace Zass.Integracion.Pruebas.Correo;
@@ -14,6 +16,7 @@ namespace Zass.Integracion.Pruebas.Correo;
 public sealed class AplicacionConCorreo : WebApplicationFactory<Program>
 {
     private readonly Dictionary<string, string?> _ajustes;
+    private IAlertasAdministrador? _alertasFalso;
 
     public AplicacionConCorreo(params (string Clave, string? Valor)[] extra)
     {
@@ -28,10 +31,23 @@ public sealed class AplicacionConCorreo : WebApplicationFactory<Program>
         foreach (var (clave, valor) in extra) _ajustes[clave] = valor;
     }
 
+    public void ConfigurarAlertasFalsas(AlertasAdministradorFalso alertasFalso)
+    {
+        _alertasFalso = alertasFalso;
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder constructor)
     {
         constructor.UseEnvironment(Environments.Development);
         constructor.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(_ajustes));
+        
+        if (_alertasFalso is not null)
+        {
+            constructor.ConfigureServices(services =>
+            {
+                services.AddSingleton<IAlertasAdministrador>(_alertasFalso);
+            });
+        }
     }
 }
 
@@ -72,7 +88,7 @@ public class CorreoApiPruebas : IAsyncLifetime
         var existente = Correo();
         var alta = await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo = existente, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo = existente, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
         });
         Assert.Equal(HttpStatusCode.Created, alta.StatusCode);
 
@@ -102,7 +118,7 @@ public class CorreoApiPruebas : IAsyncLifetime
         var correo = Correo();
         await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
         });
 
         using var ctx = ContextoDePrueba.Crear();
@@ -149,7 +165,7 @@ public class CorreoApiPruebas : IAsyncLifetime
         var correo = Correo();
         await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
         });
         await Task.Delay(300);   // si hubiera un trabajo enviando, ya habría tocado la fila
 

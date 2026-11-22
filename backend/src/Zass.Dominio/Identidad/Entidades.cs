@@ -9,7 +9,19 @@ public class Usuario
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Correo { get; set; } = "";
     public string HashContrasena { get; set; } = "";
+    /// <summary>De pila si es Particular; el de la persona de contacto si es Empresa.</summary>
     public string Nombre { get; set; } = "";
+
+    // Datos de la cuenta (decision de Pablo, 20-nov-2026). Nulos en las cuentas creadas antes.
+    public TipoCuenta Tipo { get; set; } = TipoCuenta.Particular;
+    public string? Apellido { get; set; }
+    /// <summary>Normalizado «12345678-K». Unico: una persona o empresa, una cuenta.</summary>
+    public string? Rut { get; set; }
+    public string? Telefono { get; set; }
+    public string? RazonSocial { get; set; }
+    /// <summary>Cuando marco «soy mayor de 18». No se pide ni se guarda la fecha de nacimiento.</summary>
+    public DateTime? MayorDeEdadConfirmadoEn { get; set; }
+
     public bool CorreoVerificado { get; set; }
     // Los dos tokens de un solo uso de S1. Se guarda el hash, nunca el token que viajo
     // por correo, y cada uno lleva su propio vencimiento porque duran distinto: 24 h el
@@ -20,6 +32,17 @@ public class Usuario
     public string? TokenRecuperacion { get; set; }
     public DateTime? TokenRecuperacionExpiraEn { get; set; }
     public EstadoCuenta Estado { get; set; } = EstadoCuenta.PendienteVerificacion;
+
+    // Bloqueo por intentos fallidos de entrar (decision de Pablo, 22-nov-2026): tras 10
+    // fallos seguidos la cuenta queda 15 minutos sin poder entrar, aunque la contrasena sea la
+    // buena. Se cuenta en la base y no en memoria para que valga con varias instancias de la
+    // API. Al bloquear, el contador vuelve a cero: pasado el plazo se empieza de nuevo.
+    // Quien cambia estos valores es SQL atomico (RepositorioUsuariosEfCore), no esta clase.
+    public int IntentosFallidos { get; set; }
+    public DateTime? BloqueadaHasta { get; set; }
+
+    public bool EstaBloqueada(DateTime ahora) => BloqueadaHasta is { } hasta && hasta > ahora;
+
     public DateTime CreadoEn { get; set; } = DateTime.UtcNow;
     public DateTime ActualizadoEn { get; set; } = DateTime.UtcNow;
     public DateTime? AnonimizadoEn { get; set; }
@@ -47,6 +70,10 @@ public class Usuario
     {
         Correo = $"eliminado-{Id:N}@zass.local";
         Nombre = "Usuario eliminado";
+        Apellido = null;
+        Rut = null;
+        Telefono = null;
+        RazonSocial = null;
         HashContrasena = "";
         TokenVerificacion = null;
         TokenRecuperacion = null;
@@ -170,6 +197,24 @@ public class PerfilPrestador
     public bool PromedioVisible() => TotalResenas >= 3;
 }
 
+/// <summary>
+/// CL-03 · TBL-NUEVA. Fotos de trabajos realizados que sube el prestador para su ficha publica.
+/// Son PUBLICAS como la foto de perfil (no como los documentos de credenciales).
+/// El tope de cuantas puede tener lo dice su plan vigente (Plan.MaxFotosTrabajos).
+/// </summary>
+public class FotoTrabajo
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid PerfilPrestadorId { get; set; }
+    /// <summary>Clave en el almacenamiento (p. ej. "fotos/abc123.webp"). La genera el servidor.</summary>
+    public string ClaveAlmacen { get; set; } = "";
+    /// <summary>Orden de visualizacion en la ficha (0 = primero).</summary>
+    public int Orden { get; set; }
+    public DateTime CreadaEn { get; set; } = DateTime.UtcNow;
+
+    public PerfilPrestador? PerfilPrestador { get; set; }
+}
+
 /// <summary>CL-04 · TBL-06.</summary>
 public class PerfilBuscador
 {
@@ -180,7 +225,20 @@ public class PerfilBuscador
     public bool AceptaAvisos { get; set; } = true;
     public bool CanalCorreo { get; set; } = true;
     public bool CanalPush { get; set; }
+
+    /// <summary>
+    /// CS-08. Los perfiles de prestador guardados, del mas reciente al mas antiguo. Son
+    /// identificadores y nada mas: el nombre, la foto o la nota se leen al listar, porque
+    /// copiarlos aqui los dejaria viejos en cuanto el prestador cambie su ficha.
+    /// </summary>
     public List<Guid> Favoritos { get; set; } = new();
+
+    /// <summary>
+    /// CU-04. Los rubros que le interesan a quien busca (TBL-07), como punto de partida de la
+    /// portada. Un arreglo y no una tabla, por lo mismo que `aspectos` de la resena: un conjunto
+    /// chico que nunca se consulta por separado (normalizacion, excepcion deliberada).
+    /// </summary>
+    public List<short> RubrosInteres { get; set; } = new();
 
     public Usuario? Usuario { get; set; }
     public Zona? ZonaInteres { get; set; }

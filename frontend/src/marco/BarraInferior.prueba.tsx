@@ -1,7 +1,7 @@
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Contexto, type EstadoDeSesion, type Usuario } from '../sesion/contexto'
 import { Marco } from './Marco'
 
@@ -56,22 +56,119 @@ describe('la barra inferior del telefono', () => {
     expect(barra.getByRole('link', { name: 'Inicio' })).not.toHaveAttribute('aria-current')
   })
 
-  it('«Más» abre el MISMO menu que el boton de la cabecera, y se cierra al elegir', async () => {
+  it('«Más» abre la hoja del menu (la de la cabecera), y se cierra al elegir', async () => {
     const u = userEvent.setup()
     const barra = pintar()
     const mas = barra.getByRole('button', { name: 'Más' })
-    const delaCabecera = screen.getByRole('button', { name: 'Menú' })
+    // Ya no hay boton «Menú» arriba: la pestaña es la unica que abre la hoja.
+    expect(screen.queryByRole('button', { name: 'Menú' })).toBeNull()
 
     await u.click(mas)
     expect(mas).toHaveAttribute('aria-expanded', 'true')
-    // Un solo estado: la cabecera tambien lo ve abierto.
-    expect(delaCabecera).toHaveAttribute('aria-expanded', 'true')
     const menu = document.getElementById('menu-movil')
     expect(menu).not.toBeNull()
+    // La hoja sigue dentro del encabezado del sitio.
+    expect(screen.getByRole('banner', { name: 'ZASS!' })).toContainElement(menu)
 
     await u.click(within(menu!).getByRole('link', { name: 'Comunas' }))
     expect(await screen.findByRole('heading', { name: 'Comunas' })).toBeInTheDocument()
     expect(document.getElementById('menu-movil')).toBeNull()
     expect(mas).toHaveAttribute('aria-expanded', 'false')
+  })
+})
+
+describe('la barra y la hoja «Más» con el teclado', () => {
+  it('la capsula va antes del contenido: con Tab se llega a ella antes que a la pagina y al pie', () => {
+    pintar()
+    const barra = screen.getByRole('navigation', { name: 'Accesos rápidos' })
+    const principal = document.getElementById('contenido')!
+    // En escritorio la capsula esta arriba: el orden del teclado tiene que ser el que se ve.
+    expect(barra.compareDocumentPosition(principal) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('al abrir, el Tab siguiente a «Más» entra en la hoja (no salta a la pagina)', async () => {
+    const u = userEvent.setup()
+    const barra = pintar()
+    await u.click(barra.getByRole('button', { name: 'Más' }))
+    await u.tab()
+    const menu = document.getElementById('menu-movil')!
+    expect(menu).toContainElement(document.activeElement as HTMLElement)
+    expect(document.activeElement).toHaveAccessibleName('Buscar')
+  })
+
+  it('Escape la cierra y devuelve el foco a «Más»', async () => {
+    const u = userEvent.setup()
+    const barra = pintar()
+    const mas = barra.getByRole('button', { name: 'Más' })
+    await u.click(mas)
+    await u.tab()
+    await u.keyboard('{Escape}')
+    expect(document.getElementById('menu-movil')).toBeNull()
+    expect(mas).toHaveAttribute('aria-expanded', 'false')
+    expect(mas).toHaveFocus()
+  })
+
+  it('un toque fuera la cierra; un toque dentro no', async () => {
+    const u = userEvent.setup()
+    const barra = pintar()
+    await u.click(barra.getByRole('button', { name: 'Más' }))
+    const menu = document.getElementById('menu-movil')!
+    await u.pointer({ keys: '[MouseLeft]', target: menu })
+    expect(document.getElementById('menu-movil')).not.toBeNull()
+
+    await u.click(screen.getByRole('heading', { name: 'Portada' }))
+    expect(document.getElementById('menu-movil')).toBeNull()
+  })
+
+  it('cerrada, Escape no hace nada ni roba el foco', async () => {
+    const u = userEvent.setup()
+    pintar()
+    const portada = screen.getByRole('heading', { name: 'Portada' })
+    portada.tabIndex = -1
+    portada.focus()
+    await u.keyboard('{Escape}')
+    expect(portada).toHaveFocus()
+  })
+})
+
+describe('el titulo compacto (estilo iPhone)', () => {
+  // jsdom no trae IntersectionObserver: uno de mentira que guarda a quien observa para avisarle.
+  let avisar: ((dentro: boolean, arriba: number) => void) | null = null
+  beforeEach(() => {
+    class Vigia {
+      cb: (e: Partial<IntersectionObserverEntry>[]) => void
+      constructor(cb: (e: Partial<IntersectionObserverEntry>[]) => void) { this.cb = cb }
+      observe() { avisar = (dentro, arriba) => this.cb([{ isIntersecting: dentro, boundingClientRect: { top: arriba } as DOMRect }]) }
+      disconnect() { avisar = null }
+    }
+    vi.stubGlobal('IntersectionObserver', Vigia)
+  })
+  afterEach(() => { vi.unstubAllGlobals(); avisar = null })
+
+  it('aparece con el <h1> de la pagina cuando el titulo grande pasa por debajo de la barra', async () => {
+    pintar('/')
+    const compacto = document.querySelector('.titulo-compacto')!
+    expect(compacto).toHaveAttribute('aria-hidden', 'true')
+    expect(compacto).toHaveTextContent('Portada')
+    expect(compacto).toHaveAttribute('data-visible', 'false')
+
+    act(() => avisar!(false, -20))
+    expect(compacto).toHaveAttribute('data-visible', 'true')
+    act(() => avisar!(true, 30))
+    expect(compacto).toHaveAttribute('data-visible', 'false')
+    // Bajo la pantalla (aun no se llega a el) tampoco se muestra.
+    act(() => avisar!(false, 900))
+    expect(compacto).toHaveAttribute('data-visible', 'false')
+  })
+
+  it('cambia con la ruta y vuelve a esconderse en la pantalla nueva', async () => {
+    const u = userEvent.setup()
+    const barra = pintar('/')
+    act(() => avisar!(false, -20))
+    await u.click(barra.getByRole('link', { name: 'Buscar' }))
+    await screen.findByRole('heading', { name: 'Buscar' })
+    const compacto = document.querySelector('.titulo-compacto')!
+    expect(compacto).toHaveTextContent('Buscar')
+    expect(compacto).toHaveAttribute('data-visible', 'false')
   })
 })
