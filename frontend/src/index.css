@@ -1279,6 +1279,76 @@ option { background: var(--blanco); color: var(--pizarra); }
 .foto-de-perfil { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 6px; }
 .foto-de-perfil .campo-error { flex-basis: 100%; }
 
+/* ------------------------------------------------------------------ Las pantallas del pago
+   /planes, /pago/inscripcion y /planes/listo usaban clases que NO tenian ninguna regla: el
+   contenido quedaba pegado al borde (x = 0 px), sin tarjetas y con los errores sin color
+   (defectos 4 y 5 del informe JQ-7 de Joaquin). Aqui reciben el mismo lenguaje que el resto:
+   tarjetas blancas de iOS sobre el fondo agrupado, los mismos tokens y el mismo ancho. */
+.pagina {
+  width: 100%; max-width: var(--ancho); margin: 0 auto;
+  padding: 40px max(24px, env(safe-area-inset-right, 0px)) 120px max(24px, env(safe-area-inset-left, 0px));
+}
+.pagina--angosta { max-width: 560px; }
+.pagina > h1, .planes-cabecera h1 {
+  font-size: clamp(1.875rem, 4.5vw, 2.75rem); font-weight: 700; letter-spacing: -0.022em;
+  line-height: 1.12; text-wrap: balance;
+}
+.pagina > * + * { margin-top: 16px; }
+
+/* Los avisos que faltaban: el error usa el rojo de siempre; la «atencion» (la pasarela de
+   PRUEBA, que tiene que verse) va en ambar, el color de lo que pide mirar dos veces. */
+.aviso--error { background: var(--malo-suave); border: 1px solid var(--malo); color: var(--malo); }
+.aviso--atencion { background: var(--ambar-suave); border: 1px solid var(--ambar-hondo); color: var(--pizarra); }
+
+.pago-acciones { display: grid; gap: 12px; margin-top: 24px; }
+
+/* /planes */
+.planes-cabecera { display: grid; gap: 12px; }
+.planes-bajada { color: var(--suave); max-width: 56ch; }
+.planes-cupos {
+  justify-self: start; padding: 8px 14px; border-radius: 999px;
+  background: var(--ambar-suave); color: var(--pizarra); font-weight: 600; font-size: 0.9375rem;
+}
+.planes-cupos--cerrado { background: var(--relleno); color: var(--suave); }
+
+.planes-rejilla { display: grid; gap: 16px; margin-top: 28px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); align-items: start; }
+.plan-tarjeta {
+  display: grid; gap: 10px; padding: 20px; background: var(--blanco);
+  border: 1px solid transparent; border-radius: var(--radio-hoja); box-shadow: var(--sombra-1);
+}
+/* El Fundador se destaca con el borde del color de la marca, no con otro fondo. */
+.plan-tarjeta--destacada { border-color: var(--ambar); box-shadow: var(--sombra-2); }
+.plan-tarjeta h2 { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.02em; }
+.plan-precio { color: var(--suave); }
+.plan-precio strong { font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; color: var(--pizarra); margin-right: 4px; }
+.plan-descripcion { color: var(--suave); }
+.plan-incluye { display: grid; gap: 6px; padding-left: 1.2em; list-style: disc; color: var(--pizarra); }
+.plan-incluye li::marker { color: var(--esmeralda); }
+.plan-letra-chica, .plan-cerrado { font-size: 0.8125rem; color: var(--suave); }
+.plan-cerrado { font-weight: 600; }
+
+.planes-cupon { margin-top: 28px; padding: 20px; background: var(--blanco); border-radius: var(--radio-hoja); display: grid; gap: 12px; }
+.planes-cupon h2 { font-size: 1.125rem; font-weight: 600; }
+.planes-cupon form { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+.planes-cupon label { flex-basis: 100%; font-size: 0.875rem; font-weight: 800; }
+.planes-cupon input {
+  flex: 1 1 200px; min-height: 48px; padding: 0 14px; font: inherit; text-transform: uppercase;
+  border: 1px solid var(--borde-campo); border-radius: var(--radio-campo); background: var(--blanco);
+}
+.planes-cupon input:focus-visible { outline: none; border-color: var(--pizarra); box-shadow: 0 0 0 4px var(--celeste-suave); }
+.cupon-desglose { display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; font-variant-numeric: tabular-nums; }
+.cupon-desglose dt { color: var(--suave); }
+.cupon-desglose dd { text-align: right; font-weight: 600; }
+
+.planes-pie { margin-top: 28px; font-size: 0.8125rem; color: var(--suave); max-width: 62ch; }
+
+/* JQ-8 · Mi actividad: las cifras se ven igual que en Indicadores (JQ-14). Si las dos ramas se
+   juntan, estas cuatro reglas quedan repetidas y se deja una sola copia. Va con `dl.` porque la
+   portada usa `section.cifras` («ZASS! en cifras») y una regla `.cifras` suelta la aplasta. */
+dl.cifras { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin: 12px 0 0; }
+.cifra dt { font-size: 0.875rem; color: var(--suave); }
+.cifra dd { margin: 0; }
+.cifra-valor { font-size: 1.75rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 /* JQ-11 · Panel interno y mesa del Verificador. */
 .panel-interno-secciones, .cola-verificacion, .documentos-respaldo { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 12px; }
 .etiquetas-credencial { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-wrap: wrap; gap: 8px; }
@@ -1286,6 +1356,12 @@ option { background: var(--blanco); color: var(--pizarra); }
 .etiqueta--alerta { border-color: currentColor; }
 .mesa-verificacion fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }
 
+/* JQ-14 · Indicadores: cifras, no gráficos. Va con `dl.` porque la portada usa `section.cifras`
+   («ZASS! en cifras») y una regla `.cifras` suelta la aplasta en una columna. */
+dl.cifras { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin: 12px 0 0; }
+.cifra dt { font-size: 0.875rem; color: var(--suave); }
+.cifra dd { margin: 0; }
+.cifra-valor { font-size: 1.75rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 /* JQ-13 · Emitir tarjetas: el código grande y legible, y al imprimir SOLO la etiqueta del sobre. */
 .etiqueta-imprimible { display: flex; flex-wrap: wrap; gap: 24px; align-items: center; margin: 16px 0; }
 .etiqueta-imprimible dd { margin: 0 0 8px; }
@@ -1301,3 +1377,14 @@ option { background: var(--blanco); color: var(--pizarra); }
 .tabla-auditoria table { border-collapse: collapse; width: 100%; font-size: 0.875rem; }
 .tabla-auditoria th, .tabla-auditoria td { text-align: left; vertical-align: top; padding: 8px; border-bottom: 1px solid var(--linea-fuerte); }
 .tabla-auditoria code { font-size: 0.75rem; word-break: break-all; }
+
+/* Mi cuenta → Seguridad: los códigos de respaldo de la verificación en dos pasos. */
+.codigos-respaldo {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 1rem 0;
+  padding: 0;
+  list-style: none;
+  font-variant-numeric: tabular-nums;
+}
