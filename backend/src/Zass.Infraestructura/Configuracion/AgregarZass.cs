@@ -298,6 +298,7 @@ public static class RegistroDeServicios
         servicios.AddScoped<INotificaciones, ColaNotificacionesEfCore>();
         servicios.AddScoped<IAuditor, AuditorEfCore>();
         servicios.AddScoped<IRepositorioAuditoria, RepositorioAuditoriaEfCore>();
+        servicios.AddScoped<IConsultaIndicadores, ConsultaIndicadoresEfCore>();   // API-60 (JQ-14)
 
         // AddLogging aqui y no en quien llama: varios servicios de este modulo escriben en
         // el registro (la sonda de abajo, y los enviadores y el procesador de correo). Sin

@@ -15,6 +15,7 @@ import { MisTarjetas } from './paginas/MisTarjetas'
 import { MesaDeVerificacion } from './paginas/MesaDeVerificacion'
 import { IndiceInterno, PuertaInterna, SoloSeccion } from './paginas/PanelInterno'
 import { ReportesDeResenas } from './paginas/ReportesDeResenas'
+import { Indicadores } from './paginas/Indicadores'
 import { EmitirTarjetas } from './paginas/EmitirTarjetas'
 import { Auditoria } from './paginas/Auditoria'
 import { NoEncontrada } from './paginas/NoEncontrada'
@@ -84,6 +85,7 @@ export function App() {
           <Route index element={<IndiceInterno />} />
           <Route path="verificacion" element={<SoloSeccion seccion="verificacion"><MesaDeVerificacion /></SoloSeccion>} />
           <Route path="reportes" element={<SoloSeccion seccion="moderacion"><ReportesDeResenas /></SoloSeccion>} />
+          <Route path="indicadores" element={<SoloSeccion seccion="administracion"><Indicadores /></SoloSeccion>} />
           <Route path="tarjetas" element={<SoloSeccion seccion="administracion"><EmitirTarjetas /></SoloSeccion>} />
           <Route path="auditoria" element={<SoloSeccion seccion="administracion"><Auditoria /></SoloSeccion>} />
           <Route path="*" element={<NoEncontrada />} />
