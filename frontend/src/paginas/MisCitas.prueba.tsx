@@ -287,6 +287,16 @@ describe('las citas se agrupan por dia CHILENO', () => {
     expect(within(anteriores).getByText(/23:30 h/)).toBeInTheDocument()
   })
 
+  it('el titulo del dia va en castellano: «Jueves, 19 de noviembre», con el «de» y el mes en minuscula', async () => {
+    citas = [cita({ id: 'a', codigo: 'ZS-NOCHE', estado: 'Cancelada', inicioEn: '2026-11-19T20:00:00Z' })]
+    pintar()
+
+    const anteriores = (await screen.findByRole('heading', { name: 'Anteriores' })).closest('section')!
+    const [dia] = within(anteriores).getAllByRole('heading', { level: 3 })
+    // El texto exacto: el CSS ya no lo transforma (lo vigila fechas-castellano.prueba.js).
+    expect(dia.textContent).toBe('Jueves, 19 de noviembre')
+  })
+
   it('en el historial el dia mas reciente va primero', async () => {
     citas = [
       cita({ id: 'a', codigo: 'ZS-VIEJA', estado: 'Cancelada', inicioEn: '2026-11-10T13:00:00Z' }),
