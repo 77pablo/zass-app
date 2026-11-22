@@ -24,7 +24,7 @@ Publicar solo el sitio sin API deja una página que dice «No se pudo conectar»
 2. Compilar: `cd frontend && npm run build` → carpeta `dist/`.
 3. **[Pablo]** Iniciar sesión en Cloudflare desde esta terminal: `! npx wrangler login` (abre el navegador).
 4. Crear el proyecto y subir: `npx wrangler pages deploy dist --project-name zass`.
-5. En el proyecto, **Settings → Variables**: `API_ORIGEN = https://zass-api.onrender.com` (o donde esté la API).
+5. En el proyecto, **Settings → Variables**: `API_ORIGEN = https://<servicio>.onrender.com` (o donde esté la API), y `SECRETO_ORIGEN` como **Secret** (ver «Secreto de origen» más abajo).
 6. **[Pablo]** Si `zass.cl` ya está en Cloudflare (nameservers), en el proyecto: **Custom domains → zass.cl**. Si el dominio está en otro registrador, hay que apuntar sus nameservers a Cloudflare o crear un CNAME.
 7. En la API: `Zass:ExigirHttps=true`, cookies con `Secure` (ya), y llenar `Zass:ProxiesDeConfianza` (ver «Cómo llenar `Zass:ProxiesDeConfianza`» más abajo; la guía completa de la API está en `DESPLIEGUE-API.md`).
 
@@ -57,7 +57,24 @@ Es una lista de IP/CIDR separada por comas, en la variable de entorno `Zass__Pro
 
 Vuelve a consultar los rangos de Cloudflare de vez en cuando (cambian rara vez, pero cambian) y actualiza la variable. Comprobación tras desplegar: inicia sesión desde tu celular con datos móviles y mira `SELECT ip_origen FROM sesiones ORDER BY creada_en DESC LIMIT 3;`: debe aparecer tu IP pública, no una de Cloudflare ni de Render.
 
-**Riesgo residual:** los rangos de Cloudflare son compartidos por todos sus clientes (ver `DESPLIEGUE-API.md`, sección 4). No publiques la URL directa de la API.
+**Riesgo residual:** los rangos de Cloudflare son compartidos por todos sus clientes (ver `DESPLIEGUE-API.md`, sección 4), y la URL directa de la API ya es pública (está en el historial del repositorio). Lo que lo cierra es el secreto de origen.
+
+## Secreto de origen (P-11): `SECRETO_ORIGEN`
+
+Toda Function que llama a la API (`api/[[ruta]].js`, `t/[segmento].js`, `prestadores/[slug].js` y el mapa del sitio vía `_comun/sitemap.js`) agrega la cabecera `X-Origen-Zass` con el valor de la variable `SECRETO_ORIGEN` (`functions/_comun/origen.js`). Lo que mande el visitante con ese nombre se borra siempre. Sin la variable no se manda nada.
+
+La API, cuando tiene `Zass__SecretoDeOrigen` con el mismo valor, responde **403** a todo lo que no traiga la cabecera: así nadie se salta el mantenimiento ni falsea su IP llamando a Render directo.
+
+**Pasos (resumen; el detalle, el orden y las comprobaciones con curl están en `DESPLIEGUE-API.md`, sección 4.1):**
+
+1. Generar el secreto: `openssl rand -hex 32` (Git Bash). Nunca en el repositorio ni en un chat.
+2. **Settings → Variables and Secrets → Production → Add**, tipo **Secret**, nombre `SECRETO_ORIGEN`. Si usas el entorno *Preview* contra la misma API, ponla también ahí.
+3. **Volver a desplegar** (`npx wrangler pages deploy dist --project-name zass`): una variable nueva solo la ven los despliegues nuevos.
+4. Recién entonces poner `Zass__SecretoDeOrigen` en Render. **Nunca al revés:** si Render la exige antes de que Cloudflare la mande, el sitio entero responde 403.
+
+## Cabeceras de seguridad en lo que arma una Function
+
+`_headers` no se aplica a las respuestas de las Functions. Por eso `functions/_middleware.js` envuelve TODA respuesta (también la página de mantenimiento, su 503 en JSON y la redirección del pase) con `conCabecerasDeSeguridad` (`functions/_comun/cabeceras.js`, que una prueba mantiene igual al bloque `/*` de `_headers`). Está en `main` desde el 17-nov-2026, pero **medido el 21-nov-2026, `https://zass.cl/` responde el 503 sin ninguna cabecera de seguridad**: el sitio publicado es anterior a ese cambio. Se arregla con el siguiente `wrangler pages deploy`; no hace falta tocar código.
 
 ### Pendiente de decisión
 

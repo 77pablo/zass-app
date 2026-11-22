@@ -43,6 +43,31 @@ public static class ConfiguracionDeSeguridad
     public const string CookieRefresco = "zass_refresco";
     public const string CabeceraCsrf = "X-CSRF-Token";
 
+    /// <summary>
+    /// HSTS: dos anos (63 072 000 s) y subdominios.
+    ///
+    /// <para>
+    /// Antes la API mandaba <c>max-age=2592000</c> (30 dias): el valor por omision de UseHsts,
+    /// que pisaba al que escribe UsarCabecerasDeSeguridad. Medido en produccion el 21-nov-2026.
+    /// </para>
+    /// <para>
+    /// SIN <c>preload</c>, a proposito: entrar a la lista de precarga de los navegadores es un
+    /// compromiso que tarda meses en deshacerse y obliga a HTTPS en TODO subdominio de zass.cl,
+    /// presente y futuro. Esa decision es de Pablo, no de un cambio de codigo.
+    /// </para>
+    /// </summary>
+    public static readonly TimeSpan DuracionHsts = TimeSpan.FromDays(730);
+    public const string ValorHsts = "max-age=63072000; includeSubDomains";
+
+    /// <summary>La configuracion de UseHsts, con <see cref="DuracionHsts"/> y sin preload.</summary>
+    public static IServiceCollection AgregarHsts(this IServiceCollection servicios) =>
+        servicios.AddHsts(o =>
+        {
+            o.MaxAge = DuracionHsts;
+            o.IncludeSubDomains = true;
+            o.Preload = false;
+        });
+
     /// <summary>DT-08. El token de acceso dura 15 min; el de refresco, 30 dias.</summary>
     public static readonly TimeSpan VidaDelAcceso = TimeSpan.FromMinutes(15);
 
@@ -222,7 +247,9 @@ public static class ConfiguracionDeSeguridad
                 // asi que 'self' cubre y no se deja un dominio inexistente en la CSP.
                 + "connect-src 'self'; "
                 + "frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
-            cabeceras["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload";
+            // El mismo valor que pone UseHsts (AgregarHsts). Este es el que sale cuando UseHsts no
+            // actua (peticion en HTTP, o al host localhost); por eso tienen que coincidir.
+            cabeceras["Strict-Transport-Security"] = ConfiguracionDeSeguridad.ValorHsts;
             cabeceras["X-Content-Type-Options"] = "nosniff";
             cabeceras["X-Frame-Options"] = "DENY";
             cabeceras["Referrer-Policy"] = "strict-origin-when-cross-origin";
