@@ -181,7 +181,7 @@ export function MiFicha() {
             {trabajando ? 'Un momento…' : publicada ? 'Pausar mi ficha' : 'Publicar mi ficha'}
           </button>
           {publicada && (
-            <Link className="enlace" to={`/prestadores/${perfil.slug}`}>Ver como la ve el público</Link>
+            <Link className="enlace" to={`/prestadores/${perfil.slug}`}>Ver cómo la ve el público</Link>
           )}
         </div>
       </header>
