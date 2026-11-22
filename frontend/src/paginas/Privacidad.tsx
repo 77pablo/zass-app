@@ -39,7 +39,9 @@ export function Privacidad() {
               <th scope="row">Toda cuenta</th>
               <td>
                 Nombre, correo, tu contraseña (solo como una huella cifrada irreversible: ni nosotros podemos
-                leerla), si confirmaste tu correo, tu tipo de cuenta y las fechas de creación y cambio.
+                leerla), si confirmaste tu correo, tu tipo de cuenta y las fechas de creación y cambio. Si
+                activas la verificación en dos pasos: la clave de tu app de códigos (cifrada) y tus códigos de
+                respaldo (solo como huella irreversible).
               </td>
             </tr>
             <tr>
@@ -121,7 +123,7 @@ export function Privacidad() {
         <ul>
           <li>Los de tu cuenta, mientras la tengas.</li>
           <li>
-            Si pides eliminarla: reemplazamos tu nombre y tu correo, borramos tu contraseña, cerramos tus
+            Si pides eliminarla: reemplazamos tu nombre y tu correo, borramos tu contraseña y tu verificación en dos pasos, cerramos tus
             sesiones y despublicamos tu ficha. La cuenta queda como «usuario eliminado» para mantener la
             coherencia del historial de otras personas.
           </li>

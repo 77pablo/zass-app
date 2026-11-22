@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import { ENLACE_MENU as ENLACE_ACTIVIDAD } from '../funciones/metricas/textos'
 import { puedeEntrarAlPanel } from '../funciones/interno/servicio'
 import { ENLACE_MENU as ENLACE_PANEL_INTERNO } from '../funciones/interno/textos'
 import { useSesion } from '../sesion/contexto'
@@ -65,9 +66,19 @@ export function Cabecera() {
               Mis tarjetas<Icono nombre="chevron" />
             </NavLink>
           )}
+          {estado === 'dentro' && esPrestador && (
+            <NavLink to="/mi-actividad" className="menu-enlace">
+              {ENLACE_ACTIVIDAD}<Icono nombre="chevron" />
+            </NavLink>
+          )}
           {estado === 'dentro' && !esPrestador && (
             <NavLink to="/ofrecer-servicios" className="menu-enlace">
               Ofrecer mis servicios<Icono nombre="chevron" />
+            </NavLink>
+          )}
+          {estado === 'dentro' && (
+            <NavLink to="/mi-cuenta/seguridad" className="menu-enlace">
+              Seguridad de mi cuenta<Icono nombre="chevron" />
             </NavLink>
           )}
           {vePanel && (

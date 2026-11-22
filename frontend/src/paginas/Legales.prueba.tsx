@@ -126,6 +126,12 @@ describe('Privacidad', () => {
     expect(screen.getByText(/Google Fonts/, { exact: false })).toBeInTheDocument()
   })
 
+  // PR #213: la verificacion en dos pasos guarda una clave y codigos de respaldo; se dice como.
+  it('dice que guarda la verificacion en dos pasos y como', () => {
+    enRuta(<Privacidad />)
+    expect(screen.getByText(/verificación en dos pasos: la clave de tu app de códigos \(cifrada\)/, { exact: false })).toBeInTheDocument()
+  })
+
   it('dice como se guarda la contrasena: solo una huella irreversible', () => {
     enRuta(<Privacidad />)
     expect(screen.getByText(/huella cifrada irreversible/)).toBeInTheDocument()

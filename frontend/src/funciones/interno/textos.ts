@@ -121,6 +121,25 @@ export const DECIDIDA: Record<DecisionDeModeracion, string> = {
 export const etiquetaDeMotivoDeReporte = (m: string) =>
   MOTIVOS_DE_REPORTE.find((x) => x.valor === m)?.etiqueta ?? m
 
+// ---------------------------------------------------------------- JQ-14 · indicadores (PROPUESTA)
+
+export const SECCION_INDICADORES = 'Indicadores'
+export const SECCION_INDICADORES_BAJADA = 'Cómo va la operación: cola, rechazos, avisos y tarjetas.'
+export const TITULO_INDICADORES = 'Indicadores'
+export const ERROR_INDICADORES = 'No pudimos cargar los indicadores.'
+export const CALCULADO_EL = 'Calculado el'
+export const GRUPO_VERIFICACION = 'Verificación'
+export const GRUPO_OPERACION = 'Operación'
+export const IND_EN_COLA = 'Credenciales en cola'
+export const IND_MAS_ANTIGUA = 'La más antigua en cola, creada el'
+export const IND_TIEMPO = 'Tiempo promedio desde que se creó la credencial hasta que se resolvió (30 días)'
+export const IND_TIEMPO_NOTA = 'Incluye el tiempo en borrador: el envío a revisión no queda con fecha.'
+export const IND_TASA = 'Tasa de rechazo (30 días)'
+export const indResueltas = (r: number, n: number) => `${r} de ${n} resueltas`
+export const IND_FALLIDOS = 'Correos fallidos (7 días)'
+export const IND_REPORTES = 'Reportes de reseñas sin resolver'
+export const IND_TARJETAS = 'Tarjetas emitidas sin activar'
+export const SIN_DATOS_AUN = 'Sin datos todavía'
 // ---------------------------------------------------------------- JQ-13 · tarjetas y auditoría (PROPUESTA)
 
 export const SECCION_TARJETAS = 'Emitir tarjetas'

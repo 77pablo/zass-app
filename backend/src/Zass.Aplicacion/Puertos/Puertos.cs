@@ -197,6 +197,24 @@ public interface IRepositorioUsuarios
     /// instante. Devuelve falso si lo esta (el bloqueo pudo nacer despues de leer la cuenta).
     /// </summary>
     Task<bool> ReiniciarIntentosSiNoBloqueadaAsync(Guid usuarioId, DateTime ahora, CancellationToken ct = default);
+
+    // --- MFA (decision de Pablo, 22-nov-2026). Las tres son atomicas: gastan o no gastan. ---
+
+    /// <summary>La cuenta cuyo desafio de segundo paso tiene ese hash, o nulo.</summary>
+    Task<Usuario?> PorDesafioMfaAsync(string hashDesafio, CancellationToken ct = default);
+
+    /// <summary>
+    /// Anota <paramref name="paso"/> como el ultimo paso TOTP aceptado, SOLO si es posterior al
+    /// anterior. Devuelve falso si ese codigo (o uno mas nuevo) ya se uso: asi un codigo
+    /// interceptado no sirve una segunda vez, ni siquiera dentro de sus 30 segundos.
+    /// </summary>
+    Task<bool> GastarPasoTotpAsync(Guid usuarioId, long paso, CancellationToken ct = default);
+
+    /// <summary>Quita ese codigo de respaldo de los que quedan. Falso si no estaba (o ya se uso).</summary>
+    Task<bool> GastarCodigoRespaldoAsync(Guid usuarioId, string hashCodigo, CancellationToken ct = default);
+
+    /// <summary>Borra el desafio si es ese y sigue vigente. Falso si ya se uso o vencio.</summary>
+    Task<bool> GastarDesafioMfaAsync(Guid usuarioId, string hashDesafio, DateTime ahora, CancellationToken ct = default);
 }
 
 public interface IRepositorioSesiones
