@@ -14,7 +14,16 @@ public static class Respuestas
     public static IResult Problema(Resultado resultado) => Results.Problem(
         title: Titulo(resultado.Codigo),
         detail: resultado.Mensaje,
-        statusCode: Estado(resultado.Codigo));
+        statusCode: Estado(resultado.Codigo),
+        extensions: ConCodigo.Contains(resultado.Codigo)
+            ? new Dictionary<string, object?> { ["codigo"] = resultado.Codigo }
+            : null);
+
+    /// <summary>
+    /// Las fallas que viajan con su <c>codigo</c> en el cuerpo, como el 428 de ES-2, porque la
+    /// pantalla las muestra distinto de un error comun. Las demas no lo llevan: no hace falta.
+    /// </summary>
+    private static readonly HashSet<string?> ConCodigo = new() { Fallas.RutConCuenta };
 
     public static IResult DeResultado(Resultado resultado) =>
         resultado.Exito
@@ -37,9 +46,14 @@ public static class Respuestas
         Fallas.NoAutorizado => StatusCodes.Status401Unauthorized,
         Fallas.NoEncontrado => StatusCodes.Status404NotFound,
         Fallas.Conflicto => StatusCodes.Status409Conflict,
+        // La cuenta no se crea porque ya existe una con ese RUT: un conflicto, como el correo repetido.
+        Fallas.RutConCuenta => StatusCodes.Status409Conflict,
         Fallas.ReglaDeNegocio => StatusCodes.Status422UnprocessableEntity,
         Fallas.Validacion => StatusCodes.Status400BadRequest,
         Fallas.VersionDesactualizada => StatusCodes.Status412PreconditionFailed,
+        Fallas.ArchivoDemasiadoGrande => StatusCodes.Status413PayloadTooLarge,
+        Fallas.TipoDeArchivoNoAceptado => StatusCodes.Status415UnsupportedMediaType,
+        Fallas.AlmacenamientoNoDisponible => StatusCodes.Status503ServiceUnavailable,
         _ => StatusCodes.Status400BadRequest,
     };
 
@@ -48,9 +62,13 @@ public static class Respuestas
         Fallas.NoAutorizado => "No autorizado",
         Fallas.NoEncontrado => "No encontrado",
         Fallas.Conflicto => "Conflicto",
+        Fallas.RutConCuenta => "Conflicto",
         Fallas.ReglaDeNegocio => "Regla de negocio",
         Fallas.Validacion => "Datos inválidos",
         Fallas.VersionDesactualizada => "Versión desactualizada",
+        Fallas.ArchivoDemasiadoGrande => "Archivo demasiado grande",
+        Fallas.TipoDeArchivoNoAceptado => "Tipo de archivo no aceptado",
+        Fallas.AlmacenamientoNoDisponible => "Almacenamiento no disponible",
         _ => "Petición incorrecta",
     };
 }

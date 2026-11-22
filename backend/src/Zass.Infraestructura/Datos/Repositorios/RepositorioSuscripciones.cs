@@ -124,6 +124,18 @@ public sealed class RepositorioSuscripcionesEfCore : IRepositorioSuscripciones
         _ctx.PerfilesPrestador.AnyAsync(p => p.Id == perfilPrestadorId, ct);
 
     /// <summary>
+    /// El correo del usuario de ese perfil prestador, o nulo si el perfil no existe.
+    /// UNA consulta que hace JOIN con usuarios. No usa IRepositorioPerfiles ni
+    /// IRepositorioUsuarios: seria depender de puertos de MOD-01 para un SELECT.
+    /// </summary>
+    public Task<string?> CorreoDelUsuarioDePerfilAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default) =>
+        _ctx.PerfilesPrestador
+            .Where(p => p.Id == perfilPrestadorId)
+            .Select(p => p.Usuario.Correo)
+            .FirstOrDefaultAsync(ct);
+
+    /// <summary>
     /// UNA consulta para todos los perfiles. Misma razon que ExistePerfilPrestadorAsync para
     /// no pasar por IRepositorioPerfiles: seria depender de un puerto de MOD-01 para leer una
     /// columna.
@@ -148,8 +160,37 @@ public sealed class RepositorioSuscripcionesEfCore : IRepositorioSuscripciones
         _ctx.IntentosDePago.FirstOrDefaultAsync(i => i.Id == id, ct);
 
     public Task<IntentoDePago?> IntentoPorClaveAsync(
-        string clave, CancellationToken ct = default) =>
-        _ctx.IntentosDePago.FirstOrDefaultAsync(i => i.ClaveIdempotencia == clave, ct);
+        string clave, Guid perfilPrestadorId, CancellationToken ct = default) =>
+        _ctx.IntentosDePago.FirstOrDefaultAsync(
+            i => i.ClaveIdempotencia == clave && i.PerfilPrestadorId == perfilPrestadorId, ct);
+
+    public Task<bool> ClaveDeIntentoUsadaAsync(string clave, CancellationToken ct = default) =>
+        _ctx.IntentosDePago.AnyAsync(i => i.ClaveIdempotencia == clave, ct);
+
+    public Task<bool> HayIntentoConCuponPendienteAsync(
+        Guid perfilPrestadorId, DateTime desde, CancellationToken ct = default) =>
+        _ctx.IntentosDePago.AnyAsync(
+            i => i.PerfilPrestadorId == perfilPrestadorId
+                 && i.CodigoCupon != null
+                 && i.Estado == EstadoIntentoPago.Pendiente
+                 && i.CreadoEn > desde,
+            ct);
+
+    public async Task<EstadoCuenta?> EstadoDeCuentaDePerfilAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default) =>
+        await _ctx.PerfilesPrestador
+            .Where(p => p.Id == perfilPrestadorId)
+            .Select(p => (EstadoCuenta?)p.Usuario.Estado)
+            .FirstOrDefaultAsync(ct);
+
+    public async Task<IReadOnlyList<IntentoDePago>> IntentosPorPrefijoDeClaveAsync(
+        string prefijo, CancellationToken ct = default) =>
+        // StartsWith se traduce a LIKE 'prefijo%' con los comodines escapados, y usa el
+        // indice unico de la clave.
+        await _ctx.IntentosDePago
+            .Where(i => i.ClaveIdempotencia.StartsWith(prefijo))
+            .OrderBy(i => i.CreadoEn)
+            .ToListAsync(ct);
 
     /// <summary>
     /// <c>SELECT ... FOR UPDATE</c> sobre la fila, igual que TomarBloqueAsync en MOD-06.

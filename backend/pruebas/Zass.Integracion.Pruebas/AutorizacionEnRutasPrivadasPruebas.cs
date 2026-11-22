@@ -82,6 +82,69 @@ public class AutorizacionEnRutasPrivadasPruebas : IAsyncLifetime
     }
 
     /// <summary>
+    /// Bajo /t/ solo se LEE. El GET /t/{segmento} (API-54, el escaneo de la tarjeta) es publico a
+    /// proposito, y en produccion lo atiende una Function de Cloudflare que solo deja pasar GET y
+    /// no reenvia cookies (RN-S6-07). Un POST con sesion bajo /t/ no llegaria nunca a la API: asi
+    /// estuvo API-55 hasta el 21-nov-2026, sin pantalla posible. Ahora vive en /api/mi, que pide
+    /// sesion por grupo (Todo_lo_de_api_mi_pide_sesion); el CSRF no se ve en los metadatos (los
+    /// filtros de endpoint no dejan rastro ahi): lo comprueba por HTTP ApiTarjetasEmitirActivarPruebas.
+    /// </summary>
+    [Fact]
+    public void Bajo_t_solo_se_lee_y_la_activacion_vive_en_api_mi_con_sesion()
+    {
+        var endpoints = _app.Services.GetRequiredService<EndpointDataSource>().Endpoints
+            .OfType<RouteEndpoint>()
+            .ToList();
+        var bajoT = endpoints.Where(e => Ruta(e).StartsWith("/t/", StringComparison.Ordinal)).ToList();
+
+        // Si la busqueda deja de ver API-54, la prueba pasaria con cero rutas.
+        Assert.Contains(bajoT, e => Ruta(e) == "/t/{segmento}");
+
+        var escriben = bajoT
+            .Where(e => !SoloLectura(e))
+            .Select(e => $"{e.DisplayName} ({Ruta(e)})")
+            .ToList();
+        Assert.True(escriben.Count == 0,
+            "Rutas de /t/ que escriben (la Function de /t/ no las deja pasar):\n  " + string.Join("\n  ", escriben));
+
+        var activar = Assert.Single(endpoints, e => Ruta(e) == "/api/mi/tarjetas/{segmento}/activar");
+        Assert.True(PideSesion(activar), "API-55 tiene que pedir sesion.");
+        Assert.False(SoloLectura(activar));
+    }
+
+    /// <summary>
+    /// Todo /api/interno revalida el rol EN LA BASE (RolVigenteEnBase), no solo en la cookie de
+    /// 15 minutos: a quien se le quita el rol se le corta el panel en la peticion siguiente. Se
+    /// mira la politica ya resuelta (las politicas con nombre solo se ven asi), para que un
+    /// grupo interno nuevo con un RequireRole suelto no pase.
+    /// </summary>
+    [Fact]
+    public async Task Todo_lo_de_api_interno_revalida_el_rol_en_la_base()
+    {
+        var proveedor = _app.Services.GetRequiredService<IAuthorizationPolicyProvider>();
+        var internos = _app.Services.GetRequiredService<EndpointDataSource>().Endpoints
+            .OfType<RouteEndpoint>()
+            .Where(e => Ruta(e).StartsWith("/api/interno", StringComparison.Ordinal))
+            .ToList();
+        Assert.NotEmpty(internos);
+
+        var fallos = new List<string>();
+        foreach (var e in internos)
+        {
+            var politica = await AuthorizationPolicy.CombineAsync(
+                proveedor,
+                e.Metadata.GetOrderedMetadata<IAuthorizeData>(),
+                e.Metadata.GetOrderedMetadata<AuthorizationPolicy>());
+            if (politica is null
+                || !politica.Requirements.OfType<Zass.Api.Configuracion.RolVigenteEnBase>().Any())
+                fallos.Add($"{e.DisplayName} ({Ruta(e)})");
+        }
+
+        Assert.True(fallos.Count == 0,
+            "Rutas de /api/interno sin el rol revalidado en base:\n  " + string.Join("\n  ", fallos));
+    }
+
+    /// <summary>
     /// Si la busqueda se rompe y no ve ningun endpoint de /api/mi, las tres pruebas
     /// anteriores pasarían en verde con cero rutas. Esta prueba exige al menos el
     /// numero medido para detectar que la busqueda esta rota.
@@ -114,6 +177,11 @@ public class AutorizacionEnRutasPrivadasPruebas : IAsyncLifetime
         e.Metadata.GetMetadata<IAllowAnonymous>() is null
         && (e.Metadata.GetOrderedMetadata<IAuthorizeData>().Any()
             || e.Metadata.GetOrderedMetadata<AuthorizationPolicy>().Any());
+
+    /// <summary>Solo GET o HEAD: lo que no escribe nada.</summary>
+    private static bool SoloLectura(RouteEndpoint e) =>
+        e.Metadata.GetMetadata<IHttpMethodMetadata>() is { } m
+        && m.HttpMethods.All(x => x is "GET" or "HEAD");
 
     /// <summary>
     /// El endpoint pide rol o politica si ademas de pedir sesion tiene:

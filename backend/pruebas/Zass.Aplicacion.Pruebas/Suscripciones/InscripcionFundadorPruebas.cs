@@ -29,12 +29,13 @@ public class InscripcionFundadorPruebas
     private readonly PasarelaFalsa _pasarela = new();
     private readonly ServicioSuscripciones _suscripciones;
     private readonly ServicioCobros _cobros;
+    private readonly ColaEnMemoria _cola = new();
 
     public InscripcionFundadorPruebas()
     {
         var repo = new RepositorioSuscripcionesEnMemoria(_base);
         _suscripciones = new ServicioSuscripciones(
-            repo, _base, _reloj, new AuditoriaEnMemoria(), new ColaEnMemoria());
+            repo, _base, _reloj, new AuditoriaEnMemoria(), _cola);
         _cobros = new ServicioCobros(
             repo, _suscripciones, _pasarela, _base, _reloj, new AuditoriaEnMemoria());
 
@@ -59,6 +60,18 @@ public class InscripcionFundadorPruebas
         return perfil;
     }
 
+    /// <summary>
+    /// Desde el 20-nov-2026 el cupo se toma SIN tarjeta (API-69) y la tarjeta se inscribe
+    /// despues: este es el punto de partida de toda inscripcion.
+    /// </summary>
+    private async Task<PerfilPrestador> UnFundadorSinTarjeta(DateTime? vigenteHasta = null)
+    {
+        var perfil = UnPrestadorConSuscripcion(vigenteHasta);
+        var r = await _suscripciones.TomarCupoFundadorAsync(perfil.Id);
+        Assert.True(r.Exito, "El montaje fallo al tomar el cupo: " + r.Mensaje);
+        return perfil;
+    }
+
     private IntentoDePago ElIntento() => Assert.Single(_base.IntentosDePago);
 
     private Suscripcion SuscripcionDe(Guid perfilId) =>
@@ -75,6 +88,13 @@ public class InscripcionFundadorPruebas
             intento.Id, aprobado ? "ref_1" : null, aprobado, monto,
             aprobado ? null : "No se pudo inscribir el medio de pago");
 
+    /// <summary>Llena los cupos LIBRES y deja quieto el que ya es de alguien.</summary>
+    private void SinCuposLibresSalvoLosTomados()
+    {
+        foreach (var cupo in _base.CuposFundador.Where(c => c.PerfilPrestadorId is null))
+            cupo.PerfilPrestadorId = Guid.NewGuid();
+    }
+
     private void SinCuposLibres()
     {
         foreach (var cupo in _base.CuposFundador)
@@ -87,9 +107,9 @@ public class InscripcionFundadorPruebas
     // ------------------------------------------------------------------ Empezar
 
     [Fact]
-    public async Task La_inscripcion_crea_un_intento_de_monto_CERO_y_reserva_el_cupo()
+    public async Task La_inscripcion_crea_un_intento_de_monto_CERO_y_no_toca_el_cupo()
     {
-        var perfil = UnPrestadorConSuscripcion();
+        var perfil = await UnFundadorSinTarjeta();
 
         var r = await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
 
@@ -103,8 +123,8 @@ public class InscripcionFundadorPruebas
         Assert.Null(intento.CodigoCupon);
         Assert.NotNull(intento.UrlParaPagar);
 
-        // Reserva de 25 minutos, el numero escrito a mano.
-        Assert.Equal(Ahora.AddMinutes(25), CupoDe(perfil.Id)!.ReservadoHasta);
+        // El cupo se tomo antes y quedo definitivo: inscribir la tarjeta no lo vuelve reserva.
+        Assert.Null(CupoDe(perfil.Id)!.ReservadoHasta);
         Assert.Equal(49, await _suscripciones.CuposFundadorDisponiblesAsync());
     }
 
@@ -117,7 +137,7 @@ public class InscripcionFundadorPruebas
     [Fact]
     public async Task La_inscripcion_INSCRIBE_y_no_le_pide_ningun_cobro_a_la_pasarela()
     {
-        var perfil = UnPrestadorConSuscripcion();
+        var perfil = await UnFundadorSinTarjeta();
 
         var r = await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k-inscribe");
 
@@ -136,7 +156,7 @@ public class InscripcionFundadorPruebas
     [Fact]
     public async Task Si_la_pasarela_no_contesta_el_reintento_vuelve_a_INSCRIBIR()
     {
-        var perfil = UnPrestadorConSuscripcion();
+        var perfil = await UnFundadorSinTarjeta();
         _pasarela.FallaAlInscribir = true;
 
         var primera = await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k-reintento");
@@ -155,7 +175,7 @@ public class InscripcionFundadorPruebas
     [Fact]
     public async Task CC_04_el_doble_clic_no_toma_dos_cupos()
     {
-        var perfil = UnPrestadorConSuscripcion();
+        var perfil = await UnFundadorSinTarjeta();
 
         var primero = await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
         var segundo = await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
@@ -166,18 +186,36 @@ public class InscripcionFundadorPruebas
         Assert.Equal(49, await _suscripciones.CuposFundadorDisponiblesAsync());
     }
 
+    /// <summary>
+    /// 20-nov-2026: inscribir la tarjeta NO es otra puerta para tomar un cupo. Quien no tiene
+    /// el suyo no inscribe nada, aunque sobren cupos.
+    /// </summary>
     [Fact]
-    public async Task Sin_cupos_no_hay_inscripcion()
+    public async Task Sin_cupo_propio_no_se_inscribe_la_tarjeta_aunque_sobren_cupos()
     {
-        SinCuposLibres();
         var perfil = UnPrestadorConSuscripcion();
 
         var r = await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
 
         Assert.False(r.Exito);
         Assert.Equal(Fallas.Conflicto, r.Codigo);
-        Assert.Contains("mensual", r.Mensaje!);
+        Assert.Contains("Primero toma tu cupo", r.Mensaje!);
         Assert.Empty(_base.IntentosDePago);
+        Assert.Equal(0, _pasarela.InscripcionesPedidas);
+        Assert.Equal(50, await _suscripciones.CuposFundadorDisponiblesAsync());
+    }
+
+    /// <summary>Con los 50 tomados, quien tiene el suyo sigue pudiendo inscribir su tarjeta.</summary>
+    [Fact]
+    public async Task Con_el_plan_cerrado_quien_tiene_su_cupo_igual_inscribe_la_tarjeta()
+    {
+        var perfil = await UnFundadorSinTarjeta();
+        SinCuposLibresSalvoLosTomados();
+
+        var r = await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(0, await _suscripciones.CuposFundadorDisponiblesAsync());
     }
 
     [Fact]
@@ -196,9 +234,9 @@ public class InscripcionFundadorPruebas
     // ---------------------------------------------------------------- Confirmar
 
     [Fact]
-    public async Task Confirmada_la_inscripcion_el_cupo_es_suyo_y_el_mes_gratis_corre()
+    public async Task Confirmada_la_inscripcion_sigue_fundador_y_el_mes_gratis_no_se_mueve()
     {
-        var perfil = UnPrestadorConSuscripcion(vigenteHasta: Ahora.AddDays(3));
+        var perfil = await UnFundadorSinTarjeta(vigenteHasta: Ahora.AddDays(3));
         await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
         LaPasarelaResponde(ElIntento());
 
@@ -213,8 +251,9 @@ public class InscripcionFundadorPruebas
         var s = SuscripcionDe(perfil.Id);
         Assert.Equal("fundador", _base.Planes.Single(p => p.Id == s.PlanId).Codigo);
         Assert.Equal(EstadoSuscripcion.Prueba, s.Estado);
-        Assert.Equal(Ahora.AddDays(30), s.VigenteHasta);   // 30, escrito a mano
-        Assert.True(s.EstaVigente(Ahora));                 // aparece en la busqueda desde ya
+        Assert.Equal(Ahora.AddDays(30), s.VigenteHasta);   // los 30 que dio TOMAR el cupo
+        Assert.True(s.EstaVigente(Ahora));
+        Assert.Equal("ref_1", s.ReferenciaPasarela);
     }
 
     [Fact]
@@ -224,7 +263,7 @@ public class InscripcionFundadorPruebas
         // de C1 veía: la inscripción guardaba su referencia solo en el intento, y el cobro
         // del día 31 lee la SUSCRIPCIÓN. Sin esto, el 23 de diciembre no se le cobra a
         // nadie: la inscripción habría servido para tomar el cupo y para nada más.
-        var perfil = UnPrestadorConSuscripcion();
+        var perfil = await UnFundadorSinTarjeta();
         await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
         var intento = ElIntento();
         LaPasarelaResponde(intento);
@@ -243,7 +282,7 @@ public class InscripcionFundadorPruebas
     [Fact]
     public async Task Una_inscripcion_rechazada_NO_deja_medio_de_pago_en_la_suscripcion()
     {
-        var perfil = UnPrestadorConSuscripcion();
+        var perfil = await UnFundadorSinTarjeta();
         await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
         LaPasarelaResponde(ElIntento(), aprobado: false);
 
@@ -257,7 +296,7 @@ public class InscripcionFundadorPruebas
     [Fact]
     public async Task Una_inscripcion_NO_crea_una_fila_de_pago_porque_no_se_cobro_nada()
     {
-        var perfil = UnPrestadorConSuscripcion();
+        var perfil = await UnFundadorSinTarjeta();
         await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
         LaPasarelaResponde(ElIntento());
 
@@ -270,7 +309,7 @@ public class InscripcionFundadorPruebas
     [Fact]
     public async Task RN_S7_07_a_quien_le_quedaban_45_dias_no_se_le_quitan_15()
     {
-        var perfil = UnPrestadorConSuscripcion(vigenteHasta: Ahora.AddDays(45));
+        var perfil = await UnFundadorSinTarjeta(vigenteHasta: Ahora.AddDays(45));
         await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
         LaPasarelaResponde(ElIntento());
 
@@ -282,7 +321,7 @@ public class InscripcionFundadorPruebas
     [Fact]
     public async Task RN_S7_07_a_quien_le_quedaban_tres_dias_se_le_dan_los_30_y_no_33()
     {
-        var perfil = UnPrestadorConSuscripcion(vigenteHasta: Ahora.AddDays(3));
+        var perfil = await UnFundadorSinTarjeta(vigenteHasta: Ahora.AddDays(3));
         await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
         LaPasarelaResponde(ElIntento());
 
@@ -294,7 +333,7 @@ public class InscripcionFundadorPruebas
     [Fact]
     public async Task RN_S7_07_no_nace_una_segunda_suscripcion()
     {
-        var perfil = UnPrestadorConSuscripcion();
+        var perfil = await UnFundadorSinTarjeta();
         await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
         LaPasarelaResponde(ElIntento());
 
@@ -306,7 +345,7 @@ public class InscripcionFundadorPruebas
     [Fact]
     public async Task La_misma_inscripcion_confirmada_dos_veces_no_estira_el_mes_gratis()
     {
-        var perfil = UnPrestadorConSuscripcion();
+        var perfil = await UnFundadorSinTarjeta();
         await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
         LaPasarelaResponde(ElIntento());
 
@@ -321,9 +360,9 @@ public class InscripcionFundadorPruebas
     }
 
     [Fact]
-    public async Task La_inscripcion_rechazada_libera_el_cupo_al_tiro()
+    public async Task La_tarjeta_rechazada_NO_le_quita_el_cupo()
     {
-        var perfil = UnPrestadorConSuscripcion();
+        var perfil = await UnFundadorSinTarjeta();
         await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
         LaPasarelaResponde(ElIntento(), aprobado: false);
 
@@ -331,17 +370,19 @@ public class InscripcionFundadorPruebas
 
         Assert.True(r.Exito);              // el caso de uso funciono
         Assert.False(r.Valor!.Aprobado);   // la inscripcion no
-        // El cupo 50 es escaso: no se queda bloqueado los 25 minutos de la reserva.
-        Assert.Null(CupoDe(perfil.Id));
-        Assert.Equal(50, await _suscripciones.CuposFundadorDisponiblesAsync());
-        Assert.Equal(EstadoSuscripcion.Prueba, SuscripcionDe(perfil.Id).Estado);
-        Assert.Equal((short)1, SuscripcionDe(perfil.Id).PlanId);   // sigue en el plan de prueba
+        // 20-nov-2026: el cupo es suyo hasta que termine el mes gratis. Puede probar con otra
+        // tarjeta; si no inscribe ninguna, lo libera el trabajo diario al vencer.
+        Assert.NotNull(CupoDe(perfil.Id));
+        Assert.Null(CupoDe(perfil.Id)!.ReservadoHasta);
+        Assert.Equal(49, await _suscripciones.CuposFundadorDisponiblesAsync());
+        Assert.Equal((short)3, SuscripcionDe(perfil.Id).PlanId);   // sigue fundador
+        Assert.True(string.IsNullOrWhiteSpace(SuscripcionDe(perfil.Id).ReferenciaPasarela));
     }
 
     [Fact]
     public async Task Un_aviso_con_monto_distinto_de_cero_no_confirma_una_inscripcion()
     {
-        var perfil = UnPrestadorConSuscripcion();
+        var perfil = await UnFundadorSinTarjeta();
         await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
         LaPasarelaResponde(ElIntento(), monto: 5990);
 
@@ -350,7 +391,240 @@ public class InscripcionFundadorPruebas
         // El monto confirmado se compara con el que se fijo en el servidor, que es 0.
         Assert.False(r.Exito);
         Assert.Equal(Fallas.Conflicto, r.Codigo);
-        Assert.NotNull(CupoDe(perfil.Id)!.ReservadoHasta);   // sigue siendo solo una reserva
+        Assert.True(string.IsNullOrWhiteSpace(SuscripcionDe(perfil.Id).ReferenciaPasarela));
+    }
+
+    // ------------------------------------------------- Informe JQ-7 de Joaquín (PR #151)
+
+    /// <summary>
+    /// Defecto 1: la reserva de esta persona vencio, otra tomo ESE cupo y lo confirmo, y
+    /// despues llega el aviso de la primera. Con los 50 tomados no puede quedar como
+    /// fundadora sin cupo.
+    /// </summary>
+    [Fact]
+    public async Task Un_aviso_tardio_cuando_el_cupo_ya_es_de_otra_persona_no_crea_un_fundador_sin_cupo()
+    {
+        var tarde = await UnFundadorSinTarjeta();
+        await _cobros.IniciarInscripcionFundadorAsync(tarde.Id, "k1");
+        var intento = ElIntento();
+        var cupo = CupoDe(tarde.Id)!;
+
+        // Otra persona se queda con ESE cupo, confirmado, y los demas tambien estan tomados.
+        var otra = Guid.NewGuid();
+        cupo.PerfilPrestadorId = otra;
+        cupo.ReservadoHasta = null;
+        foreach (var c in _base.CuposFundador.Where(c => c.PerfilPrestadorId is null))
+            c.PerfilPrestadorId = Guid.NewGuid();
+
+        LaPasarelaResponde(intento);
+        var r = await _cobros.ConfirmarAsync(UnAviso());
+
+        Assert.True(r.Exito);                       // 200: la pasarela no tiene que reintentar
+        Assert.False(r.Valor!.Aprobado);
+        Assert.Equal(EstadoIntentoPago.Fallido, intento.Estado);
+
+        var s = SuscripcionDe(tarde.Id);
+        Assert.True(string.IsNullOrWhiteSpace(s.ReferenciaPasarela));   // no se guarda la tarjeta
+        Assert.Null(CupoDe(tarde.Id));               // no tiene cupo, y nadie le inventa uno
+        Assert.Equal(otra, cupo.PerfilPrestadorId);  // y el de la otra persona no se toca
+    }
+
+    /// <summary>
+    /// Igual que la anterior, pero quedan cupos libres: se le da uno de esos (decisión de
+    /// Pablo, 20-nov) y queda como fundadora, sin tocar el cupo de la otra persona.
+    /// </summary>
+    [Fact]
+    public async Task Un_aviso_tardio_con_cupos_libres_le_da_otro_cupo()
+    {
+        var tarde = await UnFundadorSinTarjeta();
+        await _cobros.IniciarInscripcionFundadorAsync(tarde.Id, "k1");
+        var intento = ElIntento();
+        var cupo = CupoDe(tarde.Id)!;
+        var numeroPerdido = cupo.Numero;
+
+        var otra = Guid.NewGuid();
+        cupo.PerfilPrestadorId = otra;
+        cupo.ReservadoHasta = null;
+
+        LaPasarelaResponde(intento);
+        var r = await _cobros.ConfirmarAsync(UnAviso());
+
+        Assert.True(r.Exito);
+        Assert.True(r.Valor!.Aprobado);
+        var nuevo = CupoDe(tarde.Id);
+        Assert.NotNull(nuevo);
+        Assert.NotEqual(numeroPerdido, nuevo!.Numero);
+        Assert.Null(nuevo.ReservadoHasta);                 // confirmado, no solo reservado
+        Assert.Equal(otra, cupo.PerfilPrestadorId);        // el de la otra persona no se toca
+        var s = SuscripcionDe(tarde.Id);
+        Assert.Equal("fundador", _base.Planes.Single(p => p.Id == s.PlanId).Codigo);
+    }
+
+    /// <summary>Defecto 2: volver a inscribir la tarjeta no regala otros 30 días.</summary>
+    [Fact]
+    public async Task Volver_a_inscribirse_siendo_fundador_no_corre_el_mes_gratis()
+    {
+        var perfil = await UnFundadorSinTarjeta();
+        await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
+        LaPasarelaResponde(ElIntento());
+        await _cobros.ConfirmarAsync(UnAviso());
+        var vigencia = SuscripcionDe(perfil.Id).VigenteHasta;   // Ahora + 30
+
+        _reloj.Avanzar(TimeSpan.FromDays(10));
+        await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k2");
+        var segunda = _base.IntentosDePago.Last();
+        _pasarela.Veredicto = new CobroResuelto(segunda.Id, "ref_2", true, 0, null);
+        var r = await _cobros.ConfirmarAsync(UnAviso());
+
+        Assert.True(r.Exito);
+        Assert.Equal(vigencia, SuscripcionDe(perfil.Id).VigenteHasta);   // no pasa a «hoy + 30»
+        Assert.Equal("ref_2", SuscripcionDe(perfil.Id).ReferenciaPasarela); // la tarjeta nueva sí queda
+    }
+
+    // ------------------------------------- Tomar el cupo SIN tarjeta (Pablo, 20-nov-2026)
+
+    [Fact]
+    public async Task Tomar_el_cupo_lo_deja_suyo_y_arranca_el_mes_gratis_sin_pasar_por_la_pasarela()
+    {
+        var perfil = UnPrestadorConSuscripcion(vigenteHasta: Ahora.AddDays(3));
+
+        var r = await _suscripciones.TomarCupoFundadorAsync(perfil.Id);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.False(r.Valor!.TarjetaInscrita);
+        Assert.Equal(Ahora.AddDays(30), r.Valor.MesGratisHasta);
+        Assert.Equal(CupoDe(perfil.Id)!.Numero, r.Valor.Numero);
+        Assert.Null(CupoDe(perfil.Id)!.ReservadoHasta);              // definitivo, no reserva
+        Assert.Equal(49, await _suscripciones.CuposFundadorDisponiblesAsync());
+
+        var s = SuscripcionDe(perfil.Id);
+        Assert.Equal((short)3, s.PlanId);
+        Assert.Equal(EstadoSuscripcion.Prueba, s.Estado);
+        Assert.Equal(Ahora.AddDays(30), s.VigenteHasta);
+        Assert.True(s.EstaVigente(Ahora));                           // aparece desde ya
+
+        Assert.Empty(_base.IntentosDePago);                          // nada de pasarela
+        Assert.Equal(0, _pasarela.InscripcionesPedidas);
+    }
+
+    [Fact]
+    public async Task Tomar_dos_veces_devuelve_el_mismo_cupo_y_no_estira_el_mes_gratis()
+    {
+        var perfil = UnPrestadorConSuscripcion();
+        var primero = await _suscripciones.TomarCupoFundadorAsync(perfil.Id);
+
+        _reloj.Avanzar(TimeSpan.FromDays(10));
+        var segundo = await _suscripciones.TomarCupoFundadorAsync(perfil.Id);
+
+        Assert.True(segundo.Exito);
+        Assert.Equal(primero.Valor!.Numero, segundo.Valor!.Numero);
+        Assert.Equal(Ahora.AddDays(30), SuscripcionDe(perfil.Id).VigenteHasta);
+        Assert.Equal(49, await _suscripciones.CuposFundadorDisponiblesAsync());
+    }
+
+    [Fact]
+    public async Task Sin_cupos_libres_no_se_toma_y_se_ofrece_el_mensual()
+    {
+        SinCuposLibres();
+        var perfil = UnPrestadorConSuscripcion();
+
+        var r = await _suscripciones.TomarCupoFundadorAsync(perfil.Id);
+
+        Assert.False(r.Exito);
+        Assert.Equal(Fallas.Conflicto, r.Codigo);
+        Assert.Contains("mensual", r.Mensaje!);
         Assert.Equal((short)1, SuscripcionDe(perfil.Id).PlanId);
+    }
+
+    [Fact]
+    public async Task Sin_suscripcion_no_se_toma_el_cupo()
+    {
+        var perfil = new PerfilPrestador { Id = Guid.NewGuid(), UsuarioId = Guid.NewGuid() };
+        _base.PerfilesPrestador.Add(perfil);
+
+        var r = await _suscripciones.TomarCupoFundadorAsync(perfil.Id);
+
+        Assert.False(r.Exito);
+        Assert.Equal(Fallas.Conflicto, r.Codigo);
+        Assert.Equal(50, await _suscripciones.CuposFundadorDisponiblesAsync());
+    }
+
+    /// <summary>
+    /// La regla de Pablo, entera: termina el mes gratis sin tarjeta, el cupo queda libre y la
+    /// ficha deja de aparecer. Y no se puede volver a tomar para tener otro mes gratis.
+    /// </summary>
+    [Fact]
+    public async Task Sin_tarjeta_al_terminar_el_mes_gratis_pierde_el_cupo_y_no_lo_vuelve_a_tomar()
+    {
+        var perfil = await UnFundadorSinTarjeta(vigenteHasta: Ahora.AddDays(3));
+
+        _reloj.Avanzar(TimeSpan.FromDays(31));
+        await _suscripciones.CorrerDiarioAsync();
+
+        Assert.Null(CupoDe(perfil.Id));
+        Assert.Equal(50, await _suscripciones.CuposFundadorDisponiblesAsync());
+        Assert.False(await _suscripciones.EstaVigenteAsync(perfil.Id));     // fuera de la busqueda
+
+        var otraVez = await _suscripciones.TomarCupoFundadorAsync(perfil.Id);
+        Assert.False(otraVez.Exito);
+        Assert.Contains("mes gratis", otraVez.Mensaje!);
+        Assert.Null(CupoDe(perfil.Id));
+    }
+
+    /// <summary>
+    /// ES-1 (decision de Pablo, 20-nov-2026). Antes esta prueba decia lo contrario
+    /// («con tarjeta inscrita el vencimiento no le quita el cupo»). Ahora la tarjeta sola no
+    /// basta: llegar al vencimiento sin que se haya podido cobrar le quita el cupo igual que
+    /// a quien nunca la inscribio. A quien SI se le cobro no le llega el vencimiento.
+    /// </summary>
+    [Fact]
+    public async Task Con_tarjeta_inscrita_pero_sin_pago_el_vencimiento_tambien_le_quita_el_cupo()
+    {
+        var perfil = await UnFundadorSinTarjeta(vigenteHasta: Ahora.AddDays(3));
+        await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
+        LaPasarelaResponde(ElIntento());
+        await _cobros.ConfirmarAsync(UnAviso());
+
+        _reloj.Avanzar(TimeSpan.FromDays(31));
+        await _suscripciones.CorrerDiarioAsync();
+
+        Assert.Null(CupoDe(perfil.Id));
+        Assert.Equal(50, await _suscripciones.CuposFundadorDisponiblesAsync());
+    }
+
+    [Fact]
+    public async Task El_aviso_de_que_termina_el_mes_gratis_le_pide_la_tarjeta_a_quien_no_la_tiene()
+    {
+        var sinTarjeta = await UnFundadorSinTarjeta(vigenteHasta: Ahora.AddDays(3));
+        var conTarjeta = await UnFundadorSinTarjeta(vigenteHasta: Ahora.AddDays(3));
+        await _cobros.IniciarInscripcionFundadorAsync(conTarjeta.Id, "k1");
+        LaPasarelaResponde(ElIntento());
+        await _cobros.ConfirmarAsync(UnAviso());
+
+        _reloj.Avanzar(TimeSpan.FromDays(25));   // le quedan 5 dias: toca el aviso de 7
+        await _suscripciones.CorrerDiarioAsync();
+
+        var avisos = _cola.Encoladas.Where(n => n.Tipo == TipoNotificacion.SuscripcionPorVencer).ToList();
+        Assert.Equal(2, avisos.Count);
+        var delSinTarjeta = Assert.Single(avisos, n => n.DestinatarioId == sinTarjeta.UsuarioId);
+        var delConTarjeta = Assert.Single(avisos, n => n.DestinatarioId == conTarjeta.UsuarioId);
+        Assert.Equal("si", CargaDeAviso.LeerCampo(delSinTarjeta.Cuerpo, "sinTarjeta"));
+        Assert.Null(CargaDeAviso.LeerCampo(delConTarjeta.Cuerpo, "sinTarjeta"));
+    }
+
+    [Fact]
+    public async Task Mi_suscripcion_dice_si_es_fundador_y_si_tiene_tarjeta()
+    {
+        var perfil = await UnFundadorSinTarjeta();
+        var antes = (await _suscripciones.DePrestadorAsync(perfil.Id)).Valor!;
+
+        await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
+        LaPasarelaResponde(ElIntento());
+        await _cobros.ConfirmarAsync(UnAviso());
+        var despues = (await _suscripciones.DePrestadorAsync(perfil.Id)).Valor!;
+
+        Assert.True(antes.EsFundador);
+        Assert.False(antes.TarjetaInscrita);
+        Assert.True(despues.TarjetaInscrita);
     }
 }

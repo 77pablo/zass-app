@@ -154,6 +154,19 @@ public sealed class RepositorioResenasEnMemoria : IRepositorioResenas
         Task.FromResult(Reportes.Any(r => r.ResenaId == resenaId && r.ReportadoPor == usuarioId
             && r.Estado is EstadoReporte.Abierto or EstadoReporte.EnRevision));
 
+    public Task<bool> TieneReporteMantenidoAsync(Guid resenaId, Guid usuarioId, CancellationToken ct = default) =>
+        Task.FromResult(Reportes.Any(r => r.ResenaId == resenaId && r.ReportadoPor == usuarioId
+            && r.Estado == EstadoReporte.ResueltoMantiene));
+
+    public Task<IReadOnlyList<Guid>> ReportantesGravesAbiertosAsync(Guid resenaId, CancellationToken ct = default)
+    {
+        IReadOnlyList<Guid> r = Reportes
+            .Where(x => x.ResenaId == resenaId && x.Estado is EstadoReporte.Abierto or EstadoReporte.EnRevision
+                && x.EsGrave())
+            .Select(x => x.ReportadoPor).Distinct().ToList();
+        return Task.FromResult(r);
+    }
+
     public Task<ReporteResena?> ReportePorIdAsync(Guid reporteId, CancellationToken ct = default) =>
         Task.FromResult(Reportes.FirstOrDefault(r => r.Id == reporteId));
 

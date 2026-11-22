@@ -195,6 +195,20 @@ public sealed class RepositorioResenasEfCore : IRepositorioResenas
             r => r.ResenaId == resenaId && r.ReportadoPor == usuarioId
                  && (r.Estado == EstadoReporte.Abierto || r.Estado == EstadoReporte.EnRevision), ct);
 
+    public Task<bool> TieneReporteMantenidoAsync(Guid resenaId, Guid usuarioId, CancellationToken ct = default) =>
+        _ctx.ReportesResena.AnyAsync(
+            r => r.ResenaId == resenaId && r.ReportadoPor == usuarioId
+                 && r.Estado == EstadoReporte.ResueltoMantiene, ct);
+
+    public async Task<IReadOnlyList<Guid>> ReportantesGravesAbiertosAsync(
+        Guid resenaId, CancellationToken ct = default) =>
+        // ReporteResena.EsGrave escrita para que EF la traduzca.
+        await _ctx.ReportesResena
+            .Where(r => r.ResenaId == resenaId
+                && (r.Estado == EstadoReporte.Abierto || r.Estado == EstadoReporte.EnRevision)
+                && (r.Motivo == MotivoReporte.DatosPersonales || r.Motivo == MotivoReporte.LenguajeDeOdio))
+            .Select(r => r.ReportadoPor).Distinct().ToListAsync(ct);
+
     public Task<ReporteResena?> ReportePorIdAsync(Guid reporteId, CancellationToken ct = default) =>
         _ctx.ReportesResena.AsNoTracking().FirstOrDefaultAsync(r => r.Id == reporteId, ct);
 

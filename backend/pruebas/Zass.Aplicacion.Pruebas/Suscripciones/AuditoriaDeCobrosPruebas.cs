@@ -112,6 +112,7 @@ public class AuditoriaDeCobrosPruebas
 
         // 5 · La inscripcion del cupo fundador, con su cobro de cero pesos.
         var cuatro = UnPrestadorConSuscripcion();
+        Assert.True((await _suscripciones.TomarCupoFundadorAsync(cuatro.Id)).Exito);
         Assert.True((await _cobros.IniciarInscripcionFundadorAsync(cuatro.Id, "k-ins")).Exito);
         var intentoCuatro = _base.IntentosDePago.Single(i => i.PerfilPrestadorId == cuatro.Id);
         _pasarela.Veredicto = new CobroResuelto(intentoCuatro.Id, "ref-ins", true, 0, null);
