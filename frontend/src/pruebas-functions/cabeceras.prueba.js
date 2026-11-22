@@ -65,6 +65,35 @@ describe('las Functions llevan las mismas cabeceras que public/_headers (116)', 
     }
   })
 
+  it('el 503 en JSON (lo que no pide HTML) tambien, y conserva el Retry-After', async () => {
+    const respuesta = await middleware({
+      request: new Request('https://zass.cl/api/planes', { headers: { accept: 'application/json' } }),
+      env: {},
+      next: vi.fn(),
+    })
+
+    expect(respuesta.status).toBe(503)
+    expect(respuesta.headers.get('retry-after')).toBe('3600')
+    expect(respuesta.headers.get('content-type')).toMatch(/application\/problem\+json/)
+    for (const [nombre, valor] of Object.entries(CABECERAS_DE_SEGURIDAD)) {
+      expect(respuesta.headers.get(nombre)).toBe(valor)
+    }
+  })
+
+  it('la redireccion del pase (302) tambien, y sigue dejando la cookie', async () => {
+    const respuesta = await middleware({
+      request: new Request('https://zass.cl/?pase=pase-de-prueba-largo', { headers: { accept: 'text/html' } }),
+      env: { MANTENIMIENTO_PASE: 'pase-de-prueba-largo' },
+      next: vi.fn(),
+    })
+
+    expect(respuesta.status).toBe(302)
+    expect(respuesta.headers.get('set-cookie')).toMatch(/^zass_pase=/)
+    for (const [nombre, valor] of Object.entries(CABECERAS_DE_SEGURIDAD)) {
+      expect(respuesta.headers.get(nombre)).toBe(valor)
+    }
+  })
+
   it('con el sitio abierto, a lo que arma una Function se le agregan', async () => {
     const respuesta = await middleware({
       request: new Request('https://zass.cl/prestadores/ana'),

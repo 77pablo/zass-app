@@ -15,6 +15,9 @@ permissions:
 
 jobs:
   volcar:
+    # Los secretos viven en el entorno «copias», que solo se usa desde main: una rama o un PR
+    # no pueden leerlos aunque alguien con escritura agregue un flujo (auditoria del 22-nov).
+    environment: copias
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

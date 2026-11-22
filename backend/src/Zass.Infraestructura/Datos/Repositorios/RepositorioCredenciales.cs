@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
 using Zass.Dominio.Credenciales;
+using Zass.Dominio.Suscripciones;
 
 namespace Zass.Infraestructura.Datos.Repositorios;
 
@@ -16,7 +17,8 @@ public sealed class RepositorioCredencialesEfCore : IRepositorioCredenciales
 
     public async Task<IReadOnlyList<Credencial>> DePrestadorAsync(
         Guid perfilPrestadorId, CancellationToken ct = default) =>
-        await ConDetalle()
+        // Con las verificaciones: de ahi sale el motivo de una rechazada para «Mis credenciales».
+        await ConDetalle().Include(c => c.Verificaciones)
             .Where(c => c.PerfilPrestadorId == perfilPrestadorId)
             .OrderByDescending(c => c.CreadaEn).ThenBy(c => c.Id)
             .ToListAsync(ct);
@@ -24,7 +26,10 @@ public sealed class RepositorioCredencialesEfCore : IRepositorioCredenciales
     public async Task<IReadOnlyList<Credencial>> PublicasDePrestadorAsync(
         Guid perfilPrestadorId, CancellationToken ct = default) =>
         await _ctx.Credenciales.Include(c => c.EntidadCertificadora)
-            .Where(c => c.PerfilPrestadorId == perfilPrestadorId && c.Estado != EstadoCredencial.Borrador)
+            // Credencial.EsVisibleAlPublico, escrita para que EF la traduzca: sin borradores y sin
+            // rechazadas (decision de Pablo, 21-nov-2026).
+            .Where(c => c.PerfilPrestadorId == perfilPrestadorId
+                && c.Estado != EstadoCredencial.Borrador && c.Estado != EstadoCredencial.Rechazada)
             .ToListAsync(ct);
 
     public Task<Credencial?> PorIdAsync(Guid id, CancellationToken ct = default) =>
@@ -33,9 +38,34 @@ public sealed class RepositorioCredencialesEfCore : IRepositorioCredenciales
     public Task<int> ContarDePrestadorAsync(Guid perfilPrestadorId, CancellationToken ct = default) =>
         _ctx.Credenciales.CountAsync(c => c.PerfilPrestadorId == perfilPrestadorId, ct);
 
-    public Task<bool> TieneVerificadaAsync(Guid perfilPrestadorId, CancellationToken ct = default) =>
+    public Task<bool> TieneVerificadaAsync(Guid perfilPrestadorId, DateOnly hoy, CancellationToken ct = default) =>
+        // Credencial.TieneSelloVigente, escrita para que EF la traduzca.
         _ctx.Credenciales.AnyAsync(
-            c => c.PerfilPrestadorId == perfilPrestadorId && c.Estado == EstadoCredencial.Verificada, ct);
+            c => c.PerfilPrestadorId == perfilPrestadorId && c.Estado == EstadoCredencial.Verificada
+                && (c.VenceEn == null || c.VenceEn >= hoy), ct);
+
+    public async Task<IReadOnlyList<CredencialPorVencer>> VerificadasPasadasDeFechaAsync(
+        DateOnly hoy, int limite, CancellationToken ct = default) =>
+        await _ctx.Credenciales.AsNoTracking()
+            .Where(c => c.Estado == EstadoCredencial.Verificada && c.VenceEn != null && c.VenceEn < hoy)
+            .OrderBy(c => c.VenceEn).ThenBy(c => c.Id)
+            .Take(limite)
+            .Select(c => new CredencialPorVencer(c.Id, c.PerfilPrestador!.UsuarioId, c.Nombre, c.VenceEn!.Value))
+            .ToListAsync(ct);
+
+    public async Task<bool> VencerSiCorrespondeAsync(Guid credencialId, DateOnly hoy, CancellationToken ct = default)
+    {
+        // Lo mismo que Credencial.Revocar (estado y reserva), pero condicional y atómico.
+        var filas = await _ctx.Credenciales
+            .Where(c => c.Id == credencialId && c.Estado == EstadoCredencial.Verificada
+                && c.VenceEn != null && c.VenceEn < hoy)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(c => c.Estado, EstadoCredencial.Vencida)
+                .SetProperty(c => c.ReservadaPor, (Guid?)null)
+                .SetProperty(c => c.ReservadaHasta, (DateTime?)null), ct);
+        if (filas == 1) await RefrescarAsync(credencialId, ct);
+        return filas == 1;
+    }
 
     public void Agregar(Credencial credencial) => _ctx.Credenciales.Add(credencial);
     public void Eliminar(Credencial credencial) => _ctx.Credenciales.Remove(credencial);
@@ -65,7 +95,16 @@ public sealed class RepositorioCredencialesEfCore : IRepositorioCredenciales
                 p => p.Id == c.PerfilPrestadorId && p.UsuarioId == verificadorId))
             // CC-03: sin las que otro tiene vigentes. Las mias si salen: es lo que tengo tomado.
             .Where(c => c.ReservadaHasta == null || c.ReservadaHasta < ahora || c.ReservadaPor == verificadorId)
-            .OrderBy(c => c.CreadaEn).ThenBy(c => c.Id)
+            // VerificacionPrioritaria: planes Profesional, Equipo y Fundador con suscripcion vigente (Prueba o Activa)
+            // salen antes. Dentro de cada grupo: mas antigua primero (CreadaEn, luego Id).
+            .OrderByDescending(c => _ctx.Suscripciones
+                .Where(s => s.PerfilPrestadorId == c.PerfilPrestadorId
+                    && (s.Estado == EstadoSuscripcion.Prueba || s.Estado == EstadoSuscripcion.Activa)
+                    && s.VigenteHasta > ahora)
+                .Select(s => s.Plan.VerificacionPrioritaria)
+                .FirstOrDefault())
+            .ThenBy(c => c.CreadaEn)
+            .ThenBy(c => c.Id)
             .ToListAsync(ct);
 
     public Task<Credencial?> PorIdParaRevisionAsync(Guid id, CancellationToken ct = default) =>

@@ -48,6 +48,8 @@ public sealed class AplicacionConProxy : WebApplicationFactory<Program>
             ["Zass:Tasa:P"] = limitePublico.ToString(),
             // Contraseñas filtradas: desactivado en pruebas para evitar llamadas a HIBP y usar el adaptador nulo.
             ["Zass:RevisarContrasenasFiltradas"] = "false",
+            // CorreoAlertasAdmin: requerido en Production por el validador; en pruebas usamos uno falso.
+            ["Zass:CorreoAlertasAdmin"] = "alertas@ejemplo.test",
         };
         if (limiteSalud is not null) _ajustes["Zass:Tasa:Salud"] = limiteSalud.ToString();
         if (proxies is not null) _ajustes[ProxiesDeConfianza.ClaveRedes] = proxies;
@@ -274,6 +276,7 @@ public class ProxiesDeConfianzaPruebas
             {
                 Content = JsonContent.Create(new
                 {
+                    tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true,
                     correo, contrasena = "contrasena-larga-1", nombre = "Prueba Falsa", rol = "buscador",
                 }),
             };
@@ -333,6 +336,7 @@ public class ProxiesDeConfianzaPruebas
             {
                 Content = JsonContent.Create(new
                 {
+                    tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true,
                     correo, contrasena = "contrasena-larga-1", nombre = "Prueba Proxy", rol = "buscador",
                 }),
             };

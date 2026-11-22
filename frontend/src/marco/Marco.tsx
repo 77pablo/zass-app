@@ -1,5 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { Outlet, useLocation, useNavigationType } from 'react-router-dom'
+import { CompletarDatos } from '../funciones/identidad/CompletarDatos'
+import { faltanDatos } from '../funciones/identidad/datosDeCuenta'
+import { useSesion } from '../sesion/contexto'
 import { BarraInferior } from './BarraInferior'
 import { Cabecera } from './Cabecera'
 import { ProveedorDeMenuMovil } from './ProveedorDeMenuMovil'
@@ -8,6 +11,9 @@ import { TituloCompacto } from './TituloCompacto'
 
 /** Las raices de las pestañas de abajo: entre ellas iOS no empuja, cambia en el sitio. */
 const RAICES = new Set(['/', '/buscar', '/entrar', '/mis-citas'])
+
+/** ES-2: lo que se puede leer aunque falten datos de la cuenta. */
+const RUTAS_LEGALES = new Set(['/terminos', '/privacidad'])
 
 /**
  * Lo que rodea a toda pagina. Al cambiar de pagina el navegador, en una aplicacion de una
@@ -21,6 +27,9 @@ export function Marco() {
   // La ruta de la ultima animacion: en la primera carga (y en el doble efecto del modo estricto)
   // es la misma, y no se anima.
   const anterior = useRef(pathname)
+  const { estado, usuario } = useSesion()
+  const pideDatos = estado === 'dentro' && faltanDatos(usuario?.datosPendientes)
+    && !RUTAS_LEGALES.has(pathname)
 
   useEffect(() => {
     if (hash === '') window.scrollTo(0, 0)
@@ -58,7 +67,9 @@ export function Marco() {
       <Cabecera />
       <TituloCompacto />
       <main id="contenido" tabIndex={-1} ref={principal}>
-        <Outlet />
+        {/* ES-2: mientras a la cuenta le falten datos, esta pantalla va EN LUGAR de la página.
+            Los textos legales quedan abiertos: hay que poder leer qué se acepta. */}
+        {pideDatos ? <CompletarDatos /> : <Outlet />}
       </main>
       <Pie />
     </ProveedorDeMenuMovil>

@@ -31,6 +31,12 @@ public sealed class OpcionesFondo
     public int CitasCadaMinutos { get; set; } = 15;
 
     /// <summary>
+    /// Cada cuánto se purgan las cuentas que no verificaron el correo en 72 h (auditoría
+    /// 22-nov-2026). Cada hora: una cuenta queda retenida a lo más 73 h, no 96.
+    /// </summary>
+    public int CuentasSinVerificarCadaMinutos { get; set; } = 60;
+
+    /// <summary>
     /// Cuánto se reserva el trabajo quien lo toma. Tiene que superar de sobra lo que tarda:
     /// si vence a mitad, otra réplica lo retomaría en paralelo. Vencer y avisar son dos
     /// consultas y unos cuantos INSERT, así que diez minutos es holgado.

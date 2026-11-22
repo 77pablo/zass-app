@@ -1,0 +1,166 @@
+import type {
+  DecisionDeModeracion, MotivoDeRechazo, ResultadoDeVerificacion, TipoDeCredencialInterna,
+} from './servicio'
+import { MOTIVOS_DE_REPORTE } from '../resenas/servicio'
+
+/*
+ * JQ-11. Textos del panel interno. PROPUESTA: los aprueba Joaquín (van en «Textos nuevos» del PR).
+ * Los mensajes de error de la API (409, 422, validación) NO se reescriben aquí: se muestran tal cual.
+ */
+
+export const ENLACE_MENU = 'Panel interno'
+
+export const TITULO_PANEL = 'Panel interno'
+export const INTRO_PANEL = 'Herramientas para operar ZASS! Todo lo que hagas aquí queda registrado.'
+export const SECCION_VERIFICACION = 'Verificación de credenciales'
+export const SECCION_VERIFICACION_BAJADA = 'Revisa los títulos y certificados que mandan los prestadores.'
+
+export const TITULO_MESA = 'Verificación de credenciales'
+export const ERROR_COLA = 'No pudimos cargar la cola.'
+export const REINTENTAR = 'Reintentar'
+export const COLA_VACIA = 'No hay credenciales esperando revisión.'
+export const VOLVER_AL_PANEL = 'Volver al panel'
+
+export const ETIQUETA_EN_COLA_DESDE = 'Creada el'
+export const ETIQUETA_ENTIDAD = 'Entidad'
+export const SIN_ENTIDAD = 'Sin entidad'
+export const ENTIDAD_NO_RECONOCIDA = 'Entidad no reconocida'
+export const SIN_DOCUMENTOS = 'Sin documentos'
+export const VENCIMIENTO_PASADO = 'Vencimiento pasado'
+export const documentosEnCola = (n: number) => (n === 1 ? '1 documento' : `${n} documentos`)
+
+export const BOTON_TOMAR = 'Tomar'
+export const BOTON_SEGUIR = 'Seguir revisando'
+export const TOMANDO = 'Tomando…'
+
+export const reservaRestante = (min: number) =>
+  min === 1 ? 'Te queda 1 minuto de reserva.' : `Te quedan ${min} minutos de reserva.`
+export const RESERVA_VENCIDA = 'Tu reserva venció. Vuelve a la cola y tómala de nuevo para resolverla.'
+export const VOLVER_A_LA_COLA = 'Volver a la cola'
+
+export const TITULO_DOCUMENTOS = 'Documentos de respaldo'
+export const SIN_DOCUMENTOS_DETALLE =
+  'Esta credencial llegó sin documentos. Si la verificas, explica cómo la comprobaste.'
+export const DOCUMENTOS_NO_LLEGARON =
+  'No pudimos cargar los documentos. Recarga la página y, si sigue igual, avisa al equipo técnico.'
+export const ABRIR_DOCUMENTO = 'Abrir'
+export const ABRE_EN_PESTANA = '(se abre en una pestaña nueva)'
+
+export const TITULO_RESOLVER = 'Resolver'
+export const ETIQUETA_RESULTADO = '¿Qué haces con esta credencial?'
+export const ETIQUETA_MOTIVO = 'Motivo del rechazo'
+export const ELEGIR_MOTIVO = 'Elige un motivo'
+export const ETIQUETA_DETALLE = 'Detalle'
+export const AYUDA_DETALLE_RECHAZO = 'El prestador lo va a leer.'
+export const AYUDA_DETALLE_ANTECEDENTES = 'Escribe qué le falta mandar.'
+export const AYUDA_DETALLE_VERIFICAR = 'Opcional.'
+export const FALTA_MOTIVO = 'Elige el motivo del rechazo.'
+export const BOTON_RESOLVER = 'Guardar resolución'
+export const RESOLVIENDO = 'Guardando…'
+
+export const RESULTADOS: { valor: ResultadoDeVerificacion; texto: string }[] = [
+  { valor: 'Verificada', texto: 'Verificar' },
+  { valor: 'Rechazada', texto: 'Rechazar' },
+  { valor: 'AntecedentesSolicitados', texto: 'Pedir antecedentes' },
+]
+
+export const MOTIVO: Record<MotivoDeRechazo, string> = {
+  Ilegible: 'El documento no se lee',
+  NoCorresponde: 'El documento no corresponde a la credencial',
+  EntidadNoReconocida: 'La entidad no está reconocida',
+  DocumentoVencido: 'El documento está vencido',
+  SospechaAdulteracion: 'Sospecha de adulteración',
+}
+
+export const TIPO: Record<TipoDeCredencialInterna, string> = {
+  Titulo: 'Título',
+  Certificacion: 'Certificación',
+  Curso: 'Curso',
+  Colegiatura: 'Colegiatura',
+}
+
+export const RESUELTA: Record<ResultadoDeVerificacion, string> = {
+  Verificada: 'Listo: la credencial quedó verificada.',
+  Rechazada: 'Listo: la credencial quedó rechazada y el prestador recibirá el motivo.',
+  AntecedentesSolicitados: 'Listo: le pedimos antecedentes al prestador.',
+}
+
+// ---------------------------------------------------------------- JQ-12 · moderación (PROPUESTA)
+
+export const SECCION_MODERACION = 'Reseñas reportadas'
+export const SECCION_MODERACION_BAJADA = 'Decide si una reseña reportada se mantiene o se retira.'
+export const SIN_SECCIONES = 'Tu cuenta no tiene ninguna herramienta asignada.'
+
+export const TITULO_REPORTES = 'Reseñas reportadas'
+export const ERROR_REPORTES = 'No pudimos cargar los reportes.'
+export const REPORTES_VACIOS = 'No hay reportes abiertos.'
+export const RESENA_DE = (prestador: string) => `Reseña sobre ${prestador}`
+export const estrellas = (n: number) => (n === 1 ? '1 estrella' : `${n} estrellas`)
+export const REPORTADA_EL = 'Reportada el'
+export const ETIQUETA_MOTIVO_REPORTE = 'Motivo del reporte'
+export const ETIQUETA_DETALLE_REPORTE = 'Lo que escribió quien reportó'
+export const RESENA_OCULTA = 'Oculta mientras se revisa'
+export const ETIQUETA_DECISION = 'Decisión'
+export const ETIQUETA_MOTIVO_DECISION = 'Motivo de la decisión'
+export const ayudaMotivoDecision = (min: number) => `Al menos ${min} caracteres. Queda registrado.`
+export const faltaMotivoDecision = (min: number) => `Escribe el motivo de la decisión (al menos ${min} caracteres).`
+export const BOTON_DECIDIR = 'Guardar decisión'
+
+export const DECISIONES: { valor: DecisionDeModeracion; texto: string }[] = [
+  { valor: 'mantener', texto: 'Mantener la reseña' },
+  { valor: 'retirar', texto: 'Retirar la reseña' },
+]
+
+export const DECIDIDA: Record<DecisionDeModeracion, string> = {
+  mantener: 'Listo: la reseña se mantiene.',
+  retirar: 'Listo: la reseña quedó retirada.',
+}
+
+
+/** Las mismas etiquetas que ve quien reporta (funciones/resenas, RN-S5-07): no se inventan otras. */
+export const etiquetaDeMotivoDeReporte = (m: string) =>
+  MOTIVOS_DE_REPORTE.find((x) => x.valor === m)?.etiqueta ?? m
+
+// ---------------------------------------------------------------- JQ-13 · tarjetas y auditoría (PROPUESTA)
+
+export const SECCION_TARJETAS = 'Emitir tarjetas'
+export const SECCION_TARJETAS_BAJADA = 'Crea una tarjeta nueva con su código de activación.'
+export const SECCION_AUDITORIA = 'Auditoría'
+export const SECCION_AUDITORIA_BAJADA = 'Busca el rastro de lo que pasó con un registro o con una persona.'
+
+export const TITULO_EMITIR = 'Emitir tarjetas'
+export const INTRO_EMITIR =
+  'Cada tarjeta sale con un código de activación que se muestra una sola vez. Imprímelo en la etiqueta del sobre antes de salir de esta pantalla.'
+export const BOTON_EMITIR = 'Emitir una tarjeta'
+export const EMITIENDO = 'Emitiendo…'
+export const AVISO_UNA_VEZ = 'Anótalo o imprímelo ahora: no lo volveremos a mostrar.'
+export const ETIQUETA_ENLACE = 'Enlace de la tarjeta'
+export const ETIQUETA_CODIGO = 'Código de activación'
+export const ETIQUETA_VENCE = 'El código vence el'
+export const qrDeTarjeta = (enlace: string) => `Código QR de ${enlace}`
+export const BOTON_IMPRIMIR = 'Imprimir la etiqueta'
+export const BOTON_LISTO = 'Ya lo guardé, emitir otra'
+export const CONFIRMAR_LISTO = 'El código no se va a volver a mostrar. ¿Ya lo imprimiste o anotaste?'
+
+export const TITULO_AUDITORIA = 'Auditoría'
+export const ETIQUETA_BUSCAR_POR = 'Buscar por'
+export const POR_ENTIDAD = 'Registro (entidad e identificador)'
+export const POR_ACTOR = 'Persona que actuó'
+export const ETIQUETA_ENTIDAD_AUD = 'Entidad'
+export const AYUDA_ENTIDAD_AUD = 'Como aparece en el registro, por ejemplo «Tarjeta», «credencial» o «resena».'
+export const ETIQUETA_ENTIDAD_ID = 'Identificador del registro'
+export const ETIQUETA_ACTOR_ID = 'Identificador de la persona'
+export const FALTA_ENTIDAD = 'Escribe la entidad.'
+export const GUID_MALO = 'Pega el identificador completo: son 36 caracteres, con guiones.'
+export const BOTON_BUSCAR = 'Buscar'
+export const BUSCANDO = 'Buscando…'
+export const SIN_RESULTADOS = 'No hay registros de auditoría para esa búsqueda.'
+export const BOTON_MAS_ANTIGUOS = 'Ver más antiguos'
+export const FIN_DEL_RASTRO = 'No hay registros más antiguos.'
+export const COL_CUANDO = 'Cuándo'
+export const COL_ACCION = 'Acción'
+export const COL_ENTIDAD = 'Entidad'
+export const COL_ACTOR = 'Quién'
+export const COL_IP = 'IP'
+export const COL_CONTEXTO = 'Contexto'
+export const SIN_DATO = '—'

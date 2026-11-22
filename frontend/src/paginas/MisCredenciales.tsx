@@ -8,6 +8,7 @@ import {
   urlDeDocumento,
   type MiCredencial, type TipoDeCredencial,
 } from '../funciones/perfil/servicio'
+import { MOTIVO } from '../funciones/interno/textos'
 import { Icono } from '../marco/Icono'
 import { etiquetaDeTipo, hoyISO } from '../marco/texto'
 
@@ -166,6 +167,14 @@ export function MisCredenciales({
                     {[etiquetaDeTipo(c.tipo), c.entidad, c.obtenidaEn.slice(0, 4)].filter(Boolean).join(' · ')}
                   </small>
                   <span className={estado.sello ? 'sello' : 'dato'}>{estado.texto}</span>
+                  {c.estado === 'Rechazada' && (
+                    // Desde el 21-nov-2026 una rechazada no sale en la ficha pública: aquí se dice
+                    // por qué y que no se ve. (Texto PROPUESTO: lo aprueba Pablo.)
+                    <small>
+                      {c.motivoDelRechazo ? `Motivo: ${MOTIVO[c.motivoDelRechazo]}. ` : ''}
+                      No se muestra en tu ficha pública.
+                    </small>
+                  )}
                   {c.estado === 'Borrador' && (
                     <button
                       type="button" className="editar" disabled={enviando !== null}

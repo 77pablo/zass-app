@@ -54,6 +54,12 @@ Crea `datos-pg\` en el puerto 5433, guarda la clave del rol `zass` en `.clave-pg
 
 Para levantar y bajar el servidor: `.\iniciar-postgres.bat` y `.\detener-postgres.bat`.
 
+> **¿Ya tienes el clúster creado?** El script `preparar-postgres.ps1` solo vale para clústeres nuevos. Para uno existente, con el servidor arriba, en PowerShell:
+> ```powershell
+> .\herramientas\pgsql\bin\psql.exe -h 127.0.0.1 -p 5433 -U zass -d postgres -c "ALTER SYSTEM SET max_connections = 200"
+> ```
+> y después `.\detener-postgres.bat` y `.\iniciar-postgres.bat` (el cambio necesita reiniciar). Para comprobarlo, el mismo psql con `-c "SHOW max_connections"` debe decir 200.
+
 ## 4. Secretos de la API (User Secrets)
 
 Desde `backend\src\Zass.Api`:

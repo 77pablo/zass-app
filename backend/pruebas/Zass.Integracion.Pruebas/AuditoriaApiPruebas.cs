@@ -224,7 +224,7 @@ public class AuditoriaApiPruebas : IAsyncLifetime
         var correo = $"api-{Guid.NewGuid():N}@zass.local";
         var respuesta = await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo,
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo,
             contrasena = "contrasena-larga-1",
             nombre = "Usuario Test",
             rol

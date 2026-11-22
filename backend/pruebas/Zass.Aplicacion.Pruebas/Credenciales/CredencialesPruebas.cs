@@ -266,6 +266,37 @@ public class CredencialesPruebas
         Assert.False(mias.Single(m => m.Nombre == "Rechazada").TieneRespaldo);
     }
 
+    /// <summary>
+    /// Una rechazada ya no sale en la ficha, así que su dueño tiene que poder saber por qué: el
+    /// motivo tipificado del ÚLTIMO rechazo. Las que no están rechazadas no traen motivo, aunque
+    /// alguna vez lo estuvieran.
+    /// </summary>
+    [Fact]
+    public async Task Mis_credenciales_trae_el_motivo_del_ultimo_rechazo_solo_si_esta_rechazada()
+    {
+        var rechazada = Existente(Yo, EstadoCredencial.Rechazada, "Rechazada");
+        rechazada.Verificaciones.Add(new Verificacion
+        {
+            Resultado = ResultadoVerificacion.Rechazada, Motivo = MotivoRechazo.Ilegible,
+            ResueltaEn = _reloj.Ahora.AddDays(-3), Detalle = "nota interna vieja",
+        });
+        rechazada.Verificaciones.Add(new Verificacion
+        {
+            Resultado = ResultadoVerificacion.Rechazada, Motivo = MotivoRechazo.SospechaAdulteracion,
+            ResueltaEn = _reloj.Ahora.AddDays(-1), Detalle = "nota interna",
+        });
+        var reenviada = Existente(Yo, EstadoCredencial.EnRevision, "Reenviada");
+        reenviada.Verificaciones.Add(new Verificacion
+        {
+            Resultado = ResultadoVerificacion.Rechazada, Motivo = MotivoRechazo.Ilegible, ResueltaEn = _reloj.Ahora.AddDays(-2),
+        });
+
+        var mias = await _servicio.MisCredencialesAsync(Yo);
+
+        Assert.Equal(MotivoRechazo.SospechaAdulteracion, mias.Single(m => m.Nombre == "Rechazada").MotivoDelRechazo);
+        Assert.Null(mias.Single(m => m.Nombre == "Reenviada").MotivoDelRechazo);
+    }
+
     [Fact]
     public async Task Mis_credenciales_dice_si_la_entidad_esta_reconocida()
     {
@@ -292,12 +323,11 @@ public class CredencialesPruebas
     }
 
     /// <summary>
-    /// El público no distingue "en revisión", "rechazada" ni "vencida": las tres son "Declarada por
-    /// el usuario". Que se vea "rechazada" le diría a cualquiera algo que el prestador no eligió contar.
+    /// El público no distingue "en revisión" de "vencida": las dos son "Declarada por el usuario".
+    /// La rechazada ya no está aquí: desde el 21-nov-2026 no sale (prueba de abajo).
     /// </summary>
     [Theory]
     [InlineData(EstadoCredencial.EnRevision)]
-    [InlineData(EstadoCredencial.Rechazada)]
     [InlineData(EstadoCredencial.Vencida)]
     public async Task Todo_lo_que_no_tiene_sello_se_ve_como_declarada_por_el_usuario(EstadoCredencial estado)
     {
@@ -308,6 +338,31 @@ public class CredencialesPruebas
         Assert.Equal("Declarada por el usuario", p.Etiqueta);
         Assert.False(p.Verificada);
     }
+
+    /// <summary>
+    /// Decisión de Pablo (21-nov-2026): una rechazada desaparece de la ficha. Antes salía como
+    /// «declarada por el usuario», y un título falso seguía a la vista de todos.
+    /// </summary>
+    [Fact]
+    public async Task El_publico_no_ve_las_rechazadas()
+    {
+        Existente(Yo, EstadoCredencial.Rechazada, "Rechazada");
+        Existente(Yo, EstadoCredencial.EnRevision, "En revision");
+
+        var publicas = await _servicio.CredencialesPublicasAsync(Yo);
+
+        Assert.Equal(new[] { "En revision" }, publicas.Select(p => p.Nombre).ToArray());
+    }
+
+    /// <summary>Qué estados ve el público, escrito a mano: el resto del sistema se apoya en esto.</summary>
+    [Theory]
+    [InlineData(EstadoCredencial.Borrador, false)]
+    [InlineData(EstadoCredencial.EnRevision, true)]
+    [InlineData(EstadoCredencial.Verificada, true)]
+    [InlineData(EstadoCredencial.Rechazada, false)]
+    [InlineData(EstadoCredencial.Vencida, true)]
+    public void Los_estados_visibles_al_publico(EstadoCredencial estado, bool visible) =>
+        Assert.Equal(visible, Credencial.EsVisibleAlPublico(estado));
 
     [Fact]
     public async Task Las_verificadas_van_primero_y_se_ven_como_verificada()

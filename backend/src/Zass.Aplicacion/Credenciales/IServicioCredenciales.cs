@@ -123,6 +123,14 @@ public sealed record MiCredencialDto(
 {
     /// <summary>Los documentos de respaldo, sin la clave con que se guardan. Vacío si no tiene.</summary>
     public IReadOnlyList<MiDocumentoDto> Respaldo { get; init; } = Array.Empty<MiDocumentoDto>();
+
+    /// <summary>
+    /// Solo si está rechazada: el motivo tipificado del último rechazo (estados-credencial.md §3:
+    /// el prestador ve «Rechazada y el motivo»). Desde el 21-nov-2026 una rechazada ya no sale en
+    /// la ficha, así que el dueño tiene que poder saber por qué. El texto libre del Verificador,
+    /// quién la revisó y cuándo siguen sin salir.
+    /// </summary>
+    public MotivoRechazo? MotivoDelRechazo { get; init; }
 }
 
 /// <summary>Lo que ve cualquiera: sin estado interno, sin archivos, sin id.</summary>
