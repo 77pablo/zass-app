@@ -9,6 +9,7 @@ namespace Zass.Aplicacion.Identidad;
 public sealed record SegundoPasoCmd(string Desafio, string Codigo);
 public sealed record ConfirmarMfaCmd(string Codigo);
 public sealed record DesactivarMfaCmd(string Contrasena, string Codigo);
+public sealed record RegenerarCodigosMfaCmd(string Contrasena, string Codigo);
 
 public sealed record EstadoMfaDto(bool Activo, DateTime? ActivadoEn, int CodigosDeRespaldoRestantes, bool Obligatorio);
 public sealed record AltaMfaDto(string Secreto, string UriOtpauth);
@@ -47,11 +48,12 @@ public sealed class ServicioMfa
     private readonly IRelojSistema _reloj;
     private readonly IAuditor _auditor;
     private readonly ServicioSesion _sesion;
+    private readonly INotificaciones _avisos;
 
     public ServicioMfa(
         IRepositorioUsuarios usuarios, IUnidadDeTrabajo unidad, IHashContrasenas hash,
         IGeneradorSecretos secretos, ICifradoDeDatos cifrado, IRelojSistema reloj, IAuditor auditor,
-        ServicioSesion sesion)
+        ServicioSesion sesion, INotificaciones avisos)
     {
         _usuarios = usuarios;
         _unidad = unidad;
@@ -61,6 +63,7 @@ public sealed class ServicioMfa
         _reloj = reloj;
         _auditor = auditor;
         _sesion = sesion;
+        _avisos = avisos;
     }
 
     private enum CodigoAceptado { Ninguno, Totp, Respaldo }
@@ -179,6 +182,59 @@ public sealed class ServicioMfa
 
         _auditor.Registrar(Auditar.Entrada(
             "mfa_activado", "usuario", usuario.Id, ahora, actorId: usuario.Id, ip: ip));
+
+        // Decision de Pablo (22-nov-2026): un correo cada vez que se activa. A una cuenta que aun no
+        // la tenia, quien le robe la contraseña podria activarla con SU telefono; asi la dueña se
+        // entera. Va en la misma transaccion: si la activacion no se guarda, el correo tampoco.
+        _avisos.Encolar(new Notificacion
+        {
+            DestinatarioId = usuario.Id,
+            Tipo = TipoNotificacion.MfaActivado,
+            Canal = CanalNotificacion.Correo,
+            ClaveIdempotencia = $"mfa-activado:{usuario.Id:N}:{ahora.Ticks}",
+            Asunto = "Se activó la verificación en dos pasos en tu cuenta de ZASS!",
+            Cuerpo = "{}",
+            ProgramadaPara = ahora,
+        });
+
+        await _unidad.GuardarAsync(ct);
+        return Resultado.Ok(new CodigosDeRespaldoDto(codigos));
+    }
+
+    /// <summary>
+    /// API-84 (decision de Pablo, 22-nov-2026). Diez codigos de respaldo nuevos; los anteriores
+    /// dejan de servir. Pide lo mismo que desactivar (contrasena Y codigo), y los fallos suman al
+    /// mismo bloqueo: con la sesion robada sola no se pueden sacar codigos para entrar despues.
+    /// </summary>
+    public async Task<Resultado<CodigosDeRespaldoDto>> RegenerarCodigosAsync(
+        Guid usuarioId, RegenerarCodigosMfaCmd cmd, string? ip = null, CancellationToken ct = default)
+    {
+        var usuario = await _usuarios.PorIdAsync(usuarioId, ct);
+        if (usuario is null) return Resultado.Falla<CodigosDeRespaldoDto>(Fallas.NoEncontrado, "Esa cuenta no existe.");
+        if (!usuario.MfaActivo)
+            return Resultado.Falla<CodigosDeRespaldoDto>(Fallas.ReglaDeNegocio,
+                "La verificación en dos pasos no está activa.");
+
+        var ahora = _reloj.Ahora;
+        var contrasenaCorrecta = _hash.Verifica(cmd.Contrasena, usuario.HashContrasena);
+        var aceptado = contrasenaCorrecta && !usuario.EstaBloqueada(ahora)
+            ? await VerificarCodigoAsync(usuario, cmd.Codigo, ahora, ct)
+            : CodigoAceptado.Ninguno;
+
+        if (aceptado == CodigoAceptado.Ninguno)
+        {
+            await RegistrarFalloAsync(usuario, "regenerar_codigos", ip, ct);
+            return Resultado.Falla<CodigosDeRespaldoDto>(Fallas.ReglaDeNegocio, FalloDesactivar);
+        }
+
+        // Si se uso un codigo de respaldo para pedirlo, ya se gasto en la base (atomico); la lista
+        // entera se reemplaza igual, asi que no hace falta releerla.
+        var codigos = NuevosCodigosDeRespaldo();
+        usuario.MfaCodigosRespaldo = codigos.Select(c => HashRespaldo(usuario.Id, c.Replace("-", ""))).ToArray();
+        usuario.ActualizadoEn = ahora;
+        _auditor.Registrar(Auditar.Entrada(
+            "mfa_codigos_regenerados", "usuario", usuario.Id, ahora, actorId: usuario.Id,
+            contexto: new { con = aceptado == CodigoAceptado.Totp ? "totp" : "respaldo" }, ip: ip));
 
         await _unidad.GuardarAsync(ct);
         return Resultado.Ok(new CodigosDeRespaldoDto(codigos));

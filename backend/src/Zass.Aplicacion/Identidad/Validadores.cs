@@ -238,6 +238,16 @@ public sealed class ValidadorConfirmarMfa : AbstractValidator<ConfirmarMfaCmd>
     }
 }
 
+public sealed class ValidadorRegenerarCodigosMfa : AbstractValidator<RegenerarCodigosMfaCmd>
+{
+    public ValidadorRegenerarCodigosMfa()
+    {
+        RuleFor(x => x.Contrasena).NotEmpty().WithMessage("Escribe tu contraseña.")
+            .MaximumLength(Limites.ContrasenaMaxima);
+        RuleFor(x => x.Codigo).NotEmpty().WithMessage("Escribe el código.").MaximumLength(20);
+    }
+}
+
 public sealed class ValidadorDesactivarMfa : AbstractValidator<DesactivarMfaCmd>
 {
     public ValidadorDesactivarMfa()

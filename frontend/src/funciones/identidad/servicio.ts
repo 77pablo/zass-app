@@ -71,6 +71,11 @@ export async function confirmarAltaMfa(codigo: string): Promise<string[]> {
 }
 
 /** API-83. */
+/** API-84: diez códigos de respaldo nuevos; los anteriores dejan de servir. Pide contraseña y código. */
+export async function regenerarCodigosMfa(contrasena: string, codigo: string): Promise<string[]> {
+  return (await enviar<{ codigos: string[] }>('/api/mi/mfa/codigos', { contrasena, codigo })).codigos
+}
+
 export async function desactivarMfa(contrasena: string, codigo: string): Promise<void> {
   await enviar('/api/mi/mfa/desactivar', { contrasena, codigo })
 }

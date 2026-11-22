@@ -5,7 +5,7 @@ import { Aviso } from '../componentes/Aviso'
 import { Campo } from '../componentes/Campo'
 import { CodigoQr } from '../componentes/tarjetas/CodigoQr'
 import {
-  confirmarAltaMfa, desactivarMfa, estadoMfa, iniciarAltaMfa,
+  confirmarAltaMfa, desactivarMfa, estadoMfa, iniciarAltaMfa, regenerarCodigosMfa,
   type AltaMfa, type EstadoMfa,
 } from '../funciones/identidad/servicio'
 import { PaginaCargando } from '../marco/PaginaCargando'
@@ -20,7 +20,8 @@ function mensaje(e: unknown): string {
 }
 
 /**
- * «Mi cuenta» → Seguridad: activar o desactivar la verificación en dos pasos (API-80 a API-83).
+ * «Mi cuenta» → Seguridad: activar o desactivar la verificación en dos pasos (API-80 a API-83), y
+ * generar códigos de respaldo nuevos (API-84).
  * Obligatoria para las cuentas del panel interno (decisión de Pablo, 22-nov-2026); opcional
  * para el resto.
  */
@@ -32,6 +33,7 @@ export function MiSeguridad() {
   const [error, setError] = useState<string>()
   const [alta, setAlta] = useState<AltaMfa>()
   const [codigos, setCodigos] = useState<string[]>()
+  const [regenerados, setRegenerados] = useState(false)
 
   async function cargar() {
     try {
@@ -62,11 +64,17 @@ export function MiSeguridad() {
           {error && <Aviso>{error}</Aviso>}
 
           {codigos ? (
-            <CodigosDeRespaldo codigos={codigos} alTerminar={() => { setCodigos(undefined); void cargar() }} />
+            <CodigosDeRespaldo
+              codigos={codigos} nuevos={regenerados}
+              alTerminar={() => { setCodigos(undefined); setRegenerados(false); void cargar() }}
+            />
           ) : estado?.activo ? (
-            <Activa estado={estado} alDesactivar={() => void cargar()} />
+            <Activa
+              estado={estado} alDesactivar={() => void cargar()}
+              alRegenerar={(c) => { setRegenerados(true); setCodigos(c) }}
+            />
           ) : alta ? (
-            <Confirmar alta={alta} alConfirmar={(c) => { setAlta(undefined); setCodigos(c) }} />
+            <Confirmar alta={alta} alConfirmar={(c) => { setAlta(undefined); setRegenerados(false); setCodigos(c) }} />
           ) : estado ? (
             <>
               {estado.obligatorio && (
@@ -130,7 +138,7 @@ function Confirmar({ alta, alConfirmar }: { alta: AltaMfa; alConfirmar: (codigos
   )
 }
 
-function CodigosDeRespaldo({ codigos, alTerminar }: { codigos: string[]; alTerminar: () => void }) {
+function CodigosDeRespaldo({ codigos, nuevos, alTerminar }: { codigos: string[]; nuevos: boolean; alTerminar: () => void }) {
   const [copiados, setCopiados] = useState(false)
 
   async function copiar() {
@@ -145,7 +153,11 @@ function CodigosDeRespaldo({ codigos, alTerminar }: { codigos: string[]; alTermi
   return (
     <div>
       <p className="bloque-texto">
-        <strong>¡Listo! La verificación en dos pasos quedó activa.</strong>
+        <strong>
+          {nuevos
+            ? 'Listo: estos son tus códigos de respaldo nuevos. Los anteriores ya no sirven.'
+            : '¡Listo! La verificación en dos pasos quedó activa.'}
+        </strong>
       </p>
       <p className="bloque-texto">
         Guarda estos códigos de respaldo en un lugar seguro. Cada uno sirve <strong>una sola vez</strong> para
@@ -162,8 +174,13 @@ function CodigosDeRespaldo({ codigos, alTerminar }: { codigos: string[]; alTermi
   )
 }
 
-function Activa({ estado, alDesactivar }: { estado: EstadoMfa; alDesactivar: () => void }) {
-  const [abierto, setAbierto] = useState(false)
+function Activa({ estado, alDesactivar, alRegenerar }: {
+  estado: EstadoMfa
+  alDesactivar: () => void
+  alRegenerar: (codigos: string[]) => void
+}) {
+  // Las dos acciones piden lo mismo (contraseña y código): un solo formulario, con lo que se eligió.
+  const [accion, setAccion] = useState<'desactivar' | 'regenerar'>()
   const [contrasena, setContrasena] = useState('')
   const [codigo, setCodigo] = useState('')
   const [aviso, setAviso] = useState<string>()
@@ -178,8 +195,11 @@ function Activa({ estado, alDesactivar }: { estado: EstadoMfa; alDesactivar: () 
     setEnviando(true)
     setAviso(undefined)
     try {
-      await desactivarMfa(contrasena, codigo.trim())
-      alDesactivar()
+      if (accion === 'regenerar') alRegenerar(await regenerarCodigosMfa(contrasena, codigo.trim()))
+      else {
+        await desactivarMfa(contrasena, codigo.trim())
+        alDesactivar()
+      }
     } catch (e) {
       setAviso(mensaje(e))
     } finally {
@@ -198,17 +218,32 @@ function Activa({ estado, alDesactivar }: { estado: EstadoMfa; alDesactivar: () 
           Tu cuenta tiene acceso al panel interno: si la desactivas, no podrás usarlo hasta volver a activarla.
         </p>
       )}
-      {!abierto ? (
-        <button type="button" className="boton boton--tinta" onClick={() => setAbierto(true)}>
-          Desactivar
-        </button>
+      {!accion ? (
+        <>
+          <button type="button" className="boton" onClick={() => setAccion('regenerar')}>
+            Generar códigos de respaldo nuevos
+          </button>
+          <button type="button" className="boton boton--tinta" onClick={() => setAccion('desactivar')}>
+            Desactivar
+          </button>
+        </>
       ) : (
         <form onSubmit={alEnviar} noValidate>
+          {accion === 'regenerar' && (
+            <p className="bloque-texto">
+              Te daremos 10 códigos nuevos y los que tienes ahora dejarán de servir.
+            </p>
+          )}
           {aviso && <Aviso>{aviso}</Aviso>}
           <Campo id="contrasena-mfa" etiqueta="Contraseña" tipo="password" autoComplete="current-password" valor={contrasena} alCambiar={setContrasena} />
           <Campo id="codigo-desactivar" etiqueta="Código de la app o de respaldo" autoComplete="one-time-code" valor={codigo} alCambiar={setCodigo} maximo={20} />
           <button className="boton" type="submit" disabled={enviando}>
-            {enviando ? 'Desactivando...' : 'Desactivar la verificación en dos pasos'}
+            {accion === 'regenerar'
+              ? (enviando ? 'Generando...' : 'Generar los códigos nuevos')
+              : (enviando ? 'Desactivando...' : 'Desactivar la verificación en dos pasos')}
+          </button>
+          <button type="button" className="boton boton--tinta" onClick={() => { setAccion(undefined); setAviso(undefined) }}>
+            Volver
           </button>
         </form>
       )}
