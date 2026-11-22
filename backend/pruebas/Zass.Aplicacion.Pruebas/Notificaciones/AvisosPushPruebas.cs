@@ -32,6 +32,9 @@ public class AvisosPushPruebas
         {
             TipoNotificacion.CorreoVerificacion, TipoNotificacion.RecuperarContrasena,
             TipoNotificacion.RegistroConRutExistente,
+            // BorradorPorEliminarse (JQ-16) se escribio antes de que existiera el push y sale solo
+            // por correo, como se diseño. Si debe ir tambien por push es una decision pendiente.
+            TipoNotificacion.BorradorPorEliminarse,
         }, sinPush);
     }
 
