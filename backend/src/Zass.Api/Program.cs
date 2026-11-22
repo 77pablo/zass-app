@@ -79,7 +79,12 @@ TextosEnCastellano.ConfigurarResolvedor();
 // *Diseño original: Key Vault con identidad administrada. Desplegado: variables de entorno
 // de Render, porque no documentado.
 // abrir ningun puerto. Todo lo que no sea Development se trata como produccion.
-ValidacionDeArranque.Exigir(app.Configuration, esProductivo: !app.Environment.IsDevelopment());
+// Turnstile: el secreto se exige SOLO en Production (no en Staging ni en pruebas): un olvido en el
+// despliegue dejaria el captcha apagado sin que nadie se entere.
+ValidacionDeArranque.Exigir(
+    app.Configuration,
+    esProductivo: !app.Environment.IsDevelopment(),
+    exigirSecretoCaptcha: app.Environment.IsProduction());
 
 // P-11: sin el secreto de origen la API arranca igual, pero que quede escrito en el registro.
 if (SecretoDeOrigen.Advertencia(app.Configuration, esProductivo: !app.Environment.IsDevelopment()) is { } aviso)

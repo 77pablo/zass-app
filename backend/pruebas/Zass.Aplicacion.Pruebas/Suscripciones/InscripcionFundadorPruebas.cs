@@ -574,6 +574,7 @@ public class InscripcionFundadorPruebas
         Assert.True(r.Exito, r.Mensaje);
         Assert.False(r.Valor!.TarjetaInscrita);
         Assert.Null(r.Valor.MesGratisHasta);
+        Assert.Equal(CupoTomadoDto.Inscribir, r.Valor.Siguiente);   // viene del plan inicial: mes gratis
         Assert.Equal(Ahora.AddMinutes(30), r.Valor.ReservadoHasta);
         Assert.Equal(CupoDe(perfil.Id)!.Numero, r.Valor.Numero);
         Assert.Equal(Ahora.AddMinutes(30), CupoDe(perfil.Id)!.ReservadoHasta);   // reserva, no definitivo
@@ -694,10 +695,15 @@ public class InscripcionFundadorPruebas
         Assert.Equal(50, await _suscripciones.CuposFundadorDisponiblesAsync());
         Assert.False(await _suscripciones.EstaVigenteAsync(perfil.Id));     // fuera de la busqueda
 
+        // 22-nov-2026: puede volver a RESERVAR (con captcha), pero sin otro mes gratis: su
+        // siguiente paso es pagar el plan fundador, no inscribir la tarjeta.
+        var vigenteAntes = SuscripcionDe(perfil.Id).VigenteHasta;
         var otraVez = await _suscripciones.TomarCupoFundadorAsync(perfil.Id);
-        Assert.False(otraVez.Exito);
-        Assert.Contains("mes gratis", otraVez.Mensaje!);
-        Assert.Null(CupoDe(perfil.Id));
+        Assert.True(otraVez.Exito);
+        Assert.Equal(CupoTomadoDto.Pagar, otraVez.Valor!.Siguiente);
+        Assert.Null(otraVez.Valor.MesGratisHasta);
+        Assert.NotNull(CupoDe(perfil.Id)!.ReservadoHasta);
+        Assert.Equal(vigenteAntes, SuscripcionDe(perfil.Id).VigenteHasta);   // ni un dia mas
     }
 
     /// <summary>

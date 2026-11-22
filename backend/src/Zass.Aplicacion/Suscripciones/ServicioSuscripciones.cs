@@ -572,22 +572,17 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
             return Resultado.Ok(new CupoTomadoDto(
                 propio, s.VigenteHasta, !string.IsNullOrWhiteSpace(s.ReferenciaPasarela)));
 
-        // Ya fue fundador y perdio el cupo porque el mes gratis termino sin tarjeta: el mes
-        // gratis es uno solo. Sin esto, tomar, no inscribir, perder y volver a tomar daria
-        // un mes gratis tras otro.
-        if (s.PlanId == plan.Id)
-            return Resultado.Falla<CupoTomadoDto>(
-                Fallas.Conflicto,
-                "Tu mes gratis de fundador ya terminó sin una tarjeta inscrita y el cupo se liberó. "
-                + "Puedes suscribirte al plan mensual.");
-
-        // El mes gratis de fundador es para quien viene de la prueba y nunca cambio de plan
-        // (22-nov-2026). Desde que pagar cambia el plan, mirar solo «PlanId == fundador» dejaba
-        // encadenar: fundador sin tarjeta, pierde el cupo, paga un mes de Esencial (el plan pasa
-        // a mensual), lo deja vencer y vuelve a tomar el cupo con OTRO mes gratis. Quien ya pago
-        // otro plan puede pagar el plan fundador directamente (API-68), sin mes gratis.
-        if (!await VieneDelPlanInicialAsync(s, ct))
-            return Resultado.Falla<CupoTomadoDto>(Fallas.Conflicto, MensajeMesGratisSoloDelInicial);
+        // Con o sin mes gratis (22-nov-2026). El mes gratis de fundador es para quien viene de la
+        // prueba y nunca cambio de plan. Desde que pagar cambia el plan, mirar solo
+        // «PlanId == fundador» dejaba encadenar: fundador sin tarjeta, pierde el cupo, paga un mes
+        // de Esencial (el plan pasa a mensual), lo deja vencer y vuelve a tomar el cupo con OTRO mes
+        // gratis. Por eso NO tienen mes gratis ni quien ya pago otro plan, ni quien ya fue
+        // fundador y perdio el cupo porque su mes gratis termino sin tarjeta (el mes gratis es uno
+        // solo). A los dos se les RESERVA igual el cupo, con captcha: API-68 ya no reserva nada y
+        // exige un cupo propio, asi que esta es la unica puerta. Su siguiente paso es PAGAR el plan
+        // fundador (API-68), no inscribir la tarjeta (API-76).
+        var conMesGratis = s.PlanId != plan.Id && await VieneDelPlanInicialAsync(s, ct);
+        var siguiente = conMesGratis ? CupoTomadoDto.Inscribir : CupoTomadoDto.Pagar;
 
         // N3 (decision de Pablo del 22-nov-2026, reemplaza la del 20-nov): tomar el cupo ya NO lo
         // deja definitivo ni arranca el mes gratis. Lo RESERVA por DuracionReservaPorDefecto; lo
@@ -601,7 +596,7 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
         if (await _repo.EstadoCupoFundadorDeAsync(perfilPrestadorId, ct) is { } reserva
             && reserva.ReservaVigente(ahora))
             return Resultado.Ok(new CupoTomadoDto(
-                reserva.Numero, MesGratisHasta: null, TarjetaInscrita: false, reserva.ReservadoHasta));
+                reserva.Numero, MesGratisHasta: null, TarjetaInscrita: false, reserva.ReservadoHasta, siguiente));
 
         var hasta = ahora.Add(DuracionReservaPorDefecto);
         var numero = await _repo.IntentarReservarCupoFundadorAsync(perfilPrestadorId, ahora, hasta, ct);
@@ -621,7 +616,7 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
         await _trabajo.GuardarAsync(ct);
 
         return Resultado.Ok(new CupoTomadoDto(
-            numero.Value, MesGratisHasta: null, TarjetaInscrita: false, hasta));
+            numero.Value, MesGratisHasta: null, TarjetaInscrita: false, hasta, siguiente));
     }
 
     public async Task<Resultado> ConfirmarCupoFundadorAsync(
@@ -652,8 +647,7 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
     }
 
     private const string MensajeMesGratisSoloDelInicial =
-        "El mes gratis de fundador es para quien empieza en ZASS!. Mientras queden cupos, "
-        + "puedes pagar el plan fundador directamente.";
+        "El mes gratis de fundador es para quien empieza en ZASS!.";
 
     /// <summary>
     /// Regla unica del mes gratis de fundador: solo para quien sigue en el plan inicial. La usan
@@ -686,8 +680,8 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
         var yaEraFundador = s.PlanId == plan.Id;
 
         // Misma regla que API-69 (TomarCupoFundadorAsync): el mes gratis es solo para quien viene
-        // del plan inicial. La inscripcion tambien se alcanza por API-68 (pagar el plan fundador
-        // reserva cupo) + API-76, y por ahi llegaba quien ya habia pagado otro plan.
+        // del plan inicial. API-76 tambien llega aqui con una reserva sin mes gratis (la de quien ya
+        // pago otro plan), y esta es la defensa que impide darselo.
         if (!yaEraFundador && !await VieneDelPlanInicialAsync(s, ct))
             return Resultado.Falla<DateTime>(Fallas.Conflicto, MensajeMesGratisSoloDelInicial);
 

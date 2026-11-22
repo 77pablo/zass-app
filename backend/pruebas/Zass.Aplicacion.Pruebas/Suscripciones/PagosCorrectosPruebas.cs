@@ -66,6 +66,9 @@ public class PagosCorrectosPruebas
 
     private async Task<IntentoDePago> IniciarAsync(Guid perfilId, string plan, string? cupon = null, string? clave = null)
     {
+        // API-68 ya no reserva el cupo fundador: se toma antes por API-69 (si aun no lo tiene).
+        if (plan == "fundador" && !_base.CuposFundador.Any(c => c.PerfilPrestadorId == perfilId))
+            Assert.True((await _suscripciones.TomarCupoFundadorAsync(perfilId)).Exito);
         var r = await _cobros.IniciarAsync(new IniciarCobroCmd(perfilId, plan, cupon, clave ?? Guid.NewGuid().ToString()));
         Assert.True(r.Exito, "El montaje fallo al iniciar: " + r.Mensaje);
         return _base.IntentosDePago.Single(i => i.Id == r.Valor!.Id);
@@ -388,8 +391,19 @@ public class PagosCorrectosPruebas
 
         var r = await _suscripciones.TomarCupoFundadorAsync(p.Id);
 
-        Assert.False(r.Exito);
-        Assert.Equal(Fallas.Conflicto, r.Codigo);
-        Assert.DoesNotContain(_base.CuposFundador, c => c.PerfilPrestadorId == p.Id);
+        // 22-nov-2026: ya no se rechaza (API-68 exige un cupo propio y esta es la unica puerta,
+        // con captcha), pero se RESERVA sin mes gratis y su siguiente paso es pagar.
+        Assert.True(r.Exito);
+        Assert.Equal(CupoTomadoDto.Pagar, r.Valor!.Siguiente);
+        Assert.Null(r.Valor.MesGratisHasta);
+        Assert.Contains(_base.CuposFundador, c => c.PerfilPrestadorId == p.Id);
+        var vigenteAntes = SuscripcionDe(p.Id).VigenteHasta;
+
+        // Y pagar el plan fundador le da el plan SIN un mes gratis: un solo mes pagado.
+        await PagarAsync(await IniciarAsync(p.Id, "fundador"));
+        var s = SuscripcionDe(p.Id);
+        Assert.Equal(Fundador, s.PlanId);
+        Assert.Equal(vigenteAntes.AddMonths(1), s.VigenteHasta);
+        Assert.Equal(EstadoSuscripcion.Activa, s.Estado);
     }
 }

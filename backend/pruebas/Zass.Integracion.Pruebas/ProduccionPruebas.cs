@@ -51,6 +51,10 @@ public sealed class AplicacionConProxy : WebApplicationFactory<Program>
             // CorreoAlertasAdmin: requerido en Production por el validador; en pruebas usamos uno falso.
             ["Zass:CorreoAlertasAdmin"] = "alertas@ejemplo.test",
         };
+        // Production exige el secreto de Turnstile para arrancar. Solo ahi se pone: en
+        // Development activaria el captcha en todas las pruebas de registro.
+        if (entorno == "Production")
+            _ajustes[Turnstile.ClaveSecreto] = "0x4AAAAAAA-secreto-de-mentira-para-pruebas";
         if (limiteSalud is not null) _ajustes["Zass:Tasa:Salud"] = limiteSalud.ToString();
         if (proxies is not null) _ajustes[ProxiesDeConfianza.ClaveRedes] = proxies;
         if (saltos is not null) _ajustes[ProxiesDeConfianza.ClaveSaltos] = saltos.ToString();

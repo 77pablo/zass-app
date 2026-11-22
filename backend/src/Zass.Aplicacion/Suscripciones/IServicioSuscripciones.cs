@@ -231,9 +231,17 @@ public sealed record SuscripcionDto(
 /// El cupo recien tomado. Reservado (N3): <c>ReservadoHasta</c> dice hasta cuando hay que
 /// inscribir la tarjeta y <c>MesGratisHasta</c> es nulo (el mes gratis aun no empieza).
 /// Confirmado: <c>ReservadoHasta</c> nulo y <c>MesGratisHasta</c> con la fecha.
+/// <c>Siguiente</c> le dice a la pantalla el paso que sigue: <c>"inscribir"</c> la tarjeta
+/// (API-76, con mes gratis) o <c>"pagar"</c> el plan fundador (API-68, sin mes gratis: quien ya
+/// pago otro plan o ya fue fundador y perdio el cupo).
 /// </summary>
 public sealed record CupoTomadoDto(
-    short Numero, DateTime? MesGratisHasta, bool TarjetaInscrita, DateTime? ReservadoHasta = null);
+    short Numero, DateTime? MesGratisHasta, bool TarjetaInscrita, DateTime? ReservadoHasta = null,
+    string Siguiente = CupoTomadoDto.Inscribir)
+{
+    public const string Inscribir = "inscribir";
+    public const string Pagar = "pagar";
+}
 
 /// <summary>
 /// Que hizo la corrida diaria. Lo guarda el planificador en <c>ultimo_resumen</c>, asi que

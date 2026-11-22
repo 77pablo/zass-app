@@ -34,6 +34,7 @@ const PLANES = [
 /** API-69 desde el 22-nov-2026 (N3): el cupo RESERVADO 30 minutos, hasta inscribir la tarjeta. */
 const CUPO_TOMADO = {
   numero: 12, mesGratisHasta: null, tarjetaInscrita: false, reservadoHasta: '2026-11-22T17:35:00Z',
+  siguiente: 'inscribir',
 }
 
 let cupos: number
@@ -78,6 +79,12 @@ beforeEach(() => {
     }
     if (ruta.includes('/api/mi/suscripcion/fundador')) return respuestaDelCupo()
     if (ruta.includes('/api/mi/cobros/cotizar')) return respuestaDeCotizar()
+    if (ruta.endsWith('/api/mi/cobros')) {
+      return json({
+        id: 'i2', codigoPlan: 'fundador', montoBruto: 5990, montoDescuento: 0, monto: 5990,
+        codigoCupon: null, estado: 'Pendiente', urlParaPagar: '/pago-simulado/i2', nueva: true,
+      })
+    }
     if (ruta.includes('/api/mi/suscripcion/tarjeta')) {
       return json({
         id: 'i1', codigoPlan: 'fundador', montoBruto: 0, montoDescuento: 0, monto: 0,
@@ -178,6 +185,32 @@ describe('Planes', () => {
 
     await waitFor(() =>
       expect(llamadas.filter((r) => r.includes('/api/mi/suscripcion/tarjeta'))).toHaveLength(1))
+  })
+
+  it('quien tomó el cupo SIN mes gratis (siguiente=pagar) ve «Pagar» y no «Inscribir mi tarjeta»', async () => {
+    respuestaDelCupo = () => json({ ...CUPO_TOMADO, siguiente: 'pagar' })
+    pintar(sesion('dentro', ['prestador']))
+
+    await userEvent.click(await screen.findByRole('button', { name: /quiero mi cupo/i }))
+
+    expect(await screen.findByText(/paga tu primer mes del plan fundador/)).toBeInTheDocument()
+    expect(screen.getByText(/no hay mes gratis/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /inscribir mi tarjeta/i })).toBeNull()
+    expect(screen.getByRole('button', { name: /pagar \$5\.990/i })).toBeInTheDocument()
+    // Nada se cobra ni se abre solo: el pago empieza cuando la persona lo pide.
+    expect(llamadas.some((r) => r.endsWith('/api/mi/cobros'))).toBe(false)
+  })
+
+  it('«Pagar» abre el cobro del plan fundador (API-68) y no la inscripción de la tarjeta (API-76)', async () => {
+    respuestaDelCupo = () => json({ ...CUPO_TOMADO, siguiente: 'pagar' })
+    pintar(sesion('dentro', ['prestador']))
+    await userEvent.click(await screen.findByRole('button', { name: /quiero mi cupo/i }))
+
+    await userEvent.click(await screen.findByRole('button', { name: /pagar \$5\.990/i }))
+
+    await waitFor(() =>
+      expect(llamadas.filter((r) => r.endsWith('/api/mi/cobros'))).toHaveLength(1))
+    expect(llamadas.some((r) => r.includes('/suscripcion/tarjeta'))).toBe(false)
   })
 
   it('N3: con captcha activo, sin resolverlo no se pide el cupo', async () => {

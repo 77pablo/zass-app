@@ -77,11 +77,23 @@ public static class Turnstile
         return lista.Count > 0 ? lista : HostnamesPorDefecto;
     }
 
-    /// <summary>Para la validación de arranque. Nunca cita el valor.</summary>
-    public static IEnumerable<string> Problemas(IConfiguration configuracion, bool esProductivo)
+    /// <summary>
+    /// Para la validación de arranque. Nunca cita el valor.
+    /// <paramref name="exigirSecreto"/> es SOLO para el entorno Production (22-nov-2026): sin el
+    /// secreto el captcha queda apagado sin que nadie se entere, y eso no se acepta en producción.
+    /// Staging y desarrollo siguen como antes: sin secreto no se exige el captcha y se advierte.
+    /// </summary>
+    public static IEnumerable<string> Problemas(
+        IConfiguration configuracion, bool esProductivo, bool exigirSecreto = false)
     {
         var secreto = Leer(configuracion);
-        if (secreto is null) yield break;
+        if (secreto is null)
+        {
+            if (exigirSecreto)
+                yield return $"Falta {ClaveSecreto} (variable Zass__Turnstile__Secreto): sin el secreto de "
+                             + "Cloudflare Turnstile el registro y los cupos fundador quedarían SIN captcha.";
+            yield break;
+        }
         if (esProductivo && EsSecretoDePrueba(secreto))
             yield return $"{ClaveSecreto} es una clave de PRUEBA de Cloudflare: en producción dejaría "
                          + "pasar a cualquiera. Pon la clave secreta del widget de zass.cl.";
