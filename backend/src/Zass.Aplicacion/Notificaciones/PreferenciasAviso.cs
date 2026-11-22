@@ -23,7 +23,7 @@ public static class PreferenciasAviso
         ("recordatorios", [TipoNotificacion.Recordatorio24h, TipoNotificacion.Recordatorio2h]),
         ("resenas", [TipoNotificacion.ResenaNueva, TipoNotificacion.ResenaRespondida]),
         ("perfil", [TipoNotificacion.CredencialResuelta, TipoNotificacion.CredencialVencida,
-                    TipoNotificacion.PerfilPublicado]),
+                    TipoNotificacion.BorradorPorEliminarse, TipoNotificacion.PerfilPublicado]),
         ("cobros", [TipoNotificacion.SuscripcionPorVencer, TipoNotificacion.SuscripcionVencida,
                     TipoNotificacion.CobroRechazado, TipoNotificacion.TarjetaActivada]),
     ];
