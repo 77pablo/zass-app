@@ -12,6 +12,7 @@ import { MisGuardados } from './paginas/MisGuardados'
 import { Avisos } from './paginas/Avisos'
 import { MisResenas } from './paginas/MisResenas'
 import { MisTarjetas } from './paginas/MisTarjetas'
+import { MiActividad } from './paginas/MiActividad'
 import { MesaDeVerificacion } from './paginas/MesaDeVerificacion'
 import { IndiceInterno, PuertaInterna, SoloSeccion } from './paginas/PanelInterno'
 import { ReportesDeResenas } from './paginas/ReportesDeResenas'
@@ -65,6 +66,7 @@ export function App() {
         {/* CS-16: sin esta ruta, la ventana de 72 h para editar una reseña no se puede alcanzar. */}
         <Route path="mis-resenas" element={<MisResenas />} />
         <Route path="mis-tarjetas" element={<MisTarjetas />} />
+        <Route path="mi-actividad" element={<MiActividad />} />
         {/* CS-08 y CU-04: la gente guardada y lo que la persona suele buscar. */}
         <Route path="mis-guardados" element={<MisGuardados />} />
         {/* ES-3: activar los avisos push en este navegador. En ES-4 pasa a «Mi cuenta». */}
