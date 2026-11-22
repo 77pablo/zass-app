@@ -146,6 +146,7 @@ app.MapearSuscripciones();                               // API-66 a API-70 (S7 
 
 app.MapearVerificacion();
 app.MapearAuditoria();
+app.MapearIndicadores();                               // API-60 (JQ-14)
 
 app.MapearMetricas();                                  // MI-METRICAS (JQ-8)
 app.MapearNotificaciones();                             // API-45 y su baja y clave (ES-3, push)
