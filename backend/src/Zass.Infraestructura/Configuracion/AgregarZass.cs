@@ -493,6 +493,8 @@ public static class RegistroDeServicios
         servicios.AddHostedService<TrabajoDePush>();
         servicios.AddScoped<IRepositorioPush, RepositorioPushEfCore>();
         servicios.AddScoped<ServicioAvisosPush>();
+        servicios.AddScoped<IRepositorioPreferenciasAviso, RepositorioPreferenciasAvisoEfCore>();
+        servicios.AddScoped<ServicioPreferenciasAviso>();
 
         // --- Alertas al administrador ---
         servicios.AddScoped<IAlertasAdministrador, AlertasAdministrador>();

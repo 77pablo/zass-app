@@ -2559,6 +2559,10 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-45",
             "API-45-baja",
             "API-45-clave",
+            // ES-3b (21-nov-2026): por que canal llega cada aviso. La documentacion trae solo el PUT;
+            // «-ver» es la lectura que necesita la pantalla.
+            "API-43",
+            "API-43-ver",
             // JQ-9: la foto del perfil (subir, quitar, servirla) y el documento que abre el
             // Verificador con la credencial tomada.
             "API-72",

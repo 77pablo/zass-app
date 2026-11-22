@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -8,7 +8,7 @@ import type { EntornoPush } from '../funciones/avisos/push'
 import { ProveedorDeSesion } from '../sesion/Sesion'
 import { Avisos } from './Avisos'
 
-/* ES-3 · La pagina «Avisos en este dispositivo»: que muestre el estado real y que el boton active. */
+/* ES-3 · La pagina «Avisos»: el push de este dispositivo (API-45) y por que canal llega cada grupo (API-43). */
 
 function json(cuerpo: unknown, estado = 200) {
   return new Response(JSON.stringify(cuerpo), { status: estado, headers: { 'content-type': 'application/json' } })
@@ -16,10 +16,22 @@ function json(cuerpo: unknown, estado = 200) {
 
 let registrados: unknown[]
 let hayClave: boolean
+let preferencias: { tipo: string; grupo: string; correo: boolean; push: boolean; correoFijo: boolean }[]
+let guardadas: unknown[]
+let fallaGuardar: boolean
+
+const TIPOS: [string, string, boolean][] = [
+  ['CitaSolicitada', 'citas', false], ['CitaConfirmada', 'citas', false],
+  ['Recordatorio24h', 'recordatorios', false],
+  ['CobroRechazado', 'cobros', true], ['TarjetaActivada', 'cobros', true],
+]
 
 beforeEach(() => {
   registrados = []
   hayClave = true
+  guardadas = []
+  fallaGuardar = false
+  preferencias = TIPOS.map(([tipo, grupo, correoFijo]) => ({ tipo, grupo, correo: true, push: true, correoFijo }))
   olvidarCsrf()
   olvidarCaches()
   localStorage.clear()
@@ -29,6 +41,19 @@ beforeEach(() => {
     if (ruta.includes('/api/auth/csrf')) return json({ token: 't' })
     if (ruta.includes('/api/notificaciones/push/clave')) {
       return hayClave ? json({ clave: 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U' }) : json({}, 404)
+    }
+    if (ruta.includes('/api/mi/notificaciones/preferencias')) {
+      if (opciones?.method === 'PUT') {
+        if (fallaGuardar) return json({ title: 'Los avisos de tu plan siempre llegan por correo.' }, 400)
+        const cuerpo = JSON.parse(String(opciones.body)) as { preferencias: { tipo: string; correo: boolean; push: boolean }[] }
+        guardadas.push(cuerpo)
+        for (const c of cuerpo.preferencias) {
+          const p = preferencias.find((x) => x.tipo === c.tipo)!
+          p.correo = c.correo
+          p.push = c.push
+        }
+      }
+      return json({ preferencias })
     }
     if (ruta.includes('/api/mi/notificaciones/push')) {
       registrados.push(JSON.parse(String(opciones?.body)))
@@ -105,8 +130,70 @@ describe('Avisos en este dispositivo (ES-3)', () => {
     expect(screen.queryByRole('button', { name: /Activar/ })).toBeNull()
   })
 
-  it('siempre aclara que los correos siguen llegando', async () => {
+  it('muestra un bloque por grupo, con el correo fijo deshabilitado en cobros', async () => {
     pintar(navegador())
-    await waitFor(() => expect(screen.getByText('Los correos te siguen llegando igual.')).toBeInTheDocument())
+
+    const citas = await screen.findByRole('region', { name: 'Citas' })
+    expect(within(citas).getByRole('checkbox', { name: 'Correo' })).toBeEnabled()
+    const cobros = screen.getByRole('region', { name: 'Plan, cobros y tarjeta' })
+    expect(within(cobros).getByRole('checkbox', { name: 'Correo' })).toBeDisabled()
+    expect(within(cobros).getByRole('checkbox', { name: 'Correo' })).toBeChecked()
+    expect(within(cobros).getByText('Estos avisos siempre te llegan por correo.')).toBeInTheDocument()
+    expect(within(citas).queryByText('Estos avisos siempre te llegan por correo.')).toBeNull()
+  })
+
+  it('apagar el push de un grupo manda todos sus tipos juntos y deja la casilla como responde el servidor', async () => {
+    pintar(navegador())
+
+    const citas = await screen.findByRole('region', { name: 'Citas' })
+    await userEvent.click(within(citas).getByRole('checkbox', { name: 'Push' }))
+
+    await waitFor(() => expect(within(citas).getByRole('checkbox', { name: 'Push' })).not.toBeChecked())
+    expect(guardadas).toEqual([{ preferencias: [
+      { tipo: 'CitaSolicitada', correo: true, push: false },
+      { tipo: 'CitaConfirmada', correo: true, push: false },
+    ] }])
+    expect(within(screen.getByRole('region', { name: 'Recordatorios' })).getByRole('checkbox', { name: 'Push' })).toBeChecked()
+  })
+
+  it('con correo y push apagados avisa que no llegara nada de ese grupo', async () => {
+    preferencias[0].push = false
+    preferencias[1].push = false
+    pintar(navegador())
+
+    const citas = await screen.findByRole('region', { name: 'Citas' })
+    expect(within(citas).queryByText(/no te llegará ningún aviso/)).toBeNull()
+    await userEvent.click(within(citas).getByRole('checkbox', { name: 'Correo' }))
+
+    expect(await within(citas).findByText(/no te llegará ningún aviso/)).toBeInTheDocument()
+  })
+
+  it('si el servidor no tiene push, no ofrece la casilla Push y si el correo', async () => {
+    hayClave = false
+    pintar(navegador())
+
+    const citas = await screen.findByRole('region', { name: 'Citas' })
+    expect(within(citas).getByRole('checkbox', { name: 'Correo' })).toBeInTheDocument()
+    expect(within(citas).queryByRole('checkbox', { name: 'Push' })).toBeNull()
+    expect(screen.queryByText(/El push solo te llega/)).toBeNull()
+  })
+
+  it('un grupo con un solo tipo apagado se ve apagado', async () => {
+    preferencias[1].correo = false
+    pintar(navegador())
+
+    const citas = await screen.findByRole('region', { name: 'Citas' })
+    expect(within(citas).getByRole('checkbox', { name: 'Correo' })).not.toBeChecked()
+  })
+
+  it('si guardar falla, muestra el mensaje y la casilla vuelve a como estaba', async () => {
+    fallaGuardar = true
+    pintar(navegador())
+
+    const citas = await screen.findByRole('region', { name: 'Citas' })
+    await userEvent.click(within(citas).getByRole('checkbox', { name: 'Push' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Los avisos de tu plan siempre llegan por correo.')
+    expect(within(citas).getByRole('checkbox', { name: 'Push' })).toBeChecked()
   })
 })
