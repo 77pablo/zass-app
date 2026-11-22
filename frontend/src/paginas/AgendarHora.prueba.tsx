@@ -85,6 +85,15 @@ describe('el calendario', () => {
     expect(screen.getByText(/martes, 10 de noviembre/i)).toBeInTheDocument()
   })
 
+  it('el titulo de cada dia va en castellano: «Lunes, 9 de noviembre»', async () => {
+    pintar()
+
+    await screen.findByRole('button', { name: '09:00' })
+    const dias = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
+    expect(dias).toContain('Lunes, 9 de noviembre')
+    expect(dias).toContain('Martes, 10 de noviembre')
+  })
+
   it('con un solo servicio no hace elegirlo: ya muestra las horas', async () => {
     pintar()
 

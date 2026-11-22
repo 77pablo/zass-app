@@ -3,7 +3,7 @@ import {
   agendar, cancelarCita, claveDeDia, horaDeChile, nuevaClaveDeIdempotencia, porDia,
   reprogramarCita, calendarioDe, miDisponibilidad, guardarDisponibilidad, crearBloqueo,
   listarBloqueos, quitarBloqueo, DIAS, inicioDeDiaEnChile, agruparPorDiaChileno,
-  sePuedeReprogramar, horasHasta, type Bloque, type Cita,
+  sePuedeReprogramar, horasHasta, diaDeChile, tituloDeDia, type Bloque, type Cita,
 } from './servicio'
 
 const obtener = vi.fn()
@@ -104,6 +104,25 @@ describe('hora de Chile', () => {
 
     expect(grupos.map((g) => g.dia)).toEqual(['2026-11-09', '2026-11-10'])
     expect(grupos[0].bloques.map((b) => horaDeChile(b.inicioEn))).toEqual(['09:00', '22:00'])
+  })
+})
+
+describe('el dia escrito en castellano', () => {
+  // 15:00 UTC del 21-nov-2026 son las 12:00 del sabado 21 en Chile.
+  const SABADO = '2026-11-21T15:00:00Z'
+
+  it('como titulo: solo la primera letra en mayuscula («Sábado, 21 de noviembre», no «21 De Noviembre»)', () => {
+    expect(tituloDeDia(SABADO)).toBe('Sábado, 21 de noviembre')
+  })
+
+  it('a media frase sigue entero en minuscula («desde el sábado, 21 de noviembre»)', () => {
+    expect(diaDeChile(SABADO)).toBe('sábado, 21 de noviembre')
+  })
+
+  it('los titulos del calendario y de las citas salen ya escritos asi', () => {
+    expect(porDia([bloque(SABADO)])[0].titulo).toBe('Sábado, 21 de noviembre')
+    expect(agruparPorDiaChileno([{ id: 'a', inicioEn: SABADO }])[0].titulo).toBe('Sábado, 21 de noviembre')
+    expect(agruparPorDiaChileno([{ id: 'a', inicioEn: SABADO }], 'desc')[0].titulo).toBe('Sábado, 21 de noviembre')
   })
 })
 
