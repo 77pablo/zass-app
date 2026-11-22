@@ -1,4 +1,5 @@
 import { enviar, obtener, olvidarCsrf } from '../../api/cliente'
+import { cabeceraCaptcha } from '../../componentes/Captcha'
 
 export interface Sesion {
   usuarioId: string
@@ -36,9 +37,12 @@ export interface DatosDeRegistro {
   mayorDeEdad: boolean
 }
 
-/** API-08. Crea la cuenta y dispara el correo de verificacion. */
-export async function registrarse(datos: DatosDeRegistro): Promise<void> {
-  await enviar('/api/auth/registro', datos)
+/**
+ * API-08. Crea la cuenta y dispara el correo de verificacion. Con el captcha activo (N3), el
+ * token de Turnstile va en una cabecera, no en el cuerpo.
+ */
+export async function registrarse(datos: DatosDeRegistro, tokenCaptcha?: string): Promise<void> {
+  await enviar('/api/auth/registro', datos, 'POST', cabeceraCaptcha(tokenCaptcha ?? null))
 }
 
 /** ES-2. Los datos del registro completo, para una cuenta creada antes del 20-nov-2026. */

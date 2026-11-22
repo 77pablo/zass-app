@@ -50,6 +50,8 @@ public static class EndpointsIdentidad
                     : Respuestas.Problema(r);
             })
             .ConValidacion<RegistrarCuentaCmd>()
+            // N3: captcha DESPUÉS de validar el cuerpo, para no gastar el token en un formulario mal llenado.
+            .ConCaptcha(Turnstile.AccionRegistro)
             .RequireRateLimiting(Tasa.Autenticacion)
             .WithName("API-08");
 

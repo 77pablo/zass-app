@@ -397,7 +397,9 @@ describe('cabeceras de seguridad', () => {
   })
 
   it('la CSP no permite scripts inline: el JSON-LD es un bloque de datos y no se ejecuta', () => {
-    expect(CABECERAS_DE_SEGURIDAD['Content-Security-Policy']).toMatch(/script-src 'self'(;|$)/)
+    // N3: además de 'self', solo el captcha de Cloudflare Turnstile (y nada inline).
+    expect(CABECERAS_DE_SEGURIDAD['Content-Security-Policy']).toMatch(/script-src 'self' https:\/\/challenges\.cloudflare\.com(;|$)/)
+    expect(CABECERAS_DE_SEGURIDAD['Content-Security-Policy']).toMatch(/frame-src https:\/\/challenges\.cloudflare\.com(;|$)/)
     expect(CABECERAS_DE_SEGURIDAD['Content-Security-Policy']).not.toMatch(/script-src[^;]*unsafe-inline/)
   })
 })

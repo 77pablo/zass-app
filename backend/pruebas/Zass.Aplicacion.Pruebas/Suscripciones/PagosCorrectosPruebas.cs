@@ -79,6 +79,17 @@ public class PagosCorrectosPruebas
         return r.Valor!;
     }
 
+    /// <summary>N3: fundador de verdad = cupo tomado (reserva) + tarjeta inscrita y confirmada.</summary>
+    private async Task UnFundadorConTarjetaAsync(Guid perfilId)
+    {
+        Assert.True((await _suscripciones.TomarCupoFundadorAsync(perfilId)).Exito);
+        var ins = await _cobros.IniciarInscripcionFundadorAsync(perfilId, "ins-" + perfilId.ToString("N"));
+        Assert.True(ins.Exito, "El montaje fallo al inscribir: " + ins.Mensaje);
+        var intento = _base.IntentosDePago.Single(i => i.Id == ins.Valor!.Id);
+        _pasarela.Veredicto = new CobroResuelto(intento.Id, "ref-ins", true, 0, null);
+        Assert.True((await _cobros.ConfirmarAsync(UnAviso())).Exito);
+    }
+
     private void UnCupon(string codigo) => _base.Cupones.Add(new Cupon
     {
         Codigo = codigo, PorcentajeDescuento = 30, VenceEn = Ahora.AddDays(60), Activo = true,
@@ -285,7 +296,7 @@ public class PagosCorrectosPruebas
     public async Task H4_El_fundador_que_cancela_pierde_el_cupo_al_vencer()
     {
         var p = UnPrestadorConPrueba();
-        Assert.True((await _suscripciones.TomarCupoFundadorAsync(p.Id)).Exito);
+        await UnFundadorConTarjetaAsync(p.Id);
         await _suscripciones.CancelarRenovacionAsync(p.Id);
 
         _reloj.Avanzar(SuscripcionDe(p.Id).VigenteHasta - Ahora + TimeSpan.FromHours(1));
@@ -341,8 +352,7 @@ public class PagosCorrectosPruebas
     public async Task H4_Terminar_por_cuenta_eliminada_cancela_olvida_la_tarjeta_y_suelta_el_cupo()
     {
         var p = UnPrestadorConPrueba();
-        Assert.True((await _suscripciones.TomarCupoFundadorAsync(p.Id)).Exito);
-        SuscripcionDe(p.Id).ReferenciaPasarela = "medio-inscrito";
+        await UnFundadorConTarjetaAsync(p.Id);
 
         var r = await _suscripciones.TerminarPorCuentaEliminadaAsync(p.Id);
 
