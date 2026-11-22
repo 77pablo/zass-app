@@ -1342,6 +1342,13 @@ option { background: var(--blanco); color: var(--pizarra); }
 
 .planes-pie { margin-top: 28px; font-size: 0.8125rem; color: var(--suave); max-width: 62ch; }
 
+/* JQ-8 · Mi actividad: las cifras se ven igual que en Indicadores (JQ-14). Si las dos ramas se
+   juntan, estas cuatro reglas quedan repetidas y se deja una sola copia. Va con `dl.` porque la
+   portada usa `section.cifras` («ZASS! en cifras») y una regla `.cifras` suelta la aplasta. */
+dl.cifras { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin: 12px 0 0; }
+.cifra dt { font-size: 0.875rem; color: var(--suave); }
+.cifra dd { margin: 0; }
+.cifra-valor { font-size: 1.75rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 /* JQ-11 · Panel interno y mesa del Verificador. */
 .panel-interno-secciones, .cola-verificacion, .documentos-respaldo { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 12px; }
 .etiquetas-credencial { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-wrap: wrap; gap: 8px; }
@@ -1349,6 +1356,12 @@ option { background: var(--blanco); color: var(--pizarra); }
 .etiqueta--alerta { border-color: currentColor; }
 .mesa-verificacion fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }
 
+/* JQ-14 · Indicadores: cifras, no gráficos. Va con `dl.` porque la portada usa `section.cifras`
+   («ZASS! en cifras») y una regla `.cifras` suelta la aplasta en una columna. */
+dl.cifras { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin: 12px 0 0; }
+.cifra dt { font-size: 0.875rem; color: var(--suave); }
+.cifra dd { margin: 0; }
+.cifra-valor { font-size: 1.75rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 /* JQ-13 · Emitir tarjetas: el código grande y legible, y al imprimir SOLO la etiqueta del sobre. */
 .etiqueta-imprimible { display: flex; flex-wrap: wrap; gap: 24px; align-items: center; margin: 16px 0; }
 .etiqueta-imprimible dd { margin: 0 0 8px; }
@@ -1364,3 +1377,14 @@ option { background: var(--blanco); color: var(--pizarra); }
 .tabla-auditoria table { border-collapse: collapse; width: 100%; font-size: 0.875rem; }
 .tabla-auditoria th, .tabla-auditoria td { text-align: left; vertical-align: top; padding: 8px; border-bottom: 1px solid var(--linea-fuerte); }
 .tabla-auditoria code { font-size: 0.75rem; word-break: break-all; }
+
+/* Mi cuenta → Seguridad: los códigos de respaldo de la verificación en dos pasos. */
+.codigos-respaldo {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 1rem 0;
+  padding: 0;
+  list-style: none;
+  font-variant-numeric: tabular-nums;
+}

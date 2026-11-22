@@ -5160,6 +5160,35 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.ToTable("notificaciones");
                 });
 
+            modelBuilder.Entity("Zass.Dominio.Comun.PreferenciaAviso", b =>
+                {
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("usuario_id");
+
+                    b.Property<string>("Tipo")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("tipo");
+
+                    b.Property<DateTime>("ActualizadaEn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("actualizada_en");
+
+                    b.Property<bool>("Correo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("correo");
+
+                    b.Property<bool>("Push")
+                        .HasColumnType("boolean")
+                        .HasColumnName("push");
+
+                    b.HasKey("UsuarioId", "Tipo")
+                        .HasName("p_k_preferencias_aviso");
+
+                    b.ToTable("preferencias_aviso", (string)null);
+                });
+
             modelBuilder.Entity("Zass.Dominio.Comun.RegistroAuditoria", b =>
                 {
                     b.Property<long>("Id")
@@ -5903,6 +5932,35 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("mayor_de_edad_confirmado_en");
 
+                    b.Property<DateTime?>("MfaActivadoEn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("mfa_activado_en");
+
+                    b.PrimitiveCollection<string[]>("MfaCodigosRespaldo")
+                        .HasColumnType("text[]")
+                        .HasColumnName("mfa_codigos_respaldo");
+
+                    b.Property<DateTime?>("MfaDesafioExpiraEn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("mfa_desafio_expira_en");
+
+                    b.Property<string>("MfaDesafioHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("mfa_desafio_hash");
+
+                    b.Property<byte[]>("MfaSecretoCifrado")
+                        .HasColumnType("bytea")
+                        .HasColumnName("mfa_secreto_cifrado");
+
+                    b.Property<byte[]>("MfaSecretoPendienteCifrado")
+                        .HasColumnType("bytea")
+                        .HasColumnName("mfa_secreto_pendiente_cifrado");
+
+                    b.Property<long?>("MfaUltimoPaso")
+                        .HasColumnType("bigint")
+                        .HasColumnName("mfa_ultimo_paso");
+
                     b.Property<string>("Nombre")
                         .IsRequired()
                         .HasMaxLength(150)
@@ -5954,6 +6012,10 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.HasIndex("Correo")
                         .IsUnique()
                         .HasDatabaseName("i_x_usuarios_correo");
+
+                    b.HasIndex("MfaDesafioHash")
+                        .HasDatabaseName("i_x_usuarios_mfa_desafio_hash")
+                        .HasFilter("mfa_desafio_hash IS NOT NULL");
 
                     b.HasIndex("Rut")
                         .IsUnique()
@@ -7215,6 +7277,18 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasConstraintName("f_k_notificaciones_usuarios_destinatario_id");
 
                     b.Navigation("Destinatario");
+                });
+
+            modelBuilder.Entity("Zass.Dominio.Comun.PreferenciaAviso", b =>
+                {
+                    b.HasOne("Zass.Dominio.Identidad.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("f_k_preferencias_aviso_usuarios_usuario_id");
+
+                    b.Navigation("Usuario");
                 });
 
             modelBuilder.Entity("Zass.Dominio.Comun.SuscripcionPush", b =>

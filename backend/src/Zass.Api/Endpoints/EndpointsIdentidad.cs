@@ -1,12 +1,15 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Zass.Api.Configuracion;
+using Zass.Aplicacion.Agenda;
 using Zass.Aplicacion.Busqueda;
 using Zass.Aplicacion.Catalogo;
 using Zass.Aplicacion.Geografia;
 using Zass.Aplicacion.Identidad;
+using Zass.Aplicacion.Puertos;
 using Zass.Aplicacion.Suscripciones;
 using Zass.Dominio.Comun;
 using Zass.Infraestructura.Configuracion;
@@ -17,6 +20,9 @@ public sealed record VerificarCorreoCmd(string Token);
 public sealed record PedirRecuperacionCmd(string Correo);
 public sealed record ReenviarVerificacionCmd(string Correo);
 public sealed record CambiarContrasenaCmd(string ContrasenaActual, string ContrasenaNueva);
+
+/// <summary>API-17. La contraseña, para confirmar que es el dueño quien pide la baja (CS-04).</summary>
+public sealed record EliminarCuentaCmd(string Contrasena);
 
 /// <summary>
 /// API-08 a API-23. Los identificadores del documento van en el nombre de cada ruta
@@ -50,6 +56,8 @@ public static class EndpointsIdentidad
                     : Respuestas.Problema(r);
             })
             .ConValidacion<RegistrarCuentaCmd>()
+            // N3: captcha DESPUÉS de validar el cuerpo, para no gastar el token en un formulario mal llenado.
+            .ConCaptcha(Turnstile.AccionRegistro)
             .RequireRateLimiting(Tasa.Autenticacion)
             .WithName("API-08");
 
@@ -57,20 +65,32 @@ public static class EndpointsIdentidad
         grupo.MapPost("/sesion", async (
                 IniciarSesionCmd cmd, ServicioSesion servicio, HttpContext http) =>
             {
-                var r = await servicio.IniciarAsync(cmd, Ip(http), Agente(http));
+                var r = await servicio.EntrarAsync(cmd, Ip(http), Agente(http));
                 if (!r.Exito) return Respuestas.Problema(r);
 
-                await AbrirCookiesAsync(http, r.Valor!);
-                return Results.Ok(new
-                {
-                    r.Valor!.UsuarioId,
-                    r.Valor!.Roles,
-                    r.Valor!.CorreoVerificado,
-                });
+                // Cuenta con MFA: la contrasena era correcta, pero NO hay cookies todavia. Solo el
+                // desafio, que API-79 canjea junto al codigo.
+                if (r.Valor!.Desafio is { } desafio)
+                    return Results.Ok(new { mfaRequerido = true, desafio = desafio.Desafio, expiraEn = desafio.ExpiraEn });
+
+                return await SesionAbiertaAsync(http, r.Valor.Sesion!);
             })
             .ConValidacion<IniciarSesionCmd>()
             .RequireRateLimiting(Tasa.Autenticacion)
             .WithName("API-09");
+
+        // API-79 - Segundo paso del inicio de sesion con MFA: el desafio de API-09 mas un codigo
+        // TOTP o de respaldo. Sin CSRF, como API-09: todavia no hay sesion que proteger, y el
+        // desafio (5 min, un solo uso) es la prueba de que la contrasena ya se dio.
+        grupo.MapPost("/sesion/mfa", async (
+                SegundoPasoCmd cmd, ServicioMfa servicio, HttpContext http) =>
+            {
+                var r = await servicio.SegundoPasoAsync(cmd, Ip(http), Agente(http));
+                return r.Exito ? await SesionAbiertaAsync(http, r.Valor!) : Respuestas.Problema(r);
+            })
+            .ConValidacion<SegundoPasoCmd>()
+            .RequireRateLimiting(Tasa.Autenticacion)
+            .WithName("API-79");
 
         // API-10 - Renueva el token de acceso con el de refresco.
         grupo.MapPost("/sesion/renovar", async (ServicioSesion servicio, HttpContext http) =>
@@ -189,18 +209,26 @@ public static class EndpointsIdentidad
             .WithName("API-16");
 
         // API-17 - Elimina la cuenta y anonimiza (RN-S1-07). Grupo S.
+        // Pide la contraseña, cancela las citas futuras (avisando a la otra parte) y después
+        // anonimiza, terminando la suscripción en la misma transacción: ver BajaDeCuenta. El cuerpo va con
+        // [FromBody] porque en un DELETE la API mínima no lo infiere sola.
         grupo.MapDelete("/cuenta", async (
-                ServicioCuenta servicio, HttpContext http, ClaimsPrincipal quien) =>
+                [FromBody] EliminarCuentaCmd cmd,
+                ServicioCuenta cuenta, ServicioPerfiles perfiles, IServicioAgenda agenda,
+                IRelojSistema reloj,
+                HttpContext http, ClaimsPrincipal quien) =>
             {
                 var usuarioId = quien.UsuarioId();
                 if (usuarioId is null) return Results.Unauthorized();
 
-                var r = await servicio.EliminarAsync(usuarioId.Value, Ip(http));
+                var baja = new BajaDeCuenta(cuenta, perfiles, agenda, reloj);
+                var r = await baja.EjecutarAsync(usuarioId.Value, cmd.Contrasena, Ip(http));
                 if (!r.Exito) return Respuestas.Problema(r);
 
                 await CerrarCookiesAsync(http);
                 return Results.NoContent();
             })
+            .ConValidacion<EliminarCuentaCmd>()
             .RequireRateLimiting(Tasa.Sensible)
             .WithName("API-17");
 
@@ -259,6 +287,56 @@ public static class EndpointsIdentidad
             .ConValidacion<CambiarContrasenaCmd>()
             .RequireRateLimiting(Tasa.General)
             .WithName("CS-02b");
+
+        // API-80 - Estado de la verificacion en dos pasos de la propia cuenta.
+        grupo.MapGet("/mfa", async (ServicioMfa servicio, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                return usuarioId is null
+                    ? Results.Unauthorized()
+                    : Respuestas.DeResultado(await servicio.EstadoAsync(usuarioId.Value));
+            })
+            .RequireRateLimiting(Tasa.General)
+            .WithName("API-80");
+
+        // API-81 - Empieza el alta: secreto nuevo y la direccion otpauth:// para el QR. Queda
+        // pendiente hasta API-82. Esto (con API-82) es lo que un rol del panel sin MFA SI puede
+        // hacer para entrar al panel: vive en /api/mi, no en /api/interno.
+        grupo.MapPost("/mfa/alta", async (ServicioMfa servicio, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                return usuarioId is null
+                    ? Results.Unauthorized()
+                    : Respuestas.DeResultado(await servicio.IniciarAltaAsync(usuarioId.Value));
+            })
+            .RequireRateLimiting(Tasa.Autenticacion)
+            .WithName("API-81");
+
+        // API-82 - Confirma el alta con un codigo y devuelve los 10 codigos de respaldo (una vez).
+        grupo.MapPost("/mfa/confirmar", async (
+                ConfirmarMfaCmd cmd, ServicioMfa servicio, HttpContext http, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                return usuarioId is null
+                    ? Results.Unauthorized()
+                    : Respuestas.DeResultado(await servicio.ConfirmarAltaAsync(usuarioId.Value, cmd, Ip(http)));
+            })
+            .ConValidacion<ConfirmarMfaCmd>()
+            .RequireRateLimiting(Tasa.Autenticacion)
+            .WithName("API-82");
+
+        // API-83 - Desactiva la verificacion en dos pasos. Pide contrasena Y codigo.
+        grupo.MapPost("/mfa/desactivar", async (
+                DesactivarMfaCmd cmd, ServicioMfa servicio, HttpContext http, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                return usuarioId is null
+                    ? Results.Unauthorized()
+                    : Respuestas.DeResultado(await servicio.DesactivarAsync(usuarioId.Value, cmd, Ip(http)));
+            })
+            .ConValidacion<DesactivarMfaCmd>()
+            .RequireRateLimiting(Tasa.Autenticacion)
+            .WithName("API-83");
 
         // API-18 - Perfil completo, con zona y sin ubicacion exacta.
         grupo.MapGet("/perfil-prestador", async (
@@ -663,6 +741,18 @@ public static class EndpointsIdentidad
                 Expires = sesion.ExpiraEn,
                 Path = "/api/auth",   // solo viaja a donde se usa
             });
+    }
+
+    /// <summary>Pone las cookies y responde lo mismo en API-09 (sin MFA) y en API-79.</summary>
+    private static async Task<IResult> SesionAbiertaAsync(HttpContext http, SesionAbiertaDto sesion)
+    {
+        await AbrirCookiesAsync(http, sesion);
+        return Results.Ok(new
+        {
+            sesion.UsuarioId,
+            sesion.Roles,
+            sesion.CorreoVerificado,
+        });
     }
 
     private static async Task CerrarCookiesAsync(HttpContext http)

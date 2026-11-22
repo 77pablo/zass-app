@@ -65,14 +65,14 @@ public class CuposFundadorPruebas
     }
 
     [Fact]
-    public async Task La_reserva_dura_25_minutos_por_defecto()
+    public async Task La_reserva_dura_30_minutos_por_defecto()
     {
         var p = UnPrestador();
         var r = await _servicio.ReservarCupoFundadorAsync(p.Id);
 
-        Assert.Equal(Ahora.AddMinutes(25), Cupo(r.Valor).ReservadoHasta);
+        Assert.Equal(Ahora.AddMinutes(30), Cupo(r.Valor).ReservadoHasta);   // N3: 30, escrito a mano
 
-        _reloj.Avanzar(TimeSpan.FromMinutes(24));
+        _reloj.Avanzar(TimeSpan.FromMinutes(29));
         Assert.Equal(49, await Disponibles());
 
         // Justo al cumplirse el plazo ya no esta guardado (reservado_hasta <= ahora).
@@ -103,7 +103,7 @@ public class CuposFundadorPruebas
         _reloj.Avanzar(TimeSpan.FromMinutes(20));
         await _servicio.ReservarCupoFundadorAsync(p.Id);
 
-        Assert.Equal(Ahora.AddMinutes(45), Cupo(r.Valor).ReservadoHasta);
+        Assert.Equal(Ahora.AddMinutes(50), Cupo(r.Valor).ReservadoHasta);   // 20 + 30 (N3)
     }
 
     [Fact]
@@ -136,7 +136,7 @@ public class CuposFundadorPruebas
         var b = UnPrestador();
         var deA = await _servicio.ReservarCupoFundadorAsync(a.Id);
 
-        _reloj.Avanzar(TimeSpan.FromMinutes(26));
+        _reloj.Avanzar(TimeSpan.FromMinutes(31));
         Assert.Equal(50, await Disponibles());
 
         var deB = await _servicio.ReservarCupoFundadorAsync(b.Id);

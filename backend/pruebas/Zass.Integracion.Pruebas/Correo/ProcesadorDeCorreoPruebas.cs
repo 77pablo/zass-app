@@ -8,6 +8,7 @@ using Zass.Dominio.Identidad;
 using Zass.Infraestructura.Configuracion;
 using Zass.Infraestructura.Correo;
 using Zass.Infraestructura.Datos;
+using Zass.Integracion.Pruebas.Push;
 
 namespace Zass.Integracion.Pruebas.Correo;
 
@@ -437,6 +438,57 @@ public class ProcesadorDeCorreoPruebas : IAsyncLifetime
         var n = await LeerAsync(aviso);
         Assert.Equal(EstadoEnvio.Enviada, n.Estado);
         Assert.Equal(1, n.Intentos);
+    }
+
+    // ------------------------------------------------------------ ES-3b · preferencias (API-43)
+
+    [Fact]
+    public async Task ES3b_con_el_correo_apagado_para_ese_tipo_el_aviso_queda_anulado_sin_llamar_al_proveedor()
+    {
+        var u = await CrearUsuarioAsync();
+        await PushIntegracionPruebas.PreferirAsync(u.Id, TipoNotificacion.CitaConfirmada, correo: false, push: true);
+        var aviso = await EncolarAsync(u.Id, "x", TipoNotificacion.CitaConfirmada, cuerpo: "{\"rol\":\"buscador\"}");
+        var m = ManejadorFalso.Responde(HttpStatusCode.Created);
+
+        await CicloAsync(m);
+
+        Assert.Equal(0, m.Cuenta);
+        var n = await LeerAsync(aviso);
+        Assert.Equal(EstadoEnvio.Anulada, n.Estado);
+        Assert.Equal(CargaDeAviso.Purgada, n.Cuerpo);
+    }
+
+    [Fact]
+    public async Task ES3b_apagar_el_correo_de_otro_tipo_o_solo_el_push_no_frena_el_correo()
+    {
+        var u = await CrearUsuarioAsync();
+        await PushIntegracionPruebas.PreferirAsync(u.Id, TipoNotificacion.CitaConfirmada, correo: true, push: false);
+        await PushIntegracionPruebas.PreferirAsync(u.Id, TipoNotificacion.CitaCancelada, correo: false, push: false);
+        var otra = await CrearUsuarioAsync();
+        await PushIntegracionPruebas.PreferirAsync(otra.Id, TipoNotificacion.CitaRechazada, correo: false, push: false);
+        var confirmada = await EncolarAsync(u.Id, "x", TipoNotificacion.CitaConfirmada, cuerpo: "{\"rol\":\"buscador\"}");
+        var rechazada = await EncolarAsync(u.Id, "x", TipoNotificacion.CitaRechazada, cuerpo: "{\"rol\":\"buscador\"}");
+        var m = ManejadorFalso.Responde(HttpStatusCode.Created);
+
+        await CicloAsync(m);
+
+        Assert.Equal(2, m.Cuenta);
+        Assert.Equal(EstadoEnvio.Enviada, (await LeerAsync(confirmada)).Estado);
+        Assert.Equal(EstadoEnvio.Enviada, (await LeerAsync(rechazada)).Estado);
+    }
+
+    [Fact]
+    public async Task ES3b_el_correo_de_cobro_sale_aunque_una_fila_vieja_diga_que_esta_apagado()
+    {
+        var u = await CrearUsuarioAsync(verificado: true);
+        await PushIntegracionPruebas.PreferirAsync(u.Id, TipoNotificacion.SuscripcionVencida, correo: false, push: false);
+        var aviso = await EncolarAsync(u.Id, "x", TipoNotificacion.SuscripcionVencida, cuerpo: "{}");
+        var m = ManejadorFalso.Responde(HttpStatusCode.Created);
+
+        await CicloAsync(m);
+
+        Assert.Equal(1, m.Cuenta);
+        Assert.Equal(EstadoEnvio.Enviada, (await LeerAsync(aviso)).Estado);
     }
 
     [Fact]

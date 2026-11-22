@@ -138,8 +138,10 @@ public static class EndpointsSuscripciones
             .RequireRateLimiting(Tasa.Sensible)
             .WithName("API-68");
 
-        // API-69 - Toma un cupo fundador, SIN tarjeta (decision de Pablo, 20-nov-2026). Lo deja
-        // definitivo y arranca el mes gratis; la tarjeta se inscribe despues con API-76.
+        // API-69 - RESERVA un cupo fundador por 30 minutos (N3, decision de Pablo del 22-nov-2026,
+        // que reemplaza a la del 20-nov). El cupo solo queda definitivo, y el mes gratis solo
+        // empieza, cuando la tarjeta queda inscrita en la pasarela (API-76 + aviso de Flow). Si no
+        // se inscribe a tiempo, el cupo vuelve a estar libre. Pide captcha Turnstile.
         //
         // Sin cuerpo a proposito: no hay nada que elegir. El perfil sale de la sesion. La clave
         // de idempotencia se sigue pidiendo; ademas tomar es idempotente por perfil.
@@ -156,10 +158,12 @@ public static class EndpointsSuscripciones
                     await suscripciones.TomarCupoFundadorAsync(mio.Valor!.Id));
             })
             .AddEndpointFilter<FiltroIdempotencia>()
+            .ConCaptcha(Turnstile.AccionCupoFundador)
             .RequireRateLimiting(Tasa.Sensible)
             .WithName("API-69");
 
-        // API-76 - Inscribe la tarjeta de quien YA tiene su cupo fundador (RN-S7-01). Monto
+        // API-76 - Inscribe la tarjeta de quien tiene su cupo fundador RESERVADO y vigente, o ya
+        // confirmado (cambio de tarjeta) (RN-S7-01). Monto
         // cero: no se cobra nada, se autoriza el cobro de cuando termine el mes gratis.
         // Devuelve a donde mandar a la persona (la pasarela).
         grupo.MapPost("/suscripcion/tarjeta", async (

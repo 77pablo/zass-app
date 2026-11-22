@@ -7,12 +7,14 @@ using Zass.Infraestructura.Push;
 
 namespace Zass.Api.Endpoints;
 
-/// <summary>ES-3 · MOD-07. Los avisos push (CU-15).</summary>
+/// <summary>ES-3 · MOD-07. Los avisos push (CU-15) y por que canal sale cada aviso (CS-14).</summary>
 public static class EndpointsNotificaciones
 {
     public const string EndpointRegistrar = "API-45";
     public const string EndpointBaja = "API-45-baja";
     public const string EndpointClave = "API-45-clave";
+    public const string EndpointPreferencias = "API-43";
+    public const string EndpointVerPreferencias = "API-43-ver";
 
     public static IEndpointRouteBuilder MapearNotificaciones(this IEndpointRouteBuilder app)
     {
@@ -56,6 +58,32 @@ public static class EndpointsNotificaciones
             .ConValidacion<BajaPushCmd>()
             .RequireRateLimiting(Tasa.General)
             .WithName(EndpointBaja);
+
+        // API-43 (lectura). La documentacion solo trae el PUT; la pantalla necesita leer como esta
+        // todo antes de cambiarlo. Cada tipo con su grupo, sus canales y si el correo es fijo.
+        mi.MapGet("/preferencias", async (ServicioPreferenciasAviso servicio, ClaimsPrincipal quien,
+                CancellationToken ct) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+                return Results.Ok(await servicio.VerAsync(usuarioId.Value, ct));
+            })
+            .RequireRateLimiting(Tasa.General)
+            .WithName(EndpointVerPreferencias);
+
+        // API-43. Cambia los canales de los tipos que vienen y devuelve como quedo todo. El correo
+        // de los avisos de cobro, plan y tarjeta no se puede apagar (400). Se deja pasar aunque
+        // falten datos de la cuenta (ES-2): elegir que avisos recibir no se condiciona a nada.
+        mi.MapPut("/preferencias", async (GuardarPreferenciasCmd cmd, ServicioPreferenciasAviso servicio,
+                ClaimsPrincipal quien, CancellationToken ct) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                if (usuarioId is null) return Results.Unauthorized();
+                return Respuestas.DeResultado(await servicio.GuardarAsync(usuarioId.Value, cmd, ct));
+            })
+            .ConValidacion<GuardarPreferenciasCmd>()
+            .RequireRateLimiting(Tasa.General)
+            .WithName(EndpointPreferencias);
 
         return app;
     }

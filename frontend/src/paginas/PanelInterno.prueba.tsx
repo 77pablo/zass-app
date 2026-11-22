@@ -1,7 +1,17 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const estadoMfa = vi.fn()
+vi.mock('../funciones/identidad/servicio', () => ({
+  estadoMfa: () => estadoMfa(),
+  cerrarSesion: vi.fn(),
+}))
+beforeEach(() => {
+  estadoMfa.mockReset()
+  estadoMfa.mockResolvedValue({ activo: true, activadoEn: null, codigosDeRespaldoRestantes: 10, obligatorio: true })
+})
 import { BarraInferior } from '../marco/BarraInferior'
 import { Cabecera } from '../marco/Cabecera'
 import { ProveedorDeMenuMovil } from '../marco/ProveedorDeMenuMovil'
@@ -24,6 +34,7 @@ function pintar(ruta: string, estado: EstadoDeSesion, roles: string[] = []) {
             <Route index element={<IndiceInterno />} />
             <Route path="verificacion" element={<SoloSeccion seccion="verificacion"><p>la mesa</p></SoloSeccion>} />
             <Route path="reportes" element={<SoloSeccion seccion="moderacion"><p>los reportes</p></SoloSeccion>} />
+            <Route path="indicadores" element={<SoloSeccion seccion="administracion"><p>los indicadores</p></SoloSeccion>} />
             <Route path="tarjetas" element={<SoloSeccion seccion="administracion"><p>emitir</p></SoloSeccion>} />
             <Route path="auditoria" element={<SoloSeccion seccion="administracion"><p>la auditoria</p></SoloSeccion>} />
           </Route>
@@ -88,6 +99,12 @@ describe('JQ-11: la puerta de /interno', () => {
     expect(screen.getByRole('link', { name: /Emitir tarjetas/ })).toHaveAttribute('href', '/interno/tarjetas')
     expect(screen.getByRole('link', { name: /Auditoría/ })).toHaveAttribute('href', '/interno/auditoria')
     expect(screen.queryByRole('link', { name: /Verificación de credenciales|Reseñas reportadas/ })).toBeNull()
+    expect(screen.getByRole('link', { name: /Indicadores/ })).toHaveAttribute('href', '/interno/indicadores')
+  })
+
+  it('el verificador y el moderador no ven los indicadores (JQ-14)', () => {
+    pintar('/interno', 'dentro', ['verificador', 'moderador'])
+    expect(screen.queryByRole('link', { name: /Indicadores/ })).toBeNull()
   })
 
   it('el verificador y el moderador no ven tarjetas ni auditoría en el índice (JQ-13)', () => {
@@ -99,6 +116,7 @@ describe('JQ-11: la puerta de /interno', () => {
     ['el moderador, en la verificación', '/interno/verificacion', ['moderador'], 'la mesa'],
     ['el verificador, en los reportes', '/interno/reportes', ['verificador'], 'los reportes'],
     ['el administrador, en los reportes', '/interno/reportes', ['administrador'], 'los reportes'],
+    ['un verificador sin administrador, en los indicadores', '/interno/indicadores', ['verificador'], 'los indicadores'],
     ['un verificador sin administrador, en emitir tarjetas', '/interno/tarjetas', ['verificador'], 'emitir'],
     ['un verificador sin administrador, en la auditoría', '/interno/auditoria', ['verificador'], 'la auditoria'],
     ['un moderador sin administrador, en emitir tarjetas', '/interno/tarjetas', ['moderador'], 'emitir'],
@@ -146,5 +164,21 @@ describe('JQ-11: el enlace en «Más»', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Más' }))
     expect(screen.getByRole('link', { name: /Mis tarjetas/ })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /Panel interno/ })).toBeNull()
+  })
+})
+
+describe('MFA obligatorio en el panel (22-nov-2026)', () => {
+  it('un verificador sin MFA ve el aviso para activarlo en vez del panel', async () => {
+    estadoMfa.mockResolvedValue({ activo: false, activadoEn: null, codigosDeRespaldoRestantes: 0, obligatorio: true })
+    pintar('/interno/verificacion', 'dentro', ['buscador', 'verificador'])
+    const enlace = await screen.findByRole('link', { name: 'Activar la verificación en dos pasos' })
+    expect(enlace).toHaveAttribute('href', '/mi-cuenta/seguridad')
+    expect(screen.queryByText('la mesa')).toBeNull()
+  })
+
+  it('con MFA activo el panel se abre', async () => {
+    pintar('/interno/verificacion', 'dentro', ['buscador', 'verificador'])
+    expect(await screen.findByText('la mesa')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Activar la verificación en dos pasos' })).toBeNull()
   })
 })

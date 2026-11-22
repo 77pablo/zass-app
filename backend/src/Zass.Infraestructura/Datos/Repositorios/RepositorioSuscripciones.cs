@@ -270,6 +270,14 @@ public sealed class RepositorioSuscripcionesEfCore : IRepositorioSuscripciones
             .Select(c => (short?)c.Numero)
             .FirstOrDefaultAsync(ct);
 
+    public async Task<EstadoCupoFundador?> EstadoCupoFundadorDeAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default) =>
+        await _ctx.CuposFundador
+            .AsNoTracking()
+            .Where(c => c.PerfilPrestadorId == perfilPrestadorId)
+            .Select(c => new EstadoCupoFundador(c.Numero, c.ReservadoHasta))
+            .FirstOrDefaultAsync(ct);
+
     public async Task<short?> IntentarReservarCupoFundadorAsync(
         Guid perfilPrestadorId, DateTime ahora, DateTime hasta, CancellationToken ct = default)
     {

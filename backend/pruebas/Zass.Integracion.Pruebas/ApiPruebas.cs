@@ -2401,14 +2401,10 @@ public partial class ApiPruebas : IAsyncLifetime
         Assert.Equal(HttpStatusCode.NoContent, respuesta.StatusCode);
     }
 
-    private async Task IniciarSesionAsync(string correo)
-    {
-        var respuesta = await _cliente.PostAsJsonAsync("/api/auth/sesion", new
-        {
-            correo, contrasena = "contrasena-larga-1",
-        });
-        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
-    }
+    // MFA (22-nov-2026): si la cuenta lo pide, da el segundo paso; si es interna, lo deja activo.
+    private async Task IniciarSesionAsync(string correo) =>
+        Assert.Equal(HttpStatusCode.OK,
+            (await MfaDePrueba.EntrarAsync(_cliente, correo, "contrasena-larga-1")).StatusCode);
 
     private async Task<string> TokenCsrfAsync()
     {
@@ -2530,6 +2526,7 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-57",
             "API-58",
             "API-59",
+            "API-60",
             "API-61",
             "API-62",
             "API-63",
@@ -2553,11 +2550,16 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-76",
             // Cancelar la renovacion de la suscripcion (22-nov-2026).
             "API-78",
+            "API-79", "API-80", "API-81", "API-82", "API-83",   // MFA (22-nov-2026)
 
             // ES-3 (21-nov-2026): registrar este navegador para push, darlo de baja y la clave VAPID.
             "API-45",
             "API-45-baja",
             "API-45-clave",
+            // ES-3b (21-nov-2026): por que canal llega cada aviso. La documentacion trae solo el PUT;
+            // «-ver» es la lectura que necesita la pantalla.
+            "API-43",
+            "API-43-ver",
             // JQ-9: la foto del perfil (subir, quitar, servirla) y el documento que abre el
             // Verificador con la credencial tomada.
             "API-72",
@@ -2576,6 +2578,7 @@ public partial class ApiPruebas : IAsyncLifetime
             "CS-04",
             "CSRF",
             "ES-2-COMPLETAR-DATOS",   // PUT /api/mi/cuenta/datos (ES-2, 20-nov-2026)
+            "MI-METRICAS",
             "MI-SUSCRIPCION",
         };
 
