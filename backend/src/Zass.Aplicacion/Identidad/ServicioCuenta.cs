@@ -60,13 +60,16 @@ public sealed class ServicioCuenta
     private readonly IAuditor _auditor;
     private readonly ServicioSesion _sesiones;
     private readonly IContrasenasFiltradas _filtradas;
+    private readonly Zass.Aplicacion.Suscripciones.IServicioSuscripciones? _suscripciones;
 
     public ServicioCuenta(
         IRepositorioUsuarios usuarios, IRepositorioPerfiles perfiles, IUnidadDeTrabajo unidad,
         IHashContrasenas hash, IGeneradorSecretos secretos, IRelojSistema reloj,
         INotificaciones avisos, IAuditor auditor, ServicioSesion sesiones,
-        IContrasenasFiltradas filtradas)
+        IContrasenasFiltradas filtradas,
+        Zass.Aplicacion.Suscripciones.IServicioSuscripciones? suscripciones = null)
     {
+        _suscripciones = suscripciones;
         _usuarios = usuarios;
         _perfiles = perfiles;
         _unidad = unidad;
@@ -335,6 +338,16 @@ public sealed class ServicioCuenta
         // un perfil publicado de una cuenta eliminada seguiria saliendo en la busqueda.
         var perfil = await _perfiles.PrestadorDeUsuarioAsync(usuarioId, ct);
         perfil?.Despublicar();
+
+        // N3 (22-nov-2026): eliminar la cuenta cancela la suscripcion, olvida la tarjeta y
+        // suelta el cupo fundador. Antes el cobro automatico le seguia cobrando a la cuenta
+        // eliminada con la tarjeta guardada. Cambio MINIMO a proposito: el PR #76 (ES-5) de
+        // Esteban rehace este metodo y lo tiene que integrar.
+        if (perfil is not null && _suscripciones is not null)
+        {
+            var fin = await _suscripciones.TerminarPorCuentaEliminadaAsync(perfil.Id, ct);
+            if (!fin.Exito) return fin;
+        }
 
         usuario.Anonimizar();
         usuario.AnonimizadoEn = _reloj.Ahora;

@@ -174,9 +174,20 @@ public class SuscripcionesIntegracionPruebas : IDisposable
             });
         await _prueba.Ctx.SaveChangesAsync();
 
+        // N3 (22-nov-2026): con historico NO hay otra prueba gratis (una por perfil). Se
+        // contesta exito (publicar sigue funcionando) pero no nace ninguna suscripcion.
         var r = await _servicio.IniciarPruebaAsync(perfil.Id);
-
         Assert.True(r.Exito, r.Mensaje);
+        Assert.False(await _servicio.EstaVigenteAsync(perfil.Id));
+
+        // El indice parcial sigue sin estorbar: una suscripcion nueva convive con el
+        // historico vencido y cancelado.
+        _prueba.Ctx.Suscripciones.Add(new Suscripcion
+        {
+            PerfilPrestadorId = perfil.Id, PlanId = 1, Estado = EstadoSuscripcion.Activa,
+            IniciaEn = ahora, VigenteHasta = ahora.AddDays(30),
+        });
+        await _prueba.Ctx.SaveChangesAsync();
         Assert.True(await _servicio.EstaVigenteAsync(perfil.Id));
     }
 

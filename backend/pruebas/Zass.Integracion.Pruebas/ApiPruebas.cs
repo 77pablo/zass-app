@@ -2551,6 +2551,8 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-75",
             // Cupo sin tarjeta (20-nov-2026): API-69 toma el cupo y API-76 inscribe la tarjeta.
             "API-76",
+            // Cancelar la renovacion de la suscripcion (22-nov-2026).
+            "API-78",
 
             // ES-3 (21-nov-2026): registrar este navegador para push, darlo de baja y la clave VAPID.
             "API-45",

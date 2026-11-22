@@ -355,6 +355,20 @@ public interface IRepositorioSuscripciones
     Task<bool> ClaveDeIntentoUsadaAsync(string clave, CancellationToken ct = default);
 
     /// <summary>
+    /// RN-S7-08. Si ese perfil tiene un intento de COBRO con cupon, todavia Pendiente, creado
+    /// despues de <paramref name="desde"/>. Evita abrir un segundo intento con el mismo cupon.
+    /// </summary>
+    Task<bool> HayIntentoConCuponPendienteAsync(
+        Guid perfilPrestadorId, DateTime desde, CancellationToken ct = default);
+
+    /// <summary>
+    /// El estado de la CUENTA duena de ese perfil, o nulo si el perfil no existe. Lo usa el
+    /// cobro automatico: a una cuenta eliminada o suspendida no se le cobra.
+    /// </summary>
+    Task<EstadoCuenta?> EstadoDeCuentaDePerfilAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default);
+
+    /// <summary>
     /// ES-1. Todos los intentos cuya clave empieza por <paramref name="prefijo"/>: el cobro
     /// automatico de un periodo y sus reintentos diarios comparten el prefijo
     /// <c>cobro-automatico:{suscripcion}:{periodo}</c>, y la gracia se decide mirandolos juntos.

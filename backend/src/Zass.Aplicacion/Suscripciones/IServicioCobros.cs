@@ -159,10 +159,15 @@ public sealed record IntentoDePagoDto(
     string? ReferenciaPasarela,
     bool Nueva);
 
+/// <param name="Pendiente">
+/// La pasarela todavia no tiene veredicto: el intento sigue Pendiente y espera el siguiente
+/// aviso. Con esto en verdadero, <c>Aprobado = false</c> NO es un rechazo.
+/// </param>
 public sealed record ConfirmacionDto(
     Guid IntentoDePagoId,
     bool Aprobado,
     string Estado,
     DateTime? VigenteHasta,
     string Mensaje,
-    bool Nueva);
+    bool Nueva,
+    bool Pendiente = false);
