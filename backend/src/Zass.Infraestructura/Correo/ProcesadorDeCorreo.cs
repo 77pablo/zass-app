@@ -256,6 +256,16 @@ public sealed class ProcesadorDeCorreo
             return;
         }
 
+        // ES-3b · API-43: la persona apago el correo para este tipo. Se mira al enviar, no al
+        // encolar, para que el cambio alcance a lo que ya esperaba en la cola.
+        if (!await _ctx.SaleAsync(aviso, CanalNotificacion.Correo, ct))
+        {
+            await AnularAsync(aviso, ahora, ct);
+            _log.LogInformation("Aviso {Id} ({Tipo}) anulado: la persona apagó el correo para este aviso.",
+                aviso.Id, aviso.Tipo);
+            return;
+        }
+
         // La plantilla lee de la carga lo que necesita: el token, o los dias que quedan. Si no
         // esta (una carga ya purgada, por ejemplo) no hay correo que armar y no se reintenta.
         var correo = Plantillas.Renderizar(aviso.Tipo, usuario.Nombre, urlPublica, aviso.Cuerpo);

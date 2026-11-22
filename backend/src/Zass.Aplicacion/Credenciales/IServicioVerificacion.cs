@@ -26,6 +26,14 @@ public interface IServicioVerificacion
     /// <summary>API-31. Verifica, rechaza (con motivo escrito) o pide antecedentes.</summary>
     Task<Resultado<ResolucionDto>> ResolverAsync(
         ResolverCredencialCmd cmd, CancellationToken ct = default);
+
+    /// <summary>
+    /// JQ-9. Abre un documento de respaldo para revisarlo. Solo quien tiene la credencial TOMADA
+    /// y con la reserva vigente (CC-03): ser Verificador no basta para hojear títulos ajenos. Cada
+    /// apertura queda en auditoría (API-26 y API-31 tocan datos personales sensibles).
+    /// </summary>
+    Task<Resultado<DocumentoParaVer>> AbrirDocumentoAsync(
+        Guid verificadorId, Guid credencialId, Guid documentoId, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -75,4 +83,11 @@ public sealed record CredencialEnColaDto(
     bool SinDocumentos,
     DateTime EnColaDesde,
     bool ReservadaPorMi,
-    DateTime? ReservadaHasta);
+    DateTime? ReservadaHasta)
+{
+    /// <summary>
+    /// Los documentos, para abrirlos con API de revisión. Solo se llenan cuando la credencial está
+    /// reservada por quien pregunta: en la cola general basta con saber cuántos hay.
+    /// </summary>
+    public IReadOnlyList<MiDocumentoDto> Respaldo { get; init; } = Array.Empty<MiDocumentoDto>();
+}

@@ -181,8 +181,13 @@ public class SuscripcionesPruebas
         Assert.Single(_base.Suscripciones);
     }
 
+    // INVERTIDA A PROPOSITO el 22-nov-2026 (N3). Hasta entonces se llamaba
+    // «Quien_tuvo_una_vencida_puede_empezar_otra» y CONSAGRABA el defecto: como API-22 acepta
+    // publicar un perfil ya publicado, dejar vencer y volver a publicar daba otros 30 dias
+    // gratis, cada mes. La prueba gratis es UNA por perfil: publicar sigue funcionando (exito),
+    // pero no nace otra suscripcion y el perfil queda fuera de la busqueda hasta que pague.
     [Fact]
-    public async Task Quien_tuvo_una_vencida_puede_empezar_otra()
+    public async Task Quien_tuvo_una_vencida_NO_empieza_otra_prueba_gratis()
     {
         var p = UnPrestador();
         ConSuscripcion(p.Id, EstadoSuscripcion.Vencida, Ahora.AddDays(-30));
@@ -190,8 +195,8 @@ public class SuscripcionesPruebas
         var r = await _servicio.IniciarPruebaAsync(p.Id);
 
         Assert.True(r.Exito);
-        Assert.Equal(2, _base.Suscripciones.Count);
-        Assert.True(await _servicio.EstaVigenteAsync(p.Id));
+        Assert.Single(_base.Suscripciones);
+        Assert.False(await _servicio.EstaVigenteAsync(p.Id));
     }
 
     [Fact]

@@ -36,15 +36,22 @@ public class PasarelaEnProduccionPruebas
     /// <see cref="OpcionesZass"/>. La cadena no apunta a ninguna base y no se usa: nada
     /// de esta prueba abre una conexion.
     /// </summary>
-    private static IServiceProvider Contenedor(string entorno, string? pasarela)
+    private static IServiceProvider Contenedor(string entorno, string? pasarela,
+        Dictionary<string, string?>? extra = null)
     {
+        const string SecretoAvisoValido =
+            "secreto-de-prueba-del-aviso-0123456789ab"; // 40 caracteres
+
         var ajustes = new Dictionary<string, string?>
         {
             ["Zass:CadenaConexion"] = "Host=no-se-conecta;Database=no-existe",
             ["Zass:ClaveDireccionesBase64"] =
                 Convert.ToBase64String(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray()),
+            ["Zass:SecretoAvisoPagos"] = SecretoAvisoValido,
+            ["Zass:CorreoAlertasAdmin"] = "alertas@ejemplo.test",
         };
         if (pasarela is not null) ajustes[RegistroDeServicios.ClavePasarela] = pasarela;
+        foreach (var (clave, valor) in extra ?? new()) ajustes[clave] = valor;
 
         var configuracion = new ConfigurationBuilder().AddInMemoryCollection(ajustes).Build();
         var servicios = new ServiceCollection();
@@ -210,5 +217,49 @@ public class PasarelaEnProduccionPruebas
         // Arrancar cobrando de mentira por un error de escritura en una variable de
         // entorno es la clase de fallo que no se nota hasta que falta el dinero.
         Assert.ThrowsAny<Exception>(() => contenedor.GetRequiredService<IPasarelaDePagos>());
+    }
+
+    // ------------------------------------------------------------- Flow (T63)
+
+    private static Dictionary<string, string?> ClavesDeFlow(bool conApiKey = true) => new()
+    {
+        ["Zass:Flow:ApiKey"] = conApiKey ? "api-key-de-prueba" : null,
+        ["Zass:Flow:SecretKey"] = "secreto-de-prueba",
+        ["Zass:Flow:UrlAvisos"] = "https://api.zass.invalid/api/pagos/aviso",
+        ["Zass:UrlPublica"] = "https://zass.invalid",
+    };
+
+    [Theory]
+    [InlineData("Production")]
+    [InlineData("Development")]
+    public void Con_las_tres_claves_la_pasarela_flow_se_resuelve_como_FlowPasarela(string entorno)
+    {
+        var contenedor = Contenedor(entorno, "flow", ClavesDeFlow());
+
+        Assert.IsType<FlowPasarela>(contenedor.GetRequiredService<IPasarelaDePagos>());
+    }
+
+    [Fact]
+    public void Pedir_flow_sin_la_ApiKey_no_arranca_y_dice_cual_falta()
+    {
+        var contenedor = Contenedor("Production", "flow", ClavesDeFlow(conApiKey: false));
+
+        var e = Assert.Throws<Microsoft.Extensions.Options.OptionsValidationException>(
+            () => contenedor.GetRequiredService<IPasarelaDePagos>());
+        Assert.Contains("Zass:Flow:ApiKey", e.Message);
+    }
+
+    /// <summary>
+    /// La T63 habia registrado Zass:Flow con [Required] y ValidateOnStart: sin Flow configurado,
+    /// la API no arrancaba en NINGUN entorno. Esto fija que sin Flow todo sigue como antes.
+    /// </summary>
+    [Fact]
+    public void Sin_Flow_configurado_la_simulada_se_sigue_resolviendo_y_nada_exige_claves_de_Flow()
+    {
+        var contenedor = Contenedor("Development", pasarela: null);
+
+        Assert.IsType<PasarelaSimulada>(contenedor.GetRequiredService<IPasarelaDePagos>());
+        var opciones = contenedor.GetRequiredService<Microsoft.Extensions.Options.IOptions<OpcionesZass>>().Value;
+        Assert.Null(opciones.Flow);
     }
 }

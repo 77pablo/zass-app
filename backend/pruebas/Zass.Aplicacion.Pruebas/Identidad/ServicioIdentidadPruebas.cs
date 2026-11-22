@@ -25,9 +25,10 @@ public class ServicioIdentidadPruebas
     {
         var usuarios = new RepositorioUsuariosEnMemoria(_base);
         var perfiles = new RepositorioPerfilesEnMemoria(_base);
+        var filtradas = new ContrasenasFiltradasNunca();
 
         _registro = new ServicioRegistro(
-            usuarios, perfiles, _base, _hash, _secretos, _reloj, _cola, _auditoria);
+            usuarios, perfiles, _base, _hash, _secretos, _reloj, _cola, _auditoria, filtradas);
         _identidad = new ServicioIdentidad(usuarios, perfiles);
 
         _base.Zonas.Add(new Zona { Id = 7, Nombre = "Amanecer", Sector = "Norte" });

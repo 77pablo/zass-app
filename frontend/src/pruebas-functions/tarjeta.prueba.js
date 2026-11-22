@@ -63,6 +63,16 @@ describe('Function /t/:segmento', () => {
     expect(r.headers.get('Content-Security-Policy')).toBe(CABECERAS_DE_SEGURIDAD['Content-Security-Policy'])
   })
 
+  // CU-19: la de una tarjeta sin activar lleva el segmento, para la pantalla de activacion.
+  it('una Location de tarjeta sin activar con su segmento pasa tal cual', async () => {
+    respuestaApi = () => new Response(null, { status: 302, headers: { Location: '/tarjeta/sin-activar/7KQ2-9XRM' } })
+
+    const r = await pedir('/t/7kq2-9xrm')
+
+    expect(r.status).toBe(302)
+    expect(r.headers.get('Location')).toBe('/tarjeta/sin-activar/7KQ2-9XRM')
+  })
+
   it('nunca deja pasar un Set-Cookie de la API', async () => {
     respuestaApi = () => new Response(null, { status: 302, headers: {
       Location: '/tarjeta/no-valida', 'Set-Cookie': 'rastreo=1',
@@ -108,6 +118,7 @@ describe('Function /t/:segmento', () => {
     expect(llamadas).toHaveLength(0)
   })
 
+  // La activacion (API-55) va por /api, no por aqui: este reenvio nunca lleva cookies.
   it('un metodo que no es GET da 405 sin llamar a la API', async () => {
     const r = await pedir('/t/7KQ2-9XRM', { metodo: 'POST' })
 

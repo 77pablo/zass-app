@@ -17,6 +17,8 @@ export interface DatosDeTarjeta {
   precioDesde?: number | null
   descripcion?: string | null
   esTuPerfil?: boolean
+  /** JQ-9: la foto, si la persona subió una. Sin ella, sus iniciales. */
+  foto?: string | null
 }
 
 /**
@@ -28,7 +30,7 @@ export function TarjetaPersona({ p }: { p: DatosDeTarjeta }) {
   return (
     <Link to={`/prestadores/${p.slug}`} className="tarjeta-persona">
       <div className="tarjeta-cabeza">
-        <Monograma nombre={p.nombre} />
+        <Monograma nombre={p.nombre} foto={p.foto} />
         <div>
           <h3 className="tarjeta-nombre">{p.nombre}</h3>
           {p.rubro && <p className="tarjeta-detalle">{p.rubro}</p>}
@@ -49,7 +51,7 @@ export function TarjetaPersona({ p }: { p: DatosDeTarjeta }) {
         {p.precioDesde != null
           ? <span className="tarjeta-precio">desde <strong>{pesos(p.precioDesde)}</strong></span>
           : <span className="tarjeta-precio tarjeta-precio--vacio">Precio a convenir</span>}
-        <span className="tarjeta-ir">Ver ficha<Icono nombre="flecha" /></span>
+        <span className="tarjeta-ir">Ver ficha<Icono nombre="chevron" /></span>
       </span>
     </Link>
   )

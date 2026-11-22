@@ -1,5 +1,7 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting.Internal;
 using Microsoft.Extensions.Options;
 using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Puertos;
@@ -16,6 +18,9 @@ public class ContenedorPruebas
     private static readonly string ClaveValida =
         Convert.ToBase64String(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray());
 
+    private static readonly string SecretoAvisoValido =
+        "secreto-de-prueba-del-aviso-0123456789ab"; // 40 caracteres
+
     private static ServiceProvider Construir(
         string? clave = null, string? cadena = null, bool validarAlResolver = true)
     {
@@ -24,10 +29,14 @@ public class ContenedorPruebas
             {
                 ["Zass:CadenaConexion"] = cadena ?? Conexion.Cadena,
                 ["Zass:ClaveDireccionesBase64"] = clave ?? ClaveValida,
+                ["Zass:SecretoAvisoPagos"] = SecretoAvisoValido,
             })
             .Build();
 
         return new ServiceCollection()
+            .AddSingleton<IConfiguration>(configuracion)
+            .AddLogging()
+            .AddSingleton<IHostEnvironment>(new HostingEnvironment { EnvironmentName = "Development" })
             .AgregarZass(configuracion)
             .BuildServiceProvider(new ServiceProviderOptions
             {

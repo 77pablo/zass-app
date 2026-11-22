@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { CodigoQr } from '../componentes/tarjetas/CodigoQr'
 import {
-  desactivarTarjeta, enlaceQr, enlaceVisible, estadisticasDeTarjeta, fechaDeTarjeta, misTarjetas,
+  desactivarTarjeta, enlaceQr, enlaceVisible, estadisticasDeTarjeta, fechaDeTarjeta, llegaActivada, misTarjetas,
   type EstadisticasDeTarjeta, type MiTarjeta,
 } from '../funciones/tarjetas/servicio'
 import * as T from '../funciones/tarjetas/textos'
@@ -27,7 +27,14 @@ export function MisTarjetas() {
   const [tarjetas, setTarjetas] = useState<MiTarjeta[] | null>(null)
   const [error, setError] = useState(false)
   const [recarga, setRecarga] = useState(0)
-  const [aviso, setAviso] = useState<string | null>(null)
+  // CU-19: al volver de activar una tarjeta, el aviso de que quedó activa. Se lee una vez y se
+  // borra del historial: si no, recargar la página lo volvería a mostrar.
+  const { pathname, state } = useLocation()
+  const navegar = useNavigate()
+  const [aviso, setAviso] = useState<string | null>(() => (llegaActivada(state) ? T.ACTIVADA_OK : null))
+  useEffect(() => {
+    if (llegaActivada(state)) navegar(pathname, { replace: true, state: null })
+  }, [state, pathname, navegar])
 
   useEffect(() => {
     if (estado !== 'dentro' || !esPrestador) return

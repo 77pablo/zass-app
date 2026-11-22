@@ -49,7 +49,8 @@ public class FichaPublicaPruebas
             // la regla que se prueba aquí (RN-S6-10) es justamente la que ese doble borraría.
             new ServicioSuscripciones(
                 new RepositorioSuscripcionesEnMemoria(_base), _base, _reloj, auditor, new ColaEnMemoria()),
-            _reloj);
+            _reloj,
+            new ServicioFotosDeTrabajoFalso());
     }
 
     /// <summary>

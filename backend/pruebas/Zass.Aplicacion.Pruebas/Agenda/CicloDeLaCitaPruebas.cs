@@ -58,12 +58,12 @@ public class CicloDeLaCitaPruebas
         _buscador = new Usuario
         {
             Correo = "buscador@zass.local", HashContrasena = "x",
-            Nombre = "Ana Pérez", CorreoVerificado = true,
+            Nombre = "Ana Pérez", CorreoVerificado = true, Estado = EstadoCuenta.Activa,
         };
         _duenoPrestador = new Usuario
         {
             Correo = "prestador@zass.local", HashContrasena = "x",
-            Nombre = "Pablo Espinoza", CorreoVerificado = true,
+            Nombre = "Pablo Espinoza", CorreoVerificado = true, Estado = EstadoCuenta.Activa,
         };
         _base.Usuarios.Add(_buscador);
         _base.Usuarios.Add(_duenoPrestador);
