@@ -252,3 +252,24 @@ public sealed class ServicioFotosDeTrabajoFalso : IServicioFotosDeTrabajo
     public Task<IReadOnlyList<FotoTrabajoPublicaDto>> ObtenerParaFichaAsync(Guid perfilPrestadorId, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<FotoTrabajoPublicaDto>>(Array.Empty<FotoTrabajoPublicaDto>());
 }
+
+/// <summary>
+/// Unidad de trabajo que anota lo que se le pide ("guardar", "transaccion") en la misma lista que
+/// el repositorio falso, para probar el ORDEN: guardar antes o despues de tal llamada.
+/// </summary>
+public sealed class UnidadQueAnota(List<string> llamadas) : IUnidadDeTrabajo
+{
+    public Task<int> GuardarAsync(CancellationToken ct = default)
+    {
+        llamadas.Add("guardar");
+        return Task.FromResult(1);
+    }
+
+    public async Task<T> EnTransaccionAsync<T>(Func<CancellationToken, Task<T>> cuerpo, CancellationToken ct = default)
+    {
+        llamadas.Add("transaccion");
+        var r = await cuerpo(ct);
+        llamadas.Add("fin transaccion");
+        return r;
+    }
+}

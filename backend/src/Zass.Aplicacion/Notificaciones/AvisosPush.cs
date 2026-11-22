@@ -21,7 +21,7 @@ public static class AvisosPush
     /// Los tipos que pueden ir por push (decision del 21-nov). Verificar el correo y recuperar la
     /// contrasena quedan FUERA: llevan un token, y un enlace con token no se manda por un canal
     /// que se lee en la pantalla bloqueada. Cobro y suscripcion SI van, pero su correo sigue
-    /// saliendo siempre (API-43, cuando llegue, no deja apagarlo).
+    /// saliendo siempre (API-43 no deja apagarlo: ver PreferenciasAviso.CorreoFijo).
     /// </summary>
     public static bool AdmitePush(TipoNotificacion tipo) => tipo is
         TipoNotificacion.CitaSolicitada or TipoNotificacion.CitaConfirmada or TipoNotificacion.CitaRechazada

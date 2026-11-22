@@ -7,6 +7,7 @@ Disallow: /mis-citas
 Disallow: /mis-resenas
 Disallow: /mis-tarjetas
 Disallow: /mis-guardados
+Disallow: /mi-actividad
 Disallow: /pago/
 Disallow: /planes/listo
 Disallow: /entrar

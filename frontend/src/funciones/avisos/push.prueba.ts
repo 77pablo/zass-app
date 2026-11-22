@@ -91,6 +91,24 @@ describe('estadoPush', () => {
     expect(await estadoPush(navegador({ permiso: 'granted', suscrito: true }).entorno)).toBe('activo')
     expect(await estadoPush(navegador({ permiso: 'granted' }).entorno)).toBe('inactivo')
   })
+
+  it('con suscripcion la vuelve a registrar en la API (el servidor pudo perderla o tenerla en otra cuenta)', async () => {
+    await estadoPush(navegador({ permiso: 'granted', suscrito: true }).entorno)
+
+    const registros = llamadas.filter((l) => l.ruta.includes('/api/mi/notificaciones/push'))
+    expect(registros).toEqual([{ ruta: expect.any(String), metodo: 'POST',
+      cuerpo: { endpoint: ENDPOINT, p256dh: 'clave-p256', auth: 'secreto' } }])
+  })
+
+  it('sin suscripcion no registra nada', async () => {
+    await estadoPush(navegador({ permiso: 'granted' }).entorno)
+    expect(llamadas.some((l) => l.ruta.includes('/api/mi/notificaciones/push'))).toBe(false)
+  })
+
+  it('si volver a registrarla falla, informa inactivo para que se pueda activar de nuevo', async () => {
+    respuestaRegistro = () => json({ title: 'Error' }, 500)
+    expect(await estadoPush(navegador({ permiso: 'granted', suscrito: true }).entorno)).toBe('inactivo')
+  })
 })
 
 describe('activarPush', () => {

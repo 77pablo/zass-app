@@ -299,6 +299,8 @@ public static class RegistroDeServicios
         servicios.AddScoped<IAuditor, AuditorEfCore>();
         servicios.AddScoped<IRepositorioAuditoria, RepositorioAuditoriaEfCore>();
         servicios.AddScoped<IRepositorioBorradores, RepositorioBorradoresEfCore>();   // JQ-16
+        servicios.AddScoped<IConsultaMetricasPrestador, ConsultaMetricasPrestadorEfCore>();   // MI-METRICAS (JQ-8)
+        servicios.AddScoped<IConsultaIndicadores, ConsultaIndicadoresEfCore>();   // API-60 (JQ-14)
 
         // AddLogging aqui y no en quien llama: varios servicios de este modulo escriben en
         // el registro (la sonda de abajo, y los enviadores y el procesador de correo). Sin
@@ -494,6 +496,8 @@ public static class RegistroDeServicios
         servicios.AddHostedService<TrabajoDePush>();
         servicios.AddScoped<IRepositorioPush, RepositorioPushEfCore>();
         servicios.AddScoped<ServicioAvisosPush>();
+        servicios.AddScoped<IRepositorioPreferenciasAviso, RepositorioPreferenciasAvisoEfCore>();
+        servicios.AddScoped<ServicioPreferenciasAviso>();
 
         // --- Alertas al administrador ---
         servicios.AddScoped<IAlertasAdministrador, AlertasAdministrador>();

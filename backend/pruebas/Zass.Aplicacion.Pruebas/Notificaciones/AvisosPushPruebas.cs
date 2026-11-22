@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Zass.Aplicacion.Notificaciones;
+using Zass.Aplicacion.Pruebas.Dobles;
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
 
@@ -174,28 +175,11 @@ public class AvisosPushPruebas
         }
     }
 
-    private sealed class UnidadFalsa(List<string> llamadas) : IUnidadDeTrabajo
-    {
-        public Task<int> GuardarAsync(CancellationToken ct = default)
-        {
-            llamadas.Add("guardar");
-            return Task.FromResult(1);
-        }
-
-        public Task<T> EnTransaccionAsync<T>(Func<CancellationToken, Task<T>> cuerpo, CancellationToken ct = default) =>
-            cuerpo(ct);
-    }
-
-    private sealed class Reloj : IRelojSistema
-    {
-        public DateTime Ahora => new(2026, 11, 21, 12, 0, 0, DateTimeKind.Utc);
-    }
-
     [Fact]
     public async Task Registrar_guarda_y_despues_recoge_lo_que_esperaba_en_la_cola()
     {
         var repo = new RepoFalso();
-        var servicio = new ServicioAvisosPush(repo, new UnidadFalsa(repo.Llamadas), new Reloj());
+        var servicio = new ServicioAvisosPush(repo, new UnidadQueAnota(repo.Llamadas), new RelojFijo());
         var cmd = Valido() with { Endpoint = "  https://fcm.googleapis.com/fcm/send/abc  " };
 
         var r = await servicio.RegistrarAsync(Guid.NewGuid(), cmd);
@@ -208,7 +192,7 @@ public class AvisosPushPruebas
     public async Task Dar_de_baja_responde_bien_aunque_no_hubiera_nada_y_entonces_no_guarda()
     {
         var repo = new RepoFalso { HabiaAlgo = false };
-        var servicio = new ServicioAvisosPush(repo, new UnidadFalsa(repo.Llamadas), new Reloj());
+        var servicio = new ServicioAvisosPush(repo, new UnidadQueAnota(repo.Llamadas), new RelojFijo());
 
         var r = await servicio.DarDeBajaAsync(Guid.NewGuid(), new BajaPushCmd("https://fcm.googleapis.com/x"));
 
