@@ -60,6 +60,20 @@ public interface INotificaciones
     /// El que ya estaba tomado para enviar lo para el procesador, que vuelve a mirar la cita.
     /// </summary>
     Task<int> AnularRecordatoriosAsync(Guid citaId, CancellationToken ct = default);
+
+    /// <summary>
+    /// El ultimo aviso de ese tipo para esa persona, en el estado que sea, o nulo. Sirve para
+    /// una espera entre avisos sin columna nueva: el momento del ultimo aviso ya esta en la cola.
+    /// </summary>
+    Task<Notificacion?> UltimoAsync(Guid destinatarioId, TipoNotificacion tipo, CancellationToken ct = default);
+
+    /// <summary>
+    /// Encola y guarda YA, por su cuenta y sin esperar al <c>GuardarAsync</c> del caso de uso, y
+    /// solo si no hay otro aviso con la misma clave. Devuelve falso si ya habia uno. Existe para
+    /// los avisos que dos peticiones simultaneas podrian encolar a la vez: el indice unico de la
+    /// clave decide cual entra, y la otra no termina en una excepcion (un 500) sino en un falso.
+    /// </summary>
+    Task<bool> EncolarSiNoExisteAsync(Notificacion aviso, CancellationToken ct = default);
 }
 
 /// <summary>TBL-28. Solo insercion. Nunca contrasenas, tokens ni direcciones.</summary>
@@ -81,6 +95,22 @@ public interface IRepositorioAuditoria
     Task<IReadOnlyList<RegistroAuditoria>> ConsultarAsync(
         string? entidad, Guid? entidadId, Guid? actorId,
         DateTime? antesDe, long? antesDeId, int limite, CancellationToken ct = default);
+
+    /// <summary>
+    /// Cuenta intentos fallidos de activacion para una tarjeta en una ventana de tiempo.
+    /// Usado para implementar el bloqueo 4B.5: 5 fallos en 15 minutos -> bloqueo 1 hora.
+    /// La consulta debe ejecutarse dentro de la misma transaccion que tiene la tarjeta bloqueada (FOR UPDATE).
+    /// </summary>
+    Task<int> ContarActivacionesFallidasAsync(
+        Guid tarjetaId, DateTime desde, DateTime hasta, CancellationToken ct = default);
+
+    /// <summary>
+    /// Trae solo las fechas (OcurridoEn) de los intentos fallidos de activacion de una tarjeta
+    /// entre dos instantes, con filtro en SQL y ordenadas por fecha.
+    /// Usado para verificar la ventana de 15 minutos del bloqueo 4B.5 sin traer todo el registro.
+    /// </summary>
+    Task<IReadOnlyList<DateTime>> ObtenerFechasDeFallosAsync(
+        Guid tarjetaId, DateTime desde, DateTime hasta, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -142,8 +172,31 @@ public interface IRepositorioUsuarios
     Task<Usuario?> PorTokenVerificacionAsync(string hashToken, CancellationToken ct = default);
     Task<Usuario?> PorTokenRecuperacionAsync(string hashToken, CancellationToken ct = default);
     Task<bool> ExisteCorreoAsync(string correo, CancellationToken ct = default);
+    /// <summary>El RUT ya normalizado («12345678-K»).</summary>
+    Task<bool> ExisteRutAsync(string rut, CancellationToken ct = default);
+    /// <summary>La cuenta que tiene ese RUT (ya normalizado), o nulo.</summary>
+    Task<Usuario?> PorRutAsync(string rut, CancellationToken ct = default);
     Task<Rol?> RolPorCodigoAsync(string codigo, CancellationToken ct = default);
     void Agregar(Usuario usuario);
+
+    /// <summary>
+    /// Suma un intento fallido de entrar, en UNA sola sentencia atomica: dos intentos
+    /// simultaneos no pueden leer el mismo valor y perder uno. Si la cuenta esta bloqueada
+    /// (<c>bloqueada_hasta &gt; ahora</c>) no cuenta nada. Si este intento llega a
+    /// <paramref name="intentosParaBloquear"/>, deja la cuenta bloqueada hasta
+    /// <paramref name="bloqueadaHasta"/> y el contador en cero. Devuelve verdadero SOLO para
+    /// el intento que disparo el bloqueo (uno por bloqueo). Con un id que no existe no hace
+    /// nada, pero hace el mismo viaje a la base (para igualar tiempos).
+    /// </summary>
+    Task<bool> SumarIntentoFallidoAsync(
+        Guid usuarioId, DateTime ahora, int intentosParaBloquear, DateTime bloqueadaHasta,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Pone el contador en cero tras entrar bien, solo si la cuenta NO esta bloqueada en ese
+    /// instante. Devuelve falso si lo esta (el bloqueo pudo nacer despues de leer la cuenta).
+    /// </summary>
+    Task<bool> ReiniciarIntentosSiNoBloqueadaAsync(Guid usuarioId, DateTime ahora, CancellationToken ct = default);
 }
 
 public interface IRepositorioSesiones
@@ -162,6 +215,16 @@ public interface IRepositorioPerfiles
     Task<PerfilBuscador?> BuscadorDeUsuarioAsync(Guid usuarioId, CancellationToken ct = default);
     void Agregar(PerfilPrestador perfil);
     void Agregar(PerfilBuscador perfil);
+
+    // Fotos de trabajos (T69)
+    Task<int> ContarFotosDeTrabajoAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+    Task<int> ObtenerSiguienteOrdenFotoTrabajoAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+    void AgregarFotoTrabajo(FotoTrabajo foto);
+    void EliminarFotoTrabajo(FotoTrabajo foto);
+    Task<FotoTrabajo?> FotoTrabajoPorIdAsync(Guid id, CancellationToken ct = default);
+    /// <summary>Las fotos de un perfil, en su orden y con seguimiento (para reordenarlas).</summary>
+    Task<List<FotoTrabajo>> FotosDeTrabajoDePerfilAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+    Task<IReadOnlyList<FotoTrabajoPublicaDto>> FotosDeTrabajoParaFichaAsync(Guid perfilPrestadorId, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -213,6 +276,12 @@ public interface IRepositorioSuscripciones
 
     /// <summary>Comprueba el perfil sin traerlo entero ni depender del repositorio de MOD-01.</summary>
     Task<bool> ExistePerfilPrestadorAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+
+    /// <summary>
+    /// El correo del usuario de ese perfil prestador, o nulo si el perfil no existe.
+    /// Se usa para enviar el correo a Flow.cl al iniciar un cobro o una inscripcion.
+    /// </summary>
+    Task<string?> CorreoDelUsuarioDePerfilAsync(Guid perfilPrestadorId, CancellationToken ct = default);
 
     /// <summary>
     /// A quien pertenece cada perfil, para poder avisarle. UNA consulta, por el mismo motivo
@@ -267,10 +336,45 @@ public interface IRepositorioSuscripciones
     Task<IntentoDePago?> IntentoPorIdAsync(Guid id, CancellationToken ct = default);
 
     /// <summary>
-    /// CC-04. El intento que ya creo esa clave, si existe. El doble envio del mismo
-    /// formulario tiene que devolver el MISMO intento y no crear un segundo cobro.
+    /// CC-04. El intento que ya creo esa clave, si existe Y es de ese perfil. El doble envio
+    /// del mismo formulario tiene que devolver el MISMO intento y no crear un segundo cobro.
+    ///
+    /// Filtra por dueno a proposito: la clave la inventa el cliente, y buscarla en toda la
+    /// tabla le entregaria el intento AJENO (con su UrlParaPagar) a quien presentara una clave
+    /// que ya uso otro prestador. Que exista pero sea de otro lo dice
+    /// <see cref="ClaveDeIntentoUsadaAsync"/>.
     /// </summary>
-    Task<IntentoDePago?> IntentoPorClaveAsync(string clave, CancellationToken ct = default);
+    Task<IntentoDePago?> IntentoPorClaveAsync(
+        string clave, Guid perfilPrestadorId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Si algun intento, de quien sea, ya usa esa clave. Solo un si o un no: lo usan el
+    /// conflicto controlado de API-68/API-76 y el cobro automatico, cuya clave la arma el
+    /// servidor y basta con saber que ya existe.
+    /// </summary>
+    Task<bool> ClaveDeIntentoUsadaAsync(string clave, CancellationToken ct = default);
+
+    /// <summary>
+    /// RN-S7-08. Si ese perfil tiene un intento de COBRO con cupon, todavia Pendiente, creado
+    /// despues de <paramref name="desde"/>. Evita abrir un segundo intento con el mismo cupon.
+    /// </summary>
+    Task<bool> HayIntentoConCuponPendienteAsync(
+        Guid perfilPrestadorId, DateTime desde, CancellationToken ct = default);
+
+    /// <summary>
+    /// El estado de la CUENTA duena de ese perfil, o nulo si el perfil no existe. Lo usa el
+    /// cobro automatico: a una cuenta eliminada o suspendida no se le cobra.
+    /// </summary>
+    Task<EstadoCuenta?> EstadoDeCuentaDePerfilAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default);
+
+    /// <summary>
+    /// ES-1. Todos los intentos cuya clave empieza por <paramref name="prefijo"/>: el cobro
+    /// automatico de un periodo y sus reintentos diarios comparten el prefijo
+    /// <c>cobro-automatico:{suscripcion}:{periodo}</c>, y la gracia se decide mirandolos juntos.
+    /// </summary>
+    Task<IReadOnlyList<IntentoDePago>> IntentosPorPrefijoDeClaveAsync(
+        string prefijo, CancellationToken ct = default);
 
     /// <summary>
     /// <c>SELECT ... FOR UPDATE</c> sobre la fila del intento, igual que
@@ -457,7 +561,19 @@ public interface IRepositorioBusqueda
     /// </summary>
     Task<IReadOnlyList<FilaDeTexto>> PorTextoAsync(
         CriteriosDeTexto criterios, CancellationToken ct = default);
+
+    /// <summary>
+    /// CS-08. Las tarjetas de esos perfiles, solo de los PUBLICADOS y en cualquier orden (el
+    /// servicio las ordena). El promedio sale tal cual esta guardado: RN-S5-11 la aplica el servicio.
+    /// </summary>
+    Task<IReadOnlyList<TarjetaFila>> TarjetasPorIdAsync(
+        IReadOnlyList<Guid> perfilIds, DateOnly hoy, CancellationToken ct = default);
 }
+
+/// <summary>Una tarjeta de favorito, como sale de la base. Sin contacto: ver FavoritoDto.</summary>
+public sealed record TarjetaFila(
+    Guid Id, string Slug, string NombrePublico, string? UrlFoto, string? RubroNombre,
+    string? ZonaPrincipal, bool Verificada, decimal? PromedioCalificacion, int TotalResenas);
 
 /// <summary>
 /// Lo que la consulta de texto recibe ya masticado: las formas y el grupo de cada una (ver
@@ -579,6 +695,9 @@ public class FilaDeBusqueda
     public int TotalResenas { get; set; }
 }
 
+/// <summary>Una credencial que CS-06 tiene que vencer, y a quién avisar.</summary>
+public sealed record CredencialPorVencer(Guid CredencialId, Guid UsuarioId, string Nombre, DateOnly VenceEn);
+
 /// <summary>MOD-02 - Credenciales (TBL-12, TBL-13, TBL-14, TBL-15).</summary>
 public interface IRepositorioCredenciales
 {
@@ -594,7 +713,24 @@ public interface IRepositorioCredenciales
 
     Task<int> ContarDePrestadorAsync(Guid perfilPrestadorId, CancellationToken ct = default);
 
-    Task<bool> TieneVerificadaAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+    /// <summary>
+    /// Si tiene alguna credencial con el sello VIGENTE hoy: verificada y con <c>vence_en</c> nulo o
+    /// &gt;= <paramref name="hoy"/> (Credencial.TieneSelloVigente). Auditoría 22-nov-2026.
+    /// </summary>
+    Task<bool> TieneVerificadaAsync(Guid perfilPrestadorId, DateOnly hoy, CancellationToken ct = default);
+
+    /// <summary>
+    /// CS-06: las verificadas con <c>vence_en &lt; hoy</c>, con el usuario dueño del perfil para
+    /// avisarle. Sin seguimiento: el cambio lo hace <see cref="VencerSiCorrespondeAsync"/>.
+    /// </summary>
+    Task<IReadOnlyList<CredencialPorVencer>> VerificadasPasadasDeFechaAsync(
+        DateOnly hoy, int limite, CancellationToken ct = default);
+
+    /// <summary>
+    /// CS-06 en UNA sentencia condicional: la pasa a vencida solo si SIGUE verificada y pasada de
+    /// fecha. Devuelve si la cambió. Así una edición simultánea del prestador no se pisa.
+    /// </summary>
+    Task<bool> VencerSiCorrespondeAsync(Guid credencialId, DateOnly hoy, CancellationToken ct = default);
 
     void Agregar(Credencial credencial);
     void Eliminar(Credencial credencial);
@@ -754,10 +890,23 @@ public interface IRepositorioAgenda
     Task<Cita?> CitaPorIdAsync(Guid id, CancellationToken ct = default);
 
     /// <summary>
-    /// La cita que creó esta clave, si ya existe (CC-04, flujo 4B de CU-12). Devolverla es lo
-    /// que convierte un doble envío en la misma respuesta en vez de una segunda cita.
+    /// La cita que creó esta clave, si ya existe Y es de ese buscador (CC-04, flujo 4B de
+    /// CU-12). Devolverla es lo que convierte un doble envío en la misma respuesta en vez de
+    /// una segunda cita.
+    ///
+    /// Filtra por dueño a propósito: la clave la inventa el cliente, así que buscarla en toda
+    /// la tabla le entregaría la cita AJENA (nota, código, prestador) a quien presentara una
+    /// clave que ya usó otra persona. Que exista pero sea de otro lo dice
+    /// <see cref="ClaveDeCitaUsadaAsync"/>, sin devolver nada de esa cita.
     /// </summary>
-    Task<Cita?> CitaPorClaveAsync(string claveIdempotencia, CancellationToken ct = default);
+    Task<Cita?> CitaPorClaveAsync(
+        string claveIdempotencia, Guid buscadorId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Si alguna cita, de quien sea, ya usa esa clave. Solo un sí o un no: sirve para responder
+    /// un conflicto controlado antes de que el índice único lo convierta en un 500.
+    /// </summary>
+    Task<bool> ClaveDeCitaUsadaAsync(string claveIdempotencia, CancellationToken ct = default);
 
     /// <summary>Cuántas activas tiene ese buscador con ese prestador (RN-S4-06, tope de 3).</summary>
     Task<int> CitasActivasEntreAsync(

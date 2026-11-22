@@ -56,6 +56,9 @@ public static partial class TiposDeArchivo
     public const string CarpetaFotos = "fotos";
     public const string CarpetaDocumentos = "documentos";
 
+    /// <summary>Ruta base pública desde donde se sirven las fotos (perfil y trabajos).</summary>
+    public const string RutaPublica = "/api/archivos/fotos/";
+
     /// <summary>
     /// Una clave nueva: carpeta, 32 caracteres hexadecimales al azar y la extension del tipo real.
     /// Nada de lo que escribio quien sube entra en ella.

@@ -44,3 +44,50 @@ export const CON_NFC = 'Con NFC'
 export const CON_QR = 'Con QR'
 
 export const QUE_CONTAMOS = 'Contamos cuántas veces se abrió, no quién la abrió.'
+
+// --- Activar una tarjeta (CU-19). Textos nuevos del 21-nov-2026: van en «Textos nuevos» del PR.
+
+export const ACTIVAR_PESTANA = 'Activar tarjeta'
+
+export const ACTIVAR_PARA_QUIEN =
+  'Si te la acaban de entregar, actívala aquí con el código que venía con ella. ' +
+  'Si no es tuya, todavía no lleva a ningún perfil.'
+
+export const ENTRAR_PARA_ACTIVAR = 'Entra para activarla'
+
+export const NO_OFRECE_SERVICIOS = 'Esta cuenta no ofrece servicios.'
+
+export const FICHA_SIN_PUBLICAR =
+  'Para activar la tarjeta, primero publica tu ficha: la tarjeta necesita una ficha a la que llevar. ' +
+  'Cuando esté publicada, vuelve a acercar la tarjeta al teléfono.'
+export const IR_A_MI_FICHA = 'Ir a mi ficha'
+
+export const ETIQUETA_CODIGO = 'Código de activación'
+export const AYUDA_CODIGO =
+  'Son 12 letras y números, en el papel que venía aparte de la tarjeta. Puedes escribirlo con o sin guiones.'
+export const CODIGO_INCOMPLETO = 'El código tiene 12 letras y números. Revisa que esté completo.'
+
+export const ACTIVAR = 'Activar tarjeta'
+export const ACTIVANDO = 'Activando…'
+
+/**
+ * El único texto para un código que no sirve, sea cual sea la razón: la API responde igual a
+ * una tarjeta que no existe, ya activada, con el código vencido o equivocado, o bloqueada por
+ * intentos (CU-19 4B.3), y la pantalla no puede saber más que la API.
+ */
+export const CODIGO_NO_VALIDO =
+  'El código no es válido. Revisa que esté escrito igual que en el papel e inténtalo de nuevo.'
+
+/** Va siempre a la vista, no solo cuando algo falla: así no insinúa nada de esta tarjeta. */
+export const REGLAS_DEL_CODIGO =
+  'Por seguridad, después de 5 intentos fallidos la tarjeta no se puede activar durante una hora. ' +
+  'Si perdiste el código o ya pasaron 30 días desde que te lo dieron, pide uno nuevo a quien te entregó la tarjeta.'
+
+/** El 429 del límite por IP (tasa A): ese sí llega distinto, y no dice nada de la tarjeta. */
+export const MUCHOS_INTENTOS =
+  'Hiciste muchos intentos seguidos. Por seguridad, espera unos 15 minutos y vuelve a intentarlo.'
+
+export const ERROR_ACTIVAR = 'No pudimos activar la tarjeta en este momento. Inténtalo de nuevo en un rato.'
+
+export const ACTIVADA_OK =
+  'Listo: tu tarjeta quedó activa. Pruébala acercándola a otro teléfono; debería abrir tu ficha.'

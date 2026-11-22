@@ -69,7 +69,8 @@ public class BusquedaPruebas
             new ServicioSuscripciones(
                 new RepositorioSuscripcionesEnMemoria(_base), _base, _reloj,
                 new AuditoriaEnMemoria(), new ColaEnMemoria()),
-            _reloj);
+            _reloj,
+            new ServicioFotosDeTrabajoFalso());
     }
 
     private FilaDeBusqueda UnaFila(

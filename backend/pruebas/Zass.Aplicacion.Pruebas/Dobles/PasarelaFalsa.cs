@@ -77,6 +77,9 @@ public sealed class PasarelaFalsa : IPasarelaDePagos
     /// </summary>
     public bool RechazaElCobro { get; set; }
 
+    /// <summary>La pasarela contesta «pendiente de pago» (el estado 1 de Flow).</summary>
+    public bool DejaPendienteElCobro { get; set; }
+
     public Task<Resultado<CobroResuelto>> CobrarAsync(
         SolicitudDeCobro solicitud, CancellationToken ct = default)
     {
@@ -90,6 +93,10 @@ public sealed class PasarelaFalsa : IPasarelaDePagos
         if (FallaAlCobrar)
             return Task.FromResult(Resultado.Falla<CobroResuelto>(
                 Fallas.ReglaDeNegocio, "La pasarela no respondio."));
+
+        if (DejaPendienteElCobro)
+            return Task.FromResult(Resultado.Ok(CobroResuelto.EnCurso(
+                solicitud.IntentoDePagoId, "rec_" + solicitud.IntentoDePagoId.ToString("N")[..8])));
 
         return Task.FromResult(Resultado.Ok(new CobroResuelto(
             IntentoDePagoId: solicitud.IntentoDePagoId,

@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using System.IO;
+using Microsoft.EntityFrameworkCore;
 using Zass.Aplicacion.Busqueda;
 using Zass.Aplicacion.Catalogo;
 using Zass.Aplicacion.Credenciales;
@@ -11,6 +12,7 @@ using Zass.Dominio.Comun;
 using Zass.Dominio.Credenciales;
 using Zass.Dominio.Identidad;
 using Zass.Dominio.Suscripciones;
+using Zass.Infraestructura.Archivos;
 using Zass.Infraestructura.Datos.Repositorios;
 using Zass.Infraestructura.Seguridad;
 
@@ -60,7 +62,11 @@ public class BusquedaIntegracionPruebas : IDisposable
             new ServicioIdentidad(new RepositorioUsuariosEfCore(ctx), new RepositorioPerfilesEfCore(ctx)),
             new ServicioCredenciales(new RepositorioCredencialesEfCore(ctx), trabajo, _reloj, auditor),
             _suscripciones,
-            _reloj);
+            _reloj,
+            new ServicioFotosDeTrabajo(
+                new RepositorioPerfilesEfCore(ctx), trabajo,
+                new AlmacenLocal(Path.Combine(Path.GetTempPath(), "zass-pruebas-fotos")),
+                new ProcesadorDeImagenesImageSharp(), auditor, _reloj, _suscripciones));
     }
 
     public void Dispose() => _prueba.Dispose();
@@ -362,6 +368,74 @@ public class BusquedaIntegracionPruebas : IDisposable
         Assert.False(Assert.Single(filas).TieneVerificada);
         Assert.Empty(await BuscarDesdeLaPlazaAsync(
             Consulta(_reloj.Ahora, soloVerificados: true)));
+    }
+
+    /// <summary>
+    /// Una rechazada (un titulo falso, por ejemplo) no da sello ni deja pasar el filtro «solo
+    /// verificados». El calculo mira solo `estado = 'Verificada'`; esta prueba lo fija por si
+    /// alguien lo cambia por «todo lo que no es borrador».
+    /// </summary>
+    [Fact]
+    public async Task Una_credencial_rechazada_no_da_sello_ni_pasa_solo_verificados()
+    {
+        var perfil = await UnPrestadorBuscableAsync();
+        _prueba.Ctx.Credenciales.Add(new Credencial
+        {
+            PerfilPrestadorId = perfil.Id,
+            Tipo = TipoCredencial.Titulo,
+            Nombre = "Titulo rechazado",
+            ObtenidaEn = new DateOnly(2020, 1, 15),
+            Estado = EstadoCredencial.Rechazada,
+        });
+        await _prueba.Ctx.SaveChangesAsync();
+
+        Assert.False(Assert.Single(await BuscarDesdeLaPlazaAsync()).TieneVerificada);
+        Assert.Empty(await BuscarDesdeLaPlazaAsync(Consulta(_reloj.Ahora, soloVerificados: true)));
+    }
+
+    /// <summary>
+    /// Auditoría 22-nov-2026, hallazgo 2: una credencial VERIFICADA con <c>vence_en</c> pasado no
+    /// da sello ni pasa «solo verificados» en NINGUNA de las cinco consultas (distancia, zona,
+    /// texto, favoritos y recién llegados), aunque el trabajo de CS-06 aún no la haya vencido. La
+    /// que vence HOY (día de Chile) todavía vale: es el control de que el filtro no se pasa de largo.
+    /// </summary>
+    [Fact]
+    public async Task Una_verificada_pasada_de_fecha_no_da_sello_en_ninguna_consulta_y_la_que_vence_hoy_si()
+    {
+        var hoy = HoraDeChile.DiaLocal(_reloj.Ahora);
+        var vencida = await UnPrestadorBuscableAsync(nombre: "Sello vencido");
+        var vigente = await UnPrestadorBuscableAsync(nombre: "Sello de hoy");
+        foreach (var (perfil, vence) in new[] { (vencida, hoy.AddDays(-1)), (vigente, hoy) })
+            _prueba.Ctx.Credenciales.Add(new Credencial
+            {
+                PerfilPrestadorId = perfil.Id, Tipo = TipoCredencial.Titulo, Nombre = "Certificado SEC",
+                ObtenidaEn = new DateOnly(2020, 1, 15), VenceEn = vence,
+                Estado = EstadoCredencial.Verificada, SelloEn = _reloj.Ahora, SelloPor = Guid.NewGuid(),
+            });
+        await _prueba.Ctx.SaveChangesAsync();
+        var ids = new[] { vencida.Id, vigente.Id };
+
+        var distancia = await BuscarDesdeLaPlazaAsync();
+        var zona = await _repo.PorZonaAsync(Consulta(_reloj.Ahora), null);
+        var texto = await TextoAsync(null, zona: Centro);
+        var tarjetas = await _repo.TarjetasPorIdAsync(ids, hoy);
+        var resumen = await _repo.ResumenAsync(_reloj.Ahora, 50);
+
+        Assert.False(distancia.Single(f => f.Id == vencida.Id).TieneVerificada);
+        Assert.True(distancia.Single(f => f.Id == vigente.Id).TieneVerificada);
+        Assert.False(zona.Single(f => f.Id == vencida.Id).TieneVerificada);
+        Assert.True(zona.Single(f => f.Id == vigente.Id).TieneVerificada);
+        Assert.False(texto.Single(f => f.Id == vencida.Id).TieneVerificada);
+        Assert.True(texto.Single(f => f.Id == vigente.Id).TieneVerificada);
+        Assert.False(tarjetas.Single(f => f.Id == vencida.Id).Verificada);
+        Assert.True(tarjetas.Single(f => f.Id == vigente.Id).Verificada);
+        Assert.False(resumen.Recientes.Single(f => f.Slug == vencida.Slug).Verificada);
+        Assert.True(resumen.Recientes.Single(f => f.Slug == vigente.Slug).Verificada);
+
+        Assert.DoesNotContain(await BuscarDesdeLaPlazaAsync(Consulta(_reloj.Ahora, soloVerificados: true)), f => f.Id == vencida.Id);
+        Assert.DoesNotContain(await _repo.PorZonaAsync(Consulta(_reloj.Ahora, soloVerificados: true), null), f => f.Id == vencida.Id);
+        Assert.DoesNotContain(await TextoAsync(null, zona: Centro, soloVerificados: true), f => f.Id == vencida.Id);
+        Assert.Contains(await BuscarDesdeLaPlazaAsync(Consulta(_reloj.Ahora, soloVerificados: true)), f => f.Id == vigente.Id);
     }
 
     /// <summary>
@@ -1478,5 +1552,38 @@ public class BusquedaIntegracionPruebas : IDisposable
         Assert.Single(r.Valor!.Resultados);
         Assert.False(r.Valor!.OrdenadoPorDistancia);
         Assert.Contains("distancia", r.Valor!.Aviso!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ------------------------------------------------------------- T69: fotos de trabajos en la ficha
+
+    [Fact]
+    public async Task La_ficha_muestra_las_fotos_de_trabajos_solo_mientras_el_plan_las_incluye()
+    {
+        var perfil = await UnPrestadorBuscableAsync(estadoSuscripcion: EstadoSuscripcion.Activa);
+        var ctx = _prueba.Ctx;
+        var suscripcion = await ctx.Suscripciones.SingleAsync(s => s.PerfilPrestadorId == perfil.Id);
+        suscripcion.PlanId = (await ctx.Planes.SingleAsync(p => p.Codigo == "profesional")).Id;
+        // 13 guardadas con un plan de 12 (pasa si subió dos a la vez, o si el tope bajara): se
+        // insertan al revés, así que la ficha tiene que ordenarlas Y cortar en el tope.
+        for (var i = 12; i >= 0; i--)
+            ctx.FotosDeTrabajo.Add(new FotoTrabajo
+            {
+                PerfilPrestadorId = perfil.Id,
+                ClaveAlmacen = $"fotos/{Guid.NewGuid():N}.webp",
+                Orden = i,
+            });
+        await ctx.SaveChangesAsync();
+
+        var conProfesional = await _servicio.FichaPublicaAsync(perfil.Slug);
+        Assert.Equal(Enumerable.Range(0, 12), conProfesional!.FotosTrabajo.Select(f => f.Orden));
+        Assert.All(conProfesional.FotosTrabajo, f => Assert.Matches(@"^/api/archivos/fotos/[0-9a-f]{32}\.webp$", f.Url));
+
+        // Baja al Esencial: las fotos siguen guardadas, pero la ficha deja de mostrarlas.
+        suscripcion.PlanId = (await ctx.Planes.SingleAsync(p => p.Codigo == "mensual")).Id;
+        await ctx.SaveChangesAsync();
+
+        var conEsencial = await _servicio.FichaPublicaAsync(perfil.Slug);
+        Assert.Empty(conEsencial!.FotosTrabajo);
+        Assert.Equal(13, await ctx.FotosDeTrabajo.CountAsync(f => f.PerfilPrestadorId == perfil.Id));
     }
 }

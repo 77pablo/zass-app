@@ -43,7 +43,7 @@ function json(cuerpo: unknown, estado = 200) {
   })
 }
 
-function pintar() {
+function pintar(ficha: typeof FICHA = FICHA) {
   vi.stubGlobal('fetch', vi.fn(async (ruta: string, init?: RequestInit) => {
     llamadas.push({ ruta, init })
     if (ruta === '/api/auth/csrf') return json({ token: 't' })
@@ -52,7 +52,7 @@ function pintar() {
         ? json({ id: 'c1' })
         : json({ title: 'No elegible', detail: 'No puedes.' }, estadoDelContacto)
     }
-    if (ruta === '/api/prestadores/marcela-soto') return json(FICHA)
+    if (ruta === '/api/prestadores/marcela-soto') return json(ficha)
     return json({ title: 'No autorizado' }, 401)
   }))
 
@@ -127,5 +127,30 @@ describe('la ficha registra el contacto al tocar un canal (JQ-5, API-46)', () =>
     await esperar()
     expect(wasap).toHaveAttribute('href', 'https://wa.me/56955500101')
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+})
+
+describe('«Guardar contacto» baja la vCard (CS-19, API-07)', () => {
+  it('apunta a la vCard de esta ficha y se descarga', async () => {
+    pintar()
+    const guardar = await screen.findByRole('link', { name: /Guardar contacto/ })
+
+    expect(guardar).toHaveAttribute('href', '/api/prestadores/marcela-soto/vcard')
+    expect(guardar).toHaveAttribute('download')
+  })
+
+  it('guardar el contacto no registra un contacto: no es hablar con nadie', async () => {
+    pintar()
+    fireEvent.click(await screen.findByRole('link', { name: /Guardar contacto/ }))
+
+    await esperar()
+    expect(alContacto()).toHaveLength(0)
+  })
+
+  it('con solo un sitio web no aparece: una vCard con el puro nombre no sirve', async () => {
+    pintar({ ...FICHA, contacto: { telefono: null, whatsapp: null, correo: null, sitioWeb: 'https://ejemplo.invalid/marcela' } } as unknown as typeof FICHA)
+
+    await screen.findByRole('link', { name: /sitio web/ })
+    expect(screen.queryByRole('link', { name: /Guardar contacto/ })).not.toBeInTheDocument()
   })
 })

@@ -53,7 +53,7 @@ public class ApiAgendaPruebas : IAsyncLifetime
 
         var prestadorReg = await tempCliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo = prestadorCorreo, contrasena = "contrasena-larga-1",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo = prestadorCorreo, contrasena = "contrasena-larga-1",
             nombre = "Pablo Espinoza", rol = "prestador",
         });
         Assert.Equal(HttpStatusCode.Created, prestadorReg.StatusCode);
@@ -195,7 +195,7 @@ public class ApiAgendaPruebas : IAsyncLifetime
         var correo = $"apiag-b-{Guid.NewGuid():N}-{_marca}@zass.local";
         Assert.Equal(HttpStatusCode.Created, (await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
         })).StatusCode);
 
         using (var ctx = ContextoDePrueba.Crear())
@@ -300,7 +300,7 @@ public class ApiAgendaPruebas : IAsyncLifetime
         var correo = $"apiag-b-{Guid.NewGuid():N}-{_marca}@zass.local";
         Assert.Equal(HttpStatusCode.Created, (await cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
         })).StatusCode);
 
         using (var ctx = ContextoDePrueba.Crear())
@@ -428,6 +428,284 @@ public class ApiAgendaPruebas : IAsyncLifetime
     {
         var json = (await r.Content.ReadFromJsonAsync<JsonDocument>())!.RootElement;
         return (json.GetProperty("id").GetString()!, json.GetProperty("codigo").GetString()!);
+    }
+
+    // ------------------------------------------------------------- RN-S1-02: correo verificado
+
+    /// <summary>
+    /// Registra un buscador y entra con su sesión SIN verificar el correo. El registro deja la
+    /// cuenta en PendienteVerificacion, y con ese estado se puede entrar (ServicioSesion): es
+    /// justo la cuenta del correo inventado que RN-S1-02 no deja agendar.
+    /// </summary>
+    private async Task<(HttpClient cliente, Guid usuarioId)> UnBuscadorSinVerificarAsync()
+    {
+        var cliente = CrearCliente();
+        var correo = $"apiag-nv-{Guid.NewGuid():N}-{_marca}@zass.local";
+        Assert.Equal(HttpStatusCode.Created, (await cliente.PostAsJsonAsync("/api/auth/registro", new
+        {
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo, contrasena = "contrasena-larga-1", nombre = "Sin Verificar", rol = "buscador",
+        })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await cliente.PostAsJsonAsync("/api/auth/sesion", new
+        {
+            correo, contrasena = "contrasena-larga-1",
+        })).StatusCode);
+
+        using var ctx = ContextoDePrueba.Crear();
+        var usuario = await ctx.Usuarios.SingleAsync(u => u.Correo == correo);
+        Assert.False(usuario.CorreoVerificado);
+        return (cliente, usuario.Id);
+    }
+
+    /// <summary>Otro bloque libre del mismo servicio, <paramref name="horas"/> después del de la clase.</summary>
+    private async Task<Guid> OtroBloqueAsync(int horas)
+    {
+        using var ctx = ContextoDePrueba.Crear();
+        var original = await ctx.Bloques.SingleAsync(b => b.Id == _bloque);
+        var nuevo = new BloqueHorario
+        {
+            DisponibilidadId = original.DisponibilidadId,
+            PerfilPrestadorId = original.PerfilPrestadorId,
+            PrestadorServicioId = original.PrestadorServicioId,
+            InicioEn = original.InicioEn.AddHours(horas),
+            FinEn = original.FinEn.AddHours(horas),
+            Estado = EstadoBloque.Libre,
+        };
+        ctx.Bloques.Add(nuevo);
+        await ctx.SaveChangesAsync();
+        return nuevo.Id;
+    }
+
+    /// <summary>Los avisos de cita que tiene el prestador de la clase (confirmada, solicitada o reprogramada).</summary>
+    private async Task<int> AvisosDeCitaAlPrestadorAsync()
+    {
+        using var ctx = ContextoDePrueba.Crear();
+        var prestador = await ctx.Usuarios.SingleAsync(u => u.Correo == $"apiag-p-{_marca}@zass.local");
+        return await ctx.Notificaciones.CountAsync(n => n.DestinatarioId == prestador.Id
+            && (n.Tipo == TipoNotificacion.CitaConfirmada || n.Tipo == TipoNotificacion.CitaSolicitada
+                || n.Tipo == TipoNotificacion.CitaReprogramada));
+    }
+
+    /// <summary>
+    /// RN-S1-02: «La cuenta no puede publicar perfil ni agendar hasta verificar el correo». Antes
+    /// solo publicar lo miraba: una cuenta con un correo inventado reservaba la hora y le
+    /// mandaba el aviso al prestador. 422, igual que publicar sin verificar.
+    /// </summary>
+    [Fact]
+    public async Task Un_buscador_sin_correo_verificado_no_puede_agendar_ni_se_crea_la_cita_ni_el_aviso()
+    {
+        var (cliente, usuarioId) = await UnBuscadorSinVerificarAsync();
+        var avisosAntes = await AvisosDeCitaAlPrestadorAsync();
+        var clave = $"nv-{Guid.NewGuid():N}";
+
+        var r = await AgendarAsync(cliente, _bloque, clave);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, r.StatusCode);
+        Assert.Contains("Verifica tu correo", await r.Content.ReadAsStringAsync());
+
+        using var ctx = ContextoDePrueba.Crear();
+        Assert.False(await ctx.Citas.AnyAsync(c => c.BuscadorId == usuarioId));
+        Assert.False(await ctx.Citas.AnyAsync(c => c.ClaveIdempotencia == clave));
+        Assert.Equal(EstadoBloque.Libre, (await ctx.Bloques.SingleAsync(b => b.Id == _bloque)).Estado);
+        Assert.False(await ctx.Contactos.AnyAsync(c => c.BuscadorId == usuarioId));
+        Assert.Equal(avisosAntes, await AvisosDeCitaAlPrestadorAsync());
+        cliente.Dispose();
+    }
+
+    /// <summary>
+    /// Lo mismo al reprogramar: mover la hora es pedir otra. La cita se mete directo en la base
+    /// porque por la API ya no puede nacer (es la que pudo quedar de antes de este arreglo).
+    /// </summary>
+    [Fact]
+    public async Task Un_buscador_sin_correo_verificado_no_puede_reprogramar()
+    {
+        var (cliente, usuarioId) = await UnBuscadorSinVerificarAsync();
+        Guid citaId;
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var bloque = await ctx.Bloques.SingleAsync(b => b.Id == _bloque);
+            bloque.Estado = EstadoBloque.Reservado;
+            var cita = new Cita
+            {
+                Codigo = Cita.GenerarCodigo(), BloqueHorarioId = _bloque, BuscadorId = usuarioId,
+                PrestadorServicioId = _servicioOfrecido, PerfilPrestadorId = _perfil,
+                Estado = EstadoCita.Confirmada, Modo = ModoAgenda.Automatico,
+                ClaveIdempotencia = $"vieja-{Guid.NewGuid():N}", CreadaEn = DateTime.UtcNow,
+            };
+            ctx.Citas.Add(cita);
+            await ctx.SaveChangesAsync();
+            citaId = cita.Id;
+        }
+        var destino = await OtroBloqueAsync(2);
+        var avisosAntes = await AvisosDeCitaAlPrestadorAsync();
+
+        var r = await AccionAsync(cliente, citaId.ToString(), "reprogramar",
+            new { bloqueNuevoId = destino, motivo = (string?)null }, $"r-{Guid.NewGuid():N}");
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, r.StatusCode);
+        Assert.Contains("Verifica tu correo", await r.Content.ReadAsStringAsync());
+
+        using var ctx2 = ContextoDePrueba.Crear();
+        Assert.Equal(EstadoCita.Confirmada, (await ctx2.Citas.SingleAsync(c => c.Id == citaId)).Estado);
+        Assert.Equal(1, await ctx2.Citas.CountAsync(c => c.BuscadorId == usuarioId));
+        Assert.Equal(EstadoBloque.Libre, (await ctx2.Bloques.SingleAsync(b => b.Id == destino)).Estado);
+        Assert.Equal(avisosAntes, await AvisosDeCitaAlPrestadorAsync());
+        cliente.Dispose();
+    }
+
+    // ------------------------------------------------------------- CC-04: la clave tiene dueño
+
+    /// <summary>
+    /// La clave la inventa el cliente. Antes se buscaba en toda la tabla, y quien presentaba
+    /// una clave ya usada recibía con 200 la cita AJENA: su nota, su código y el prestador.
+    /// Ahora es un 409 neutro, sin un dato de esa cita, y tampoco un 500 del índice único.
+    /// </summary>
+    [Fact]
+    public async Task La_clave_de_otro_buscador_no_devuelve_su_cita_y_responde_409()
+    {
+        var clave = $"compartida-{Guid.NewGuid():N}";
+        const string nota = "Nota privada de la primera persona";
+
+        var cliente1 = CrearCliente();
+        await UnBuscadorAsync(cliente1);
+        var p = new HttpRequestMessage(HttpMethod.Post, "/api/citas")
+        {
+            Content = JsonContent.Create(new { bloqueId = _bloque, notaBuscador = nota }),
+        };
+        p.Headers.Add("X-CSRF-Token", await CsrfAsync(cliente1));
+        p.Headers.Add(FiltroIdempotencia.Cabecera, clave);
+        var primera = await cliente1.SendAsync(p);
+        Assert.Equal(HttpStatusCode.Created, primera.StatusCode);
+        var (idAjena, codigoAjeno) = await LeerCitaAsync(primera);
+
+        var cliente2 = CrearCliente();
+        await UnBuscadorAsync(cliente2);
+        var otroBloque = await OtroBloqueAsync(2);
+
+        var r = await AgendarAsync(cliente2, otroBloque, clave);
+        var texto = await r.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.Conflict, r.StatusCode);
+        Assert.DoesNotContain(idAjena, texto);
+        Assert.DoesNotContain(codigoAjeno, texto);
+        Assert.DoesNotContain(nota, texto);
+        Assert.DoesNotContain("Estudio de prueba", texto);
+
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            Assert.Equal(1, await ctx.Citas.CountAsync(c => c.ClaveIdempotencia == clave));
+            Assert.Equal(EstadoBloque.Libre, (await ctx.Bloques.SingleAsync(b => b.Id == otroBloque)).Estado);
+        }
+
+        // Y la garantía de CC-04 sigue en pie para su dueño: la misma clave, la misma cita.
+        var reintento = await AgendarAsync(cliente1, _bloque, clave);
+        Assert.Equal(HttpStatusCode.OK, reintento.StatusCode);
+        Assert.Equal(idAjena, (await LeerCitaAsync(reintento)).id);
+        cliente1.Dispose();
+        cliente2.Dispose();
+    }
+
+    /// <summary>
+    /// Reprogramar miraba la clave ANTES de comprobar que la cita era de quien pedía, y en toda
+    /// la tabla: con la clave de otro devolvía la cita de otro. Ahora la clave solo vale para
+    /// la cita nacida de esta misma cadena.
+    /// </summary>
+    [Fact]
+    public async Task Reprogramar_con_la_clave_de_otro_no_devuelve_su_cita()
+    {
+        var claveAjena = $"ajena-{Guid.NewGuid():N}";
+        var cliente1 = CrearCliente();
+        await UnBuscadorAsync(cliente1);
+        var primera = await AgendarAsync(cliente1, _bloque, claveAjena);
+        Assert.Equal(HttpStatusCode.Created, primera.StatusCode);
+        var (idAjena, codigoAjeno) = await LeerCitaAsync(primera);
+
+        var cliente2 = CrearCliente();
+        await UnBuscadorAsync(cliente2);
+        var suBloque = await OtroBloqueAsync(2);
+        var propia = await AgendarAsync(cliente2, suBloque, $"propia-{Guid.NewGuid():N}");
+        Assert.Equal(HttpStatusCode.Created, propia.StatusCode);
+        var (idPropia, _) = await LeerCitaAsync(propia);
+        var destino = await OtroBloqueAsync(4);
+
+        // Con su propia cita y la clave de la otra persona.
+        var r = await AccionAsync(cliente2, idPropia, "reprogramar",
+            new { bloqueNuevoId = destino, motivo = (string?)null }, claveAjena);
+        var texto = await r.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.Conflict, r.StatusCode);
+        Assert.DoesNotContain(idAjena, texto);
+        Assert.DoesNotContain(codigoAjeno, texto);
+
+        // Con la cita de la otra persona y su clave: 404, como cualquier cita ajena.
+        var sobreAjena = await AccionAsync(cliente2, idAjena, "reprogramar",
+            new { bloqueNuevoId = destino, motivo = (string?)null }, claveAjena);
+        var textoAjena = await sobreAjena.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.NotFound, sobreAjena.StatusCode);
+        Assert.DoesNotContain(codigoAjeno, textoAjena);
+
+        using var ctx = ContextoDePrueba.Crear();
+        Assert.Equal(EstadoCita.Confirmada, (await ctx.Citas.SingleAsync(c => c.Id == Guid.Parse(idPropia))).Estado);
+        Assert.Equal(EstadoCita.Confirmada, (await ctx.Citas.SingleAsync(c => c.Id == Guid.Parse(idAjena))).Estado);
+        Assert.Equal(EstadoBloque.Libre, (await ctx.Bloques.SingleAsync(b => b.Id == destino)).Estado);
+        cliente1.Dispose();
+        cliente2.Dispose();
+    }
+
+    /// <summary>
+    /// Ni siquiera la clave PROPIA de otra intención: la que creó otra cita no puede devolver
+    /// esa cita al reprogramar una distinta. Solo vale la cita nacida de esta misma cadena
+    /// (si no, un prestador con la clave de un buscador vería su cita con OTRO prestador).
+    /// </summary>
+    [Fact]
+    public async Task Reprogramar_con_la_clave_de_otra_cita_propia_no_devuelve_esa_cita()
+    {
+        var cliente = CrearCliente();
+        await UnBuscadorAsync(cliente);
+        var claveDeLaPrimera = $"primera-{Guid.NewGuid():N}";
+        var primera = await AgendarAsync(cliente, _bloque, claveDeLaPrimera);
+        Assert.Equal(HttpStatusCode.Created, primera.StatusCode);
+        var (idPrimera, _) = await LeerCitaAsync(primera);
+        var segunda = await AgendarAsync(cliente, await OtroBloqueAsync(2), $"segunda-{Guid.NewGuid():N}");
+        Assert.Equal(HttpStatusCode.Created, segunda.StatusCode);
+        var (idSegunda, _) = await LeerCitaAsync(segunda);
+        var destino = await OtroBloqueAsync(4);
+
+        var r = await AccionAsync(cliente, idSegunda, "reprogramar",
+            new { bloqueNuevoId = destino, motivo = (string?)null }, claveDeLaPrimera);
+
+        Assert.Equal(HttpStatusCode.Conflict, r.StatusCode);
+        Assert.DoesNotContain(idPrimera, await r.Content.ReadAsStringAsync());
+        using var ctx = ContextoDePrueba.Crear();
+        Assert.Equal(EstadoCita.Confirmada, (await ctx.Citas.SingleAsync(c => c.Id == Guid.Parse(idSegunda))).Estado);
+        Assert.Equal(EstadoBloque.Libre, (await ctx.Bloques.SingleAsync(b => b.Id == destino)).Estado);
+        cliente.Dispose();
+    }
+
+    /// <summary>
+    /// La otra cara: filtrar por dueño no puede romper CC-04 al reprogramar. El reintento de la
+    /// MISMA intención devuelve la MISMA cita nacida, con 200, y no mueve nada más.
+    /// </summary>
+    [Fact]
+    public async Task Reprogramar_dos_veces_con_la_misma_clave_devuelve_la_misma_cita_nacida()
+    {
+        var cliente = CrearCliente();
+        await UnBuscadorAsync(cliente);
+        var agendada = await AgendarAsync(cliente, _bloque, $"c-{Guid.NewGuid():N}");
+        Assert.Equal(HttpStatusCode.Created, agendada.StatusCode);
+        var (citaId, _) = await LeerCitaAsync(agendada);
+        var destino = await OtroBloqueAsync(2);
+        var clave = $"r-{Guid.NewGuid():N}";
+
+        var primera = await AccionAsync(cliente, citaId, "reprogramar",
+            new { bloqueNuevoId = destino, motivo = (string?)null }, clave);
+        var segunda = await AccionAsync(cliente, citaId, "reprogramar",
+            new { bloqueNuevoId = destino, motivo = (string?)null }, clave);
+
+        Assert.Equal(HttpStatusCode.Created, primera.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, segunda.StatusCode);
+        Assert.Equal((await LeerCitaAsync(primera)).id, (await LeerCitaAsync(segunda)).id);
+        using var ctx = ContextoDePrueba.Crear();
+        Assert.Equal(1, await ctx.Citas.CountAsync(c => c.ClaveIdempotencia == clave));
+        cliente.Dispose();
     }
 
     // ------------------------------------------------------------- sesión y CSRF
@@ -967,7 +1245,7 @@ public class ApiAgendaPruebas : IAsyncLifetime
         var terceroCorreo = $"apiag-t-{Guid.NewGuid():N}-{_marca}@zass.local";
         Assert.Equal(HttpStatusCode.Created, (await _cliente.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo = terceroCorreo, contrasena = "contrasena-larga-1", nombre = "Tercero", rol = "buscador",
+            tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo = terceroCorreo, contrasena = "contrasena-larga-1", nombre = "Tercero", rol = "buscador",
         })).StatusCode);
         using (var ctx = ContextoDePrueba.Crear())
         {
@@ -1332,7 +1610,7 @@ public class ApiAgendaPruebas : IAsyncLifetime
             var prestadorCorreo = $"apicl-{marca}@zass.local";
             var prestadorReg = await cliente.PostAsJsonAsync("/api/auth/registro", new
             {
-                correo = prestadorCorreo, contrasena = "contrasena-larga-1",
+                tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo = prestadorCorreo, contrasena = "contrasena-larga-1",
                 nombre = "Pablo Espinoza", rol = "prestador",
             });
             Assert.Equal(HttpStatusCode.Created, prestadorReg.StatusCode);
@@ -1418,7 +1696,7 @@ public class ApiAgendaPruebas : IAsyncLifetime
                 var buscadorCorreo = $"apicl-b-{marca}@zass.local";
                 var buscadorReg = await cliente.PostAsJsonAsync("/api/auth/registro", new
                 {
-                    correo = buscadorCorreo, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
+                    tipo = "particular", apellido = "Prueba", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678", mayorDeEdad = true, correo = buscadorCorreo, contrasena = "contrasena-larga-1", nombre = "Ana Pérez", rol = "buscador",
                 });
                 Assert.Equal(HttpStatusCode.Created, buscadorReg.StatusCode);
 
