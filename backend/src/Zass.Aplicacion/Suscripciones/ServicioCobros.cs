@@ -384,13 +384,23 @@ public sealed class ServicioCobros : IServicioCobros
                 Fallas.Conflicto,
                 "Publica tu perfil antes de tomar tu cupo: la suscripción nace al publicarlo.");
 
-        // Desde el 20-nov-2026 el cupo se toma sin tarjeta (API-69) y esto es SOLO inscribir
-        // la tarjeta de quien ya tiene su cupo. Sin este control, inscribir una tarjeta seria
-        // otra puerta para tomar un cupo, y con un mes gratis que no pasa por TomarCupo.
-        if (await _repo.CupoFundadorDeAsync(perfilPrestadorId, ct) is null)
+        // Esto es SOLO inscribir la tarjeta de quien ya tiene su cupo: reservado en API-69 (con
+        // captcha) o confirmado (cambia de tarjeta). Sin este control, inscribir una tarjeta seria
+        // otra puerta para tomar un cupo, y sin captcha.
+        //
+        // N3 (22-nov-2026): la reserva tiene que estar VIGENTE, y aqui NO se renueva. Si inscribir
+        // renovara el plazo, bastaria con pedir una inscripcion cada media hora para retener el
+        // cupo para siempre sin terminar nunca de inscribir. Vencida, se vuelve a tomar el cupo.
+        var cupoPropio = await _repo.EstadoCupoFundadorDeAsync(perfilPrestadorId, ct);
+        if (cupoPropio is null)
             return Resultado.Falla<IntentoDePagoDto>(
                 Fallas.Conflicto,
                 "Primero toma tu cupo de fundador en la página de planes; la tarjeta se inscribe después.");
+        if (!cupoPropio.Confirmado && !cupoPropio.ReservaVigente(_reloj.Ahora))
+            return Resultado.Falla<IntentoDePagoDto>(
+                Fallas.Conflicto,
+                "Tu reserva del cupo de fundador venció antes de inscribir la tarjeta. Vuelve a la "
+                + "página de planes y toma tu cupo otra vez, si todavía quedan.");
 
         var intento = await _trabajo.EnTransaccionAsync(async t =>
         {
@@ -399,10 +409,11 @@ public sealed class ServicioCobros : IServicioCobros
             if (await _repo.ClaveDeIntentoUsadaAsync(claveIdempotencia, t))
                 return ClaveAjenaEnCarrera;
 
-            // El cupo se reserva al EMPEZAR, por el mismo motivo que en el cobro: si se
-            // reservara al confirmar, dos personas podrian inscribirse por el cupo 50.
-            var cupo = await _suscripciones.ReservarCupoFundadorAsync(perfilPrestadorId, ct: t);
-            if (!cupo.Exito) return null;
+            // El cupo ya esta reservado (API-69) o confirmado: aqui no se toma ni se renueva
+            // (N3). Si mientras tanto se libero (lo libero la cuenta eliminada, por ejemplo), no
+            // hay nada que inscribir.
+            var cupo = await _repo.EstadoCupoFundadorDeAsync(perfilPrestadorId, t);
+            if (cupo is null) return null;
 
             var nuevo = new IntentoDePago
             {
@@ -426,7 +437,7 @@ public sealed class ServicioCobros : IServicioCobros
 
             _auditor.Registrar(Auditar.Entrada(
                 "inscripcion_fundador_iniciada", "intentos_de_pago", nuevo.Id, _reloj.Ahora,
-                contexto: new { cupo = cupo.Valor, pasarela = _pasarela.Nombre }));
+                contexto: new { cupo = cupo.Numero, pasarela = _pasarela.Nombre }));
 
             await _trabajo.GuardarAsync(t);
             return nuevo;

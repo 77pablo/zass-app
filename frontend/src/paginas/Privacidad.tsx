@@ -39,7 +39,9 @@ export function Privacidad() {
               <th scope="row">Toda cuenta</th>
               <td>
                 Nombre, correo, tu contraseña (solo como una huella cifrada irreversible: ni nosotros podemos
-                leerla), si confirmaste tu correo, tu tipo de cuenta y las fechas de creación y cambio.
+                leerla), si confirmaste tu correo, tu tipo de cuenta y las fechas de creación y cambio. Si
+                activas la verificación en dos pasos: la clave de tu app de códigos (cifrada) y tus códigos de
+                respaldo (solo como huella irreversible).
               </td>
             </tr>
             <tr>
@@ -91,11 +93,24 @@ export function Privacidad() {
           <li><strong>zass_refresco</strong>: permite renovar la sesión sin pedirte la contraseña de nuevo; dura hasta 30 días.</li>
           <li>Las dos son «httpOnly» (el código de la página no puede leerlas), solo viajan por HTTPS y no se envían desde otros sitios.</li>
           <li><strong>zass-sesion</strong> (almacenamiento local): una marca que solo dice «aquí hubo una sesión abierta»; no contiene datos tuyos.</li>
+          {/*
+            PROPUESTO (18-nov-2026), pendiente de Pablo y de su abogado: las busquedas recientes del #98
+            (marco/busquedasRecientes.ts). Hasta 5 textos, solo en localStorage, nunca viajan al servidor;
+            «Borrar búsquedas recientes» los quita (olvidarBusquedas). La frase de arriba («Solo usamos lo
+            estrictamente necesario para que puedas entrar...») ya no cubre esto: queda la pregunta en el PR.
+          */}
+          <li>
+            <strong>zass-busquedas</strong> (almacenamiento local): tus últimas 5 búsquedas, para ofrecértelas de
+            nuevo en el buscador. Se quedan solo en este navegador, no nos llegan, y las borras con «Borrar
+            búsquedas recientes».
+          </li>
         </ul>
         <p>
           <strong>No usamos publicidad ni herramientas de seguimiento o analítica de terceros.</strong> Un detalle
           técnico: las letras del sitio se cargan desde Google Fonts, así que Google recibe tu dirección IP al
-          abrir una página.
+          abrir una página. Y al crear una cuenta o pedir un cupo fundador usamos Cloudflare Turnstile, un
+          control contra robots: Cloudflare recibe tu dirección IP y datos técnicos del navegador solo para
+          comprobar que eres una persona.
         </p>
 
         <h2>5. Para qué usamos tus datos</h2>
@@ -119,7 +134,7 @@ export function Privacidad() {
         <ul>
           <li>Los de tu cuenta, mientras la tengas.</li>
           <li>
-            Si pides eliminarla: reemplazamos tu nombre y tu correo, borramos tu contraseña, cerramos tus
+            Si pides eliminarla: reemplazamos tu nombre y tu correo, borramos tu contraseña y tu verificación en dos pasos, cerramos tus
             sesiones y despublicamos tu ficha. La cuenta queda como «usuario eliminado» para mantener la
             coherencia del historial de otras personas.
           </li>

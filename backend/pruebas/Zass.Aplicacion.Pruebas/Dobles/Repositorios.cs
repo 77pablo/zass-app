@@ -137,6 +137,36 @@ public sealed class RepositorioUsuariosEnMemoria : IRepositorioUsuarios
         u.BloqueadaHasta = null;
         return Task.FromResult(true);
     }
+
+    // Las mismas reglas que los UPDATE atomicos de RepositorioUsuariosEfCore.
+    public Task<Usuario?> PorDesafioMfaAsync(string hashDesafio, CancellationToken ct = default) =>
+        Task.FromResult(_base.Usuarios.FirstOrDefault(u => u.MfaDesafioHash == hashDesafio));
+
+    public Task<bool> GastarPasoTotpAsync(Guid usuarioId, long paso, CancellationToken ct = default)
+    {
+        var u = _base.Usuarios.FirstOrDefault(x => x.Id == usuarioId);
+        if (u is null || (u.MfaUltimoPaso is { } ultimo && ultimo >= paso)) return Task.FromResult(false);
+        u.MfaUltimoPaso = paso;
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> GastarCodigoRespaldoAsync(Guid usuarioId, string hashCodigo, CancellationToken ct = default)
+    {
+        var u = _base.Usuarios.FirstOrDefault(x => x.Id == usuarioId);
+        if (u?.MfaCodigosRespaldo is null || !u.MfaCodigosRespaldo.Contains(hashCodigo)) return Task.FromResult(false);
+        u.MfaCodigosRespaldo = u.MfaCodigosRespaldo.Where(h => h != hashCodigo).ToArray();
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> GastarDesafioMfaAsync(Guid usuarioId, string hashDesafio, DateTime ahora, CancellationToken ct = default)
+    {
+        var u = _base.Usuarios.FirstOrDefault(x => x.Id == usuarioId);
+        if (u is null || u.MfaDesafioHash != hashDesafio || u.MfaDesafioExpiraEn is not { } vence || vence <= ahora)
+            return Task.FromResult(false);
+        u.MfaDesafioHash = null;
+        u.MfaDesafioExpiraEn = null;
+        return Task.FromResult(true);
+    }
 }
 
 public sealed class RepositorioSesionesEnMemoria : IRepositorioSesiones

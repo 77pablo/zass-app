@@ -424,6 +424,47 @@ public class CuentaPruebas
         Assert.Equal(Fallas.NoEncontrado, r.Codigo);
     }
 
+    // CS-04: la contraseña se confirma antes de la baja (decisión de Pablo, 17-nov-2026).
+
+    [Fact]
+    public async Task Confirmar_la_contrasena_para_eliminar_acepta_la_correcta_y_no_cambia_nada()
+    {
+        var (id, _) = await RegistrarAsync();
+        var antes = _base.Usuarios.Single(u => u.Id == id).HashContrasena;
+
+        var r = await _cuenta.VerificarContrasenaAsync(id, Clave);
+
+        Assert.True(r.Exito, r.Mensaje);
+        var usuario = _base.Usuarios.Single(u => u.Id == id);
+        // Confirmar no borra: eso lo hace EliminarAsync, despues de cancelar citas y suscripcion.
+        Assert.NotEqual(EstadoCuenta.Eliminada, usuario.Estado);
+        Assert.Null(usuario.AnonimizadoEn);
+        Assert.Equal(antes, usuario.HashContrasena);
+    }
+
+    [Fact]
+    public async Task Confirmar_la_contrasena_para_eliminar_rechaza_otra_con_422_y_no_con_401()
+    {
+        var (id, _) = await RegistrarAsync();
+
+        var r = await _cuenta.VerificarContrasenaAsync(id, "no-era-esta");
+
+        Assert.False(r.Exito);
+        // 422: la sesion es valida, lo que falla es la confirmacion. Un 401 haria que el cliente
+        // intente renovar la sesion como si hubiera vencido.
+        Assert.Equal(Fallas.ReglaDeNegocio, r.Codigo);
+        Assert.NotEqual(EstadoCuenta.Eliminada, _base.Usuarios.Single(u => u.Id == id).Estado);
+    }
+
+    [Fact]
+    public async Task Confirmar_la_contrasena_de_una_cuenta_que_no_existe_no_revienta()
+    {
+        var r = await _cuenta.VerificarContrasenaAsync(Guid.NewGuid(), Clave);
+
+        Assert.False(r.Exito);
+        Assert.Equal(Fallas.NoEncontrado, r.Codigo);
+    }
+
     // ----------------------------------------------------------- API-16
 
     [Fact]

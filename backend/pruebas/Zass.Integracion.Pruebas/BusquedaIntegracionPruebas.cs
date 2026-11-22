@@ -1391,6 +1391,23 @@ public class BusquedaIntegracionPruebas : IDisposable
         Assert.False(resumen.Recientes[1].Verificada);
     }
 
+    /// <summary>JQ-15: la portada muestra la cara de quien subió foto (JQ-9) y las iniciales de quien no.</summary>
+    [Fact]
+    public async Task El_recien_llegado_trae_su_foto_si_subio_una()
+    {
+        var conFoto = await UnPrestadorBuscableAsync(nombre: "Con foto");
+        var sinFoto = await UnPrestadorBuscableAsync(nombre: "Sin foto");
+        conFoto.UrlFoto = "/archivos/fotos/con-foto-288.webp";
+        conFoto.PublicadoEn = _reloj.Ahora.AddDays(-1);
+        sinFoto.PublicadoEn = _reloj.Ahora.AddDays(-2);
+        await _prueba.Ctx.SaveChangesAsync();
+
+        var resumen = await _repo.ResumenAsync(_reloj.Ahora, 6);
+
+        Assert.Equal("/archivos/fotos/con-foto-288.webp", resumen.Recientes.Single(r => r.NombrePublico == "Con foto").UrlFoto);
+        Assert.Null(resumen.Recientes.Single(r => r.NombrePublico == "Sin foto").UrlFoto);
+    }
+
     /// <summary>Si tambien cubre otra zona, la tarjeta dice la PRINCIPAL; la otra no puede ganarle.</summary>
     [Fact]
     public async Task El_recien_llegado_muestra_su_zona_principal_y_no_una_secundaria()

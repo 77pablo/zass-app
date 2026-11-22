@@ -126,11 +126,13 @@ public class ApiPagosCorrectosPruebas : IAsyncLifetime
         return (cliente, perfilId, suscripcionId);
     }
 
-    private static async Task<HttpResponseMessage> ConCsrfAsync(HttpClient cliente, HttpMethod metodo, string ruta)
+    private static async Task<HttpResponseMessage> ConCsrfAsync(
+        HttpClient cliente, HttpMethod metodo, string ruta, object? cuerpo = null)
     {
         var csrf = (await (await cliente.GetAsync("/api/auth/csrf")).Content.ReadFromJsonAsync<JsonDocument>())!
             .RootElement.GetProperty("token").GetString()!;
         var p = new HttpRequestMessage(metodo, ruta);
+        if (cuerpo is not null) p.Content = JsonContent.Create(cuerpo);
         p.Headers.Add("X-CSRF-Token", csrf);
         return await cliente.SendAsync(p);
     }
@@ -218,7 +220,8 @@ public class ApiPagosCorrectosPruebas : IAsyncLifetime
             Assert.Equal(1, tomados);
         }
 
-        var r = await ConCsrfAsync(cliente, HttpMethod.Delete, "/api/mi/cuenta");
+        // CS-04 (#76): eliminar la cuenta pide la contraseña.
+        var r = await ConCsrfAsync(cliente, HttpMethod.Delete, "/api/mi/cuenta", new { contrasena = "contrasena-larga-1" });
 
         Assert.Equal(HttpStatusCode.NoContent, r.StatusCode);
         using (var ctx = ContextoDePrueba.Crear())
