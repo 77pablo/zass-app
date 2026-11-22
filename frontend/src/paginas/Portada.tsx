@@ -185,7 +185,7 @@ export function Portada() {
               <div className="flotantes entra" style={{ '--d': '560ms' } as React.CSSProperties} aria-label="Gente que se sumó hace poco">
                 {recientes.slice(0, 3).map((r, i) => (
                   <Link key={r.slug} to={`/prestadores/${r.slug}`} className={`flotante flotante--${i + 1}`}>
-                    <Monograma nombre={r.nombrePublico} tamano="p" />
+                    <Monograma nombre={r.nombrePublico} tamano="p" foto={r.urlFoto} />
                     <span>
                       <strong>{r.nombrePublico}</strong>
                       <small>{[r.rubro, r.zona].filter(Boolean).join(' · ')}</small>
@@ -260,7 +260,7 @@ export function Portada() {
                   <Aparece orden={i % 3}>
                     <TarjetaPersona p={{
                       slug: r.slug, nombre: r.nombrePublico, rubro: r.rubro,
-                      zona: r.zona, verificada: r.verificada,
+                      zona: r.zona, verificada: r.verificada, foto: r.urlFoto,
                     }} />
                   </Aparece>
                 </li>

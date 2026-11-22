@@ -6,6 +6,7 @@ import { DejarResena } from './paginas/DejarResena'
 import { Entrar } from './paginas/Entrar'
 import { Ficha } from './paginas/Ficha'
 import { MiAgenda } from './paginas/MiAgenda'
+import { MiCuenta } from './paginas/MiCuenta'
 import { MiFicha } from './paginas/MiFicha'
 import { MisCitas } from './paginas/MisCitas'
 import { MisGuardados } from './paginas/MisGuardados'
@@ -33,6 +34,7 @@ import { Terminos } from './paginas/Terminos'
 import { RecuperarContrasena, RestablecerContrasena, VerificarCorreo } from './paginas/Recuperacion'
 import { AvisoDeTarjeta, TarjetaEnMayusculas } from './paginas/AvisoDeTarjeta'
 import { ActivarTarjeta } from './paginas/ActivarTarjeta'
+import { MiSeguridad } from './paginas/MiSeguridad'
 
 /**
  * Un sitio de varias paginas, no una pagina larga: cada seccion vive en su propia ruta y se
@@ -67,10 +69,13 @@ export function App() {
         <Route path="mis-resenas" element={<MisResenas />} />
         <Route path="mis-tarjetas" element={<MisTarjetas />} />
         <Route path="mi-actividad" element={<MiActividad />} />
+        {/* CS-04: eliminar la cuenta. La API existia; la pantalla no (Ley 21.719, derecho de supresion). */}
+        <Route path="mi-cuenta" element={<MiCuenta />} />
         {/* CS-08 y CU-04: la gente guardada y lo que la persona suele buscar. */}
         <Route path="mis-guardados" element={<MisGuardados />} />
         {/* ES-3: activar los avisos push en este navegador. En ES-4 pasa a «Mi cuenta». */}
         <Route path="avisos" element={<Avisos />} />
+        <Route path="mi-cuenta/seguridad" element={<MiSeguridad />} />
         <Route path="ofrecer-servicios" element={<OfrecerServicios />} />
         <Route path="verificar-correo" element={<VerificarCorreo />} />
         <Route path="recuperar-contrasena" element={<RecuperarContrasena />} />

@@ -76,9 +76,19 @@ export function Cabecera() {
               Ofrecer mis servicios<Icono nombre="chevron" />
             </NavLink>
           )}
+          {estado === 'dentro' && (
+            <NavLink to="/mi-cuenta/seguridad" className="menu-enlace">
+              Seguridad de mi cuenta<Icono nombre="chevron" />
+            </NavLink>
+          )}
           {vePanel && (
             <NavLink to="/interno" className="menu-enlace">
               {ENLACE_PANEL_INTERNO}<Icono nombre="chevron" />
+            </NavLink>
+          )}
+          {estado === 'dentro' && (
+            <NavLink to="/mi-cuenta" className="menu-enlace">
+              Mi cuenta<Icono nombre="chevron" />
             </NavLink>
           )}
           {estado === 'dentro' && (

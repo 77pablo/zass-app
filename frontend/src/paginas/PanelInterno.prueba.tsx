@@ -1,7 +1,17 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const estadoMfa = vi.fn()
+vi.mock('../funciones/identidad/servicio', () => ({
+  estadoMfa: () => estadoMfa(),
+  cerrarSesion: vi.fn(),
+}))
+beforeEach(() => {
+  estadoMfa.mockReset()
+  estadoMfa.mockResolvedValue({ activo: true, activadoEn: null, codigosDeRespaldoRestantes: 10, obligatorio: true })
+})
 import { BarraInferior } from '../marco/BarraInferior'
 import { Cabecera } from '../marco/Cabecera'
 import { ProveedorDeMenuMovil } from '../marco/ProveedorDeMenuMovil'
@@ -154,5 +164,21 @@ describe('JQ-11: el enlace en «Más»', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Más' }))
     expect(screen.getByRole('link', { name: /Mis tarjetas/ })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /Panel interno/ })).toBeNull()
+  })
+})
+
+describe('MFA obligatorio en el panel (22-nov-2026)', () => {
+  it('un verificador sin MFA ve el aviso para activarlo en vez del panel', async () => {
+    estadoMfa.mockResolvedValue({ activo: false, activadoEn: null, codigosDeRespaldoRestantes: 0, obligatorio: true })
+    pintar('/interno/verificacion', 'dentro', ['buscador', 'verificador'])
+    const enlace = await screen.findByRole('link', { name: 'Activar la verificación en dos pasos' })
+    expect(enlace).toHaveAttribute('href', '/mi-cuenta/seguridad')
+    expect(screen.queryByText('la mesa')).toBeNull()
+  })
+
+  it('con MFA activo el panel se abre', async () => {
+    pintar('/interno/verificacion', 'dentro', ['buscador', 'verificador'])
+    expect(await screen.findByText('la mesa')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Activar la verificación en dos pasos' })).toBeNull()
   })
 })
