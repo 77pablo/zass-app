@@ -86,7 +86,8 @@ public static class Plantillas
              or TipoNotificacion.CitaReprogramada
              or TipoNotificacion.Recordatorio24h
              or TipoNotificacion.Recordatorio2h
-             or TipoNotificacion.RegistroConRutExistente;
+             or TipoNotificacion.RegistroConRutExistente
+             or TipoNotificacion.CredencialVencida;
 
     /// <summary>
     /// Los que llevan un secreto en la carga. Importa porque de esos el cuerpo se purga en
@@ -117,6 +118,9 @@ public static class Plantillas
         // No pide nada de la carga: los dos enlaces son fijos.
         TipoNotificacion.RegistroConRutExistente => RegistroConRutExistente(
             nombre, EnlaceDeEntrada(urlPublica), EnlaceParaPedirContrasena(urlPublica)),
+        // Sin nombre de credencial en la carga sale igual, con «una de tus credenciales».
+        TipoNotificacion.CredencialVencida => CredencialVencida(
+            nombre, CargaDeAviso.LeerCampo(carga, "credencial"), EnlaceDelPanel(urlPublica)),
         // Sin dias en la carga sale igual, con «pronto»: un aviso de cobro que no llega es peor
         // que uno sin la cifra exacta.
         TipoNotificacion.CobroRechazado => CobroRechazado(
@@ -233,6 +237,33 @@ public static class Plantillas
             pie,
             otra, enlaceContrasena);
         return new("Alguien intentó crear otra cuenta con tu RUT en ZASS!", texto, html);
+    }
+
+    /// <summary>
+    /// CS-06 / T8 (auditoria 22-nov-2026): el planificador vencio una credencial verificada. Le
+    /// dice al prestador que el sello ya no se ve y como recuperarlo (renovar = documento nuevo,
+    /// T9). El nombre de la credencial es SUYO (lo escribio el), asi que puede ir en el cuerpo;
+    /// nunca en el asunto. Texto PROPUESTO: lo aprueba Pablo.
+    /// </summary>
+    public static CorreoRenderizado CredencialVencida(string nombre, string? credencial, string enlace)
+    {
+        var cual = string.IsNullOrWhiteSpace(credencial) ? "Una de tus credenciales" : $"Tu credencial «{credencial}»";
+        var parrafo =
+            $"{cual} llegó a su fecha de vencimiento, así que ya no muestra el sello «Verificada» en tu "
+            + "ficha: ahora aparece como «Declarada por el usuario». Para recuperar el sello, súbela "
+            + "renovada y la volveremos a revisar.";
+        var texto =
+            $"Hola {nombre}:\n\n" +
+            $"{parrafo}\n\n" +
+            $"Puedes hacerlo aquí:\n\n{enlace}\n\n" +
+            "— El equipo de ZASS!";
+        var html = Marco(
+            "Venció una de tus credenciales",
+            $"Hola {H(nombre)}:",
+            parrafo,
+            "Renovar mi credencial", enlace,
+            "Si ya la renovaste, ignora este mensaje.");
+        return new("Venció una de tus credenciales en ZASS!", texto, html);
     }
 
     /// <summary>

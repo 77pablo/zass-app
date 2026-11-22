@@ -71,7 +71,7 @@ public sealed class RepositorioBusquedaFalso : IRepositorioBusqueda
     public List<TarjetaFila> Tarjetas { get; } = new();
 
     public Task<IReadOnlyList<TarjetaFila>> TarjetasPorIdAsync(
-        IReadOnlyList<Guid> perfilIds, CancellationToken ct = default)
+        IReadOnlyList<Guid> perfilIds, DateOnly hoy, CancellationToken ct = default)
     {
         IReadOnlyList<TarjetaFila> r = Tarjetas.ToList();
         return Task.FromResult(r);

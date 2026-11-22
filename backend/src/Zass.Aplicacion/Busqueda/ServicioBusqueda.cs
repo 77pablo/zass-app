@@ -268,7 +268,7 @@ public sealed class ServicioBusqueda : IServicioBusqueda
     {
         if (perfilIds.Count == 0) return Array.Empty<FavoritoDto>();
 
-        var filas = (await _repo.TarjetasPorIdAsync(perfilIds, ct)).ToDictionary(f => f.Id);
+        var filas = (await _repo.TarjetasPorIdAsync(perfilIds, HoraDeChile.DiaLocal(_reloj.Ahora), ct)).ToDictionary(f => f.Id);
 
         // El orden es el de la lista guardada (el mas reciente primero), no el de la base.
         return perfilIds

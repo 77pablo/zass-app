@@ -86,6 +86,9 @@ public static class MensajesPush
             TipoNotificacion.CredencialResuelta => new("Revisamos tu credencial",
                 "Entra a «Mi ficha» para ver el resultado.", MiFicha),
 
+            TipoNotificacion.CredencialVencida => new("Venció una de tus credenciales",
+                "Ya no muestra el sello «Verificada». Renuévala en «Mi ficha».", MiFicha),
+
             TipoNotificacion.PerfilPublicado => new("Tu ficha ya está publicada",
                 "Ya apareces en las búsquedas de ZASS!.", MiFicha),
 

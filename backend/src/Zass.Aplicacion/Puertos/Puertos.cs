@@ -534,7 +534,7 @@ public interface IRepositorioBusqueda
     /// servicio las ordena). El promedio sale tal cual esta guardado: RN-S5-11 la aplica el servicio.
     /// </summary>
     Task<IReadOnlyList<TarjetaFila>> TarjetasPorIdAsync(
-        IReadOnlyList<Guid> perfilIds, CancellationToken ct = default);
+        IReadOnlyList<Guid> perfilIds, DateOnly hoy, CancellationToken ct = default);
 }
 
 /// <summary>Una tarjeta de favorito, como sale de la base. Sin contacto: ver FavoritoDto.</summary>
@@ -661,6 +661,9 @@ public class FilaDeBusqueda
     public int TotalResenas { get; set; }
 }
 
+/// <summary>Una credencial que CS-06 tiene que vencer, y a quién avisar.</summary>
+public sealed record CredencialPorVencer(Guid CredencialId, Guid UsuarioId, string Nombre, DateOnly VenceEn);
+
 /// <summary>MOD-02 - Credenciales (TBL-12, TBL-13, TBL-14, TBL-15).</summary>
 public interface IRepositorioCredenciales
 {
@@ -676,7 +679,24 @@ public interface IRepositorioCredenciales
 
     Task<int> ContarDePrestadorAsync(Guid perfilPrestadorId, CancellationToken ct = default);
 
-    Task<bool> TieneVerificadaAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+    /// <summary>
+    /// Si tiene alguna credencial con el sello VIGENTE hoy: verificada y con <c>vence_en</c> nulo o
+    /// &gt;= <paramref name="hoy"/> (Credencial.TieneSelloVigente). Auditoría 22-nov-2026.
+    /// </summary>
+    Task<bool> TieneVerificadaAsync(Guid perfilPrestadorId, DateOnly hoy, CancellationToken ct = default);
+
+    /// <summary>
+    /// CS-06: las verificadas con <c>vence_en &lt; hoy</c>, con el usuario dueño del perfil para
+    /// avisarle. Sin seguimiento: el cambio lo hace <see cref="VencerSiCorrespondeAsync"/>.
+    /// </summary>
+    Task<IReadOnlyList<CredencialPorVencer>> VerificadasPasadasDeFechaAsync(
+        DateOnly hoy, int limite, CancellationToken ct = default);
+
+    /// <summary>
+    /// CS-06 en UNA sentencia condicional: la pasa a vencida solo si SIGUE verificada y pasada de
+    /// fecha. Devuelve si la cambió. Así una edición simultánea del prestador no se pisa.
+    /// </summary>
+    Task<bool> VencerSiCorrespondeAsync(Guid credencialId, DateOnly hoy, CancellationToken ct = default);
 
     void Agregar(Credencial credencial);
     void Eliminar(Credencial credencial);

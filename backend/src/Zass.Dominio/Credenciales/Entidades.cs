@@ -57,10 +57,35 @@ public class Credencial
         estado is not (EstadoCredencial.Borrador or EstadoCredencial.Rechazada);
 
     /// <summary>
-    /// El publico solo ve dos etiquetas. Que sea un metodo impide que alguien
-    /// serialice el estado interno por error y filtre que fue rechazada.
+    /// Si lleva el sello «Verificada» HOY: verificada y sin vencer. T8 de estados-credencial.md
+    /// la vence cuando <c>vence_en &lt; hoy</c>, asi que el dia del vencimiento todavia vale.
+    ///
+    /// <para>
+    /// Auditoria del 22-nov-2026: el sello dependia solo de <c>Estado == Verificada</c> y CS-06
+    /// (el trabajo que la pasa a <c>vencida</c>) no existia, asi que un titulo vencido seguia
+    /// «Verificado» para siempre. Ahora existe ese trabajo, y ademas el sello mira la fecha: si el
+    /// trabajo aun no corrio hoy (o la API durmio), el publico igual deja de ver el sello.
+    /// </para>
+    ///
+    /// <para>
+    /// <paramref name="hoy"/> es el dia del calendario de Chile (<see cref="HoraDeChile.DiaLocal"/>):
+    /// <c>VenceEn</c> es una fecha sin hora, escrita por una persona en Chile. Las consultas SQL
+    /// que no pueden llamar a este metodo repiten la condicion.
+    /// </para>
     /// </summary>
-    public string EtiquetaPublica() => Estado == EstadoCredencial.Verificada
+    public bool TieneSelloVigente(DateOnly hoy) =>
+        Estado == EstadoCredencial.Verificada && (VenceEn is null || VenceEn >= hoy);
+
+    /// <summary>CS-06 / T8: verificada y con <c>vence_en &lt; hoy</c>; el planificador la pasa a vencida.</summary>
+    public bool DebeVencer(DateOnly hoy) =>
+        Estado == EstadoCredencial.Verificada && VenceEn is { } vence && vence < hoy;
+
+    /// <summary>
+    /// El publico solo ve dos etiquetas. Que sea un metodo impide que alguien
+    /// serialice el estado interno por error y filtre que fue rechazada. Una verificada
+    /// pasada de fecha ya es «declarada», aunque el planificador no la haya vencido todavia.
+    /// </summary>
+    public string EtiquetaPublica(DateOnly hoy) => TieneSelloVigente(hoy)
         ? "Verificada"
         : "Declarada por el usuario";
 

@@ -371,21 +371,24 @@ public sealed class ServicioCredenciales : IServicioCredenciales
         Guid perfilPrestadorId, CancellationToken ct = default)
     {
         var credenciales = await _repo.PublicasDePrestadorAsync(perfilPrestadorId, ct);
+        // Auditoría 22-nov-2026: el sello mira la fecha, no solo el estado. Una verificada con
+        // vence_en pasado sale como «declarada» aunque CS-06 aún no la haya vencido.
+        var hoy = HoraDeChile.DiaLocal(_reloj.Ahora);
 
         // El repositorio ya sacó los borradores y las rechazadas; esta guarda es por si algún día
         // otro lo implementa distinto: un borrador es de su dueño y de nadie más, y una rechazada
         // no se muestra (decisión de Pablo, 21-nov-2026).
         return credenciales
             .Where(c => Credencial.EsVisibleAlPublico(c.Estado))
-            .OrderByDescending(c => c.Estado == EstadoCredencial.Verificada)
+            .OrderByDescending(c => c.TieneSelloVigente(hoy))
             .ThenByDescending(c => c.ObtenidaEn)
             .ThenBy(c => c.Nombre, StringComparer.Create(new System.Globalization.CultureInfo("es-CL"), true))
             .Select(c => new CredencialPublicaDto(
                 c.Tipo, c.Nombre, c.EntidadCertificadora?.Nombre, c.ObtenidaEn,
-                c.EtiquetaPublica(), c.Estado == EstadoCredencial.Verificada))
+                c.EtiquetaPublica(hoy), c.TieneSelloVigente(hoy)))
             .ToList();
     }
 
     public Task<bool> TieneVerificadasAsync(Guid perfilPrestadorId, CancellationToken ct = default) =>
-        _repo.TieneVerificadaAsync(perfilPrestadorId, ct);
+        _repo.TieneVerificadaAsync(perfilPrestadorId, HoraDeChile.DiaLocal(_reloj.Ahora), ct);
 }

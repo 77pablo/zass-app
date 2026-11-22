@@ -404,6 +404,8 @@ public class CorreoUnidadPruebas
             TipoNotificacion.Recordatorio24h, TipoNotificacion.Recordatorio2h,
             // ServicioRegistro, desde el 21-nov-2026: registro con un RUT que ya tiene cuenta.
             TipoNotificacion.RegistroConRutExistente,
+            // El planificador (CS-06), desde el 22-nov-2026: credencial verificada que vencio.
+            TipoNotificacion.CredencialVencida,
         };
         // Ya no queda ninguno pendiente a conciencia: PerfilPublicado era el ultimo y tiene
         // plantilla desde el 13-nov-2026. Si manana se encola un tipo nuevo sin plantilla, esta
