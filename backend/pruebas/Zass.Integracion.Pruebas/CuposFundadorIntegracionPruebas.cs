@@ -396,15 +396,15 @@ public class CuposFundadorIntegracionPruebas : IDisposable
         }
     }
 
-    // ------------------------------- Cupo sin tarjeta (decision de Pablo, 20-nov-2026)
+    // ------------------- Tomar el cupo: RESERVA hasta la tarjeta (N3, decision de Pablo 22-nov-2026)
 
     /// <summary>
-    /// El ciclo entero contra Postgres: tomar el cupo sin tarjeta lo deja definitivo y pasa a
-    /// fundador con el mes gratis; tomarlo otra vez devuelve el mismo; y si el mes termina sin
-    /// tarjeta, el diario lo libera y no se puede volver a tomar.
+    /// El ciclo entero contra Postgres: tomar el cupo lo RESERVA 30 minutos (no lo confirma ni
+    /// pasa a fundador), tomarlo otra vez devuelve la misma reserva sin estirarla, y vencida la
+    /// reserva el cupo cuenta como libre al instante y se lo puede llevar otra persona.
     /// </summary>
     [Fact]
-    public async Task Tomar_sin_tarjeta_y_perderlo_al_vencer_de_punta_a_punta()
+    public async Task Tomar_reserva_30_minutos_y_al_vencer_otro_se_lleva_el_cupo()
     {
         var perfil = await UnPrestadorAsync();
         Assert.True((await _servicio.IniciarPruebaAsync(perfil.Id)).Exito);
@@ -415,28 +415,61 @@ public class CuposFundadorIntegracionPruebas : IDisposable
         Assert.True(tomado.Exito, tomado.Mensaje);
         Assert.Equal((short)1, tomado.Valor!.Numero);
         Assert.False(tomado.Valor.TarjetaInscrita);
+        Assert.Null(tomado.Valor.MesGratisHasta);
         var cupo = (await Cupos()).Single(c => c.Numero == 1);
         Assert.Equal(perfil.Id, cupo.PerfilPrestadorId);
-        Assert.Null(cupo.ReservadoHasta);                                   // definitivo
+        Assert.NotNull(cupo.ReservadoHasta);                                  // reserva, no definitivo
+        Assert.InRange(cupo.ReservadoHasta!.Value, antes.AddMinutes(29), antes.AddMinutes(31));
         var s = await _prueba.Ctx.Suscripciones.AsNoTracking().Include(x => x.Plan)
             .SingleAsync(x => x.PerfilPrestadorId == perfil.Id);
-        Assert.Equal("fundador", s.Plan!.Codigo);
-        Assert.True(s.VigenteHasta >= antes.AddDays(ServicioSuscripciones.DiasDeMesGratis).AddMinutes(-1));
+        Assert.NotEqual("fundador", s.Plan!.Codigo);                          // sin tarjeta no es fundador
 
         var otraVez = await _servicio.TomarCupoFundadorAsync(perfil.Id);
         Assert.True(otraVez.Exito);
         Assert.Equal((short)1, otraVez.Valor!.Numero);
+        Assert.Equal(cupo.ReservadoHasta, (await Cupos()).Single(c => c.Numero == 1).ReservadoHasta);
         Assert.Equal(49, await _servicio.CuposFundadorDisponiblesAsync());
 
-        // Termina el mes gratis sin tarjeta.
-        await _prueba.Ctx.Suscripciones.Where(x => x.PerfilPrestadorId == perfil.Id)
-            .ExecuteUpdateAsync(u => u.SetProperty(x => x.VigenteHasta, DateTime.UtcNow.AddMinutes(-1)));
+        // Pasan los 30 minutos sin tarjeta.
+        await _prueba.Ctx.CuposFundador.Where(c => c.Numero == 1)
+            .ExecuteUpdateAsync(u => u.SetProperty(c => c.ReservadoHasta, DateTime.UtcNow.AddMinutes(-1)));
         _prueba.Ctx.ChangeTracker.Clear();
-        await _servicio.VencerExpiradasAsync();
-
-        Assert.Null((await Cupos()).Single(c => c.Numero == 1).PerfilPrestadorId);
         Assert.Equal(50, await _servicio.CuposFundadorDisponiblesAsync());
-        Assert.False(await _servicio.EstaVigenteAsync(perfil.Id));
-        Assert.False((await _servicio.TomarCupoFundadorAsync(perfil.Id)).Exito);
+
+        var otro = await UnPrestadorAsync();
+        Assert.True((await _servicio.IniciarPruebaAsync(otro.Id)).Exito);
+        var deOtro = await _servicio.TomarCupoFundadorAsync(otro.Id);
+        Assert.True(deOtro.Exito, deOtro.Mensaje);
+        Assert.Equal((short)1, deOtro.Valor!.Numero);
+        Assert.Equal(otro.Id, (await Cupos()).Single(c => c.Numero == 1).PerfilPrestadorId);
+    }
+
+    /// <summary>
+    /// Con los 50 cupos RESERVADOS y vigentes (nadie inscribio tarjeta todavia), el 51 no toma
+    /// ninguno y no le quita la reserva a nadie: una reserva vigente cuenta igual que un cupo
+    /// confirmado. Si no, las reservas sumarian mas de 50.
+    /// </summary>
+    [Fact]
+    public async Task Con_los_50_reservados_y_vigentes_el_51_no_toma_cupo_ni_le_quita_a_nadie()
+    {
+        var reservados = new List<Guid>();
+        for (var i = 0; i < 50; i++)
+        {
+            var p = await UnPrestadorAsync();
+            Assert.True((await _servicio.IniciarPruebaAsync(p.Id)).Exito);
+            Assert.True((await _servicio.TomarCupoFundadorAsync(p.Id)).Exito);
+            reservados.Add(p.Id);
+        }
+        Assert.Equal(0, await _servicio.CuposFundadorDisponiblesAsync());
+
+        var ultimo = await UnPrestadorAsync();
+        Assert.True((await _servicio.IniciarPruebaAsync(ultimo.Id)).Exito);
+        var r = await _servicio.TomarCupoFundadorAsync(ultimo.Id);
+
+        Assert.False(r.Exito);
+        var cupos = await Cupos();
+        Assert.DoesNotContain(cupos, c => c.PerfilPrestadorId == ultimo.Id);
+        Assert.Equal(reservados.OrderBy(x => x), cupos.Select(c => c.PerfilPrestadorId!.Value).OrderBy(x => x));
+        Assert.All(cupos, c => Assert.NotNull(c.ReservadoHasta));
     }
 }

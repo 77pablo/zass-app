@@ -285,8 +285,7 @@ public class AuditoriaApiPruebas : IAsyncLifetime
 
     private async Task IniciarSesionAsync(string correo)
     {
-        var respuesta = await _cliente.PostAsJsonAsync("/api/auth/sesion",
-            new { correo, contrasena = "contrasena-larga-1" });
+        var respuesta = await MfaDePrueba.EntrarAsync(_cliente, correo, "contrasena-larga-1");
         if (respuesta.StatusCode != HttpStatusCode.OK)
         {
             var cuerpo = await respuesta.Content.ReadAsStringAsync();

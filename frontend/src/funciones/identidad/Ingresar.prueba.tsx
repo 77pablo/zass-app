@@ -5,13 +5,17 @@ import { Ingresar } from './Ingresar'
 import { ErrorApi } from '../../api/cliente'
 
 const iniciarSesion = vi.fn()
+const segundoPaso = vi.fn()
 vi.mock('./servicio', () => ({
   iniciarSesion: (...args: unknown[]) => iniciarSesion(...args),
+  segundoPaso: (...args: unknown[]) => segundoPaso(...args),
+  esDesafioMfa: (r: { mfaRequerido?: boolean } | undefined) => r?.mfaRequerido === true,
   registrarse: vi.fn(),
 }))
 
 beforeEach(() => {
   iniciarSesion.mockReset()
+  segundoPaso.mockReset()
 })
 
 describe('pantalla de ingreso', () => {
@@ -95,5 +99,43 @@ describe('pantalla de ingreso', () => {
     await usuario.click(screen.getByRole('button', { name: /entrar/i }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/15 minutos/i)
+  })
+})
+
+describe('verificación en dos pasos al entrar', () => {
+  it('con MFA no entra con la contraseña sola: pide el código y entra con el segundo paso', async () => {
+    const alEntrar = vi.fn()
+    iniciarSesion.mockResolvedValue({ mfaRequerido: true, desafio: 'des-1', expiraEn: '' })
+    segundoPaso.mockResolvedValue({ usuarioId: 'u', roles: ['buscador'], correoVerificado: true })
+    render(<Ingresar alEntrar={alEntrar} />)
+
+    await usuario.type(screen.getByLabelText(/correo/i), 'pablo@zass.cl')
+    await usuario.type(screen.getByLabelText(/contrase/i), 'una-clave-larga')
+    await usuario.click(screen.getByRole('button', { name: /entrar/i }))
+
+    expect(await screen.findByRole('heading', { name: /verificación en dos pasos/i })).toBeInTheDocument()
+    expect(alEntrar).not.toHaveBeenCalled()
+
+    await usuario.type(screen.getByLabelText(/código/i), '123456')
+    await usuario.click(screen.getByRole('button', { name: /verificar y entrar/i }))
+
+    await waitFor(() => expect(alEntrar).toHaveBeenCalledTimes(1))
+    expect(segundoPaso).toHaveBeenCalledWith('des-1', '123456')
+  })
+
+  it('un código malo muestra el aviso de la API y no entra', async () => {
+    const alEntrar = vi.fn()
+    iniciarSesion.mockResolvedValue({ mfaRequerido: true, desafio: 'des-1', expiraEn: '' })
+    segundoPaso.mockRejectedValue(new ErrorApi(401, 'El código no es válido o el tiempo para ingresarlo terminó. Vuelve a intentarlo.'))
+    render(<Ingresar alEntrar={alEntrar} />)
+
+    await usuario.type(screen.getByLabelText(/correo/i), 'pablo@zass.cl')
+    await usuario.type(screen.getByLabelText(/contrase/i), 'una-clave-larga')
+    await usuario.click(screen.getByRole('button', { name: /entrar/i }))
+    await usuario.type(await screen.findByLabelText(/código/i), '000000')
+    await usuario.click(screen.getByRole('button', { name: /verificar y entrar/i }))
+
+    expect(await screen.findByText(/el código no es válido/i)).toBeInTheDocument()
+    expect(alEntrar).not.toHaveBeenCalled()
   })
 })

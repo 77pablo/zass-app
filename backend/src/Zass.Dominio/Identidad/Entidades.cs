@@ -43,6 +43,40 @@ public class Usuario
 
     public bool EstaBloqueada(DateTime ahora) => BloqueadaHasta is { } hasta && hasta > ahora;
 
+    // Verificacion en dos pasos con TOTP (decision de Pablo, 22-nov-2026): obligatoria para
+    // los roles del panel interno y opcional para el resto. El secreto se guarda cifrado con
+    // AES-256-GCM (ICifradoDeDatos), nunca en claro. Quien cambia el ultimo paso aceptado, los
+    // codigos de respaldo y el desafio pendiente es SQL atomico (RepositorioUsuariosEfCore):
+    // dos peticiones simultaneas no pueden gastar dos veces el mismo codigo.
+    /// <summary>El secreto TOTP en uso, cifrado. Nulo si la cuenta no tiene MFA.</summary>
+    public byte[]? MfaSecretoCifrado { get; set; }
+    /// <summary>El secreto del alta en curso, cifrado, hasta que se confirma con un codigo.</summary>
+    public byte[]? MfaSecretoPendienteCifrado { get; set; }
+    public DateTime? MfaActivadoEn { get; set; }
+    /// <summary>El ultimo paso de 30 s aceptado: un codigo de ese paso o de uno anterior no vuelve a servir.</summary>
+    public long? MfaUltimoPaso { get; set; }
+    /// <summary>Los hash (SHA-256) de los codigos de respaldo que quedan sin usar.</summary>
+    public string[]? MfaCodigosRespaldo { get; set; }
+    /// <summary>Hash del desafio del segundo paso del inicio de sesion (vive 5 minutos, un solo uso).</summary>
+    public string? MfaDesafioHash { get; set; }
+    public DateTime? MfaDesafioExpiraEn { get; set; }
+
+    public bool MfaActivo => MfaActivadoEn is not null && MfaSecretoCifrado is not null;
+
+    /// <summary>Si la cuenta tiene algun rol del panel interno, que obliga a usar MFA.</summary>
+    public bool TieneRolInterno => Roles.Any(r => r.Rol is { EsInterno: true });
+
+    public void QuitarMfa()
+    {
+        MfaSecretoCifrado = null;
+        MfaSecretoPendienteCifrado = null;
+        MfaActivadoEn = null;
+        MfaUltimoPaso = null;
+        MfaCodigosRespaldo = null;
+        MfaDesafioHash = null;
+        MfaDesafioExpiraEn = null;
+    }
+
     public DateTime CreadoEn { get; set; } = DateTime.UtcNow;
     public DateTime ActualizadoEn { get; set; } = DateTime.UtcNow;
     public DateTime? AnonimizadoEn { get; set; }
@@ -77,6 +111,7 @@ public class Usuario
         HashContrasena = "";
         TokenVerificacion = null;
         TokenRecuperacion = null;
+        QuitarMfa();
         Estado = EstadoCuenta.Eliminada;
         AnonimizadoEn = DateTime.UtcNow;
         ActualizadoEn = DateTime.UtcNow;

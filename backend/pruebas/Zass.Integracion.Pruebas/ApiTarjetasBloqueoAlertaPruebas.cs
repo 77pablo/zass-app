@@ -133,7 +133,7 @@ public class ApiTarjetasBloqueoAlertaPruebas : IAsyncLifetime
             }
         }
 
-        var login = client.PostAsJsonAsync("/api/auth/sesion", new { correo, contrasena }).Result;
+        var login = MfaDePrueba.EntrarAsync(client, correo, contrasena).Result;
         login.EnsureSuccessStatusCode();
 
         if (sufijo == "admin") _admin = client;
