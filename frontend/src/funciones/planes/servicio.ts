@@ -1,4 +1,5 @@
 import { enviar, obtener } from '../../api/cliente'
+import { cabeceraCaptcha } from '../../componentes/Captcha'
 
 /** API-66. Un plan del catálogo, tal como lo manda el servidor. */
 export interface Plan {
@@ -73,20 +74,27 @@ export function iniciarCobro(
     '/api/mi/cobros', { codigoPlan, codigoCupon }, 'POST', { 'Idempotency-Key': clave })
 }
 
-/** API-69. El cupo recién tomado y hasta cuándo corre el mes gratis. */
+/**
+ * API-69. El cupo recién tomado. Desde el 22-nov-2026 (N3) queda RESERVADO: `reservadoHasta`
+ * dice hasta cuándo hay que inscribir la tarjeta y `mesGratisHasta` es null. Si ya era tuyo y
+ * confirmado, `reservadoHasta` es null y `mesGratisHasta` trae la fecha.
+ */
 export interface CupoTomado {
   numero: number
-  mesGratisHasta: string
+  mesGratisHasta: string | null
   tarjetaInscrita: boolean
+  reservadoHasta?: string | null
 }
 
 /**
- * API-69. Toma el cupo SIN tarjeta (decisión de Pablo, 20-nov-2026): queda tuyo al tiro y
- * arranca el mes gratis. Sin cuerpo: no hay nada que elegir.
+ * API-69. RESERVA el cupo por 30 minutos (N3, decisión de Pablo del 22-nov-2026). Queda tuyo
+ * cuando la tarjeta queda inscrita en Flow (API-76); si no, vuelve a quedar libre. Pide el
+ * captcha de Turnstile (cabecera). Sin cuerpo: no hay nada que elegir.
  */
-export function tomarCupoFundador(clave: string): Promise<CupoTomado> {
+export function tomarCupoFundador(clave: string, tokenCaptcha?: string | null): Promise<CupoTomado> {
   return enviar<CupoTomado>(
-    '/api/mi/suscripcion/fundador', undefined, 'POST', { 'Idempotency-Key': clave })
+    '/api/mi/suscripcion/fundador', undefined, 'POST',
+    { 'Idempotency-Key': clave, ...cabeceraCaptcha(tokenCaptcha ?? null) })
 }
 
 /** API-76. Inscribe la tarjeta de quien ya tiene su cupo. Devuelve a dónde ir a inscribirla. */
