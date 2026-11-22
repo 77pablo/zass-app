@@ -124,7 +124,11 @@ public partial class ApiPruebas
     {
         await UnaCuentaAntiguaConSesionAsync();
 
-        using var peticion = new HttpRequestMessage(HttpMethod.Delete, "/api/mi/cuenta");
+        // CS-04 (#76): eliminar la cuenta pide la contraseña.
+        using var peticion = new HttpRequestMessage(HttpMethod.Delete, "/api/mi/cuenta")
+        {
+            Content = JsonContent.Create(new { contrasena = "contrasena-larga-1" }),
+        };
         peticion.Headers.Add("X-CSRF-Token", await TokenCsrfAsync());
         var r = await _cliente.SendAsync(peticion);
 

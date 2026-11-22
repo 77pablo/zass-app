@@ -87,6 +87,11 @@ export function Cabecera() {
             </NavLink>
           )}
           {estado === 'dentro' && (
+            <NavLink to="/mi-cuenta" className="menu-enlace">
+              Mi cuenta<Icono nombre="chevron" />
+            </NavLink>
+          )}
+          {estado === 'dentro' && (
             <button type="button" className="menu-enlace" onClick={() => void salir()}>
               Salir<Icono nombre="chevron" />
             </button>

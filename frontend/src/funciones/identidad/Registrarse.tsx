@@ -234,7 +234,7 @@ export function Registrarse({
       <Captcha accion="registro" alResolver={setTokenCaptcha} reinicio={reinicioCaptcha} />
 
       <button className="boton" type="submit" disabled={enviando}>
-        {enviando ? 'Creando...' : 'Crear cuenta'}
+        {enviando ? 'Creando…' : 'Crear cuenta'}
       </button>
     </form>
   )

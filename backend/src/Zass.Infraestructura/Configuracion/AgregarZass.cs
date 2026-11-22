@@ -298,6 +298,7 @@ public static class RegistroDeServicios
         servicios.AddScoped<INotificaciones, ColaNotificacionesEfCore>();
         servicios.AddScoped<IAuditor, AuditorEfCore>();
         servicios.AddScoped<IRepositorioAuditoria, RepositorioAuditoriaEfCore>();
+        servicios.AddScoped<IRepositorioBorradores, RepositorioBorradoresEfCore>();   // JQ-16
         servicios.AddScoped<IConsultaMetricasPrestador, ConsultaMetricasPrestadorEfCore>();   // MI-METRICAS (JQ-8)
         servicios.AddScoped<IConsultaIndicadores, ConsultaIndicadoresEfCore>();   // API-60 (JQ-14)
 
@@ -327,6 +328,7 @@ public static class RegistroDeServicios
         // --- MOD-02 Credenciales ---
         servicios.AddScoped<IRepositorioCredenciales, RepositorioCredencialesEfCore>();
         servicios.AddScoped<IServicioCredenciales, ServicioCredenciales>();
+        servicios.AddScoped<ServicioBorradoresAbandonados>();   // JQ-16, lo corre el planificador
         servicios.AddScoped<IServicioVerificacion, ServicioVerificacion>();
         // CS-06: el planificador vence las verificadas pasadas de fecha (auditoria 22-nov-2026).
         servicios.AddScoped<ServicioVencimientoCredenciales>();

@@ -55,6 +55,12 @@ public interface INotificaciones
     Task<bool> ExisteAsync(string claveIdempotencia, CancellationToken ct = default);
 
     /// <summary>
+    /// JQ-16. Cuándo quedó programado el aviso con esa clave, o nulo si no existe. Sirve para
+    /// esperar un plazo DESDE el aviso (no borrar un borrador al día siguiente de avisar).
+    /// </summary>
+    Task<DateTime?> ProgramadaParaAsync(string claveIdempotencia, CancellationToken ct = default);
+
+    /// <summary>
     /// JQ-3. Anula los recordatorios de la cita que aun esperan en la cola. Corre dentro de la
     /// transaccion abierta (mismo contexto), asi que si el caso de uso se deshace, esto tambien.
     /// El que ya estaba tomado para enviar lo para el procesador, que vuelve a mirar la cita.
@@ -647,7 +653,8 @@ public sealed record ConteoCrudo(int Id, int Personas);
 public sealed record ConteoDeRegion(string Region, int Personas);
 
 public sealed record RecienLlegadoFila(
-    string Slug, string NombrePublico, string? RubroNombre, string? ZonaPrincipal, bool Verificada);
+    string Slug, string NombrePublico, string? RubroNombre, string? ZonaPrincipal, bool Verificada,
+    string? UrlFoto = null);
 
 public sealed record ResumenCrudo(
     int Total,

@@ -406,6 +406,8 @@ public class CorreoUnidadPruebas
             TipoNotificacion.RegistroConRutExistente,
             // El planificador (CS-06), desde el 22-nov-2026: credencial verificada que vencio.
             TipoNotificacion.CredencialVencida,
+            // ServicioBorradoresAbandonados, desde JQ-16.
+            TipoNotificacion.BorradorPorEliminarse,
         };
         // Ya no queda ninguno pendiente a conciencia: PerfilPublicado era el ultimo y tiene
         // plantilla desde el 13-nov-2026. Si manana se encola un tipo nuevo sin plantilla, esta

@@ -225,7 +225,9 @@ function FilaDeCita({ cita, mio, alCambiar }: {
         <div>
           <strong>{cita.servicio}</strong>
           <span className="cita-con">
-            {comoPrestador ? 'Te pidieron esta hora' : `con ${cita.prestador}`}
+            {comoPrestador
+              ? 'Te pidieron esta hora'
+              : <>con <Link to={`/prestadores/${cita.prestadorSlug}`}>{cita.prestador}</Link></>}
           </span>
         </div>
         <span className={activa ? 'dato' : 'dato dato--apagado'}>{ETIQUETA[cita.estado]}</span>
@@ -275,6 +277,14 @@ function FilaDeCita({ cita, mio, alCambiar }: {
           <button type="button" className="boton boton--chico" onClick={() => abrir('cancelar')}>
             Cancelar
           </button>
+        )}
+
+        {/* CU-16: la hora realizada es cuando se puede opinar. Solo se enlaza; si todavia no se
+            puede (plazos de MOD-11), la pagina de la reseña lo explica con su propia regla. */}
+        {!comoPrestador && cita.estado === 'Realizada' && (
+          <Link className="boton boton--chico boton--amarillo" to={`/prestadores/${cita.prestadorSlug}/resena`}>
+            Dejar una reseña
+          </Link>
         )}
       </div>
 

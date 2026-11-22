@@ -6,6 +6,7 @@ import { DejarResena } from './paginas/DejarResena'
 import { Entrar } from './paginas/Entrar'
 import { Ficha } from './paginas/Ficha'
 import { MiAgenda } from './paginas/MiAgenda'
+import { MiCuenta } from './paginas/MiCuenta'
 import { MiFicha } from './paginas/MiFicha'
 import { MisCitas } from './paginas/MisCitas'
 import { MisGuardados } from './paginas/MisGuardados'
@@ -68,6 +69,8 @@ export function App() {
         <Route path="mis-resenas" element={<MisResenas />} />
         <Route path="mis-tarjetas" element={<MisTarjetas />} />
         <Route path="mi-actividad" element={<MiActividad />} />
+        {/* CS-04: eliminar la cuenta. La API existia; la pantalla no (Ley 21.719, derecho de supresion). */}
+        <Route path="mi-cuenta" element={<MiCuenta />} />
         {/* CS-08 y CU-04: la gente guardada y lo que la persona suele buscar. */}
         <Route path="mis-guardados" element={<MisGuardados />} />
         {/* ES-3: activar los avisos push en este navegador. En ES-4 pasa a «Mi cuenta». */}

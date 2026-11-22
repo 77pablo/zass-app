@@ -65,6 +65,8 @@ public enum TipoNotificacion
     // 22-nov-2026 (auditoria, CS-06 / T8): el planificador vencio una credencial verificada y
     // el sello ya no se muestra. Va al prestador dueño, por correo y push.
     CredencialVencida,
+    /// <summary>JQ-16 · CU-05 4D.3: el borrador de una credencial se borrará por inactividad.</summary>
+    BorradorPorEliminarse,
     // 22-nov-2026 (decision de Pablo): se activo la verificacion en dos pasos en esta cuenta. Si no
     // fue la dueña, alguien con su contraseña puso SU telefono. Solo por correo, y no se apaga.
     MfaActivado
