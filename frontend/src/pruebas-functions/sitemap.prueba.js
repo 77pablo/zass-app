@@ -193,7 +193,7 @@ describe('robots.txt', () => {
     expect(robots).toMatch(/^Sitemap: https:\/\/zass\.cl\/sitemap\.xml$/m)
   })
 
-  const RUTAS_DEL_PANEL = ['/mi-ficha', '/mi-agenda', '/mis-citas', '/mis-resenas', '/mis-tarjetas', '/mis-guardados', '/mi-actividad']
+  const RUTAS_DEL_PANEL = ['/mi-ficha', '/mi-agenda', '/mis-citas', '/mis-resenas', '/mis-tarjetas', '/mis-guardados', '/mi-actividad', '/mi-cuenta/seguridad']
 
   it.each([...RUTAS_DEL_PANEL, '/entrar', '/crear-cuenta', '/restablecer-contrasena', '/verificar-correo'])(
     'no deja indexar %s', (ruta) => {

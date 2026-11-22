@@ -33,6 +33,7 @@ import { Terminos } from './paginas/Terminos'
 import { RecuperarContrasena, RestablecerContrasena, VerificarCorreo } from './paginas/Recuperacion'
 import { AvisoDeTarjeta, TarjetaEnMayusculas } from './paginas/AvisoDeTarjeta'
 import { ActivarTarjeta } from './paginas/ActivarTarjeta'
+import { MiSeguridad } from './paginas/MiSeguridad'
 
 /**
  * Un sitio de varias paginas, no una pagina larga: cada seccion vive en su propia ruta y se
@@ -71,6 +72,7 @@ export function App() {
         <Route path="mis-guardados" element={<MisGuardados />} />
         {/* ES-3: activar los avisos push en este navegador. En ES-4 pasa a «Mi cuenta». */}
         <Route path="avisos" element={<Avisos />} />
+        <Route path="mi-cuenta/seguridad" element={<MiSeguridad />} />
         <Route path="ofrecer-servicios" element={<OfrecerServicios />} />
         <Route path="verificar-correo" element={<VerificarCorreo />} />
         <Route path="recuperar-contrasena" element={<RecuperarContrasena />} />

@@ -8,6 +8,7 @@ Disallow: /mis-resenas
 Disallow: /mis-tarjetas
 Disallow: /mis-guardados
 Disallow: /mi-actividad
+Disallow: /mi-cuenta/seguridad
 Disallow: /pago/
 Disallow: /planes/listo
 Disallow: /entrar

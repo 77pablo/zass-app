@@ -320,6 +320,7 @@ public static class RegistroDeServicios
         servicios.AddScoped<IRepositorioCuentasSinVerificar, RepositorioCuentasSinVerificarEfCore>();
         servicios.AddScoped<ServicioCuentasSinVerificar>();
         servicios.AddScoped<ServicioSesion>();
+        servicios.AddScoped<ServicioMfa>();
         servicios.AddScoped<ServicioCuenta>();
         servicios.AddScoped<ServicioPerfiles>();
 

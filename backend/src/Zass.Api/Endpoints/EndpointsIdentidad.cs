@@ -57,20 +57,32 @@ public static class EndpointsIdentidad
         grupo.MapPost("/sesion", async (
                 IniciarSesionCmd cmd, ServicioSesion servicio, HttpContext http) =>
             {
-                var r = await servicio.IniciarAsync(cmd, Ip(http), Agente(http));
+                var r = await servicio.EntrarAsync(cmd, Ip(http), Agente(http));
                 if (!r.Exito) return Respuestas.Problema(r);
 
-                await AbrirCookiesAsync(http, r.Valor!);
-                return Results.Ok(new
-                {
-                    r.Valor!.UsuarioId,
-                    r.Valor!.Roles,
-                    r.Valor!.CorreoVerificado,
-                });
+                // Cuenta con MFA: la contrasena era correcta, pero NO hay cookies todavia. Solo el
+                // desafio, que API-79 canjea junto al codigo.
+                if (r.Valor!.Desafio is { } desafio)
+                    return Results.Ok(new { mfaRequerido = true, desafio = desafio.Desafio, expiraEn = desafio.ExpiraEn });
+
+                return await SesionAbiertaAsync(http, r.Valor.Sesion!);
             })
             .ConValidacion<IniciarSesionCmd>()
             .RequireRateLimiting(Tasa.Autenticacion)
             .WithName("API-09");
+
+        // API-79 - Segundo paso del inicio de sesion con MFA: el desafio de API-09 mas un codigo
+        // TOTP o de respaldo. Sin CSRF, como API-09: todavia no hay sesion que proteger, y el
+        // desafio (5 min, un solo uso) es la prueba de que la contrasena ya se dio.
+        grupo.MapPost("/sesion/mfa", async (
+                SegundoPasoCmd cmd, ServicioMfa servicio, HttpContext http) =>
+            {
+                var r = await servicio.SegundoPasoAsync(cmd, Ip(http), Agente(http));
+                return r.Exito ? await SesionAbiertaAsync(http, r.Valor!) : Respuestas.Problema(r);
+            })
+            .ConValidacion<SegundoPasoCmd>()
+            .RequireRateLimiting(Tasa.Autenticacion)
+            .WithName("API-79");
 
         // API-10 - Renueva el token de acceso con el de refresco.
         grupo.MapPost("/sesion/renovar", async (ServicioSesion servicio, HttpContext http) =>
@@ -259,6 +271,56 @@ public static class EndpointsIdentidad
             .ConValidacion<CambiarContrasenaCmd>()
             .RequireRateLimiting(Tasa.General)
             .WithName("CS-02b");
+
+        // API-80 - Estado de la verificacion en dos pasos de la propia cuenta.
+        grupo.MapGet("/mfa", async (ServicioMfa servicio, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                return usuarioId is null
+                    ? Results.Unauthorized()
+                    : Respuestas.DeResultado(await servicio.EstadoAsync(usuarioId.Value));
+            })
+            .RequireRateLimiting(Tasa.General)
+            .WithName("API-80");
+
+        // API-81 - Empieza el alta: secreto nuevo y la direccion otpauth:// para el QR. Queda
+        // pendiente hasta API-82. Esto (con API-82) es lo que un rol del panel sin MFA SI puede
+        // hacer para entrar al panel: vive en /api/mi, no en /api/interno.
+        grupo.MapPost("/mfa/alta", async (ServicioMfa servicio, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                return usuarioId is null
+                    ? Results.Unauthorized()
+                    : Respuestas.DeResultado(await servicio.IniciarAltaAsync(usuarioId.Value));
+            })
+            .RequireRateLimiting(Tasa.Autenticacion)
+            .WithName("API-81");
+
+        // API-82 - Confirma el alta con un codigo y devuelve los 10 codigos de respaldo (una vez).
+        grupo.MapPost("/mfa/confirmar", async (
+                ConfirmarMfaCmd cmd, ServicioMfa servicio, HttpContext http, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                return usuarioId is null
+                    ? Results.Unauthorized()
+                    : Respuestas.DeResultado(await servicio.ConfirmarAltaAsync(usuarioId.Value, cmd, Ip(http)));
+            })
+            .ConValidacion<ConfirmarMfaCmd>()
+            .RequireRateLimiting(Tasa.Autenticacion)
+            .WithName("API-82");
+
+        // API-83 - Desactiva la verificacion en dos pasos. Pide contrasena Y codigo.
+        grupo.MapPost("/mfa/desactivar", async (
+                DesactivarMfaCmd cmd, ServicioMfa servicio, HttpContext http, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                return usuarioId is null
+                    ? Results.Unauthorized()
+                    : Respuestas.DeResultado(await servicio.DesactivarAsync(usuarioId.Value, cmd, Ip(http)));
+            })
+            .ConValidacion<DesactivarMfaCmd>()
+            .RequireRateLimiting(Tasa.Autenticacion)
+            .WithName("API-83");
 
         // API-18 - Perfil completo, con zona y sin ubicacion exacta.
         grupo.MapGet("/perfil-prestador", async (
@@ -663,6 +725,18 @@ public static class EndpointsIdentidad
                 Expires = sesion.ExpiraEn,
                 Path = "/api/auth",   // solo viaja a donde se usa
             });
+    }
+
+    /// <summary>Pone las cookies y responde lo mismo en API-09 (sin MFA) y en API-79.</summary>
+    private static async Task<IResult> SesionAbiertaAsync(HttpContext http, SesionAbiertaDto sesion)
+    {
+        await AbrirCookiesAsync(http, sesion);
+        return Results.Ok(new
+        {
+            sesion.UsuarioId,
+            sesion.Roles,
+            sesion.CorreoVerificado,
+        });
     }
 
     private static async Task CerrarCookiesAsync(HttpContext http)

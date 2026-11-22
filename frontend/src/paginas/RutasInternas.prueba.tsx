@@ -12,7 +12,7 @@ import { Contexto, type Usuario } from '../sesion/contexto'
 
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async (ruta: string) => {
-    const vacio = ruta.includes('/cola') ? [] : {}
+    const vacio = ruta.includes('/cola') ? [] : ruta.includes('/api/mi/mfa') ? { activo: true } : {}
     return new Response(JSON.stringify(vacio), { status: 200, headers: { 'content-type': 'application/json' } })
   }))
 })

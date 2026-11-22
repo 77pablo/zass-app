@@ -140,7 +140,7 @@ public class ApiTarjetasEmitirActivarPruebas : IAsyncLifetime
         }
 
         // Iniciar sesion
-        var login = await client.PostAsJsonAsync("/api/auth/sesion", new { correo, contrasena });
+        var login = await MfaDePrueba.EntrarAsync(client, correo, contrasena);
         login.EnsureSuccessStatusCode();
 
         return client;
@@ -788,7 +788,7 @@ public class ApiTarjetasBloqueoIntentosPruebas : IAsyncLifetime
         }
 
         // Iniciar sesión (guarda cookies en el cliente)
-        var login = await client.PostAsJsonAsync("/api/auth/sesion", new { correo, contrasena });
+        var login = await MfaDePrueba.EntrarAsync(client, correo, contrasena);
         login.EnsureSuccessStatusCode();
 
         return client;

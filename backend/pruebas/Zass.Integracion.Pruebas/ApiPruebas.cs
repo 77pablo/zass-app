@@ -2401,14 +2401,10 @@ public partial class ApiPruebas : IAsyncLifetime
         Assert.Equal(HttpStatusCode.NoContent, respuesta.StatusCode);
     }
 
-    private async Task IniciarSesionAsync(string correo)
-    {
-        var respuesta = await _cliente.PostAsJsonAsync("/api/auth/sesion", new
-        {
-            correo, contrasena = "contrasena-larga-1",
-        });
-        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
-    }
+    // MFA (22-nov-2026): si la cuenta lo pide, da el segundo paso; si es interna, lo deja activo.
+    private async Task IniciarSesionAsync(string correo) =>
+        Assert.Equal(HttpStatusCode.OK,
+            (await MfaDePrueba.EntrarAsync(_cliente, correo, "contrasena-larga-1")).StatusCode);
 
     private async Task<string> TokenCsrfAsync()
     {
@@ -2554,6 +2550,7 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-76",
             // Cancelar la renovacion de la suscripcion (22-nov-2026).
             "API-78",
+            "API-79", "API-80", "API-81", "API-82", "API-83",   // MFA (22-nov-2026)
 
             // ES-3 (21-nov-2026): registrar este navegador para push, darlo de baja y la clave VAPID.
             "API-45",
