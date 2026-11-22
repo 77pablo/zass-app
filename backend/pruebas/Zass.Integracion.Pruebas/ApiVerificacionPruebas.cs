@@ -544,8 +544,8 @@ public class VerificacionSinDocumentosApiPruebas : IAsyncLifetime
     }
 
     private async Task IniciarSesionAsync(string correo) =>
-        Assert.Equal(HttpStatusCode.OK, (await _cliente.PostAsJsonAsync("/api/auth/sesion",
-            new { correo, contrasena = "contrasena-larga-1" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK,
+            (await MfaDePrueba.EntrarAsync(_cliente, correo, "contrasena-larga-1")).StatusCode);
 
     private async Task<HttpResponseMessage> PostAsync(string url, object? cuerpo = null)
     {

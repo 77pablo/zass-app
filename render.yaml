@@ -34,6 +34,12 @@ services:
       # que SECRETO_ORIGEN en Cloudflare Pages, y se pone DESPUÉS de esa (DESPLIEGUE-API.md, 4.1).
       - key: Zass__SecretoDeOrigen
         sync: false
+      # N3 (22-nov-2026): clave SECRETA del widget Turnstile de Cloudflare (captcha del registro y
+      # del cupo fundador). OPCIONAL: sin ella la API no pide captcha y lo advierte en el registro.
+      # Se pone DESPUÉS de VITE_TURNSTILE_SITE_KEY en Cloudflare Pages (pasos en el PR [N3]).
+      # Nunca una clave de prueba (1x000…AA): la API no arranca con ella en producción.
+      - key: Zass__Turnstile__Secreto
+        sync: false
       # --- Configuración no secreta pero que depende de tu cuenta ---
       - key: Zass__ProxiesDeConfianza
         sync: false         # rangos de Cloudflare + red del balanceador de Render (ver guía)

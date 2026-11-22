@@ -1,4 +1,5 @@
 import { enviar, obtener, olvidarCsrf } from '../../api/cliente'
+import { cabeceraCaptcha } from '../../componentes/Captcha'
 
 export interface Sesion {
   usuarioId: string
@@ -12,11 +13,67 @@ export type RolPublico = 'buscador' | 'prestador'
  * API-09. La API deja las cookies de sesion; aqui no se guarda ningun token en
  * JavaScript a proposito: una cookie httpOnly no se puede robar con un XSS.
  */
-export async function iniciarSesion(correo: string, contrasena: string): Promise<Sesion> {
-  const sesion = await enviar<Sesion>('/api/auth/sesion', { correo, contrasena })
+export async function iniciarSesion(correo: string, contrasena: string): Promise<Sesion | DesafioMfa> {
+  const respuesta = await enviar<Sesion | DesafioMfa>('/api/auth/sesion', { correo, contrasena })
   // El token CSRF quedo atado a la identidad anonima. Tras entrar ya no sirve.
+  if (!esDesafioMfa(respuesta)) olvidarCsrf()
+  return respuesta
+}
+
+/**
+ * Con la verificacion en dos pasos activa, API-09 no abre la sesion: devuelve un desafio que
+ * dura 5 minutos y que el segundo paso (API-79) canjea junto al codigo.
+ */
+export interface DesafioMfa {
+  mfaRequerido: true
+  desafio: string
+  expiraEn: string
+}
+
+export function esDesafioMfa(r: Sesion | DesafioMfa | undefined): r is DesafioMfa {
+  return !!r && (r as DesafioMfa).mfaRequerido === true
+}
+
+/** API-79. El codigo de 6 digitos de la app, o uno de los codigos de respaldo. */
+export async function segundoPaso(desafio: string, codigo: string): Promise<Sesion> {
+  const sesion = await enviar<Sesion>('/api/auth/sesion/mfa', { desafio, codigo })
   olvidarCsrf()
   return sesion
+}
+
+// ------------------------------------------------ Verificacion en dos pasos (Mi cuenta)
+
+export interface EstadoMfa {
+  activo: boolean
+  activadoEn: string | null
+  codigosDeRespaldoRestantes: number
+  /** Las cuentas del panel interno la tienen obligatoria. */
+  obligatorio: boolean
+}
+
+export interface AltaMfa {
+  secreto: string
+  uriOtpauth: string
+}
+
+/** API-80. */
+export function estadoMfa(): Promise<EstadoMfa> {
+  return obtener<EstadoMfa>('/api/mi/mfa')
+}
+
+/** API-81. */
+export function iniciarAltaMfa(): Promise<AltaMfa> {
+  return enviar<AltaMfa>('/api/mi/mfa/alta')
+}
+
+/** API-82. Devuelve los 10 codigos de respaldo: es la unica vez que se ven. */
+export async function confirmarAltaMfa(codigo: string): Promise<string[]> {
+  return (await enviar<{ codigos: string[] }>('/api/mi/mfa/confirmar', { codigo })).codigos
+}
+
+/** API-83. */
+export async function desactivarMfa(contrasena: string, codigo: string): Promise<void> {
+  await enviar('/api/mi/mfa/desactivar', { contrasena, codigo })
 }
 
 export type TipoDeCuenta = 'particular' | 'empresa'
@@ -36,9 +93,12 @@ export interface DatosDeRegistro {
   mayorDeEdad: boolean
 }
 
-/** API-08. Crea la cuenta y dispara el correo de verificacion. */
-export async function registrarse(datos: DatosDeRegistro): Promise<void> {
-  await enviar('/api/auth/registro', datos)
+/**
+ * API-08. Crea la cuenta y dispara el correo de verificacion. Con el captcha activo (N3), el
+ * token de Turnstile va en una cabecera, no en el cuerpo.
+ */
+export async function registrarse(datos: DatosDeRegistro, tokenCaptcha?: string): Promise<void> {
+  await enviar('/api/auth/registro', datos, 'POST', cabeceraCaptcha(tokenCaptcha ?? null))
 }
 
 /** ES-2. Los datos del registro completo, para una cuenta creada antes del 20-nov-2026. */
