@@ -55,7 +55,7 @@ public partial class ApiPruebas
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
         using var doc = JsonDocument.Parse(await r.Content.ReadAsStringAsync());
         var lista = doc.RootElement.GetProperty("preferencias").EnumerateArray().ToList();
-        Assert.Equal(15, lista.Count);
+        Assert.Equal(Zass.Aplicacion.Notificaciones.AvisosPush.TiposConPush.Length, lista.Count);
         Assert.All(lista, p => Assert.True(p.GetProperty("correo").GetBoolean() && p.GetProperty("push").GetBoolean()));
         Assert.Equal("citas", lista[0].GetProperty("grupo").GetString());
         Assert.True(Tipo(doc, "CobroRechazado").GetProperty("correoFijo").GetBoolean());
