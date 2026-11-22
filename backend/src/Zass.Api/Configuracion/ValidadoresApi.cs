@@ -49,6 +49,19 @@ public sealed class ValidadorCambiarContrasena : AbstractValidator<CambiarContra
 }
 
 /// <summary>
+/// API-17. La contraseña se juzga por estar y por no ser enorme, nunca por su largo minimo: puede
+/// ser de antes de que existiera el minimo, igual que la actual al cambiarla. Si es la correcta lo
+/// decide el caso de uso (BajaDeCuenta), no esto.
+/// </summary>
+public sealed class ValidadorEliminarCuenta : AbstractValidator<EliminarCuentaCmd>
+{
+    public ValidadorEliminarCuenta() =>
+        RuleFor(x => x.Contrasena)
+            .NotEmpty().WithMessage("Escribe tu contraseña para confirmar.")
+            .MaximumLength(Limites.ContrasenaMaxima);
+}
+
+/// <summary>
 /// API-20. Solo acota la forma del cuerpo: el tope de verdad es el del plan y lo aplica
 /// MOD-03, que es quien sabe cual es. Esto evita que una lista de diez mil servicios
 /// llegue a recorrerse entera.

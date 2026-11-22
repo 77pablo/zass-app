@@ -60,6 +60,11 @@ public sealed class Planificador : BackgroundService
             async (sp, ct) =>
                 (await sp.GetRequiredService<IServicioAgenda>().AvanzarPorElTiempoAsync(ct)).ToString()),
 
+        // JQ-16 · CU-05 4D.3. Al ritmo de la tarea diaria: los plazos son de días (83, 90 y 7).
+        new(Trabajos.Borradores, o => TimeSpan.FromHours(o.IntervaloHoras),
+            async (sp, ct) =>
+                await sp.GetRequiredService<ServicioBorradoresAbandonados>().CorrerAsync(ct)),
+
         // CS-06 · T8 (auditoría 22-nov-2026): vencer las credenciales verificadas pasadas de fecha
         // y avisar al prestador. Al ritmo de las suscripciones: «cada noche» según estados-credencial.
         new(Trabajos.CredencialesVencidas, o => TimeSpan.FromHours(o.IntervaloHoras),

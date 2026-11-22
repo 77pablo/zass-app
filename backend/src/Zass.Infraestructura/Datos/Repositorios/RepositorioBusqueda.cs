@@ -214,7 +214,8 @@ public sealed class RepositorioBusquedaEfCore : IRepositorioBusqueda
                     cr.PerfilPrestadorId == p.Id
                     && cr.Estado == Zass.Dominio.Comun.EstadoCredencial.Verificada
                     // Credencial.TieneSelloVigente (auditoría 22-nov-2026).
-                    && (cr.VenceEn == null || cr.VenceEn >= hoy))))
+                    && (cr.VenceEn == null || cr.VenceEn >= hoy)),
+                p.UrlFoto))   // JQ-15: la foto publica de JQ-9
             .ToListAsync(ct);
 
         return new ResumenCrudo(total, porZona, porRubro, recientesFilas, porRegion);

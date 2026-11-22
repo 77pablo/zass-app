@@ -48,6 +48,9 @@ public static class Trabajos
     /// </summary>
     public const string Citas = "citas-periodico";
 
+    /// <summary>JQ-16 (CU-05 4D.3): avisar y borrar los borradores de credencial abandonados.</summary>
+    public const string Borradores = "borradores-abandonados";
+
     /// <summary>CS-06 · T8 de la credencial: pasar a «vencida» las verificadas con vence_en &lt; hoy.</summary>
     public const string CredencialesVencidas = "credenciales-vencidas-diario";
 

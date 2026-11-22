@@ -104,7 +104,7 @@ Ordenada por `API-NN`. Leyenda:
 | API-57 | POST `/api/mi/tarjetas/{id:guid}/desactivar` | POST `/api/mi/tarjetas/{id}/desactivar` | ❌ ruta distinta | ninguna |
 | API-58 | GET `/api/mi/tarjetas/{id:guid}/estadisticas` | GET `/api/mi/tarjetas/{id}/estadisticas` | ❌ ruta distinta | ninguna |
 | API-59 | — | POST `/api/interno/tarjetas` | ⚠️ solo en documentación | ninguna |
-| API-60 | — | GET `/api/interno/indicadores` | ⚠️ solo en documentación | ninguna |
+| API-60 | GET `/api/interno/indicadores` | GET `/api/interno/indicadores` | ✅ construido en JQ-14 (`EndpointsIndicadores.cs`, administrador, tasa S) | ninguna |
 | API-61 | — | GET `/api/interno/auditoria` | ⚠️ solo en documentación | ninguna |
 | API-62 | GET `/api/comunidad` | GET `/api/comunidad` | ✅ | `ApiPruebas.cs` |
 | API-63 | GET `/api/buscar` | GET `/api/buscar` | ✅ | `ApiPruebas.cs` |
@@ -156,7 +156,7 @@ Estos endpoints están documentados pero no se encontraron en el código:
 | API-45 | POST | `/api/mi/notificaciones/push` | 6 · Notificaciones | Diseño por construir |
 | API-55 | POST | `/t/{segmento}/activar` | 8 · Tarjetas | Diseño por construir |
 | API-59 | POST | `/api/interno/tarjetas` | 8 · Tarjetas | Diseño por construir |
-| API-60 | GET | `/api/interno/indicadores` | 9 · Administración | Diseño por construir |
+| API-60 | GET | `/api/interno/indicadores` | 9 · Administración | Construido (JQ-14) |
 | API-61 | GET | `/api/interno/auditoria` | 9 · Administración | Diseño por construcción |
 
 **Nota:** La documentación (línea 250-254 de `api-rest.md`) declara explícitamente: "Lo que esta tabla documenta y todavía NO existe: Catorce, contra el código de `main`: API-06, API-07, API-26, API-43 a API-45, API-54 a API-61."

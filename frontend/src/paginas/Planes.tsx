@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ErrorApi } from '../api/cliente'
 import { fechaLarga } from '../funciones/perfil/estadoSuscripcion'
 import { Icono } from '../marco/Icono'
@@ -7,8 +7,9 @@ import { useMeta } from '../marco/useMeta'
 import { useTitulo } from '../marco/useTitulo'
 import {
   CUPOS_FUNDADOR_TOTALES, type CatalogoDePlanes, type Cotizacion, type CupoTomado, type Plan,
-  cotizar, pesos, planes as pedirPlanes, tomarCupoFundador,
+  cotizar, inscribirTarjeta, pesos, planes as pedirPlanes, tomarCupoFundador,
 } from '../funciones/planes/servicio'
+import { Captcha, captchaActivo } from '../componentes/Captcha'
 import { useSesion } from '../sesion/contexto'
 
 /*
@@ -20,6 +21,13 @@ import { useSesion } from '../sesion/contexto'
  */
 
 const CODIGO_FUNDADOR = 'fundador'
+
+/** La hora en Chile, como se dice: «14:35». */
+function hora(iso: string): string {
+  return new Date(iso).toLocaleTimeString('es-CL', {
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'America/Santiago',
+  })
+}
 const CODIGO_MENSUAL = 'mensual'
 
 /** Lo que se le ofrece a quien no puede tomar el cupo todavía. */
@@ -98,6 +106,12 @@ export function Planes() {
   const [tomando, setTomando] = useState(false)
   const [errorAlTomar, setErrorAlTomar] = useState<string | null>(null)
   const [tomado, setTomado] = useState<CupoTomado | null>(null)
+  // N3: captcha de un solo uso para «Quiero mi cupo», y la inscripción de la tarjeta que
+  // confirma el cupo reservado.
+  const [tokenCaptcha, setTokenCaptcha] = useState<string | null>(null)
+  const [reinicioCaptcha, setReinicioCaptcha] = useState(0)
+  const [abriendoTarjeta, setAbriendoTarjeta] = useState(false)
+  const navegar = useNavigate()
 
   /**
    * CC-04. Una sola clave por visita a esta pantalla, y la misma en cada reintento: es lo
@@ -105,6 +119,8 @@ export function Planes() {
    * clic, cada clic traería una distinta y no protegería de nada.
    */
   const clave = useRef(crypto.randomUUID()).current
+  /** CC-04 para la inscripción de la tarjeta (API-76): otra intención, otra clave. */
+  const claveTarjeta = useRef(crypto.randomUUID()).current
 
   /**
    * Pide el catálogo. No toca `cargando` al empezar a propósito: así el efecto que la llama
@@ -164,11 +180,15 @@ export function Planes() {
 
   async function tomarElCupo() {
     if (tomando) return
+    if (captchaActivo() && tokenCaptcha === null) {
+      setErrorAlTomar('Antes de tomar tu cupo, completa la verificación de que eres una persona.')
+      return
+    }
     setTomando(true)
     setErrorAlTomar(null)
     try {
-      // Sin tarjeta y sin pasarela (20-nov-2026): el cupo queda tuyo al tiro.
-      setTomado(await tomarCupoFundador(clave))
+      // N3 (22-nov-2026): el cupo queda RESERVADO 30 minutos; se confirma con la tarjeta.
+      setTomado(await tomarCupoFundador(clave, tokenCaptcha))
       void traer()
     } catch (e) {
       // 409: alguien se llevó el último cupo mientras mirabas. Se vuelve a preguntar para
@@ -183,6 +203,29 @@ export function Planes() {
       }
     } finally {
       setTomando(false)
+      // El token ya se gastó: si hay que reintentar, se pide otro.
+      if (tokenCaptcha !== null) setReinicioCaptcha((n) => n + 1)
+    }
+  }
+
+  /** API-76: lleva a Flow a inscribir la tarjeta que confirma el cupo reservado. */
+  async function inscribirLaTarjeta() {
+    if (abriendoTarjeta) return
+    setAbriendoTarjeta(true)
+    setErrorAlTomar(null)
+    const fallo = 'No pudimos abrir la inscripción de la tarjeta. Vuelve a intentarlo.'
+    try {
+      const intento = await inscribirTarjeta(claveTarjeta)
+      if (intento.urlParaPagar === null) {
+        setErrorAlTomar(fallo)
+        return
+      }
+      if (intento.urlParaPagar.startsWith('/')) navegar(intento.urlParaPagar)
+      else window.location.assign(intento.urlParaPagar)
+    } catch (e) {
+      setErrorAlTomar(e instanceof ErrorApi ? e.mensaje : fallo)
+    } finally {
+      setAbriendoTarjeta(false)
     }
   }
 
@@ -221,23 +264,36 @@ export function Planes() {
       <div className="planes-rejilla">
         {fundador !== null && (
           <TarjetaDePlan plan={fundador} destacado cerrado={cerrado}>
-            {puerta === 'puede' && tomado !== null && (
+            {puerta === 'puede' && tomado !== null && tomado.reservadoHasta && (
               <div className="aviso aviso--atencion" role="status">
                 <p>
-                  <strong>Listo: el cupo N° {tomado.numero} es tuyo.</strong> Tu mes gratis
-                  dura hasta el {fechaLarga(tomado.mesGratisHasta) ?? 'fin del mes'}.
+                  <strong>Tu cupo N° {tomado.numero} está reservado hasta las {hora(tomado.reservadoHasta)}.</strong>
+                  {' '}Para que quede tuyo, inscribe tu tarjeta en Flow antes de esa hora. Hoy no
+                  se te cobra nada: tu mes gratis empieza cuando la tarjeta queda inscrita.
                 </p>
-                {!tomado.tarjetaInscrita && (
-                  <p>
-                    Antes de esa fecha inscribe tu tarjeta en <Link to="/mi-ficha">Mi ficha</Link>;
-                    hoy no se te cobra nada. Si el mes termina sin tarjeta, el cupo queda libre
-                    para otra persona.
-                  </p>
-                )}
+                <p>Si no la inscribes a tiempo, el cupo vuelve a quedar libre para otra persona.</p>
+                <button
+                  type="button"
+                  className="boton boton--amarillo boton--lleno"
+                  onClick={() => void inscribirLaTarjeta()}
+                  disabled={abriendoTarjeta}
+                >
+                  <Icono nombre="flecha" />
+                  {abriendoTarjeta ? 'Abriendo Flow…' : 'Inscribir mi tarjeta'}
+                </button>
+              </div>
+            )}
+            {puerta === 'puede' && tomado !== null && !tomado.reservadoHasta && (
+              <div className="aviso aviso--atencion" role="status">
+                <p>
+                  <strong>El cupo N° {tomado.numero} ya es tuyo.</strong>
+                  {tomado.mesGratisHasta && <> Tu mes gratis dura hasta el {fechaLarga(tomado.mesGratisHasta) ?? 'fin del mes'}.</>}
+                </p>
               </div>
             )}
             {puerta === 'puede' && tomado === null && (
               <>
+                <Captcha accion="cupo_fundador" alResolver={setTokenCaptcha} reinicio={reinicioCaptcha} />
                 <button
                   type="button"
                   className="boton boton--amarillo boton--lleno"
@@ -245,12 +301,13 @@ export function Planes() {
                   disabled={tomando}
                 >
                   <Icono nombre="flecha" />
-                  {tomando ? 'Tomando tu cupo…' : 'Quiero mi cupo'}
+                  {tomando ? 'Reservando tu cupo…' : 'Quiero mi cupo'}
                 </button>
                 <p className="plan-letra-chica">
-                  No necesitas tarjeta para tomarlo: tu primer mes es gratis. La inscribes antes
-                  de que termine el mes; si no, el cupo queda libre para otra persona. Después,
-                  {' '}{pesos(fundador.precioMensual)} al mes mientras mantengas tu suscripción.
+                  Te guardamos el cupo 30 minutos para que inscribas tu tarjeta en Flow. Hoy no se
+                  te cobra nada: tu primer mes es gratis y empieza cuando la tarjeta queda
+                  inscrita. Después, {pesos(fundador.precioMensual)} al mes mientras mantengas tu
+                  suscripción.
                 </p>
               </>
             )}

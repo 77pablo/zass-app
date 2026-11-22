@@ -6,6 +6,7 @@ import { BotonGuardar } from '../funciones/buscador/BotonGuardar'
 import { useFavoritos } from '../funciones/buscador/useFavoritos'
 import { registrarContacto, type CanalContacto } from '../funciones/resenas/servicio'
 import { Icono } from '../marco/Icono'
+import { BotonCompartir } from '../marco/BotonCompartir'
 import { Monograma } from '../marco/Monograma'
 import { capitalizar, duracion, etiquetaDeTipo, pesos, reputacion } from '../marco/texto'
 import { descripcionDeFicha } from '../marco/seo'
@@ -147,10 +148,15 @@ export function Ficha() {
                   </span>
                 )}
               </div>
+              {/* Como en una app: guardar la ficha o pasársela a alguien por WhatsApp con un toque. */}
               <div className="fila-etiquetas">
                 <BotonGuardar
                   perfilId={ficha.id} nombre={ficha.nombrePublico}
                   despues={`/prestadores/${slug}`} favoritos={favoritos}
+                />
+                <BotonCompartir
+                  titulo={`${ficha.nombrePublico} en ZASS!`}
+                  texto={[ficha.nombrePublico, ficha.rubro?.nombre && capitalizar(ficha.rubro.nombre), principal?.nombre].filter(Boolean).join(' · ')}
                 />
                 {favoritos.guardado(ficha.id) && (
                   <Link className="enlace" to="/mis-guardados">Ver tus guardados</Link>
