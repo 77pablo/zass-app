@@ -165,7 +165,9 @@ public class ApiEliminarCuentaPruebas : IAsyncLifetime
         var correo = $"baja-b-{Guid.NewGuid():N}-{_marca}@zass.local";
         Assert.Equal(HttpStatusCode.Created, (await _comoBuscador.PostAsJsonAsync("/api/auth/registro", new
         {
-            correo, contrasena = Clave, nombre = "Ana Pérez", rol = "buscador",
+            // Registro completo (ES-2): sin RUT, teléfono y mayoría de edad la API responde 400.
+            tipo = "particular", apellido = "Pérez", rut = DatosDeRegistro.Rut(), telefono = "+56 9 1234 5678",
+            mayorDeEdad = true, correo, contrasena = Clave, nombre = "Ana", rol = "buscador",
         })).StatusCode);
 
         Guid id;
