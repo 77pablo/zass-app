@@ -173,6 +173,12 @@ public interface IServicioSuscripciones
     /// tarjeta a tiempo, el cupo vuelve a quedar libre. Idempotente: una reserva vigente se
     /// devuelve igual y SIN renovar el plazo; un fundador confirmado recibe su mismo cupo.
     /// </summary>
+    /// <summary>
+    /// La regla unica que decide si el cupo reservado de esta persona es CON mes gratis
+    /// («inscribir», API-76) o SIN el («pagar», API-68). La usan API-69 y API-76.
+    /// </summary>
+    Task<bool> ElCupoTieneMesGratisAsync(Guid perfilPrestadorId, CancellationToken ct = default);
+
     Task<Resultado<CupoTomadoDto>> TomarCupoFundadorAsync(
         Guid perfilPrestadorId, CancellationToken ct = default);
 

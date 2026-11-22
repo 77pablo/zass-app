@@ -552,6 +552,17 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
         return Resultado.Ok(numero.Value);
     }
 
+    /// <summary>Regla unica de «inscribir» o «pagar»: mes gratis solo si sigue en el plan inicial y no fue fundador.</summary>
+    private async Task<bool> TieneMesGratisAsync(Suscripcion s, Plan fundador, CancellationToken ct) =>
+        s.PlanId != fundador.Id && await VieneDelPlanInicialAsync(s, ct);
+
+    public async Task<bool> ElCupoTieneMesGratisAsync(Guid perfilPrestadorId, CancellationToken ct = default)
+    {
+        var s = await _repo.UltimaDePrestadorAsync(perfilPrestadorId, ct);
+        var plan = await _repo.PlanPorCodigoAsync(PlanFundador, ct);
+        return s is not null && plan is not null && await TieneMesGratisAsync(s, plan, ct);
+    }
+
     public async Task<Resultado<CupoTomadoDto>> TomarCupoFundadorAsync(
         Guid perfilPrestadorId, CancellationToken ct = default)
     {
@@ -581,7 +592,7 @@ public sealed class ServicioSuscripciones : IServicioSuscripciones
         // solo). A los dos se les RESERVA igual el cupo, con captcha: API-68 ya no reserva nada y
         // exige un cupo propio, asi que esta es la unica puerta. Su siguiente paso es PAGAR el plan
         // fundador (API-68), no inscribir la tarjeta (API-76).
-        var conMesGratis = s.PlanId != plan.Id && await VieneDelPlanInicialAsync(s, ct);
+        var conMesGratis = await TieneMesGratisAsync(s, plan, ct);
         var siguiente = conMesGratis ? CupoTomadoDto.Inscribir : CupoTomadoDto.Pagar;
 
         // N3 (decision de Pablo del 22-nov-2026, reemplaza la del 20-nov): tomar el cupo ya NO lo

@@ -88,6 +88,53 @@ public class InscripcionFundadorPruebas
         return perfil;
     }
 
+    // ------------------------------------------------ API-76 no acepta una reserva «pagar»
+
+    [Fact]
+    public async Task Un_ex_fundador_con_reserva_de_pagar_no_puede_inscribir_la_tarjeta()
+    {
+        var perfil = UnFundadorDeAntesSinTarjeta();
+        _reloj.Avanzar(TimeSpan.FromDays(31));
+        await _suscripciones.CorrerDiarioAsync();
+        var toma = await _suscripciones.TomarCupoFundadorAsync(perfil.Id);
+        Assert.Equal(CupoTomadoDto.Pagar, toma.Valor!.Siguiente);
+
+        var r = await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
+
+        Assert.False(r.Exito);
+        Assert.Equal(Fallas.Conflicto, r.Codigo);
+        Assert.Contains("sin mes gratis", r.Mensaje!);
+        Assert.Empty(_base.IntentosDePago);
+        Assert.NotNull(CupoDe(perfil.Id)!.ReservadoHasta);      // sigue reservado, no confirmado
+    }
+
+    [Fact]
+    public async Task Quien_pago_otro_plan_con_su_reserva_de_pagar_no_puede_inscribir_la_tarjeta()
+    {
+        var perfil = UnPrestadorConSuscripcion();
+        SuscripcionDe(perfil.Id).PlanId = 2;                     // ya paso a mensual
+        var toma = await _suscripciones.TomarCupoFundadorAsync(perfil.Id);
+        Assert.Equal(CupoTomadoDto.Pagar, toma.Valor!.Siguiente);
+
+        var r = await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
+
+        Assert.False(r.Exito);
+        Assert.Equal(Fallas.Conflicto, r.Codigo);
+        Assert.Empty(_base.IntentosDePago);
+        Assert.NotNull(CupoDe(perfil.Id)!.ReservadoHasta);
+    }
+
+    [Fact]
+    public async Task Quien_tiene_el_cupo_confirmado_y_cambia_de_tarjeta_sigue_pudiendo_inscribir()
+    {
+        var perfil = UnFundadorDeAntesSinTarjeta();              // cupo confirmado, plan fundador
+
+        var r = await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Single(_base.IntentosDePago);
+    }
+
     private IntentoDePago ElIntento() => Assert.Single(_base.IntentosDePago);
 
     private Suscripcion SuscripcionDe(Guid perfilId) =>
@@ -518,9 +565,13 @@ public class InscripcionFundadorPruebas
     [Fact]
     public async Task Quien_ya_pago_otro_plan_no_recibe_mes_gratis_al_confirmar_la_inscripcion()
     {
+        // API-76 ya no deja iniciar la inscripcion a quien ya pago otro plan: la defensa de la
+        // confirmacion queda para el intento abierto ANTES de que pagara otro plan.
         var perfil = UnPagadorDeOtroPlanConCupoReservado();
+        SuscripcionDe(perfil.Id).PlanId = 1;
         var r0 = await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
         Assert.True(r0.Exito, r0.Mensaje);
+        SuscripcionDe(perfil.Id).PlanId = 2;
         var intento = ElIntento();
         LaPasarelaResponde(intento);
 

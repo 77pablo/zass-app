@@ -173,6 +173,10 @@ public class TrabajoDiarioCobraPruebas
             Guid perfilPrestadorId, TimeSpan? duracion = null, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
+        public Task<bool> ElCupoTieneMesGratisAsync(
+            Guid perfilPrestadorId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<Resultado<CupoTomadoDto>> TomarCupoFundadorAsync(
             Guid perfilPrestadorId, CancellationToken ct = default) =>
             throw new NotSupportedException();

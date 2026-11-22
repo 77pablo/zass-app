@@ -412,6 +412,15 @@ public sealed class ServicioCobros : IServicioCobros
                 "Tu reserva del cupo de fundador venció antes de inscribir la tarjeta. Vuelve a la "
                 + "página de planes y toma tu cupo otra vez, si todavía quedan.");
 
+        // Una reserva SIN mes gratis (quien ya pagó otro plan, o ya fue fundador y perdió el cupo) es
+        // para PAGAR el plan (API-68). Inscribir la tarjeta la confirmaría sin cobrar nada. El cupo ya
+        // confirmado que cambia de tarjeta sí puede inscribir.
+        if (!cupoPropio.Confirmado
+            && !await _suscripciones.ElCupoTieneMesGratisAsync(perfilPrestadorId, ct))
+            return Resultado.Falla<IntentoDePagoDto>(
+                Fallas.Conflicto,
+                "Tu cupo de fundador es sin mes gratis: el siguiente paso es pagar el plan.");
+
         var intento = await _trabajo.EnTransaccionAsync(async t =>
         {
             if (await _repo.IntentoPorClaveAsync(claveIdempotencia, perfilPrestadorId, t) is { } carrera)
