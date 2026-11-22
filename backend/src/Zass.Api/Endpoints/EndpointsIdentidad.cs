@@ -338,6 +338,19 @@ public static class EndpointsIdentidad
             .RequireRateLimiting(Tasa.Autenticacion)
             .WithName("API-83");
 
+        // API-84 - Diez codigos de respaldo nuevos (los viejos dejan de servir). Pide contrasena Y codigo.
+        grupo.MapPost("/mfa/codigos", async (
+                RegenerarCodigosMfaCmd cmd, ServicioMfa servicio, HttpContext http, ClaimsPrincipal quien) =>
+            {
+                var usuarioId = quien.UsuarioId();
+                return usuarioId is null
+                    ? Results.Unauthorized()
+                    : Respuestas.DeResultado(await servicio.RegenerarCodigosAsync(usuarioId.Value, cmd, Ip(http)));
+            })
+            .ConValidacion<RegenerarCodigosMfaCmd>()
+            .RequireRateLimiting(Tasa.Autenticacion)
+            .WithName("API-84");
+
         // API-18 - Perfil completo, con zona y sin ubicacion exacta.
         grupo.MapGet("/perfil-prestador", async (
                 ServicioPerfiles servicio, ClaimsPrincipal quien) =>

@@ -40,8 +40,10 @@ export function TarjetaPersona({ p }: { p: DatosDeTarjeta }) {
       <div className="fila-etiquetas">
         {p.verificada && <span className="sello"><Icono nombre="sello" />Verificado</span>}
         {p.esTuPerfil && <span className="dato">Este eres tú</span>}
-        {p.distancia && <span className="dato dato--mono"><Icono nombre="pin" />{p.distancia}</span>}
-        {p.zona && !p.distancia && <span className="dato"><Icono nombre="pin" />{p.zona}</span>}
+        {/* La comuna va siempre, y primero: en Chile se decide por ella («atiende en Temuco»).
+            Los kilometros la acompañan cuando la persona compartio su ubicacion, no la reemplazan. */}
+        {p.zona && <span className="dato"><Icono nombre="pin" />{p.zona}</span>}
+        {p.distancia && <span className="dato dato--mono">{p.distancia}</span>}
         {p.detalle && <span className="dato">{p.detalle}</span>}
       </div>
 

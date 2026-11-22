@@ -44,7 +44,7 @@ public static class PreferenciasAviso
         TipoNotificacion.SuscripcionPorVencer or TipoNotificacion.SuscripcionVencida
         or TipoNotificacion.CobroRechazado or TipoNotificacion.TarjetaActivada
         or TipoNotificacion.CorreoVerificacion or TipoNotificacion.RecuperarContrasena
-        or TipoNotificacion.RegistroConRutExistente;
+        or TipoNotificacion.RegistroConRutExistente or TipoNotificacion.MfaActivado;
 
     /// <summary>
     /// Si un aviso de este tipo debe salir por este canal, segun la preferencia guardada (o null si

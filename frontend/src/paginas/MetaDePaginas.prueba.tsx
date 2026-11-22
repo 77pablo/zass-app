@@ -1,9 +1,15 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { Contexto } from '../sesion/contexto'
 import { NoEncontrada } from './NoEncontrada'
 import { Oficios } from './Oficios'
+import { PaginaBuscar } from './PaginaBuscar'
 import { Profesionales } from './Profesionales'
+
+/** La de `index.html`, escrita a mano: si se derivara del archivo, cambiar ambos dejaria la prueba verde. */
+const DESCRIPCION_DE_PORTADA =
+  'Busca a alguien de tu ciudad: abogados, contadores, corredores, arquitectos y técnicos, cerca de ti. Buscar en ZASS! es gratis.'
 
 afterEach(() => { document.head.innerHTML = '' })
 
@@ -21,6 +27,23 @@ describe('meta de las paginas', () => {
     expect(descripcion()!.content).toMatch(/mensualidad/)
     expect(descripcion()!.content).not.toMatch(/agenda|pago en l[ií]nea|sello/i)
     expect(robots()).toBeNull()
+  })
+
+  /** S2: /buscar heredaba la descripcion de la portada (la de index.html). */
+  it('«buscar» tiene descripcion propia, indexable, distinta de la de la portada', () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } })))
+    // /buscar usa los guardados (useFavoritos), que leen la sesion: una visita sin sesion abierta.
+    render(
+      <MemoryRouter initialEntries={['/buscar']}>
+        <Contexto.Provider value={{ estado: 'fuera', usuario: null, recargar: async () => {}, salir: async () => {} }}>
+          <PaginaBuscar />
+        </Contexto.Provider>
+      </MemoryRouter>,
+    )
+    expect(descripcion()!.content).toMatch(/busca/i)
+    expect(descripcion()!.content).not.toBe(DESCRIPCION_DE_PORTADA)
+    expect(robots()).toBeNull()
+    vi.unstubAllGlobals()
   })
 
   it('«oficios» tiene descripcion propia e indexable', () => {

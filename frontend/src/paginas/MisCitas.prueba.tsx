@@ -167,6 +167,45 @@ describe('cada lado ve lo suyo', () => {
     expect(screen.queryByRole('button', { name: 'Asistió' })).not.toBeInTheDocument()
   })
 
+  /** B4: con quien es la cita se puede abrir, para volver a su ficha sin buscarlo de nuevo. */
+  it('el nombre del prestador lleva a su ficha', async () => {
+    citas = [cita({ id: 'a' })]
+    pintar()
+
+    expect(await screen.findByRole('link', { name: 'Estudio Espinoza' }))
+      .toHaveAttribute('href', '/prestadores/estudio-espinoza')
+  })
+
+  /** B2: la cita realizada es el momento de la reseña (CU-16); la pagina ya existe y se pide por slug. */
+  it('quien pidio una hora ya realizada puede ir a dejar una reseña', async () => {
+    citas = [cita({ id: 'a', estado: 'Realizada' })]
+    pintar()
+
+    expect(await screen.findByRole('link', { name: 'Dejar una reseña' }))
+      .toHaveAttribute('href', '/prestadores/estudio-espinoza/resena')
+  })
+
+  it('no se ofrece la reseña antes de que la hora se realice', async () => {
+    citas = [
+      cita({ id: 'a', estado: 'Confirmada' }),
+      cita({ id: 'b', estado: 'Cancelada', codigo: 'ZS-BBBB' }),
+      cita({ id: 'c', estado: 'NoAsistio', codigo: 'ZS-CCCC' }),
+    ]
+    pintar()
+
+    await screen.findByText('ZS-BBBB')
+    expect(screen.queryByRole('link', { name: 'Dejar una reseña' })).not.toBeInTheDocument()
+  })
+
+  /** El prestador no se reseña a si mismo: en su lado de la cita no hay enlace de reseña. */
+  it('el prestador no ve «Dejar una reseña» en la hora que atendio', async () => {
+    citas = [cita({ id: 'a', estado: 'Realizada', perfilPrestadorId: MI_PERFIL })]
+    pintar('dentro', ['prestador'])
+
+    await screen.findByText('Te pidieron esta hora')
+    expect(screen.queryByRole('link', { name: 'Dejar una reseña' })).not.toBeInTheDocument()
+  })
+
   it('una cita terminada no ofrece acciones', async () => {
     citas = [cita({ id: 'a', estado: 'Realizada' })]
     pintar()
@@ -246,6 +285,16 @@ describe('las citas se agrupan por dia CHILENO', () => {
     expect(dias).toHaveLength(1)
     expect(dias[0]).toHaveTextContent(/19 de noviembre/)
     expect(within(anteriores).getByText(/23:30 h/)).toBeInTheDocument()
+  })
+
+  it('el titulo del dia va en castellano: «Jueves, 19 de noviembre», con el «de» y el mes en minuscula', async () => {
+    citas = [cita({ id: 'a', codigo: 'ZS-NOCHE', estado: 'Cancelada', inicioEn: '2026-11-19T20:00:00Z' })]
+    pintar()
+
+    const anteriores = (await screen.findByRole('heading', { name: 'Anteriores' })).closest('section')!
+    const [dia] = within(anteriores).getAllByRole('heading', { level: 3 })
+    // El texto exacto: el CSS ya no lo transforma (lo vigila fechas-castellano.prueba.js).
+    expect(dia.textContent).toBe('Jueves, 19 de noviembre')
   })
 
   it('en el historial el dia mas reciente va primero', async () => {

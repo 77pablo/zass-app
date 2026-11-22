@@ -66,7 +66,10 @@ public enum TipoNotificacion
     // el sello ya no se muestra. Va al prestador dueño, por correo y push.
     CredencialVencida,
     /// <summary>JQ-16 · CU-05 4D.3: el borrador de una credencial se borrará por inactividad.</summary>
-    BorradorPorEliminarse
+    BorradorPorEliminarse,
+    // 22-nov-2026 (decision de Pablo): se activo la verificacion en dos pasos en esta cuenta. Si no
+    // fue la dueña, alguien con su contraseña puso SU telefono. Solo por correo, y no se apaga.
+    MfaActivado
 }
 
 public enum CanalNotificacion { Correo, Push }

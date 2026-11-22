@@ -9,11 +9,13 @@ const estadoMfa = vi.fn()
 const iniciarAltaMfa = vi.fn()
 const confirmarAltaMfa = vi.fn()
 const desactivarMfa = vi.fn()
+const regenerarCodigosMfa = vi.fn()
 vi.mock('../funciones/identidad/servicio', () => ({
   estadoMfa: () => estadoMfa(),
   iniciarAltaMfa: () => iniciarAltaMfa(),
   confirmarAltaMfa: (c: string) => confirmarAltaMfa(c),
   desactivarMfa: (a: string, b: string) => desactivarMfa(a, b),
+  regenerarCodigosMfa: (a: string, b: string) => regenerarCodigosMfa(a, b),
 }))
 vi.mock('../componentes/tarjetas/CodigoQr', () => ({
   CodigoQr: ({ texto }: { texto: string }) => <p data-testid="qr">{texto}</p>,
@@ -23,7 +25,7 @@ const INACTIVO = { activo: false, activadoEn: null, codigosDeRespaldoRestantes: 
 const ACTIVO = { activo: true, activadoEn: '2026-11-22T00:00:00Z', codigosDeRespaldoRestantes: 10, obligatorio: false }
 
 beforeEach(() => {
-  for (const f of [estadoMfa, iniciarAltaMfa, confirmarAltaMfa, desactivarMfa]) f.mockReset()
+  for (const f of [estadoMfa, iniciarAltaMfa, confirmarAltaMfa, desactivarMfa, regenerarCodigosMfa]) f.mockReset()
 })
 
 function pintar() {
@@ -83,5 +85,25 @@ describe('Mi cuenta: verificación en dos pasos', () => {
 
     await waitFor(() => expect(desactivarMfa).toHaveBeenCalledWith('mi-clave-larga', '654321'))
     expect(await screen.findByText('desactivada')).toBeInTheDocument()
+  })
+
+  // Decision de Pablo (22-nov): codigos nuevos sin desactivar y volver a activar (API-84).
+  it('generar códigos nuevos pide contraseña y código, y muestra los 10 nuevos', async () => {
+    estadoMfa.mockResolvedValue(ACTIVO)
+    const nuevos = Array.from({ length: 10 }, (_, i) => `NUEV${i}-CCCCC`)
+    regenerarCodigosMfa.mockResolvedValue(nuevos)
+    pintar()
+
+    await usuario.click(await screen.findByRole('button', { name: 'Generar códigos de respaldo nuevos' }))
+    expect(screen.getByText(/los que tienes ahora dejarán de servir/)).toBeInTheDocument()
+    await usuario.type(screen.getByLabelText('Contraseña'), 'mi-clave-larga')
+    await usuario.type(screen.getByLabelText('Código de la app o de respaldo'), '111222')
+    await usuario.click(screen.getByRole('button', { name: 'Generar los códigos nuevos' }))
+
+    await waitFor(() => expect(regenerarCodigosMfa).toHaveBeenCalledWith('mi-clave-larga', '111222'))
+    expect(desactivarMfa).not.toHaveBeenCalled()
+    const lista = await screen.findByRole('list', { name: 'Códigos de respaldo' })
+    expect(lista.querySelectorAll('li')).toHaveLength(10)
+    expect(screen.getByText(/Los anteriores ya no sirven/)).toBeInTheDocument()
   })
 })
