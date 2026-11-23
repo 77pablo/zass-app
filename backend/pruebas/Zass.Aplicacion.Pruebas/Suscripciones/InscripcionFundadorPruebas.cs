@@ -499,6 +499,64 @@ public class InscripcionFundadorPruebas
         Assert.Equal("ref_2", SuscripcionDe(perfil.Id).ReferenciaPasarela); // la tarjeta nueva sí queda
     }
 
+    /// <summary>
+    /// Defensa en profundidad (22-nov-2026). API-68 (pagar el plan fundador) tambien RESERVA un
+    /// cupo, y con esa reserva se inscribe la tarjeta: por ahi llegaba al mes gratis quien ya
+    /// habia pagado otro plan, que API-69 rechaza. El cupo reservado se arma a mano porque
+    /// API-69 ya no lo entrega a esta persona.
+    /// </summary>
+    private PerfilPrestador UnPagadorDeOtroPlanConCupoReservado()
+    {
+        var perfil = UnPrestadorConSuscripcion(vigenteHasta: Ahora.AddDays(3));
+        SuscripcionDe(perfil.Id).PlanId = 2;   // mensual: ya pago otro plan
+        var cupo = _base.CuposFundador.OrderBy(c => c.Numero).First(c => c.PerfilPrestadorId is null);
+        cupo.PerfilPrestadorId = perfil.Id;
+        cupo.ReservadoHasta = Ahora.AddMinutes(30);
+        return perfil;
+    }
+
+    [Fact]
+    public async Task Quien_ya_pago_otro_plan_no_recibe_mes_gratis_al_confirmar_la_inscripcion()
+    {
+        var perfil = UnPagadorDeOtroPlanConCupoReservado();
+        var r0 = await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
+        Assert.True(r0.Exito, r0.Mensaje);
+        var intento = ElIntento();
+        LaPasarelaResponde(intento);
+
+        var r = await _cobros.ConfirmarAsync(UnAviso());
+
+        Assert.True(r.Exito);                        // 200: la pasarela no tiene que reintentar
+        Assert.False(r.Valor!.Aprobado);
+        Assert.Contains("No se cobró nada", r.Valor.Mensaje);
+        Assert.Equal(EstadoIntentoPago.Fallido, intento.Estado);
+        Assert.Contains("mes gratis de fundador", intento.MotivoFallo);
+
+        var s = SuscripcionDe(perfil.Id);
+        Assert.Equal((short)2, s.PlanId);                       // sigue en su plan
+        Assert.Equal(Ahora.AddDays(3), s.VigenteHasta);         // sin mes gratis
+        Assert.True(string.IsNullOrWhiteSpace(s.ReferenciaPasarela));
+        Assert.Null(CupoDe(perfil.Id));                         // el cupo se libero
+        Assert.Equal(50, await _suscripciones.CuposFundadorDisponiblesAsync());
+        Assert.Empty(_base.Pagos);
+    }
+
+    [Fact]
+    public async Task Quien_viene_del_plan_inicial_sigue_recibiendo_su_mes_gratis()
+    {
+        var perfil = await UnFundadorConCupoReservado(vigenteHasta: Ahora.AddDays(3));
+        await _cobros.IniciarInscripcionFundadorAsync(perfil.Id, "k1");
+        var intento = ElIntento();
+        LaPasarelaResponde(intento);
+
+        var r = await _cobros.ConfirmarAsync(UnAviso());
+
+        Assert.True(r.Valor!.Aprobado);
+        Assert.Equal(EstadoIntentoPago.Pagado, intento.Estado);
+        Assert.Equal(Ahora.AddDays(30), SuscripcionDe(perfil.Id).VigenteHasta);
+        Assert.NotNull(CupoDe(perfil.Id));
+    }
+
     // --------------------- Tomar el cupo: RESERVA hasta inscribir la tarjeta (N3, 22-nov-2026)
 
     /// <summary>

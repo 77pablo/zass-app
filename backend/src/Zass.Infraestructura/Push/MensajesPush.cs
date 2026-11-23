@@ -89,6 +89,13 @@ public static class MensajesPush
             TipoNotificacion.CredencialVencida => new("Venció una de tus credenciales",
                 "Ya no muestra el sello «Verificada». Renuévala en «Mi ficha».", MiFicha),
 
+            // El nombre de la credencial lo escribio el prestador: no va en el push (se lee en la
+            // pantalla bloqueada). La fecha si, porque es lo que importa para no perderla.
+            TipoNotificacion.BorradorPorEliminarse => new("Tu borrador de credencial se eliminará",
+                DateOnly.TryParseExact(CargaDeAviso.LeerCampo(carga, "borrarEl"), "yyyy-MM-dd", out var el)
+                    ? $"Termínalo en «Mi ficha» antes del {el.ToString("d 'de' MMMM", Chile)} para no perderlo."
+                    : "Termínalo en «Mi ficha» para no perderlo.", MiFicha),
+
             TipoNotificacion.PerfilPublicado => new("Tu ficha ya está publicada",
                 "Ya apareces en las búsquedas de ZASS!.", MiFicha),
 

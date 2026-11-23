@@ -234,6 +234,8 @@ public sealed class ValidadorConfirmarMfa : AbstractValidator<ConfirmarMfaCmd>
 {
     public ValidadorConfirmarMfa()
     {
+        RuleFor(x => x.Contrasena).NotEmpty().WithMessage("Escribe tu contraseña.")
+            .MaximumLength(Limites.ContrasenaMaxima);
         RuleFor(x => x.Codigo).NotEmpty().WithMessage("Escribe el código de 6 dígitos.").MaximumLength(20);
     }
 }

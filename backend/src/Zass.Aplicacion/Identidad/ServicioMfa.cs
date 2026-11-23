@@ -7,7 +7,7 @@ using Zass.Dominio.Identidad;
 namespace Zass.Aplicacion.Identidad;
 
 public sealed record SegundoPasoCmd(string Desafio, string Codigo);
-public sealed record ConfirmarMfaCmd(string Codigo);
+public sealed record ConfirmarMfaCmd(string Contrasena, string Codigo);
 public sealed record DesactivarMfaCmd(string Contrasena, string Codigo);
 public sealed record RegenerarCodigosMfaCmd(string Contrasena, string Codigo);
 
@@ -39,6 +39,8 @@ public sealed class ServicioMfa
     private const string FalloSegundoPaso =
         "El código no es válido o el tiempo para ingresarlo terminó. Vuelve a intentarlo.";
     private const string FalloDesactivar = "La contraseña o el código no corresponden.";
+    private const string FalloAlta =
+        "La contraseña o el código no son correctos. Revisa que la hora de tu teléfono esté bien.";
 
     private readonly IRepositorioUsuarios _usuarios;
     private readonly IUnidadDeTrabajo _unidad;
@@ -142,11 +144,15 @@ public sealed class ServicioMfa
     }
 
     /// <summary>
-    /// API-82. Con un codigo correcto del secreto pendiente, la verificacion queda activa y se
-    /// entregan los 10 codigos de respaldo. Es la UNICA vez que se ven: se guardan con hash.
+    /// API-82. Con la contrasena Y un codigo correcto del secreto pendiente, la verificacion queda
+    /// activa y se entregan los 10 codigos de respaldo. Es la UNICA vez que se ven: se guardan con
+    /// hash. Pide la contrasena para que quien solo robo la sesion no pueda activarla con SU telefono
+    /// y dejar fuera a la dueña; el fallo (contrasena, codigo o cuenta bloqueada) es uno solo y suma
+    /// al bloqueo por intentos. Al activar se cierran las demas sesiones.
     /// </summary>
     public async Task<Resultado<CodigosDeRespaldoDto>> ConfirmarAltaAsync(
-        Guid usuarioId, ConfirmarMfaCmd cmd, string? ip = null, CancellationToken ct = default)
+        Guid usuarioId, ConfirmarMfaCmd cmd, string? ip = null, string? sesionActual = null,
+        CancellationToken ct = default)
     {
         var usuario = await _usuarios.PorIdAsync(usuarioId, ct);
         if (usuario is null) return Resultado.Falla<CodigosDeRespaldoDto>(Fallas.NoEncontrado, "Esa cuenta no existe.");
@@ -158,16 +164,13 @@ public sealed class ServicioMfa
                 "Primero genera el código QR para activar la verificación en dos pasos.");
 
         var ahora = _reloj.Ahora;
-        var secreto = _cifrado.Descifrar(usuario.MfaSecretoPendienteCifrado);
-        var paso = Totp.PasoDelCodigo(secreto, cmd.Codigo, ahora);
+        long? paso = null;
+        if (_hash.Verifica(cmd.Contrasena, usuario.HashContrasena) && !usuario.EstaBloqueada(ahora))
+            paso = Totp.PasoDelCodigo(_cifrado.Descifrar(usuario.MfaSecretoPendienteCifrado), cmd.Codigo, ahora);
         if (paso is null)
         {
-            _auditor.Registrar(Auditar.Entrada(
-                "mfa_fallido", "usuario", usuario.Id, ahora, actorId: usuario.Id,
-                contexto: new { paso = "alta" }, ip: ip));
-            await _unidad.GuardarAsync(ct);
-            return Resultado.Falla<CodigosDeRespaldoDto>(Fallas.ReglaDeNegocio,
-                "El código no es correcto. Revisa que la hora de tu teléfono esté bien y escribe el código que aparece ahora.");
+            await RegistrarFalloAsync(usuario, "alta", ip, ct);
+            return Resultado.Falla<CodigosDeRespaldoDto>(Fallas.ReglaDeNegocio, FalloAlta);
         }
 
         var codigos = NuevosCodigosDeRespaldo();
@@ -198,6 +201,7 @@ public sealed class ServicioMfa
         });
 
         await _unidad.GuardarAsync(ct);
+        await _sesion.RevocarTodasAsync(usuario.Id, sesionActual, ct);
         return Resultado.Ok(new CodigosDeRespaldoDto(codigos));
     }
 
@@ -207,7 +211,8 @@ public sealed class ServicioMfa
     /// mismo bloqueo: con la sesion robada sola no se pueden sacar codigos para entrar despues.
     /// </summary>
     public async Task<Resultado<CodigosDeRespaldoDto>> RegenerarCodigosAsync(
-        Guid usuarioId, RegenerarCodigosMfaCmd cmd, string? ip = null, CancellationToken ct = default)
+        Guid usuarioId, RegenerarCodigosMfaCmd cmd, string? ip = null, string? sesionActual = null,
+        CancellationToken ct = default)
     {
         var usuario = await _usuarios.PorIdAsync(usuarioId, ct);
         if (usuario is null) return Resultado.Falla<CodigosDeRespaldoDto>(Fallas.NoEncontrado, "Esa cuenta no existe.");
@@ -237,6 +242,7 @@ public sealed class ServicioMfa
             contexto: new { con = aceptado == CodigoAceptado.Totp ? "totp" : "respaldo" }, ip: ip));
 
         await _unidad.GuardarAsync(ct);
+        await _sesion.RevocarTodasAsync(usuario.Id, sesionActual, ct);
         return Resultado.Ok(new CodigosDeRespaldoDto(codigos));
     }
 
@@ -245,7 +251,8 @@ public sealed class ServicioMfa
     /// puede apagarla. Los fallos cuentan para el bloqueo por intentos, como los del inicio.
     /// </summary>
     public async Task<Resultado> DesactivarAsync(
-        Guid usuarioId, DesactivarMfaCmd cmd, string? ip = null, CancellationToken ct = default)
+        Guid usuarioId, DesactivarMfaCmd cmd, string? ip = null, string? sesionActual = null,
+        CancellationToken ct = default)
     {
         var usuario = await _usuarios.PorIdAsync(usuarioId, ct);
         if (usuario is null) return Resultado.Falla(Fallas.NoEncontrado, "Esa cuenta no existe.");
@@ -271,6 +278,7 @@ public sealed class ServicioMfa
             contexto: new { con = aceptado == CodigoAceptado.Totp ? "totp" : "respaldo" }, ip: ip));
 
         await _unidad.GuardarAsync(ct);
+        await _sesion.RevocarTodasAsync(usuario.Id, sesionActual, ct);
         return Resultado.Ok();
     }
 

@@ -29,6 +29,8 @@ public static class AvisosPush
         or TipoNotificacion.Recordatorio24h or TipoNotificacion.Recordatorio2h
         or TipoNotificacion.ResenaNueva or TipoNotificacion.ResenaRespondida
         or TipoNotificacion.CredencialResuelta or TipoNotificacion.CredencialVencida
+        // JQ-16: decision de Pablo del 22-nov, el aviso del borrador por eliminarse tambien va por push.
+        or TipoNotificacion.BorradorPorEliminarse
         or TipoNotificacion.PerfilPublicado or TipoNotificacion.TarjetaActivada
         or TipoNotificacion.SuscripcionPorVencer or TipoNotificacion.SuscripcionVencida
         or TipoNotificacion.CobroRechazado;
