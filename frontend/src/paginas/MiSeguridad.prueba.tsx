@@ -13,7 +13,7 @@ const regenerarCodigosMfa = vi.fn()
 vi.mock('../funciones/identidad/servicio', () => ({
   estadoMfa: () => estadoMfa(),
   iniciarAltaMfa: () => iniciarAltaMfa(),
-  confirmarAltaMfa: (c: string) => confirmarAltaMfa(c),
+  confirmarAltaMfa: (a: string, b: string) => confirmarAltaMfa(a, b),
   desactivarMfa: (a: string, b: string) => desactivarMfa(a, b),
   regenerarCodigosMfa: (a: string, b: string) => regenerarCodigosMfa(a, b),
 }))
@@ -51,12 +51,18 @@ describe('Mi cuenta: verificación en dos pasos', () => {
     expect(await screen.findByTestId('qr')).toHaveTextContent('otpauth://totp/ZASS%21')
     expect(screen.getByTestId('clave-mfa')).toHaveTextContent('ABCDEF234567')
 
+    // Sin la contraseña no se manda nada.
     await usuario.type(screen.getByLabelText('Código'), '123456')
+    await usuario.click(screen.getByRole('button', { name: 'Confirmar y activar' }))
+    expect(await screen.findByText('Escribe tu contraseña y el código de 6 dígitos.')).toBeInTheDocument()
+    expect(confirmarAltaMfa).not.toHaveBeenCalled()
+
+    await usuario.type(screen.getByLabelText('Contraseña'), 'mi-clave-larga')
     await usuario.click(screen.getByRole('button', { name: 'Confirmar y activar' }))
 
     const lista = await screen.findByRole('list', { name: 'Códigos de respaldo' })
     expect(lista.querySelectorAll('li')).toHaveLength(10)
-    expect(confirmarAltaMfa).toHaveBeenCalledWith('123456')
+    expect(confirmarAltaMfa).toHaveBeenCalledWith('mi-clave-larga', '123456')
     expect(screen.getByRole('button', { name: 'Copiar los códigos' })).toBeInTheDocument()
 
     await usuario.click(screen.getByRole('button', { name: 'Ya los guardé' }))

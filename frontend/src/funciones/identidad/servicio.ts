@@ -66,9 +66,9 @@ export function iniciarAltaMfa(): Promise<AltaMfa> {
   return enviar<AltaMfa>('/api/mi/mfa/alta')
 }
 
-/** API-82. Devuelve los 10 codigos de respaldo: es la unica vez que se ven. */
-export async function confirmarAltaMfa(codigo: string): Promise<string[]> {
-  return (await enviar<{ codigos: string[] }>('/api/mi/mfa/confirmar', { codigo })).codigos
+/** API-82. Pide contraseña y código. Devuelve los 10 codigos de respaldo: es la unica vez que se ven. */
+export async function confirmarAltaMfa(contrasena: string, codigo: string): Promise<string[]> {
+  return (await enviar<{ codigos: string[] }>('/api/mi/mfa/confirmar', { contrasena, codigo })).codigos
 }
 
 /** API-83. */
