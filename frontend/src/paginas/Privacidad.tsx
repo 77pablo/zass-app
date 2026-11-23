@@ -4,7 +4,10 @@ import { useMeta } from '../marco/useMeta'
 import { useTitulo } from '../marco/useTitulo'
 import { AvisoDeBorrador } from './AvisoDeBorrador'
 import { DatoLegal } from './DatoLegal'
-import { CORREO_PRIVACIDAD, PLAZO_REGISTROS_DE_SEGURIDAD, PROVEEDORES, RESPONSABLE, ULTIMA_ACTUALIZACION } from './legal'
+import {
+  CORREO_PRIVACIDAD, GARANTIAS_TRANSFERENCIA, PLAZO_REGISTROS_DE_SEGURIDAD, PROVEEDORES, RESPONSABLE,
+  ULTIMA_ACTUALIZACION,
+} from './legal'
 
 /**
  * Politica de privacidad. Cada afirmacion se corresponde con algo que el sistema hace hoy (y quedo
@@ -46,9 +49,22 @@ export function Privacidad() {
             </tr>
             <tr>
               <th scope="row">Quien busca</th>
+              {/*
+                PROPUESTO (18-nov-2026), pendiente de Pablo y de su abogado. Antes decia «Nada más, salvo que
+                configures una zona y un radio...», y no era cierto: el boton «Ya me atendió» guarda un
+                contacto (DejarResena.tsx:112 -> API-46, ServicioResenas.cs:94-104, tabla contactos), y quien busca tambien deja
+                reseñas (Resena, Reputacion/Entidades.cs:36) y pide horas (Cita, Agenda/Entidades.cs:111).
+                «O lo contactas desde su ficha» se vuelve cierto con el #92 (JQ-5); hasta entonces declara de
+                mas, que es el lado seguro. La reseña publica no lleva el nombre del autor (ResenaPublicaDto,
+                IServicioResenas.cs:181).
+              */}
               <td>
-                Nada más, salvo que configures una zona y un radio de preferencia en tu perfil: eso sí se guarda
-                para recordarlo.
+                Si configuras una zona y un radio de preferencia en tu perfil, los guardamos para recordarlos.
+                Cuando nos dices que alguien ya te atendió, o lo contactas desde su ficha, guardamos{' '}
+                <strong>que lo contactaste, cuándo y por qué medio</strong>, pero no lo que se dijeron: sirve para
+                que puedas dejarle una reseña. Si dejas una reseña, guardamos tu calificación, tu comentario y los
+                aspectos que marques, y se publica en su ficha sin tu nombre. Si pides una hora, guardamos el
+                servicio, el día y la hora, la nota que le dejes y los cambios de la cita.
               </td>
             </tr>
             <tr>
@@ -128,6 +144,17 @@ export function Privacidad() {
           (alojamiento del sitio y de la API, base de datos y envío de correos), que tratan los datos solo por
           encargo nuestro. Proveedores: <DatoLegal valor={PROVEEDORES} />. No
           entregamos datos a terceros para otros fines, salvo que una autoridad competente lo exija.
+        </p>
+        {/*
+          PROPUESTO (18-nov-2026), pendiente de Pablo y de su abogado: la transferencia internacional (Ley
+          21.719). Neon esta en AWS US East (TRASPASO.md:67); Render, en Estados Unidos segun la lista de
+          proveedores (render.yaml no fija region); Resend, en Sao Paulo (TRASPASO.md:68).
+        */}
+        <p>
+          Algunos de estos proveedores guardan o procesan tus datos fuera de Chile: la API (Render) y la base de
+          datos (Neon) están en Estados Unidos, el envío de correos (Resend) en Brasil, y Cloudflare atiende
+          desde distintos países. Eso es una <strong>transferencia internacional de datos</strong>, y la hacemos
+          con estas garantías: <DatoLegal valor={GARANTIAS_TRANSFERENCIA} />.
         </p>
 
         <h2>7. Cuánto tiempo los conservamos</h2>
