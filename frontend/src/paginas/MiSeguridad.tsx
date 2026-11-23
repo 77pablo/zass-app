@@ -99,17 +99,18 @@ export function MiSeguridad() {
 }
 
 function Confirmar({ alta, alConfirmar }: { alta: AltaMfa; alConfirmar: (codigos: string[]) => void }) {
+  const [contrasena, setContrasena] = useState('')
   const [codigo, setCodigo] = useState('')
   const [aviso, setAviso] = useState<string>()
   const [enviando, setEnviando] = useState(false)
 
   async function alEnviar(e: FormEvent) {
     e.preventDefault()
-    if (codigo.trim() === '') { setAviso('Escribe el código de 6 dígitos.'); return }
+    if (contrasena === '' || codigo.trim() === '') { setAviso('Escribe tu contraseña y el código de 6 dígitos.'); return }
     setEnviando(true)
     setAviso(undefined)
     try {
-      alConfirmar(await confirmarAltaMfa(codigo.trim()))
+      alConfirmar(await confirmarAltaMfa(contrasena, codigo.trim()))
     } catch (e) {
       setAviso(mensaje(e))
     } finally {
@@ -127,9 +128,10 @@ function Confirmar({ alta, alConfirmar }: { alta: AltaMfa; alConfirmar: (codigos
         ¿No puedes escanearlo? Escribe esta clave en la app: <code data-testid="clave-mfa">{alta.secreto}</code>
       </p>
       <p className="bloque-texto">
-        <strong>2.</strong> Escribe el código de 6 dígitos que aparece en la app.
+        <strong>2.</strong> Escribe tu contraseña y el código de 6 dígitos que aparece en la app.
       </p>
       {aviso && <Aviso>{aviso}</Aviso>}
+      <Campo id="contrasena-alta" etiqueta="Contraseña" tipo="password" autoComplete="current-password" valor={contrasena} alCambiar={setContrasena} />
       <Campo id="codigo-alta" etiqueta="Código" autoComplete="one-time-code" valor={codigo} alCambiar={setCodigo} maximo={20} />
       <button className="boton" type="submit" disabled={enviando}>
         {enviando ? 'Verificando...' : 'Confirmar y activar'}

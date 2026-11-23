@@ -66,9 +66,9 @@ export function iniciarAltaMfa(): Promise<AltaMfa> {
   return enviar<AltaMfa>('/api/mi/mfa/alta')
 }
 
-/** API-82. Devuelve los 10 codigos de respaldo: es la unica vez que se ven. */
-export async function confirmarAltaMfa(codigo: string): Promise<string[]> {
-  return (await enviar<{ codigos: string[] }>('/api/mi/mfa/confirmar', { codigo })).codigos
+/** API-82. Pide contraseña y código. Devuelve los 10 codigos de respaldo: es la unica vez que se ven. */
+export async function confirmarAltaMfa(contrasena: string, codigo: string): Promise<string[]> {
+  return (await enviar<{ codigos: string[] }>('/api/mi/mfa/confirmar', { contrasena, codigo })).codigos
 }
 
 /** API-83. */
@@ -137,8 +137,9 @@ export async function cerrarSesion(): Promise<void> {
  * la otra persona) y la suscripción, y anonimiza. Responde 204 y cierra la sesión del lado del
  * servidor; el token CSRF de esa sesión ya no sirve, así que se olvida.
  */
-export async function eliminarMiCuenta(contrasena: string): Promise<void> {
-  await enviar('/api/mi/cuenta', { contrasena }, 'DELETE')
+export async function eliminarMiCuenta(contrasena: string, codigo?: string): Promise<void> {
+  // El código (TOTP o de respaldo) solo viaja si la cuenta tiene la verificación en dos pasos.
+  await enviar('/api/mi/cuenta', codigo ? { contrasena, codigo } : { contrasena }, 'DELETE')
   olvidarCsrf()
 }
 

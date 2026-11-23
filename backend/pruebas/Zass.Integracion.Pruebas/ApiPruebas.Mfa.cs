@@ -70,11 +70,16 @@ public partial class ApiPruebas
         Assert.StartsWith("otpauth://totp/ZASS%21:", datos.GetProperty("uriOtpauth").GetString());
         Assert.Contains("issuer=ZASS%21", datos.GetProperty("uriOtpauth").GetString());
 
-        var mala = await PostConCsrfAsync("/api/mi/mfa/confirmar", new { codigo = "000000" == CodigoTotp(secreto) ? "111111" : "000000" });
+        var mala = await PostConCsrfAsync("/api/mi/mfa/confirmar", new { contrasena = ClaveBuena, codigo = "000000" == CodigoTotp(secreto) ? "111111" : "000000" });
         Assert.Equal(HttpStatusCode.UnprocessableEntity, mala.StatusCode);
         Assert.False((await CuentaEnBaseAsync(correo)).MfaActivo);
 
-        var buena = await PostConCsrfAsync("/api/mi/mfa/confirmar", new { codigo = CodigoTotp(secreto) });
+        // Con la contrasena mala no activa, aunque el codigo sea el bueno.
+        var sinClave = await PostConCsrfAsync("/api/mi/mfa/confirmar", new { contrasena = "otra-contrasena-9", codigo = CodigoTotp(secreto) });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, sinClave.StatusCode);
+        Assert.False((await CuentaEnBaseAsync(correo)).MfaActivo);
+
+        var buena = await PostConCsrfAsync("/api/mi/mfa/confirmar", new { contrasena = ClaveBuena, codigo = CodigoTotp(secreto) });
         Assert.Equal(HttpStatusCode.OK, buena.StatusCode);
         var codigos = (await buena.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("codigos");
         Assert.Equal(10, codigos.GetArrayLength());
@@ -236,7 +241,7 @@ public partial class ApiPruebas
         Assert.Equal(HttpStatusCode.OK, alta.StatusCode);
         var secreto = (await alta.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("secreto").GetString()!;
         Assert.Equal(HttpStatusCode.OK,
-            (await PostConCsrfAsync("/api/mi/mfa/confirmar", new { codigo = CodigoTotp(secreto) })).StatusCode);
+            (await PostConCsrfAsync("/api/mi/mfa/confirmar", new { contrasena = ClaveBuena, codigo = CodigoTotp(secreto) })).StatusCode);
 
         Assert.Equal(HttpStatusCode.OK, (await _cliente.GetAsync("/api/interno/credenciales/cola")).StatusCode);
     }

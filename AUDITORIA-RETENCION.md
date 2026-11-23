@@ -6,13 +6,15 @@
 **Base consultada:** `zass_pruebas` (esquema idéntico a desarrollo `zass`) — solo lectura via `information_schema` y `pg_stat_user_tables`  
 **Referencia legal:** Ley 19.628 (Protección de la Vida Privada) y Ley 21.719 (modifica la 19.628) — *marcado como referencia, no como consejo legal*
 
+> **Corrección (23-nov-2026).** En las columnas «Al eliminar cuenta» de este documento, todo lo que dice **CASCADE** estaba mal: ese CASCADE solo se dispara si se borra la fila de `usuarios`, y eliminar la cuenta la **anonimiza** y la conserva (RN-S1-07). Lo que de verdad pasa está en la sección «Qué pasa al eliminar la cuenta», más abajo. Las tablas de perfil, credenciales y documentos ya están corregidas; las de citas, reseñas, tarjetas y suscripciones siguen con el texto original y hay que leerlas con esta salvedad: sus filas **se conservan**.
+
 ---
 
 ## Resumen ejecutivo
 
 | Categoría | Tablas | Hallazgo principal |
 |-----------|--------|-------------------|
-| **Identidad y acceso** | `usuarios`, `sesiones`, `usuario_roles`, `perfiles_prestador`, `perfiles_buscador` | `usuarios` se **anonimiza** (no borra) al eliminar cuenta (CS-04); `sesiones` se revocan en cascada; tokens de verificación/recuperación expiran a 24h/1h y se purgan en `Anonimizar()` |
+| **Identidad y acceso** | `usuarios`, `sesiones`, `usuario_roles`, `perfiles_prestador`, `perfiles_buscador` | `usuarios` se **anonimiza** (no borra) al eliminar cuenta (CS-04); `sesiones` se revocan (no se borran: la fila de `usuarios` sigue); tokens de verificación/recuperación expiran a 24h/1h y se purgan en `Anonimizar()` |
 | **Catálogo y geografía** | `rubros`, `servicios`, `prestador_servicios`, `zonas`, `coberturas_prestador` | Datos de catálogo (no PII), salvo `prestador_servicios.precio_referencia` y `coberturas_prestador` (FK a prestador) |
 | **Credenciales (S2)** | `entidades_certificadora`, `credenciales`, `documentos_credencial`, `verificaciones` | `documentos_credencial.clave_almacenamiento` y `nombre_original` son PII; `credenciales.nombre` es PII; **no hay purga automática** de documentos antiguos |
 | **Agenda (S4)** | `disponibilidades`, `bloques_horario`, `bloqueos_agenda`, `citas`, `cambios_cita` | `citas.nota_buscador` y `clave_idempotencia` son PII; `cambios_cita` es historial inmutable (solo INSERT); **no hay purga de citas antiguas** |
@@ -49,7 +51,7 @@
 ### 2. `sesiones` (TBL-04) — Tokens de acceso
 | Columna | Tipo | PII | Se borra hoy | Crece sin límite | Al eliminar cuenta |
 |---------|------|-----|--------------|------------------|-------------------|
-| `id` | uuid | FK | No | **Sí** (una por login) | **CASCADE** (borra todas) |
+| `id` | uuid | FK | No | **Sí** (una por login) | Se revocan todas (`RevocarTodasAsync`); las filas se conservan |
 | `usuario_id` | uuid | FK | No | No | → borra fila |
 | `hash_token` | text | Técnico | No | No | → borra fila |
 | `ip_origen` | text | **SÍ** | No | **Sí** | → borra fila |
@@ -58,7 +60,7 @@
 | `expira_en` | timestamptz | Metadato | **Sí: expira** (token de 30 días) | No | → borra fila |
 | `revocada_en` | timestamptz | Metadato | No | No | → borra fila |
 
-**Hallazgo:** Las sesiones **crecen sin límite** (una fila por login). Al eliminar cuenta, `CASCADE` borra todas. Pero **no hay job que limpie sesiones expiradas/revocadas de cuentas activas**. Plazo sugerido: **30 días post-expiración** (coincide con vida del token).
+**Hallazgo:** Las sesiones **crecen sin límite** (una fila por login). Al eliminar cuenta se revocan todas, pero las filas se conservan. Pero **no hay job que limpie sesiones expiradas/revocadas de cuentas activas**. Plazo sugerido: **30 días post-expiración** (coincide con vida del token).
 
 ---
 
@@ -66,21 +68,21 @@
 | Columna | Tipo | PII | Se borra hoy | Crece sin límite | Al eliminar cuenta |
 |---------|------|-----|--------------|------------------|-------------------|
 | `id` | uuid | FK | No | No | Se conserva (FK en resenas, etc.) |
-| `usuario_id` | uuid | FK | No | No | **CASCADE** (borra perfil) |
-| `rubro_id` | smallint | Catálogo | No | No | → borra fila |
-| `slug` | varchar(120) | **SÍ** | No | No | → borra fila |
-| `nombre_publico` | varchar(150) | **SÍ** | No | No | → borra fila |
-| `descripcion` | varchar(1500) | **SÍ** | No | No | → borra fila |
-| `url_foto` | text | **SÍ** | No | No | → borra fila |
-| `direccion_cifrada` | bytea | **SÍ** (cifrada) | No | No | → borra fila |
-| `latitud` / `longitud` | double | **SÍ** | No | No | → borra fila |
-| `telefono_publico` | text | **SÍ** | No | No | → borra fila |
-| `correo_publico` | text | **SÍ** | No | No | → borra fila |
-| `whatsapp` / `sitio_web` | text | **SÍ** | No | No | → borra fila |
-| `promedio_calificacion` / `total_resenas` | Derivados | No | No | No | → borra fila |
-| `publicado_en` / `actualizado_en` | Metadato | No | No | No | → borra fila |
+| `usuario_id` | uuid | FK | No | No | Se conserva (la fila del usuario se anonimiza, no se borra, así que el CASCADE no se dispara) |
+| `rubro_id` | smallint | Catálogo | No | No | Se conserva (no es dato personal) |
+| `slug` | varchar(120) | **SÍ** | No | No | → `eliminado-{id}` (se armaba con el nombre) |
+| `nombre_publico` | varchar(150) | **SÍ** | No | No | → `"Perfil eliminado"` |
+| `descripcion` | varchar(1500) | **SÍ** | No | No | → `null` |
+| `url_foto` | text | **SÍ** | No | No | → `null`, y se borran los dos archivos (grande y chica) |
+| `direccion_cifrada` | bytea | **SÍ** (cifrada) | No | No | → `null` |
+| `latitud` / `longitud` | double | **SÍ** | No | No | → `null` |
+| `telefono_publico` | text | **SÍ** | No | No | → `null` |
+| `correo_publico` | text | **SÍ** | No | No | → `null` |
+| `whatsapp` / `sitio_web` | text | **SÍ** | No | No | → `null` |
+| `promedio_calificacion` / `total_resenas` | Derivados | No | No | No | Se conservan (no son datos personales) |
+| `publicado_en` / `actualizado_en` | Metadato | No | No | No | Se conservan |
 
-**Hallazgo:** Al eliminar usuario, el perfil se **borra en cascada** (FK `usuario_id` con `OnDelete.Cascade`). Pero **antes** se llama `perfil.Despublicar()` para que no salga en búsquedas. Los datos personales del perfil **se pierden** (no se anonimizan, se borran). Las reseñas quedan huérfanas de perfil pero conservan `perfil_prestador_id` (FK a perfil borrado → CASCADE borra reseñas también, ver abajo).
+**Corrección (23-nov-2026):** este documento decía que al eliminar la cuenta el perfil se borraba en cascada. Era falso: el CASCADE de `usuario_id` solo se dispara si se borra la fila de `usuarios`, y la baja **no la borra**, la anonimiza (`Usuario.Anonimizar()`, RN-S1-07). Hasta esta corrección la ficha, sus fotos y sus documentos se quedaban enteros en la base y en el almacenamiento, y las fotos se seguían sirviendo por API-73. Hoy la baja hace esto con el perfil (`PerfilPrestador.BorrarDatosPersonales()` y `ServicioBorradoDeDatos`): lo **despublica** (la ficha pública responde 404, como cualquier perfil despublicado) y deja la **fila** (la referencian citas, reseñas, suscripciones y auditoría) **sin ningún dato personal**: slug, nombre público, descripción, foto, dirección, coordenadas, teléfono, correo, WhatsApp, sitio web y zonas de cobertura (la comuna). Se conservan el rubro, los servicios del catálogo y los promedios de reseñas, que no son datos personales.
 
 ---
 
@@ -97,11 +99,11 @@
 ### 5. `credenciales` (TBL-12) + `documentos_credencial` (TBL-13) + `verificaciones` (TBL-15)
 | Tabla | Columna PII | Se borra hoy | Crece sin límite | Al eliminar cuenta (CASCADE desde perfil_prestador) |
 |-------|-------------|--------------|------------------|---------------------------------------------------|
-| `credenciales` | `nombre` (nombre del título/certificado) | No | **Sí** (una por credencial declarada) | **CASCADE** (borra credenciales del perfil) |
-| `documentos_credencial` | `clave_almacenamiento`, `nombre_original`, `tipo_mime` | No | **Sí** (archivos subidos) | **CASCADE** (borra docs de la credencial) |
-| `verificaciones` | `motivo`, `detalle` | No | **Sí** (historial de revisiones) | **CASCADE** (borra verificaciones de la credencial) |
+| `credenciales` | `nombre` (nombre del título/certificado), `entidad_certificadora_id` | No | **Sí** (una por credencial declarada) | **Se conservan, anonimizadas**: `nombre` → `"Credencial eliminada"`, entidad → `null`. Quedan el estado y las fechas, que sirven a la auditoría de la verificación |
+| `documentos_credencial` | `clave_almacenamiento`, `nombre_original`, `tipo_mime` | No | **Sí** (archivos subidos) | **Se borran las filas y los archivos** (después de que la base confirma la baja) |
+| `verificaciones` | `motivo`, `detalle` | No | **Sí** (historial de revisiones) | **Se conservan**; el texto libre `detalle` del verificador se deja en `null`. Quedan el resultado y el motivo (auditoría) |
 
-**Hallazgo crítico:** **No hay purga automática** de documentos antiguos ni credenciales vencidas. Los archivos en almacenamiento (R2/S3) **no se borran** al eliminar la fila (la `clave_almacenamiento` es solo referencia). Plazo sugerido Chile: **5 años desde vencimiento de la credencial** (Ley 21.719, datos profesionales).
+**Hallazgo crítico:** **No hay purga automática** de documentos antiguos ni credenciales vencidas. Los archivos en almacenamiento (R2/S3) **no se borraban** al eliminar la fila (la `clave_almacenamiento` es solo referencia); desde la corrección del 23-nov-2026 la **baja de la cuenta sí los borra**, pero sigue sin haber purga para quien no se da de baja. Plazo sugerido Chile: **5 años desde vencimiento de la credencial** (Ley 21.719, datos profesionales).
 
 ---
 
@@ -227,24 +229,44 @@
 
 ---
 
-## Qué pasa al eliminar la cuenta (CS-04, PR #76)
+## Qué pasa al eliminar la cuenta (CS-04, API-17)
 
-Código verificado en `ServicioCuenta.cs:266-288` y `Usuario.Anonimizar()` (`Entidades.cs:46-56`):
+Código: `BajaDeCuenta` (API), `ServicioCuenta.EliminarAsync`, `ServicioBorradoDeDatos` y `Usuario.Anonimizar()`. Corregido el 23-nov-2026 (Ley 21.719): la versión anterior de esta sección decía que un CASCADE borraba el perfil y todo lo que cuelga de él, y eso era falso.
 
-1. **Perfil prestador**: `Despublicar()` (ya no sale en búsquedas) → **CASCADE borra perfil** (y en cascada: disponibilidades, coberturas, prestador_servicios, bloques, bloqueos, citas del prestador, suscripciones, pagos, intentos, canjes, tarjetas)
-2. **Usuario**: `Anonimizar()`:
+**Antes de tocar nada**
+- Se pide la contraseña y, si la cuenta tiene la verificación en dos pasos, también un código (TOTP o de respaldo). Un fallo suma al mismo bloqueo de intentos que el inicio de sesión (10 intentos / 15 minutos) y la respuesta no dice cuál de los dos falló.
+- Se **despublica la ficha primero**, para que nadie agende mientras se cancelan las citas. Después se cancelan las citas futuras (cada una en su transacción, avisando a la otra parte).
+
+**En una sola transacción (`EliminarAsync`)**
+1. **Suscripción**: se cancela, se olvida el medio de pago inscrito y se libera el cupo fundador.
+2. **Perfil prestador** (si existe): la fila **NO se borra** (la referencian citas, reseñas y auditoría). Queda despublicada y sin datos personales (ver la tabla de `perfiles_prestador`); la ficha pública responde 404.
+3. **Foto de perfil**: se quita la referencia y se piden borrar los dos archivos.
+4. **Fotos de trabajos**: se borran las filas y se piden borrar los archivos.
+5. **Documentos de credenciales**: se borran las filas y se piden borrar los archivos. Las credenciales quedan anonimizadas (ver su tabla).
+6. **Navegadores con push** (`suscripciones_push`): se borran todos.
+7. **Usuario**: `Anonimizar()`:
    - `correo` → `eliminado-{id}@zass.local`
-   - `nombre` → `"Usuario eliminado"`
+   - `nombre` → `"Usuario eliminado"`; apellido, RUT, teléfono y razón social → `null`
    - `hash_contrasena` → `""`
-   - `token_verificacion` / `token_recuperacion` → `null`
+   - `token_verificacion` / `token_recuperacion` → `null`; MFA borrado
    - `estado` → `Eliminada`
    - `anonimizado_en` → `ahora`
-3. **Sesiones**: `RevocarTodasAsync()` → **CASCADE borra todas las sesiones**
-4. **Auditoría**: Registra `"eliminar_cuenta"` en `registro_auditoria` (actor = usuario eliminado)
-5. **Perfil buscador**: **CASCADE borra** (favoritos, contactos, citas como buscador)
-6. **Reseñas**: **NO se borran** (RN-S1-07). El `autor_id` sigue apuntando al usuario anonimizado. La reseña se muestra firmada como "Usuario eliminado".
+8. **Sesiones**: `RevocarTodasAsync()` las revoca todas (la fila de `usuarios` sigue, así que no hay CASCADE).
+9. **Auditoría**: `"eliminar_cuenta"` y `"baja_borrar_datos_perfil"` (con solo los conteos, sin contenido).
+
+**Después de que la base confirma**: se borran los archivos del almacenamiento (foto grande y chica, fotos de trabajos y documentos). Si borrar uno falla, se registra un error en el log con la clave del archivo y la baja queda hecha: lo peor es un archivo huérfano, nunca una fila que apunte a un archivo que no está.
+
+**Lo que NO se hace hoy (pendiente)**
+- `perfiles_buscador` (zona de interés, favoritos, rubros) y los `contactos` del buscador **no** se borran: tampoco los borra ningún CASCADE, porque la fila de `usuarios` no se elimina. Habría que decidir qué se anonimiza ahí.
+- Las citas pasadas y su historial (`cambios_cita`) se conservan como están (y las notas libres del buscador en `citas.nota_buscador`).
+- El cliente de pago sigue existiendo en la pasarela (Flow); solo se olvida la referencia local.
+- Los archivos huérfanos por una caída entre el guardado y el borrado no tienen barrido.
+
+**Reseñas**: **NO se borran** (RN-S1-07). El `autor_id` sigue apuntando al usuario anonimizado y la reseña se muestra firmada como "Usuario eliminado".
 
 **Tablas que QUEDAN con datos tras eliminar cuenta:**
+- `perfiles_prestador` (fila anonimizada y despublicada)
+- `credenciales` y `verificaciones` (anonimizadas, sin documentos)
 - `resenas` (con `autor_id` a usuario anonimizado)
 - `respuestas_resena` (si el prestador respondió)
 - `reportes_resena` (si alguien reportó la reseña)
@@ -289,7 +311,7 @@ Código verificado en `ServicioCuenta.cs:266-288` y `Usuario.Anonimizar()` (`Ent
 
 1. **Implementar jobs de purga** para las 7 tablas que crecen sin límite y no tienen purga hoy (ver tabla arriba). Prioridad: `registro_auditoria` > `sesiones` > `intentos_de_pago` > `notificaciones` > `escaneos_tarjeta` > `citas/cambios_cita`.
 2. **Definir `PLAZO_REGISTROS_DE_SEGURIDAD` en `legal.ts:21`** con una tabla por categoría (no un solo número), basada en la columna "Plazo sugerido para ZASS!" de arriba.
-3. **Decidir sobre documentos de credenciales**: ¿se borran del almacenamiento (R2/S3) al purgar la fila en `documentos_credencial`? Hoy no ocurre.
+3. **Decidir sobre documentos de credenciales de quien NO se da de baja**: al eliminar la cuenta los archivos ya se borran del almacenamiento (R2/S3) junto con la fila; falta decidir la purga de los documentos antiguos o vencidos de cuentas activas (y un barrido de archivos huérfanos).
 4. **Evaluar particionado** en `registro_auditoria` y `notificaciones` antes de llegar a 1M filas.
 5. **Documentar en política de privacidad** que las reseñas se anonimizan (no borran) al eliminar cuenta, y que la auditoría de seguridad se guarda 2 años.
 

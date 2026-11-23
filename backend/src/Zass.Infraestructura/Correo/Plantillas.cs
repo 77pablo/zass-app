@@ -223,7 +223,7 @@ public static class Plantillas
     /// <summary>
     /// Decision de Pablo (21-nov-2026): alguien intento crear una cuenta con el RUT de esta. Va
     /// al correo de la cuenta original. No dice nada de quien lo intento (no lo sabemos, y el
-    /// correo que escribio en el formulario no es de la dueña). Texto PROPUESTO: lo aprueba Pablo.
+    /// correo que escribio en el formulario no es de la dueña). Texto aprobado por Pablo (22-nov-2026).
     /// </summary>
     public static CorreoRenderizado RegistroConRutExistente(string nombre, string enlaceEntrar, string enlaceContrasena)
     {
@@ -253,7 +253,7 @@ public static class Plantillas
 
     /// <summary>
     /// Decision de Pablo (22-nov-2026): se activo la verificacion en dos pasos. Si no fue la dueña,
-    /// alguien tiene su contraseña: lo primero es cambiarla. Texto PROPUESTO: lo aprueba Pablo.
+    /// alguien tiene su contraseña: lo primero es cambiarla. Texto aprobado por Pablo (22-nov-2026).
     /// </summary>
     public static CorreoRenderizado MfaActivado(string nombre, string enlaceSeguridad, string enlaceContrasena)
     {
@@ -285,7 +285,7 @@ public static class Plantillas
     /// CS-06 / T8 (auditoria 22-nov-2026): el planificador vencio una credencial verificada. Le
     /// dice al prestador que el sello ya no se ve y como recuperarlo (renovar = documento nuevo,
     /// T9). El nombre de la credencial es SUYO (lo escribio el), asi que puede ir en el cuerpo;
-    /// nunca en el asunto. Texto PROPUESTO: lo aprueba Pablo.
+    /// nunca en el asunto. Texto aprobado por Pablo (22-nov-2026).
     /// </summary>
     public static CorreoRenderizado CredencialVencida(string nombre, string? credencial, string enlace)
     {
@@ -363,7 +363,7 @@ public static class Plantillas
 
     /// <summary>
     /// JQ-16 · CU-05 4D.3. Un borrador de credencial sin actividad en 83 días: se borrará con sus
-    /// archivos. Dice qué credencial, desde qué día, y qué hacer para conservarla. TEXTO PROPUESTO.
+    /// archivos. Dice qué credencial, desde qué día, y qué hacer para conservarla. Texto aprobado por Pablo (22-nov-2026).
     /// </summary>
     public static CorreoRenderizado BorradorPorEliminarse(string nombre, string credencial, DateOnly borrarEl, string enlace)
     {
@@ -388,8 +388,8 @@ public static class Plantillas
     }
 
     /// <summary>
-    /// ES-1. El cobro automatico fue rechazado y hay plazo hasta el vencimiento. Texto
-    /// PROPUESTO: lo aprueba Pablo en el PR.
+    /// ES-1. El cobro automatico fue rechazado y hay plazo hasta el vencimiento.
+    /// Texto aprobado por Pablo (22-nov-2026).
     /// </summary>
     public static CorreoRenderizado CobroRechazado(string nombre, int? dias, bool fundador, string enlace)
     {
@@ -476,7 +476,7 @@ public static class Plantillas
     /// moderacion (CS-17) y un correo ya enviado no se retira, y el comentario es de otra
     /// persona: este modulo solo manda lo del propio destinatario.
     ///
-    /// TEXTO PENDIENTE DE APROBACION de Pablo.
+    /// Texto aprobado por Pablo (22-nov-2026).
     /// </summary>
     public static CorreoRenderizado ResenaNueva(string nombre, string enlace)
     {
@@ -503,7 +503,7 @@ public static class Plantillas
     /// escribio la resena merece enterarse de que la respondieron. Va a la ficha publica,
     /// que es donde se lee la respuesta; al prestador no se le nombra en el correo.
     ///
-    /// TEXTO PENDIENTE DE APROBACION de Pablo.
+    /// Texto aprobado por Pablo (22-nov-2026).
     /// </summary>
     public static CorreoRenderizado Respondida(string nombre, string enlace)
     {
