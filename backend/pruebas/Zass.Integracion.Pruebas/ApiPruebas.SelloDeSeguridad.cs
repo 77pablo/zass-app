@@ -1,4 +1,5 @@
 using System.Net;
+using System.Linq;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -19,7 +20,12 @@ public partial class ApiPruebas
     /// <summary>El valor de la cookie de acceso que entrego esa respuesta de inicio de sesion.</summary>
     private static string CookieDeAcceso(HttpResponseMessage entrada)
     {
-        var linea = entrada.Headers.GetValues("Set-Cookie").Single(c => c.StartsWith("zass_sesion="));
+        // Puede venir mas de un Set-Cookie "zass_sesion=": si el cliente trae una cookie con un
+        // sello ya invalido, OnValidatePrincipal la rechaza y emite una de BORRADO (valor vacio)
+        // ademas de la nueva. Nos quedamos con la ultima que trae un valor de verdad.
+        var linea = entrada.Headers.GetValues("Set-Cookie")
+            .Where(c => c.StartsWith("zass_sesion=") && c.Split(';')[0]["zass_sesion=".Length..].Length > 0)
+            .Last();
         return linea.Split(';')[0]["zass_sesion=".Length..];
     }
 
