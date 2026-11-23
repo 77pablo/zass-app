@@ -46,7 +46,7 @@ public sealed class ServicioMfa
     private readonly IUnidadDeTrabajo _unidad;
     private readonly IHashContrasenas _hash;
     private readonly IGeneradorSecretos _secretos;
-    private readonly ICifradoDeDatos _cifrado;
+    private readonly ICifradoMfa _cifrado;
     private readonly IRelojSistema _reloj;
     private readonly IAuditor _auditor;
     private readonly ServicioSesion _sesion;
@@ -54,7 +54,7 @@ public sealed class ServicioMfa
 
     public ServicioMfa(
         IRepositorioUsuarios usuarios, IUnidadDeTrabajo unidad, IHashContrasenas hash,
-        IGeneradorSecretos secretos, ICifradoDeDatos cifrado, IRelojSistema reloj, IAuditor auditor,
+        IGeneradorSecretos secretos, ICifradoMfa cifrado, IRelojSistema reloj, IAuditor auditor,
         ServicioSesion sesion, INotificaciones avisos)
     {
         _usuarios = usuarios;
@@ -136,7 +136,7 @@ public sealed class ServicioMfa
                 "Ya tienes la verificación en dos pasos activa.");
 
         var secreto = Totp.NuevoSecreto();
-        usuario.MfaSecretoPendienteCifrado = _cifrado.Cifrar(secreto);
+        usuario.MfaSecretoPendienteCifrado = _cifrado.Cifrar(secreto, DatosAsociados(usuario.Id));
         usuario.ActualizadoEn = _reloj.Ahora;
         await _unidad.GuardarAsync(ct);
 
@@ -166,7 +166,7 @@ public sealed class ServicioMfa
         var ahora = _reloj.Ahora;
         long? paso = null;
         if (_hash.Verifica(cmd.Contrasena, usuario.HashContrasena) && !usuario.EstaBloqueada(ahora))
-            paso = Totp.PasoDelCodigo(_cifrado.Descifrar(usuario.MfaSecretoPendienteCifrado), cmd.Codigo, ahora);
+            paso = Totp.PasoDelCodigo(_cifrado.Descifrar(usuario.MfaSecretoPendienteCifrado, DatosAsociados(usuario.Id)), cmd.Codigo, ahora);
         if (paso is null)
         {
             await RegistrarFalloAsync(usuario, "alta", ip, ct);
@@ -316,6 +316,15 @@ public sealed class ServicioMfa
     // ------------------------------------------------------------ Piezas
 
     /// <summary>
+    /// Los datos asociados (AAD) del secreto TOTP cifrado: el id de la persona y una etiqueta de
+    /// contexto. Atan el secreto a SU fila: copiar la columna a la fila de otra persona (o usarla
+    /// en otro contexto) hace que el descifrado falle. Es el ÚNICO lugar donde se arma; el alta,
+    /// la confirmación y el segundo paso del login pasan por aquí. Pública para el andamiaje de pruebas.
+    /// </summary>
+    public static byte[] DatosAsociados(Guid usuarioId) =>
+        System.Text.Encoding.UTF8.GetBytes("mfa-totp:" + usuarioId.ToString("N"));
+
+    /// <summary>
     /// Seis digitos: TOTP. Diez caracteres del alfabeto de respaldo (con o sin guion): codigo
     /// de respaldo. Los dos se GASTAN aqui mismo, de forma atomica, si son correctos.
     /// </summary>
@@ -326,7 +335,7 @@ public sealed class ServicioMfa
 
         if (Totp.EsCodigoTotp(limpio))
         {
-            var secreto = _cifrado.Descifrar(usuario.MfaSecretoCifrado!);
+            var secreto = _cifrado.Descifrar(usuario.MfaSecretoCifrado!, DatosAsociados(usuario.Id));
             return Totp.PasoDelCodigo(secreto, limpio, ahora) is { } paso
                 && await _usuarios.GastarPasoTotpAsync(usuario.Id, paso, ct)
                 ? CodigoAceptado.Totp

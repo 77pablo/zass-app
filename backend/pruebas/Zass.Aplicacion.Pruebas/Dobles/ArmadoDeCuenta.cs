@@ -75,7 +75,7 @@ public static class ArmadoDeCuenta
         BaseEnMemoria baseEnMemoria, IHashContrasenas hash, IGeneradorSecretos secretos, IRelojSistema reloj,
         INotificaciones cola, IAuditor auditoria, ServicioSesion sesiones, IContrasenasFiltradas filtradas,
         IAlmacenDeArchivos? almacen = null, ILogger<ServicioBorradoDeDatos>? registro = null,
-        ICifradoDeDatos? cifrado = null)
+        ICifradoMfa? cifrado = null)
     {
         var usuarios = new RepositorioUsuariosEnMemoria(baseEnMemoria);
         var perfiles = new RepositorioPerfilesEnMemoria(baseEnMemoria);

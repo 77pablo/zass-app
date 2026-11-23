@@ -44,6 +44,24 @@ public interface ICifradoDeDatos
 {
     byte[] Cifrar(string texto);
     string Descifrar(byte[] datos);
+
+    /// <summary>
+    /// Igual que <see cref="Cifrar(string)"/>, pero el dato queda ATADO a <paramref name="datosAsociados"/>
+    /// (AAD de AES-GCM): no se cifran ni se guardan, pero hay que darlos iguales para descifrar. Sirve
+    /// para que un dato cifrado de una fila no se pueda copiar a la fila de otra persona.
+    /// </summary>
+    byte[] Cifrar(string texto, ReadOnlySpan<byte> datosAsociados);
+
+    /// <summary>Falla si <paramref name="datosAsociados"/> no son los mismos con que se cifró.</summary>
+    string Descifrar(byte[] datos, ReadOnlySpan<byte> datosAsociados);
+}
+
+/// <summary>
+/// El cifrado del secreto de la verificación en dos pasos. Es una interfaz propia para poder darle
+/// una clave distinta de la de direcciones sin tocar cómo se cifran las direcciones.
+/// </summary>
+public interface ICifradoMfa : ICifradoDeDatos
+{
 }
 
 /// <summary>El buzon de avisos (TBL-27). Encolar no envia: el envio es trabajo de fondo.</summary>

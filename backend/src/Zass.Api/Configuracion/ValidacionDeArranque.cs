@@ -64,6 +64,22 @@ public static class ValidacionDeArranque
             }
         }
 
+        // --- Clave del secreto del MFA: opcional (sin ella se usa la de direcciones); si esta, 32 bytes ---
+        var claveMfa = configuracion["Zass:Mfa:ClaveSecreto"];
+        if (!string.IsNullOrWhiteSpace(claveMfa))
+        {
+            try
+            {
+                var bytes = Convert.FromBase64String(claveMfa);
+                if (bytes.Length != 32)
+                    problemas.Add($"Zass:Mfa:ClaveSecreto tiene {bytes.Length} bytes y necesita 32.");
+            }
+            catch (FormatException)
+            {
+                problemas.Add("Zass:Mfa:ClaveSecreto no es Base64 válido.");
+            }
+        }
+
         // --- HTTPS ---
         // Por omisión es true. Apagarlo en producción deja salir las cookies de sesión sin la
         // marca Secure; solo se permite apagarlo en desarrollo, y explícitamente.
