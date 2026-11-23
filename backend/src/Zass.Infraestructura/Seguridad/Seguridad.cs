@@ -148,7 +148,9 @@ public sealed class CifradoAesGcm : ICifradoDeDatos
         _clave = clave;
     }
 
-    public byte[] Cifrar(string texto)
+    public byte[] Cifrar(string texto) => Cifrar(texto, ReadOnlySpan<byte>.Empty);
+
+    public byte[] Cifrar(string texto, ReadOnlySpan<byte> datosAsociados)
     {
         var claro = Encoding.UTF8.GetBytes(texto);
         var nonce = RandomNumberGenerator.GetBytes(LargoNonce);
@@ -156,7 +158,7 @@ public sealed class CifradoAesGcm : ICifradoDeDatos
         var etiqueta = new byte[LargoEtiqueta];
 
         using var aes = new AesGcm(_clave, LargoEtiqueta);
-        aes.Encrypt(nonce, claro, cifrado, etiqueta);
+        aes.Encrypt(nonce, claro, cifrado, etiqueta, datosAsociados);
 
         var salida = new byte[1 + LargoNonce + LargoEtiqueta + cifrado.Length];
         salida[0] = VersionDeClave;
@@ -166,7 +168,9 @@ public sealed class CifradoAesGcm : ICifradoDeDatos
         return salida;
     }
 
-    public string Descifrar(byte[] datos)
+    public string Descifrar(byte[] datos) => Descifrar(datos, ReadOnlySpan<byte>.Empty);
+
+    public string Descifrar(byte[] datos, ReadOnlySpan<byte> datosAsociados)
     {
         if (datos.Length < 1 + LargoNonce + LargoEtiqueta)
             throw new CryptographicException("El dato cifrado está truncado.");
@@ -180,7 +184,24 @@ public sealed class CifradoAesGcm : ICifradoDeDatos
         var claro = new byte[cifrado.Length];
 
         using var aes = new AesGcm(_clave, LargoEtiqueta);
-        aes.Decrypt(nonce, cifrado, etiqueta, claro);
+        aes.Decrypt(nonce, cifrado, etiqueta, claro, datosAsociados);
         return Encoding.UTF8.GetString(claro);
     }
+}
+
+/// <summary>
+/// El cifrado del secreto TOTP del MFA: el mismo AES-GCM, con su propia clave (o, si no hay una
+/// configurada, la de direcciones; ver AgregarZass). Es un envoltorio para que la inyección distinga
+/// "el cifrado del MFA" de "el cifrado de direcciones".
+/// </summary>
+public sealed class CifradoMfaAesGcm : ICifradoMfa
+{
+    private readonly CifradoAesGcm _interno;
+
+    public CifradoMfaAesGcm(byte[] clave) => _interno = new CifradoAesGcm(clave);
+
+    public byte[] Cifrar(string texto) => _interno.Cifrar(texto);
+    public string Descifrar(byte[] datos) => _interno.Descifrar(datos);
+    public byte[] Cifrar(string texto, ReadOnlySpan<byte> datosAsociados) => _interno.Cifrar(texto, datosAsociados);
+    public string Descifrar(byte[] datos, ReadOnlySpan<byte> datosAsociados) => _interno.Descifrar(datos, datosAsociados);
 }

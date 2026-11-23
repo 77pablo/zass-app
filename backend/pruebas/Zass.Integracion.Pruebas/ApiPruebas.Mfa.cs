@@ -88,7 +88,7 @@ public partial class ApiPruebas
         Assert.True(usuario.MfaActivo);
         Assert.Equal(10, usuario.MfaCodigosRespaldo!.Length);
         Assert.DoesNotContain(codigos[0].GetString()!.Replace("-", ""), string.Join(",", usuario.MfaCodigosRespaldo));
-        Assert.Equal(secreto, MfaDePrueba.Cifrado.Descifrar(usuario.MfaSecretoCifrado!));
+        Assert.Equal(secreto, MfaDePrueba.Cifrado.Descifrar(usuario.MfaSecretoCifrado!, ServicioMfa.DatosAsociados(usuario.Id)));
         Assert.DoesNotContain(secreto, System.Text.Encoding.ASCII.GetString(usuario.MfaSecretoCifrado!));
         Assert.Equal(1, await AuditadasAsync(usuario.Id, "mfa_activado"));
 

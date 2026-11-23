@@ -91,12 +91,28 @@ public sealed class AuditoriaEnMemoria : IAuditor
 }
 
 /// <summary>Cifrado reversible de prueba. No es seguro; solo prueba que no se guarda en claro.</summary>
-public sealed class CifradoDeJuguete : ICifradoDeDatos
+public sealed class CifradoDeJuguete : ICifradoMfa
 {
     public byte[] Cifrar(string texto) =>
         Encoding.UTF8.GetBytes(texto).Select(b => (byte)(b ^ 0x5A)).ToArray();
     public string Descifrar(byte[] datos) =>
         Encoding.UTF8.GetString(datos.Select(b => (byte)(b ^ 0x5A)).ToArray());
+
+    // Con datos asociados, el juguete pega al final un sello de ellos y lo exige al descifrar,
+    // como hace AES-GCM con el AAD (aqui sin seguridad real).
+    public byte[] Cifrar(string texto, ReadOnlySpan<byte> datosAsociados) =>
+        Cifrar(texto).Concat(Sello(datosAsociados)).ToArray();
+
+    public string Descifrar(byte[] datos, ReadOnlySpan<byte> datosAsociados)
+    {
+        var sello = Sello(datosAsociados);
+        if (datos.Length < sello.Length || !datos.AsSpan(datos.Length - sello.Length).SequenceEqual(sello))
+            throw new System.Security.Cryptography.CryptographicException("Los datos asociados no coinciden.");
+        return Descifrar(datos[..^sello.Length]);
+    }
+
+    private static byte[] Sello(ReadOnlySpan<byte> datosAsociados) =>
+        System.Security.Cryptography.SHA256.HashData(datosAsociados);
 }
 
 /// <summary>Doble que dice "filtrada" para una contrasena especifica (por defecto "password").</summary>

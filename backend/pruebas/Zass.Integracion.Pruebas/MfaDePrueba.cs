@@ -19,7 +19,7 @@ namespace Zass.Integracion.Pruebas;
 /// </summary>
 public static class MfaDePrueba
 {
-    public static readonly CifradoAesGcm Cifrado =
+    public static readonly CifradoMfaAesGcm Cifrado =
         new(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray());
 
     private const string AlfabetoRespaldo = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -30,7 +30,7 @@ public static class MfaDePrueba
         var secreto = Totp.NuevoSecreto();
         using var ctx = ContextoDePrueba.Crear();
         var u = await ctx.Usuarios.SingleAsync(x => x.Correo == correo);
-        u.MfaSecretoCifrado = Cifrado.Cifrar(secreto);
+        u.MfaSecretoCifrado = Cifrado.Cifrar(secreto, ServicioMfa.DatosAsociados(u.Id));
         u.MfaActivadoEn = DateTime.UtcNow;
         u.MfaCodigosRespaldo = Array.Empty<string>();
         await ctx.SaveChangesAsync();
