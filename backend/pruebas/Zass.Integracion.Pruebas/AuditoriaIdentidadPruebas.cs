@@ -160,12 +160,10 @@ public class AuditoriaIdentidadPruebas : IAsyncLifetime
         var auditor = new AuditorEfCore(ctx);
         var reloj = new RelojUtc();
         var filtradas = new ContrasenasFiltradasNunca();
-        var cuenta = new ServicioCuenta(
-            new RepositorioUsuariosEfCore(ctx),
-            new RepositorioPerfilesEfCore(ctx),
-            unidad, hash, secretos, reloj,
+        var cuenta = ArmadoDeCuentaReal.Crear(
+            ctx, hash, secretos, reloj,
             new ColaNotificacionesEfCore(ctx),
-            auditor,
+            auditor, unidad,
             new ServicioSesion(
                 new RepositorioUsuariosEfCore(ctx),
                 new RepositorioSesionesEfCore(ctx),

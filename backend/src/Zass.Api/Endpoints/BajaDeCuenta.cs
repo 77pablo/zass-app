@@ -9,15 +9,19 @@ namespace Zass.Api.Endpoints;
 /// <summary>
 /// CS-04, API-17: eliminar la cuenta, de punta a punta. Decidido por Pablo el 17-nov-2026:
 ///
-/// 1. **Se pide la contraseña.** Con solo una sesión abierta (un computador compartido) nadie
-///    puede borrar una cuenta ajena para siempre.
-/// 2. **Las citas futuras se cancelan, y se avisa a la otra parte**, con el mismo
+/// 1. **Se pide la contraseña, y el código si la cuenta tiene la verificación en dos pasos.** Con
+///    solo una sesión abierta (un computador compartido) nadie puede borrar una cuenta ajena para
+///    siempre. Los fallos suman al bloqueo por intentos del inicio de sesión (auditoría H2).
+/// 2. **La ficha se despublica primero** (auditoría H3), para que nadie agende mientras se cancelan
+///    las citas. **Las citas futuras se cancelan, y se avisa a la otra parte**, con el mismo
 ///    <see cref="IServicioAgenda.CancelarAsync"/> de siempre: libera la hora, anula los
 ///    recordatorios y manda el aviso. Las pasadas quedan en el historial.
 /// 3. Recién entonces se anonimiza la cuenta (<see cref="ServicioCuenta.EliminarAsync"/>), que
 ///    en la MISMA transacción termina la suscripción, sin reembolso: la cancela, olvida el medio
 ///    de pago inscrito para que el cobro automático no tenga contra qué cobrar y libera el cupo
-///    fundador (<see cref="IServicioSuscripciones.TerminarPorCuentaEliminadaAsync"/>, PR #211).
+///    fundador (<see cref="IServicioSuscripciones.TerminarPorCuentaEliminadaAsync"/>, PR #211), y
+///    borra los datos personales de la ficha, las fotos, los documentos y los navegadores con push
+///    (<see cref="ServicioBorradoDeDatos"/>, Ley 21.719).
 ///
 /// Vive en la API, y no en un módulo de la aplicación, porque coordina tres módulos (Identidad,
 /// Agenda y Suscripciones). Identidad es la base de la que dependen los demás, y llamar desde ahí
@@ -42,10 +46,13 @@ public sealed class BajaDeCuenta(
     public const string MotivoDeCancelacion = "Esta persona eliminó su cuenta en ZASS!.";
 
     public async Task<Resultado> EjecutarAsync(
-        Guid usuarioId, string contrasena, string? ip, CancellationToken ct = default)
+        Guid usuarioId, string contrasena, string? codigo, string? ip, CancellationToken ct = default)
     {
-        var verificada = await cuenta.VerificarContrasenaAsync(usuarioId, contrasena, ct);
+        var verificada = await cuenta.ConfirmarBajaAsync(usuarioId, contrasena, codigo, ip, ct);
         if (!verificada.Exito) return verificada;
+
+        var despublicada = await cuenta.DespublicarParaBajaAsync(usuarioId, ct);
+        if (!despublicada.Exito) return despublicada;
 
         var mio = await perfiles.MiPerfilPrestadorAsync(usuarioId, ct);
         Guid? perfilId = mio.Exito ? mio.Valor!.Id : null;

@@ -60,6 +60,16 @@ public interface IServicioCredenciales
     Task<Resultado> QuitarDocumentoAsync(
         Guid perfilPrestadorId, Guid credencialId, Guid documentoId, CancellationToken ct = default);
 
+    /// <summary>
+    /// CS-04 (Ley 21.719). Prepara lo que la baja de la cuenta debe hacer con las credenciales del
+    /// perfil, SIN guardar: marca para borrar todas las filas de documentos, deja las credenciales
+    /// (con su estado, para la auditoría de la verificación) sin nombre ni entidad ligados a la
+    /// persona, y devuelve las claves de los archivos. Quien lo llama guarda en SU transacción y
+    /// borra los archivos DESPUÉS de que la base confirme.
+    /// </summary>
+    Task<IReadOnlyList<string>> PrepararBajaDeCuentaAsync(
+        Guid perfilPrestadorId, CancellationToken ct = default);
+
     /// <summary>Abre un documento propio para verlo. Solo su dueño; para el Verificador, ver IServicioVerificacion.</summary>
     Task<Resultado<DocumentoParaVer>> AbrirDocumentoAsync(
         Guid perfilPrestadorId, Guid credencialId, Guid documentoId, CancellationToken ct = default);

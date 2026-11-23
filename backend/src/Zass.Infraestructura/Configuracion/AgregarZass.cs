@@ -322,6 +322,7 @@ public static class RegistroDeServicios
         servicios.AddScoped<ServicioCuentasSinVerificar>();
         servicios.AddScoped<ServicioSesion>();
         servicios.AddScoped<ServicioMfa>();
+        servicios.AddScoped<ServicioBorradoDeDatos>();   // CS-04: lo que la baja borra de verdad
         servicios.AddScoped<ServicioCuenta>();
         servicios.AddScoped<ServicioPerfiles>();
 

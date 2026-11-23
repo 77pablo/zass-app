@@ -135,8 +135,10 @@ export function Privacidad() {
           <li>Los de tu cuenta, mientras la tengas.</li>
           <li>
             Si pides eliminarla: reemplazamos tu nombre y tu correo, borramos tu contraseña y tu verificación en dos pasos, cerramos tus
-            sesiones y despublicamos tu ficha. La cuenta queda como «usuario eliminado» para mantener la
-            coherencia del historial de otras personas.
+            sesiones y los avisos push de tus navegadores. Si tenías una ficha de prestador, borramos tu foto, las fotos de tus
+            trabajos y los documentos de tus credenciales, y dejamos la ficha sin descripción, teléfono, correo, dirección ni
+            ubicación, y sin que se pueda abrir. La cuenta queda como «usuario eliminado» para mantener la coherencia del
+            historial de otras personas (por ejemplo, las reseñas que escribiste).
           </li>
           <li>Los enlaces para confirmar el correo vencen a las 24 horas, y los de recuperar la contraseña, a la hora.</li>
           <li>

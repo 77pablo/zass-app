@@ -168,6 +168,12 @@ public class AvisosPushPruebas
             return Task.FromResult(HabiaAlgo);
         }
 
+        public Task BorrarTodasDeUsuarioAsync(Guid u, CancellationToken ct = default)
+        {
+            Llamadas.Add("borrar todas");
+            return Task.CompletedTask;
+        }
+
         public Task<int> EncolarGemelasPendientesAsync(Guid u, CancellationToken ct = default)
         {
             Llamadas.Add("gemelas");

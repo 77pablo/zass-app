@@ -314,7 +314,7 @@ public class ApiEliminarCuentaPruebas : IAsyncLifetime
         var r = await EliminarAsync(_comoPrestador, new { contrasena = "no-era-esta-para-nada" });
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, r.StatusCode);
-        Assert.Contains("La contraseña no es correcta.", await r.Content.ReadAsStringAsync());
+        Assert.Contains("La contraseña o el código no corresponden.", await r.Content.ReadAsStringAsync());
         using var ctx = ContextoDePrueba.Crear();
         Assert.NotEqual(EstadoCita.Cancelada, (await ctx.Citas.SingleAsync(c => c.Id == futura)).Estado);
         Assert.Equal(EstadoSuscripcion.Activa, (await ctx.Suscripciones.SingleAsync(s => s.Id == _suscripcion)).Estado);
