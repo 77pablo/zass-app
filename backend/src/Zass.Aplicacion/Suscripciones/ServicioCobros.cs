@@ -1014,7 +1014,6 @@ public sealed class ServicioCobros : IServicioCobros
                 }
             }
 
-            intento.MarcarPagado(_reloj.Ahora);
             if (r.ReferenciaPasarela is not null) intento.ReferenciaPasarela = r.ReferenciaPasarela;
 
             // RN-S7-01: una INSCRIPCION no extiende un mes pagado ni crea fila de pago,
@@ -1022,11 +1021,29 @@ public sealed class ServicioCobros : IServicioCobros
             // arriba) y arrancar el mes gratis.
             if (intento.Tipo == TipoDeIntento.Inscripcion)
             {
-
+                // Antes de marcar el intento como pagado: si la regla del mes gratis lo rechaza
+                // (quien ya pago otro plan), el intento tiene que poder quedar fallido.
                 var cambio = await _suscripciones.PasarAFundadorConMesGratisAsync(
                     intento.SuscripcionId, intento.ReferenciaPasarela, t);
                 if (!cambio.Exito)
-                    return Resultado.Falla<ConfirmacionDto>(cambio.Codigo!, cambio.Mensaje!);
+                {
+                    // Igual que «inscripcion_sin_cupo»: el cupo (que se confirmo unas lineas
+                    // antes) se suelta, el intento queda fallido con su motivo y la pantalla lo
+                    // cuenta con calma. Exito del caso de uso, para que la pasarela no reintente.
+                    await _suscripciones.LiberarCupoFundadorAsync(intento.PerfilPrestadorId, t);
+                    var motivo = cambio.Mensaje ?? "No se pudo confirmar la inscripción.";
+                    intento.MarcarFallido(_reloj.Ahora, motivo);
+                    _auditor.Registrar(Auditar.Entrada(
+                        "inscripcion_rechazada_mes_gratis", "intentos_de_pago", intento.Id,
+                        _reloj.Ahora, contexto: new { perfil = intento.PerfilPrestadorId }));
+                    await _trabajo.GuardarAsync(t);
+
+                    return Resultado.Ok(new ConfirmacionDto(
+                        intento.Id, Aprobado: false, intento.Estado.ToString(), null,
+                        motivo + " No se cobró nada.", Nueva: true));
+                }
+
+                intento.MarcarPagado(_reloj.Ahora);
 
                 _auditor.Registrar(Auditar.Entrada(
                     "inscripcion_fundador_confirmada", "intentos_de_pago", intento.Id,
@@ -1039,6 +1056,8 @@ public sealed class ServicioCobros : IServicioCobros
                     "Tu cupo de fundador quedó confirmado y tu mes gratis empezó a correr.",
                     Nueva: true));
             }
+
+            intento.MarcarPagado(_reloj.Ahora);
 
             // El llamador que faltaba. Toda la regla de vigencia sigue viviendo alli y no
             // aqui: quien paga el dia 25 de un mes de 30 no pierde los 5 que le quedaban.
