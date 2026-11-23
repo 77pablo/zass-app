@@ -208,6 +208,11 @@ public sealed class AlmacenApagado : IAlmacenDeArchivos
         => Task.FromResult(Resultado.Falla(Fallas.AlmacenamientoNoDisponible, "Almacenamiento deshabilitado en pruebas."));
     public Task<ArchivoAbierto?> AbrirAsync(string clave, CancellationToken ct = default) => Task.FromResult<ArchivoAbierto?>(null);
     public Task<Resultado> BorrarAsync(string clave, CancellationToken ct = default) => Task.FromResult(Resultado.Ok());
+    public async IAsyncEnumerable<ArchivoListado> ListarAsync(string prefijo, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await Task.CompletedTask;
+        yield break;
+    }
 }
 
 /// <summary>Doble de IProcesadorDeImagenes que devuelve la imagen sin tocar.</summary>

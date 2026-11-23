@@ -55,6 +55,12 @@ public sealed class AlmacenQueRecuerda(BaseEnMemoria baseEnMemoria) : IAlmacenDe
             ? Resultado.Falla(Fallas.AlmacenamientoNoDisponible, "no contesto")
             : Resultado.Ok());
     }
+
+    public async IAsyncEnumerable<ArchivoListado> ListarAsync(string prefijo, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await Task.CompletedTask;
+        yield break;
+    }
 }
 
 /// <summary>Un registro que guarda lo que se le escribe, para comprobar que un error quedo anotado.</summary>
