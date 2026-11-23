@@ -228,6 +228,31 @@ public class PerfilPrestador
         ActualizadoEn = DateTime.UtcNow;
     }
 
+    /// <summary>
+    /// CS-04 (Ley 21.719): lo que se hace con la ficha cuando su dueño elimina la cuenta. La fila
+    /// NO se borra, porque citas, reseñas y auditoría la referencian, pero queda sin ningún dato de
+    /// la persona: nombre, descripción, foto, contactos públicos, dirección, coordenadas, comuna
+    /// (la cobertura) y hasta el slug, que se arma con el nombre. Queda despublicada, así que la
+    /// ficha pública responde como una que no existe. Los servicios del catálogo, el rubro y los
+    /// promedios de reseñas no son datos personales y se quedan.
+    /// </summary>
+    public void BorrarDatosPersonales()
+    {
+        Despublicar();
+        Slug = "eliminado-" + Id.ToString("N");
+        NombrePublico = "Perfil eliminado";
+        Descripcion = null;
+        UrlFoto = null;
+        DireccionCifrada = null;
+        Latitud = null;
+        Longitud = null;
+        TelefonoPublico = null;
+        CorreoPublico = null;
+        Whatsapp = null;
+        SitioWeb = null;
+        Cobertura.Clear();
+    }
+
     /// <summary>RN-S5-11: con menos de 3 resenas se muestra el recuento, no el promedio.</summary>
     public bool PromedioVisible() => TotalResenas >= 3;
 }

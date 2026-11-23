@@ -21,8 +21,11 @@ public sealed record PedirRecuperacionCmd(string Correo);
 public sealed record ReenviarVerificacionCmd(string Correo);
 public sealed record CambiarContrasenaCmd(string ContrasenaActual, string ContrasenaNueva);
 
-/// <summary>API-17. La contraseña, para confirmar que es el dueño quien pide la baja (CS-04).</summary>
-public sealed record EliminarCuentaCmd(string Contrasena);
+/// <summary>
+/// API-17. La contraseña, para confirmar que es el dueño quien pide la baja (CS-04), y el código de
+/// la verificación en dos pasos (TOTP o de respaldo) si la cuenta la tiene activa.
+/// </summary>
+public sealed record EliminarCuentaCmd(string Contrasena, string? Codigo = null);
 
 /// <summary>
 /// API-08 a API-23. Los identificadores del documento van en el nombre de cada ruta
@@ -222,7 +225,7 @@ public static class EndpointsIdentidad
                 if (usuarioId is null) return Results.Unauthorized();
 
                 var baja = new BajaDeCuenta(cuenta, perfiles, agenda, reloj);
-                var r = await baja.EjecutarAsync(usuarioId.Value, cmd.Contrasena, Ip(http));
+                var r = await baja.EjecutarAsync(usuarioId.Value, cmd.Contrasena, cmd.Codigo, Ip(http));
                 if (!r.Exito) return Respuestas.Problema(r);
 
                 await CerrarCookiesAsync(http);
@@ -282,7 +285,7 @@ public static class EndpointsIdentidad
 
                 return Respuestas.DeResultado(await servicio.CambiarContrasenaAsync(
                     usuarioId.Value, cmd.ContrasenaActual, cmd.ContrasenaNueva,
-                    http.Request.Cookies[ConfiguracionDeSeguridad.CookieRefresco]));
+                    http.Request.Cookies[ConfiguracionDeSeguridad.CookieRefresco], Ip(http)));
             })
             .ConValidacion<CambiarContrasenaCmd>()
             .RequireRateLimiting(Tasa.General)
@@ -312,14 +315,15 @@ public static class EndpointsIdentidad
             .RequireRateLimiting(Tasa.Autenticacion)
             .WithName("API-81");
 
-        // API-82 - Confirma el alta con un codigo y devuelve los 10 codigos de respaldo (una vez).
+        // API-82 - Confirma el alta con la contrasena y un codigo, y devuelve los 10 codigos de respaldo (una vez).
         grupo.MapPost("/mfa/confirmar", async (
                 ConfirmarMfaCmd cmd, ServicioMfa servicio, HttpContext http, ClaimsPrincipal quien) =>
             {
                 var usuarioId = quien.UsuarioId();
                 return usuarioId is null
                     ? Results.Unauthorized()
-                    : Respuestas.DeResultado(await servicio.ConfirmarAltaAsync(usuarioId.Value, cmd, Ip(http)));
+                    : Respuestas.DeResultado(await servicio.ConfirmarAltaAsync(
+                        usuarioId.Value, cmd, Ip(http), http.Request.Cookies[ConfiguracionDeSeguridad.CookieRefresco]));
             })
             .ConValidacion<ConfirmarMfaCmd>()
             .RequireRateLimiting(Tasa.Autenticacion)
@@ -332,7 +336,8 @@ public static class EndpointsIdentidad
                 var usuarioId = quien.UsuarioId();
                 return usuarioId is null
                     ? Results.Unauthorized()
-                    : Respuestas.DeResultado(await servicio.DesactivarAsync(usuarioId.Value, cmd, Ip(http)));
+                    : Respuestas.DeResultado(await servicio.DesactivarAsync(
+                        usuarioId.Value, cmd, Ip(http), http.Request.Cookies[ConfiguracionDeSeguridad.CookieRefresco]));
             })
             .ConValidacion<DesactivarMfaCmd>()
             .RequireRateLimiting(Tasa.Autenticacion)
@@ -345,7 +350,8 @@ public static class EndpointsIdentidad
                 var usuarioId = quien.UsuarioId();
                 return usuarioId is null
                     ? Results.Unauthorized()
-                    : Respuestas.DeResultado(await servicio.RegenerarCodigosAsync(usuarioId.Value, cmd, Ip(http)));
+                    : Respuestas.DeResultado(await servicio.RegenerarCodigosAsync(
+                        usuarioId.Value, cmd, Ip(http), http.Request.Cookies[ConfiguracionDeSeguridad.CookieRefresco]));
             })
             .ConValidacion<RegenerarCodigosMfaCmd>()
             .RequireRateLimiting(Tasa.Autenticacion)

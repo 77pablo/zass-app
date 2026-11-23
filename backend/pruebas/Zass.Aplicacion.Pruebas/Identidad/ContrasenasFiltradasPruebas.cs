@@ -46,7 +46,7 @@ public class ContrasenasFiltradasPruebas
         var sesiones = new RepositorioSesionesEnMemoria(_base);
 
         var registro = new ServicioRegistro(usuarios, perfiles, _base, _hash, _secretos, _reloj, _cola, _auditoria, filtradas);
-        var cuenta = new ServicioCuenta(usuarios, perfiles, _base, _hash, _secretos, _reloj, _cola, _auditoria, new ServicioSesion(usuarios, sesiones, _base, _hash, _secretos, _reloj, _auditoria), filtradas);
+        var cuenta = ArmadoDeCuenta.Cuenta(_base, _hash, _secretos, _reloj, _cola, _auditoria, new ServicioSesion(usuarios, sesiones, _base, _hash, _secretos, _reloj, _auditoria), filtradas);
 
         // Registrar con contrasena NO filtrada
         await registro.RegistrarAsync(new RegistrarCuentaCmd("pablo@correo.cl", "contrasena-larga-1", "Pablo", "buscador"));
@@ -77,7 +77,7 @@ public class ContrasenasFiltradasPruebas
 
         var registro = new ServicioRegistro(usuarios, perfiles, _base, _hash, _secretos, _reloj, _cola, _auditoria, filtradas);
         var sesionSvc = new ServicioSesion(usuarios, sesiones, _base, _hash, _secretos, _reloj, _auditoria);
-        var cuenta = new ServicioCuenta(usuarios, perfiles, _base, _hash, _secretos, _reloj, _cola, _auditoria, sesionSvc, filtradas);
+        var cuenta = ArmadoDeCuenta.Cuenta(_base, _hash, _secretos, _reloj, _cola, _auditoria, sesionSvc, filtradas);
 
         // Registrar e iniciar sesion con contrasena NO filtrada
         await registro.RegistrarAsync(new RegistrarCuentaCmd("pablo@correo.cl", "contrasena-larga-1", "Pablo", "buscador"));
@@ -122,7 +122,7 @@ public class ContrasenasFiltradasPruebas
         var sesiones = new RepositorioSesionesEnMemoria(_base);
 
         var registro = new ServicioRegistro(usuarios, perfiles, _base, _hash, _secretos, _reloj, _cola, _auditoria, filtradas);
-        var cuenta = new ServicioCuenta(usuarios, perfiles, _base, _hash, _secretos, _reloj, _cola, _auditoria, new ServicioSesion(usuarios, sesiones, _base, _hash, _secretos, _reloj, _auditoria), filtradas);
+        var cuenta = ArmadoDeCuenta.Cuenta(_base, _hash, _secretos, _reloj, _cola, _auditoria, new ServicioSesion(usuarios, sesiones, _base, _hash, _secretos, _reloj, _auditoria), filtradas);
 
         await registro.RegistrarAsync(new RegistrarCuentaCmd("pablo@correo.cl", "contrasena-larga-1", "Pablo", "buscador"));
         await cuenta.PedirRecuperacionAsync("pablo@correo.cl");
@@ -144,7 +144,7 @@ public class ContrasenasFiltradasPruebas
 
         var registro = new ServicioRegistro(usuarios, perfiles, _base, _hash, _secretos, _reloj, _cola, _auditoria, filtradas);
         var sesionSvc = new ServicioSesion(usuarios, sesiones, _base, _hash, _secretos, _reloj, _auditoria);
-        var cuenta = new ServicioCuenta(usuarios, perfiles, _base, _hash, _secretos, _reloj, _cola, _auditoria, sesionSvc, filtradas);
+        var cuenta = ArmadoDeCuenta.Cuenta(_base, _hash, _secretos, _reloj, _cola, _auditoria, sesionSvc, filtradas);
 
         await registro.RegistrarAsync(new RegistrarCuentaCmd("pablo@correo.cl", "contrasena-larga-1", "Pablo", "buscador"));
         var id = _base.Usuarios.Single().Id;

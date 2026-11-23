@@ -25,6 +25,13 @@ public interface IRepositorioPush
     Task<bool> BorrarAsync(Guid usuarioId, string endpoint, CancellationToken ct = default);
 
     /// <summary>
+    /// CS-04. Marca para borrar TODOS los navegadores de esta persona (el endpoint es una URL con la
+    /// que se le pueden mandar avisos, y las claves son suyas). No guarda: lo hace la unidad de
+    /// trabajo de quien lo pide, en la misma transaccion de la baja.
+    /// </summary>
+    Task BorrarTodasDeUsuarioAsync(Guid usuarioId, CancellationToken ct = default);
+
+    /// <summary>
     /// Crea la gemela de push de los avisos de esta persona que AUN esperan en la cola de correo
     /// (por ejemplo, un recordatorio ya programado). Asi activar el push no deja fuera lo que se
     /// encolo justo antes. Si la gemela ya existe no hace nada (la clave es unica). Los avisos que

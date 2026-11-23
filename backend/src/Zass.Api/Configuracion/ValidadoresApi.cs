@@ -55,10 +55,16 @@ public sealed class ValidadorCambiarContrasena : AbstractValidator<CambiarContra
 /// </summary>
 public sealed class ValidadorEliminarCuenta : AbstractValidator<EliminarCuentaCmd>
 {
-    public ValidadorEliminarCuenta() =>
+    public ValidadorEliminarCuenta()
+    {
         RuleFor(x => x.Contrasena)
             .NotEmpty().WithMessage("Escribe tu contraseña para confirmar.")
             .MaximumLength(Limites.ContrasenaMaxima);
+
+        // El codigo es opcional: solo lo pide la baja de una cuenta con la verificacion en dos pasos
+        // (si falta, el caso de uso responde el fallo neutro). Aqui solo se acota su tamaño.
+        RuleFor(x => x.Codigo).MaximumLength(20);
+    }
 }
 
 /// <summary>
