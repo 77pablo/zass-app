@@ -379,6 +379,9 @@ public static class RegistroDeServicios
         servicios.AddSingleton<IProcesadorDeImagenes, ProcesadorDeImagenesImageSharp>();
         servicios.AddSingleton<IAlmacenDeArchivos>(sp => ElegirAlmacen(sp));
         servicios.AddScoped<ServicioFotoDePerfil>();
+        // Auditoria 22-nov-2026: el barrido de huerfanos lo corre el planificador.
+        servicios.AddScoped<IRepositorioClavesDeArchivos, RepositorioClavesDeArchivosEfCore>();
+        servicios.AddScoped<ServicioBarridoDeArchivos>();
         servicios.AddScoped<IServicioFotosDeTrabajo, ServicioFotosDeTrabajo>();
 
         // --- MOD-03 Catalogo ---

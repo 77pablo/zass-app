@@ -34,7 +34,17 @@ public interface IAlmacenDeArchivos
     /// falla solo si el almacenamiento no contesto, y entonces el archivo puede quedar huerfano.
     /// </summary>
     Task<Resultado> BorrarAsync(string clave, CancellationToken ct = default);
+
+    /// <summary>
+    /// Lista lo que hay guardado bajo ese prefijo (por ejemplo «fotos/»), con la fecha de la última
+    /// modificación de cada archivo. Es lo que necesita el barrido de huérfanos: los archivos que
+    /// quedaron guardados pero ninguna fila de la base referencia. Pagina por dentro.
+    /// </summary>
+    IAsyncEnumerable<ArchivoListado> ListarAsync(string prefijo, CancellationToken ct = default);
 }
+
+/// <summary>Un archivo del almacenamiento: su clave y cuándo se modificó por última vez (UTC).</summary>
+public sealed record ArchivoListado(string Clave, DateTime UltimaModificacionUtc);
 
 /// <summary>Los dos tamaños de una foto de perfil, ya en WebP.</summary>
 public sealed record FotoPreparada(byte[] Grande, byte[] Chica);

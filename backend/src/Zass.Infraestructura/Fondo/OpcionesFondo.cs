@@ -48,4 +48,16 @@ public sealed class OpcionesFondo
     /// por algo pasajero conviene reintentar hoy, no mañana.
     /// </summary>
     public int EsperaTrasFalloMinutos { get; set; } = 30;
+
+    /// <summary>Cada cuántas horas corre el barrido de archivos huérfanos (auditoría 22-nov-2026).</summary>
+    public int BarridoDeArchivosCadaHoras { get; set; } = 24;
+
+    /// <summary>
+    /// Cuánto tiene que tener un archivo sin fila para contarse como huérfano. Cubre la ventana de
+    /// una subida a medio camino entre guardar el archivo y escribir la fila: nunca menos de una hora.
+    /// </summary>
+    public int BarridoDeArchivosMargenHoras { get; set; } = 24;
+
+    /// <summary>Lo máximo que una corrida intenta borrar. Si lo alcanza, lo registra y corta.</summary>
+    public int BarridoDeArchivosTopePorCorrida { get; set; } = 500;
 }

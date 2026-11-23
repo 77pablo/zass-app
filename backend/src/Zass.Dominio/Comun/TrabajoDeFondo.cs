@@ -59,4 +59,10 @@ public static class Trabajos
     /// desde su creacion, para que no retengan un RUT o un correo ajeno para siempre.
     /// </summary>
     public const string CuentasSinVerificar = "cuentas-sin-verificar";
+
+    /// <summary>
+    /// Auditoria 22-nov-2026: borrar los archivos huerfanos del almacenamiento (guardados pero sin
+    /// ninguna fila que los referencie).
+    /// </summary>
+    public const string ArchivosHuerfanos = "archivos-huerfanos";
 }
