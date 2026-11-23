@@ -731,7 +731,7 @@ public class CuentaPruebas
             _reloj, _auditoria, _sesiones, _cola);
         var alta = await mfa.IniciarAltaAsync(id);
         var codigos = (await mfa.ConfirmarAltaAsync(id, new ConfirmarMfaCmd(
-            Totp.Codigo(alta.Valor!.Secreto, Totp.PasoDe(_reloj.Ahora))))).Valor!.Codigos;
+            Clave, Totp.Codigo(alta.Valor!.Secreto, Totp.PasoDe(_reloj.Ahora))))).Valor!.Codigos;
         _reloj.Avanzar(TimeSpan.FromSeconds(60));
 
         var r = await _cuenta.ConfirmarBajaAsync(id, Clave, codigos[0]);
