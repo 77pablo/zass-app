@@ -151,4 +151,17 @@ public class MensajesPushPruebas
         Assert.True(new ValidadorOpcionesPush().Validate(null, o).Succeeded);
         Assert.True(o.Activo);
     }
+
+    // JQ-16 (decision de Pablo, 22-nov): el aviso del borrador tambien va por push. Dice HASTA
+    // CUANDO, pero no el nombre de la credencial (lo escribio el prestador y se lee bloqueado).
+    [Fact]
+    public void El_borrador_por_eliminarse_dice_la_fecha_y_no_el_nombre()
+    {
+        var m = MensajesPush.Para(TipoNotificacion.BorradorPorEliminarse,
+            CargaDeAviso.ConCampos(("credencial", "Título secreto"), ("borrarEl", "2026-12-07")), null)!;
+        Assert.Contains("7 de diciembre", m.Cuerpo);
+        Assert.DoesNotContain("secreto", m.Titulo + m.Cuerpo, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("/mi-ficha", m.Ruta);
+        Assert.True(AvisosPush.AdmitePush(TipoNotificacion.BorradorPorEliminarse));
+    }
 }

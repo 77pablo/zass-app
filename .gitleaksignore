@@ -27,3 +27,9 @@ ad047446a534de8f9300a5c309fe55a5a5c1eddf:backend/pruebas/Zass.Integracion.Prueba
 # MFA (rama p/mfa): vector de prueba público del RFC 6238 y un secreto inventado de una prueba de pantalla
 0e58dc4093102b0541b38b2a1978f8195b7bb2bb:backend/pruebas/Zass.Aplicacion.Pruebas/Identidad/MfaPruebas.cs:generic-api-key:12
 ca75dca724c830f4a964fcd126f019174cb729de:frontend/src/paginas/MiSeguridad.prueba.tsx:generic-api-key:43
+
+# PR #220 (baja borra datos), commit 08d5b1e: falsos positivos de generic-api-key.
+# ServicioBorradoDeDatos.cs:20 es el texto «API-72-quitar» de un comentario; CuentaPruebas.cs:478 es el
+# secreto TOTP de prueba del RFC 6238 (base32 de «12345678901234567890»), igual que los del #215.
+08d5b1e9c1ae4a7369161b7df4ab7d7d1f48d56d:backend/src/Zass.Aplicacion/Identidad/ServicioBorradoDeDatos.cs:generic-api-key:20
+08d5b1e9c1ae4a7369161b7df4ab7d7d1f48d56d:backend/pruebas/Zass.Aplicacion.Pruebas/Identidad/CuentaPruebas.cs:generic-api-key:478
