@@ -5977,6 +5977,14 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasColumnType("character varying(12)")
                         .HasColumnName("rut");
 
+                    b.Property<string>("SelloSeguridad")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("00000000000000000000000000000000")
+                        .HasColumnName("sello_seguridad");
+
                     b.Property<string>("Telefono")
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")

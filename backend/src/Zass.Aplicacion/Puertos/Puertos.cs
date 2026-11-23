@@ -171,8 +171,17 @@ public interface IContrasenasFiltradas
     Task<bool> EstaFiltradaAsync(string contrasena, CancellationToken ct = default);
 }
 
+/// <summary>Lo unico que la validacion de la cookie necesita de la cuenta: el sello y si sigue en pie.</summary>
+public sealed record SelloDeCuenta(string Sello, EstadoCuenta Estado);
+
 public interface IRepositorioUsuarios
 {
+    /// <summary>
+    /// El sello de seguridad y el estado de la cuenta, o nulo si no existe. Una lectura por clave
+    /// primaria que trae solo esas dos columnas (sin roles): la hace CADA peticion autenticada.
+    /// </summary>
+    Task<SelloDeCuenta?> SelloDeAsync(Guid id, CancellationToken ct = default);
+
     Task<Usuario?> PorIdAsync(Guid id, CancellationToken ct = default);
     Task<Usuario?> PorCorreoAsync(string correo, CancellationToken ct = default);
     Task<Usuario?> PorTokenVerificacionAsync(string hashToken, CancellationToken ct = default);

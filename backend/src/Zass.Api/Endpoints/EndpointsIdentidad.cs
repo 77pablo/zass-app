@@ -133,7 +133,8 @@ public static class EndpointsIdentidad
                 var usuarioId = quien.UsuarioId();
                 if (usuarioId is null) return Results.Unauthorized();
 
-                await servicio.RevocarTodasAsync(usuarioId.Value);
+                // Cierra TODAS las sesiones: tambien corta las cookies de acceso de los demas aparatos.
+                await servicio.RevocarTodasAsync(usuarioId.Value, cortarAcceso: true);
                 await CerrarCookiesAsync(http);
                 return Results.NoContent();
             })
@@ -741,6 +742,8 @@ public static class EndpointsIdentidad
             CookieAuthenticationDefaults.AuthenticationScheme);
         identidad.AddClaim(new Claim(ClaimTypes.NameIdentifier, sesion.UsuarioId.ToString()));
         foreach (var rol in sesion.Roles) identidad.AddClaim(new Claim(ClaimTypes.Role, rol));
+        // El sello de seguridad: en cada peticion se compara con el de la base (ver Seguridad.cs).
+        identidad.AddClaim(new Claim(ConfiguracionDeSeguridad.ClaimSello, sesion.SelloSeguridad));
 
         await http.SignInAsync(
             CookieAuthenticationDefaults.AuthenticationScheme,

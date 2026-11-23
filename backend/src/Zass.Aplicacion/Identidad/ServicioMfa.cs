@@ -200,6 +200,9 @@ public sealed class ServicioMfa
             ProgramadaPara = ahora,
         });
 
+        // Corta tambien las cookies de acceso ya emitidas (sello de seguridad), la de este aparato
+        // incluida: quien toca el MFA vuelve a entrar.
+        usuario.RenovarSelloSeguridad();
         await _unidad.GuardarAsync(ct);
         await _sesion.RevocarTodasAsync(usuario.Id, sesionActual, ct);
         return Resultado.Ok(new CodigosDeRespaldoDto(codigos));
@@ -241,6 +244,9 @@ public sealed class ServicioMfa
             "mfa_codigos_regenerados", "usuario", usuario.Id, ahora, actorId: usuario.Id,
             contexto: new { con = aceptado == CodigoAceptado.Totp ? "totp" : "respaldo" }, ip: ip));
 
+        // Corta tambien las cookies de acceso ya emitidas (sello de seguridad), la de este aparato
+        // incluida: quien toca el MFA vuelve a entrar.
+        usuario.RenovarSelloSeguridad();
         await _unidad.GuardarAsync(ct);
         await _sesion.RevocarTodasAsync(usuario.Id, sesionActual, ct);
         return Resultado.Ok(new CodigosDeRespaldoDto(codigos));
@@ -277,6 +283,9 @@ public sealed class ServicioMfa
             "mfa_desactivado", "usuario", usuario.Id, ahora, actorId: usuario.Id,
             contexto: new { con = aceptado == CodigoAceptado.Totp ? "totp" : "respaldo" }, ip: ip));
 
+        // Corta tambien las cookies de acceso ya emitidas (sello de seguridad), la de este aparato
+        // incluida: quien toca el MFA vuelve a entrar.
+        usuario.RenovarSelloSeguridad();
         await _unidad.GuardarAsync(ct);
         await _sesion.RevocarTodasAsync(usuario.Id, sesionActual, ct);
         return Resultado.Ok();

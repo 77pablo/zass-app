@@ -159,6 +159,10 @@ public class ZassDbContext : DbContext
             // MFA (22-nov-2026). El desafio se busca por su hash en el segundo paso.
             e.Property(x => x.MfaDesafioHash).HasMaxLength(64);
             e.HasIndex(x => x.MfaDesafioHash).HasFilter("mfa_desafio_hash IS NOT NULL");
+            // Sello de seguridad (22-nov-2026): GUID «N» de 32 caracteres. El valor por defecto de la
+            // columna solo cubre las filas que ya existian; las nuevas lo traen desde el dominio.
+            e.Property(x => x.SelloSeguridad).HasMaxLength(32)
+                .HasDefaultValue("00000000000000000000000000000000");
         });
 
         b.Entity<Rol>(e =>

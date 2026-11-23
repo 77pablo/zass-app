@@ -1,6 +1,10 @@
 ﻿using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.RateLimiting;
+using Zass.Aplicacion.Identidad;
+using Zass.Aplicacion.Puertos;
+using Zass.Dominio.Comun;
 
 namespace Zass.Api.Configuracion;
 
@@ -40,6 +44,12 @@ public static class Politicas
 public static class ConfiguracionDeSeguridad
 {
     public const string CookieAcceso = "zass_sesion";
+
+    /// <summary>
+    /// El claim de la cookie de acceso con el sello de seguridad de la cuenta. Se compara con el de
+    /// la base en cada peticion (<see cref="SelloDeSeguridad"/>).
+    /// </summary>
+    public const string ClaimSello = "sello";
     public const string CookieRefresco = "zass_refresco";
     public const string CabeceraCsrf = "X-CSRF-Token";
 
@@ -163,6 +173,11 @@ public static class ConfiguracionDeSeguridad
                     : CookieSecurePolicy.SameAsRequest;
                 opciones.ExpireTimeSpan = VidaDelAcceso;
                 opciones.SlidingExpiration = false;
+
+                // Sello de seguridad (decision de Pablo, 22-nov-2026): cerrar todas las sesiones,
+                // cambiar la contrasena, tocar el MFA o eliminar la cuenta invalidan al instante la
+                // cookie de acceso, que sin esto valia hasta 15 minutos.
+                opciones.Events.OnValidatePrincipal = SelloDeSeguridad.ValidarAsync;
 
                 // Una API no redirige a una pagina de inicio de sesion: responde 401 y
                 // 403 con cuerpo, y deja que el cliente decida.
@@ -307,4 +322,64 @@ public static class ConfiguracionDeSeguridad
 
             await siguiente();
         });
+}
+
+/// <summary>
+/// Revisa en CADA peticion autenticada que el sello de la cookie siga siendo el de la cuenta.
+///
+/// <para>
+/// Pablo pidio corte inmediato, asi que no hay intervalo de gracia: esto suma UNA lectura por
+/// clave primaria (solo sello y estado, sin roles) por peticion autenticada, igual que ya hace
+/// el rol del panel (<see cref="ManejadorRolVigente"/>).
+/// </para>
+///
+/// <para>
+/// Rechaza (y borra la cookie) si la cookie no trae el id o el sello (una cookie anterior a este
+/// cambio: obliga a entrar de nuevo, que es lo correcto), si la cuenta no existe, esta eliminada o
+/// el sello no coincide. Si la BASE FALLA no rompe la peticion ni cierra la sesion de todos por un
+/// corte momentaneo: registra el error y deja pasar. La revocacion del refresco sigue siendo la
+/// barrera principal; esto es endurecimiento.
+/// </para>
+/// </summary>
+public static class SelloDeSeguridad
+{
+    public static async Task ValidarAsync(CookieValidatePrincipalContext contexto)
+    {
+        var usuarioId = contexto.Principal?.UsuarioId();
+        var selloCookie = contexto.Principal?.FindFirst(ConfiguracionDeSeguridad.ClaimSello)?.Value;
+        if (usuarioId is null || string.IsNullOrEmpty(selloCookie))
+        {
+            await RechazarAsync(contexto);
+            return;
+        }
+
+        SelloDeCuenta? actual;
+        try
+        {
+            var usuarios = contexto.HttpContext.RequestServices.GetRequiredService<IRepositorioUsuarios>();
+            actual = await usuarios.SelloDeAsync(usuarioId.Value, contexto.HttpContext.RequestAborted);
+        }
+        catch (OperationCanceledException) when (contexto.HttpContext.RequestAborted.IsCancellationRequested)
+        {
+            throw;   // el cliente colgo: nadie espera respuesta
+        }
+        catch (Exception error)
+        {
+            contexto.HttpContext.RequestServices.GetService<ILoggerFactory>()
+                ?.CreateLogger("Zass.SelloDeSeguridad")
+                .LogError(error, "No se pudo leer el sello de seguridad; la peticion sigue (endurecimiento, no barrera).");
+            return;
+        }
+
+        if (actual is null
+            || actual.Estado == EstadoCuenta.Eliminada
+            || !string.Equals(actual.Sello, selloCookie, StringComparison.Ordinal))
+            await RechazarAsync(contexto);
+    }
+
+    private static async Task RechazarAsync(CookieValidatePrincipalContext contexto)
+    {
+        contexto.RejectPrincipal();
+        await contexto.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    }
 }

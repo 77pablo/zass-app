@@ -837,4 +837,79 @@ public class CuentaPruebas
             "HashContrasena",
             dto.GetType().GetProperties().Select(p => p.Name));
     }
+
+    // ------------------------------------------------ sello de seguridad (22-nov-2026)
+
+    [Fact]
+    public async Task Cambiar_la_contrasena_renueva_el_sello_de_seguridad()
+    {
+        var (id, _) = await RegistrarAsync();
+        var antes = _base.Usuarios.Single(u => u.Id == id).SelloSeguridad;
+
+        var r = await _cuenta.CambiarContrasenaAsync(id, Clave, "clave-nueva-larga");
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.NotEqual(antes, _base.Usuarios.Single(u => u.Id == id).SelloSeguridad);
+    }
+
+    [Fact]
+    public async Task Cambiar_la_contrasena_con_la_actual_mala_no_renueva_el_sello()
+    {
+        var (id, _) = await RegistrarAsync();
+        var antes = _base.Usuarios.Single(u => u.Id == id).SelloSeguridad;
+
+        var r = await _cuenta.CambiarContrasenaAsync(id, "no-era-esta", "clave-nueva-larga");
+
+        Assert.False(r.Exito);
+        Assert.Equal(antes, _base.Usuarios.Single(u => u.Id == id).SelloSeguridad);
+    }
+
+    [Fact]
+    public async Task Restablecer_la_contrasena_renueva_el_sello_de_seguridad()
+    {
+        var (id, _) = await RegistrarAsync();
+        var antes = _base.Usuarios.Single(u => u.Id == id).SelloSeguridad;
+        await _cuenta.PedirRecuperacionAsync("pablo@correo.cl");
+        var token = _secretos.Emitidos.Last();
+
+        var r = await _cuenta.RestablecerContrasenaAsync(token, "clave-nueva-larga");
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.NotEqual(antes, _base.Usuarios.Single(u => u.Id == id).SelloSeguridad);
+    }
+
+    [Fact]
+    public async Task Eliminar_la_cuenta_renueva_el_sello_de_seguridad()
+    {
+        var (id, _) = await RegistrarAsync();
+        var antes = _base.Usuarios.Single(u => u.Id == id).SelloSeguridad;
+
+        var r = await _cuenta.EliminarAsync(id);
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.NotEqual(antes, _base.Usuarios.Single(u => u.Id == id).SelloSeguridad);
+    }
+
+    [Fact]
+    public async Task Cerrar_todas_las_sesiones_con_corte_de_acceso_renueva_el_sello_y_sin_el_no()
+    {
+        var (id, _) = await RegistrarAsync();
+        var antes = _base.Usuarios.Single(u => u.Id == id).SelloSeguridad;
+
+        await _sesiones.RevocarTodasAsync(id);
+        Assert.Equal(antes, _base.Usuarios.Single(u => u.Id == id).SelloSeguridad);
+
+        await _sesiones.RevocarTodasAsync(id, cortarAcceso: true);
+        Assert.NotEqual(antes, _base.Usuarios.Single(u => u.Id == id).SelloSeguridad);
+    }
+
+    [Fact]
+    public async Task La_sesion_abierta_lleva_el_sello_vigente_de_la_cuenta()
+    {
+        var (id, _) = await RegistrarAsync();
+
+        var sesion = (await _sesiones.IniciarAsync(new IniciarSesionCmd("pablo@correo.cl", Clave))).Valor!;
+
+        Assert.Equal(_base.Usuarios.Single(u => u.Id == id).SelloSeguridad, sesion.SelloSeguridad);
+    }
 }

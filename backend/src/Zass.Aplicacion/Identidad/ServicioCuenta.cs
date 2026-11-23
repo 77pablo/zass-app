@@ -288,6 +288,8 @@ public sealed class ServicioCuenta
             "restablecer_contrasena", "usuario", usuario.Id, _reloj.Ahora,
             actorId: usuario.Id, ip: ip));
 
+        // Sin perdonar a nadie: tambien se cortan las cookies de acceso que sigan vivas.
+        usuario.RenovarSelloSeguridad();
         await _sesiones.RevocarTodasAsync(usuario.Id, exceptoToken: null, ct);
         await _unidad.GuardarAsync(ct);
         return Resultado.Ok();
@@ -295,7 +297,14 @@ public sealed class ServicioCuenta
 
     /// <summary>
     /// RN-S1-04. Cambiar la contrasena desde una sesion viva revoca las demas y conserva
-    /// la actual: la persona no tiene por que volver a entrar en el aparato que esta usando.
+    /// la sesion de refresco actual: la persona no tiene por que volver a entrar en el aparato que
+    /// esta usando.
+    ///
+    /// Sello de seguridad: se renueva, asi que la cookie de acceso de TODOS los aparatos, tambien
+    /// la de este, deja de servir en la peticion siguiente. Decision: a quien cambia su contrasena se
+    /// le pide entrar de nuevo, igual que a los demas. El «perdon» del refresco (sesionActual) solo
+    /// existe si la cookie de refresco llega a este endpoint; por su Path (/api/auth) por HTTP no
+    /// llega a /api/mi, asi que hoy se revocan todas y la persona vuelve a entrar.
     /// </summary>
     public async Task<Resultado> CambiarContrasenaAsync(
         Guid usuarioId, string contrasenaActual, string contrasenaNueva,
@@ -326,6 +335,7 @@ public sealed class ServicioCuenta
         _auditor.Registrar(Auditar.Entrada(
             "cambiar_contrasena", "usuario", usuario.Id, _reloj.Ahora, actorId: usuario.Id));
 
+        usuario.RenovarSelloSeguridad();
         await _sesiones.RevocarTodasAsync(usuario.Id, sesionActual, ct);
         await _unidad.GuardarAsync(ct);
         return Resultado.Ok();
@@ -414,6 +424,7 @@ public sealed class ServicioCuenta
         _auditor.Registrar(Auditar.Entrada(
             "eliminar_cuenta", "usuario", usuario.Id, _reloj.Ahora, actorId: usuario.Id, ip: ip));
 
+        usuario.RenovarSelloSeguridad();
         await _sesiones.RevocarTodasAsync(usuarioId, exceptoToken: null, ct);
         await _unidad.GuardarAsync(ct);
 
