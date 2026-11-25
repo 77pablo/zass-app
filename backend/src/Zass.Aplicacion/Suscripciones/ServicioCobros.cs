@@ -206,6 +206,13 @@ public sealed class ServicioCobros : IServicioCobros
                 Fallas.Conflicto,
                 "Publica tu perfil antes de pagar: la suscripción nace al publicarlo.");
 
+        // 22-nov-2026: pagar el plan fundador exige un cupo propio, tomado por API-69 (con
+        // captcha). Aqui no se reserva ni se renueva nada (igual que API-76).
+        if (c.Plan.Codigo == ServicioSuscripciones.PlanFundador
+            && MensajeSiFaltaElCupoParaPagar(
+                await _repo.EstadoCupoFundadorDeAsync(cmd.PerfilPrestadorId, ct)) is { } sinCupo)
+            return Resultado.Falla<IntentoDePagoDto>(Fallas.Conflicto, sinCupo);
+
         // RN-S7-08 (22-nov-2026). «Ya canjeo» se mira arriba, pero el canje nace al PAGAR: sin
         // esto se podian abrir dos intentos con el mismo cupon y pagar los dos. Se rechaza el
         // segundo mientras el primero siga Pendiente y reciente. NO se anula el anterior: puede
@@ -228,16 +235,14 @@ public sealed class ServicioCobros : IServicioCobros
             if (await _repo.ClaveDeIntentoUsadaAsync(cmd.ClaveIdempotencia, t))
                 return ClaveAjenaEnCarrera;
 
-            // El cupo fundador se RESERVA al empezar a pagar, no al confirmar: si se
-            // reservara despues, dos personas podrian pagar por el cupo 50 y una se
-            // quedaria sin lo que pago. La reserva dura 25 minutos y, si el pago no
-            // llega, el trabajo diario la suelta.
-            if (c.Plan.Codigo == ServicioSuscripciones.PlanFundador)
-            {
-                var cupo = await _suscripciones.ReservarCupoFundadorAsync(
-                    cmd.PerfilPrestadorId, ct: t);
-                if (!cupo.Exito) return null;
-            }
+            // El cupo fundador YA NO se reserva aqui (22-nov-2026): este endpoint no lleva captcha,
+            // y reservar desde aqui era una puerta para tomar cupos sin el. Solo se paga con un
+            // cupo propio vigente o confirmado, tomado por API-69. Se vuelve a mirar dentro de la
+            // transaccion: entre la lectura de arriba y este punto la reserva pudo vencer.
+            if (c.Plan.Codigo == ServicioSuscripciones.PlanFundador
+                && MensajeSiFaltaElCupoParaPagar(
+                    await _repo.EstadoCupoFundadorDeAsync(cmd.PerfilPrestadorId, t)) is not null)
+                return null;
 
             var nuevo = new IntentoDePago
             {
@@ -273,17 +278,10 @@ public sealed class ServicioCobros : IServicioCobros
 
         if (ReferenceEquals(intento, ClaveAjenaEnCarrera)) return ClaveAjena();
 
-        // Null solo sale de la reserva fallida: alguien se llevo el ultimo cupo entre la
-        // cotizacion y el cobro. Se vuelve a preguntar el estado para contarlo con el
-        // mensaje de cierre, y no con un «no se pudo».
+        // Null solo sale de la comprobacion del cupo dentro de la transaccion: la reserva
+        // vencio o el cupo se libero entre la lectura previa y el cobro.
         if (intento is null)
-        {
-            var estado = await _suscripciones.EstadoDelPlanFundadorAsync(ct);
-            return Resultado.Falla<IntentoDePagoDto>(
-                Fallas.Conflicto,
-                (estado.Valor?.Mensaje ?? "El plan fundador está cerrado.")
-                + " Puedes suscribirte al plan mensual.");
-        }
+            return Resultado.Falla<IntentoDePagoDto>(Fallas.Conflicto, MensajeSinCupoParaPagar);
 
         // Si ya tenia referencia es porque la transaccion devolvio uno de la carrera.
         if (intento.ReferenciaPasarela is not null)
@@ -353,6 +351,18 @@ public sealed class ServicioCobros : IServicioCobros
 
     // -------------------------------------------- Inscripcion del fundador (RN-S7-01)
 
+    private const string MensajeSinCupoParaPagar =
+        "Primero toma tu cupo de fundador. Si tu reserva venció, vuelve a tomarlo.";
+
+    /// <summary>
+    /// Null si la persona puede pagar el plan fundador: tiene el cupo confirmado o una reserva
+    /// vigente. Es la misma regla de API-76, y tampoco renueva nada.
+    /// </summary>
+    private string? MensajeSiFaltaElCupoParaPagar(EstadoCupoFundador? cupo) =>
+        cupo is not null && (cupo.Confirmado || cupo.ReservaVigente(_reloj.Ahora))
+            ? null
+            : MensajeSinCupoParaPagar;
+
     public async Task<Resultado<IntentoDePagoDto>> IniciarInscripcionFundadorAsync(
         Guid perfilPrestadorId, string claveIdempotencia, CancellationToken ct = default)
     {
@@ -401,6 +411,15 @@ public sealed class ServicioCobros : IServicioCobros
                 Fallas.Conflicto,
                 "Tu reserva del cupo de fundador venció antes de inscribir la tarjeta. Vuelve a la "
                 + "página de planes y toma tu cupo otra vez, si todavía quedan.");
+
+        // Una reserva SIN mes gratis (quien ya pagó otro plan, o ya fue fundador y perdió el cupo) es
+        // para PAGAR el plan (API-68). Inscribir la tarjeta la confirmaría sin cobrar nada. El cupo ya
+        // confirmado que cambia de tarjeta sí puede inscribir.
+        if (!cupoPropio.Confirmado
+            && !await _suscripciones.ElCupoTieneMesGratisAsync(perfilPrestadorId, ct))
+            return Resultado.Falla<IntentoDePagoDto>(
+                Fallas.Conflicto,
+                "Tu cupo de fundador es sin mes gratis: el siguiente paso es pagar el plan.");
 
         var intento = await _trabajo.EnTransaccionAsync(async t =>
         {

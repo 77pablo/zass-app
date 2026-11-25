@@ -80,6 +80,9 @@ public class ConfirmarCobroPruebas
     private async Task<IntentoDePago> UnIntentoPendiente(string plan = "mensual", string? cupon = null)
     {
         var perfil = UnPrestadorConSuscripcion();
+        // API-68 ya no reserva el cupo fundador: hay que tomarlo antes (API-69).
+        if (plan == "fundador")
+            Assert.True((await _suscripciones.TomarCupoFundadorAsync(perfil.Id)).Exito);
         var r = await _cobros.IniciarAsync(new IniciarCobroCmd(perfil.Id, plan, cupon, "k1"));
         Assert.True(r.Exito, "El montaje de la prueba fallo al iniciar: " + r.Mensaje);
         return _base.IntentosDePago.Single();

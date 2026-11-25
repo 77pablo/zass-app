@@ -12,7 +12,8 @@ namespace Zass.Api.Configuracion;
 /// </summary>
 public static class ValidacionDeArranque
 {
-    public static IReadOnlyList<string> Validar(IConfiguration configuracion, bool esProductivo)
+    public static IReadOnlyList<string> Validar(
+        IConfiguration configuracion, bool esProductivo, bool exigirSecretoCaptcha = false)
     {
         var problemas = new List<string>();
 
@@ -106,17 +107,17 @@ public static class ValidacionDeArranque
         // (SecretoDeOrigen.Advertencia): exigirlo tumbaría la API antes de que Cloudflare lo mande.
         problemas.AddRange(SecretoDeOrigen.Problemas(configuracion));
 
-        // --- Captcha Turnstile (N3) --- sin secreto se advierte; con una clave de prueba en
-        // producción, no arranca (dejaría pasar a cualquiera).
-        problemas.AddRange(Turnstile.Problemas(configuracion, esProductivo));
+        // --- Captcha Turnstile (N3) --- sin secreto se advierte (y en Production, solo en Production,
+        // no arranca); con una clave de prueba en producción, tampoco (dejaría pasar a cualquiera).
+        problemas.AddRange(Turnstile.Problemas(configuracion, esProductivo, exigirSecretoCaptcha));
 
         return problemas;
     }
 
     /// <summary>Lanza con TODOS los problemas juntos: arreglarlos de a uno es una tarde perdida.</summary>
-    public static void Exigir(IConfiguration configuracion, bool esProductivo)
+    public static void Exigir(IConfiguration configuracion, bool esProductivo, bool exigirSecretoCaptcha = false)
     {
-        var problemas = Validar(configuracion, esProductivo);
+        var problemas = Validar(configuracion, esProductivo, exigirSecretoCaptcha);
         if (problemas.Count == 0) return;
 
         throw new InvalidOperationException(

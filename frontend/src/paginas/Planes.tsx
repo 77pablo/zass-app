@@ -192,6 +192,9 @@ export function Planes() {
   const clave = useRef(crypto.randomUUID()).current
   /** CC-04 para la inscripción de la tarjeta (API-76): otra intención, otra clave. */
   const claveTarjeta = useRef(crypto.randomUUID()).current
+  /** CC-04 para el pago del plan fundador (API-68) de quien no tiene mes gratis. */
+  const clavePago = useRef(crypto.randomUUID()).current
+  const [abriendoPago, setAbriendoPago] = useState(false)
   /** CC-04 para «Contratar»: una clave por plan, generada al montar (y repetida en los reintentos). */
   const clavesDeCobro = useRef<Record<CodigoContratable, string>>({
     [CODIGO_ESENCIAL]: crypto.randomUUID(),
@@ -367,6 +370,30 @@ export function Planes() {
     }
   }
 
+  /**
+   * API-68: lleva a pagar el plan fundador a quien tomó su cupo SIN mes gratis (ya pagó otro plan,
+   * o ya fue fundador y perdió el cupo). El cupo ya es suyo por 30 minutos: aquí no se reserva nada.
+   */
+  async function pagarElPlan() {
+    if (abriendoPago) return
+    setAbriendoPago(true)
+    setErrorAlTomar(null)
+    const fallo = 'No pudimos abrir el pago. Vuelve a intentarlo.'
+    try {
+      const intento = await iniciarCobro(CODIGO_FUNDADOR, clavePago)
+      if (intento.urlParaPagar === null) {
+        setErrorAlTomar(fallo)
+        return
+      }
+      if (intento.urlParaPagar.startsWith('/')) navegar(intento.urlParaPagar)
+      else window.location.assign(intento.urlParaPagar)
+    } catch (e) {
+      setErrorAlTomar(e instanceof ErrorApi ? e.mensaje : fallo)
+    } finally {
+      setAbriendoPago(false)
+    }
+  }
+
   if (cargando) {
     return (
       <article className="pagina pagina--angosta">
@@ -407,7 +434,26 @@ export function Planes() {
             precioFundador={fundador.precioMensual}
           />
           {cerrado && <p className="plan-cerrado">Cerrado: ya no quedan cupos.</p>}
-          {!cerrado && puerta === 'puede' && tomado !== null && tomado.reservadoHasta && (
+          {!cerrado && puerta === 'puede' && tomado !== null && tomado.reservadoHasta && tomado.siguiente === 'pagar' && (
+            <div className="aviso aviso--atencion" role="status">
+              <p>
+                <strong>Tu cupo N° {tomado.numero} está reservado hasta las {hora(tomado.reservadoHasta)}.</strong>
+                {' '}Para que quede tuyo, paga tu primer mes del plan fundador antes de esa hora.
+                Esta vez no hay mes gratis: el mes gratis es solo para quien empieza en ZASS!.
+              </p>
+              <p>Si no pagas a tiempo, el cupo vuelve a quedar libre para otra persona.</p>
+              <button
+                type="button"
+                className="boton boton--amarillo boton--lleno"
+                onClick={() => void pagarElPlan()}
+                disabled={abriendoPago}
+              >
+                <Icono nombre="flecha" />
+                {abriendoPago ? 'Abriendo el pago…' : `Pagar ${pesos(fundador.precioMensual)}`}
+              </button>
+            </div>
+          )}
+          {!cerrado && puerta === 'puede' && tomado !== null && tomado.reservadoHasta && tomado.siguiente !== 'pagar' && (
             <div className="aviso aviso--atencion" role="status">
               <p>
                 <strong>Tu cupo N° {tomado.numero} está reservado hasta las {hora(tomado.reservadoHasta)}.</strong>
