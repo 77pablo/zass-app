@@ -289,9 +289,18 @@ public partial class ApiPruebas
         var secuestro = await UnaDuenaDeRutAsync(DatosDeRegistro.Rut(), verificada: false);
         await EnvejecerCuentaAsync(secuestro, ServicioCuentasSinVerificar.PlazoParaVerificar - TimeSpan.FromMinutes(5));
 
+        Guid idOriginal;
+        using (var ctx = ContextoDePrueba.Crear())
+            idOriginal = await ctx.Usuarios.Where(u => u.Correo == secuestro).Select(u => u.Id).SingleAsync();
+
         var r = await RegistrarConRutAsync(DatosDeRegistro.Rut(), secuestro);
 
-        Assert.Equal(HttpStatusCode.Conflict, r.StatusCode);
+        // 25-nov-2026: ya no es 409 (delataba la cuenta); responde como un registro nuevo. Lo que
+        // se vigila sigue igual: el correo NO se libera, la cuenta original sigue y no nace otra.
+        Assert.Equal(HttpStatusCode.Created, r.StatusCode);
+        using var ctx2 = ContextoDePrueba.Crear();
+        Assert.Equal(idOriginal,
+            await ctx2.Usuarios.Where(u => u.Correo == secuestro).Select(u => u.Id).SingleAsync());
     }
 
     /// <summary>El registro normal, con un RUT libre, sigue como antes: 201 y el correo de verificacion.</summary>
