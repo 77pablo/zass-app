@@ -1,6 +1,7 @@
 using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using Zass.Aplicacion.Puertos;
 using Zass.Dominio.Comun;
@@ -80,6 +81,19 @@ public sealed class AlmacenLocal : IAlmacenDeArchivos
         var ruta = Ruta(clave);
         if (ruta is not null && File.Exists(ruta)) File.Delete(ruta);
         return Task.FromResult(Resultado.Ok());
+    }
+
+    public async IAsyncEnumerable<ArchivoListado> ListarAsync(
+        string prefijo, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await Task.CompletedTask;
+        foreach (var ruta in Directory.EnumerateFiles(_raiz, "*", SearchOption.AllDirectories))
+        {
+            ct.ThrowIfCancellationRequested();
+            var clave = Path.GetRelativePath(_raiz, ruta).Replace('\\', '/');
+            if (!clave.StartsWith(prefijo, StringComparison.Ordinal)) continue;
+            yield return new ArchivoListado(clave, File.GetLastWriteTimeUtc(ruta));
+        }
     }
 
     internal static string MimeDe(string clave) => Path.GetExtension(clave) switch
@@ -170,6 +184,30 @@ public sealed class AlmacenR2 : IAlmacenDeArchivos, IDisposable
         }
     }
 
+    public async IAsyncEnumerable<ArchivoListado> ListarAsync(
+        string prefijo, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        string? continuacion = null;
+        do
+        {
+            var r = await _cliente.ListObjectsV2Async(new ListObjectsV2Request
+            {
+                BucketName = _balde,
+                Prefix = prefijo,
+                ContinuationToken = continuacion,
+            }, ct);
+
+            foreach (var o in r.S3Objects ?? [])
+            {
+                // Sin fecha, mejor que parezca nuevo: el barrido nunca borra lo reciente.
+                var fecha = o.LastModified?.ToUniversalTime() ?? DateTime.MaxValue;
+                yield return new ArchivoListado(o.Key, fecha);
+            }
+
+            continuacion = r.IsTruncated == true ? r.NextContinuationToken : null;
+        } while (continuacion is not null);
+    }
+
     public void Dispose() => _cliente.Dispose();
 }
 
@@ -189,4 +227,11 @@ public sealed class AlmacenDeshabilitado : IAlmacenDeArchivos
 
     public Task<Resultado> BorrarAsync(string clave, CancellationToken ct = default) =>
         Task.FromResult(Resultado.Ok());
+
+    public async IAsyncEnumerable<ArchivoListado> ListarAsync(
+        string prefijo, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await Task.CompletedTask;
+        yield break;
+    }
 }

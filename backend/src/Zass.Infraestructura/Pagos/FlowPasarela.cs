@@ -104,6 +104,45 @@ public sealed class FlowPasarela : IPasarelaDePagos
     }
 
     /// <summary>
+    /// Registra por que Flow rechazo la peticion (codigo y mensaje del cuerpo JSON, p. ej.
+    /// {"code":7001,"message":"..."}) y devuelve la falla generica de siempre. NUNCA se loguea
+    /// la URL (lleva la apiKey en la query) ni el cuerpo crudo: solo codigo y mensaje truncado.
+    /// </summary>
+    private async Task<Resultado<T>> FallaDeLaRespuestaAsync<T>(
+        HttpResponseMessage response, string servicio, CancellationToken ct)
+    {
+        var codigo = "";
+        var mensaje = "";
+        try
+        {
+            var cuerpo = await response.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(cuerpo);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object)
+            {
+                if (doc.RootElement.TryGetProperty("code", out var c))
+                    codigo = c.ValueKind == JsonValueKind.Number ? c.GetRawText()
+                        : c.ValueKind == JsonValueKind.String ? c.GetString() ?? "" : "";
+                if (doc.RootElement.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String)
+                    mensaje = m.GetString() ?? "";
+            }
+        }
+        catch (Exception e) when (e is JsonException || e is InvalidOperationException || e is HttpRequestException)
+        {
+            // No es JSON (o no se pudo leer): se deja el codigo y el mensaje vacios.
+        }
+
+        if (mensaje.Length > 200) mensaje = mensaje[..200];
+        // Sin saltos de linea: el mensaje viene de fuera y no debe poder falsificar lineas del log.
+        mensaje = mensaje.ReplaceLineEndings(" ");
+        if (codigo.Length > 50) codigo = codigo[..50];
+        codigo = codigo.ReplaceLineEndings(" ");
+
+        _log.LogWarning("Flow respondio {Status} ({CodigoFlow}: {MensajeFlow}) al llamar a {Servicio}",
+            response.StatusCode, codigo, mensaje, servicio);
+        return Resultado.Falla<T>(Fallas.ReglaDeNegocio, "La pasarela de pagos no respondio correctamente.");
+    }
+
+    /// <summary>
     /// Llama a un endpoint GET de Flow y devuelve el JSON deserializado.
     /// Los errores de red o 5xx se traducen a Fallas.ReglaDeNegocio SIN exponer la apiKey.
     /// </summary>
@@ -135,10 +174,7 @@ public sealed class FlowPasarela : IPasarelaDePagos
         }
 
         if (!response.IsSuccessStatusCode)
-        {
-            _log.LogWarning("Flow respondio {Status} al llamar a {Servicio}", response.StatusCode, servicio);
-            return Resultado.Falla<T>(Fallas.ReglaDeNegocio, "La pasarela de pagos no respondio correctamente.");
-        }
+            return await FallaDeLaRespuestaAsync<T>(response, servicio, ct);
 
         var json = await response.Content.ReadAsStringAsync(ct);
         try
@@ -184,10 +220,7 @@ public sealed class FlowPasarela : IPasarelaDePagos
         }
 
         if (!response.IsSuccessStatusCode)
-        {
-            _log.LogWarning("Flow respondio {Status} al llamar a {Servicio}", response.StatusCode, servicio);
-            return Resultado.Falla<T>(Fallas.ReglaDeNegocio, "La pasarela de pagos no respondio correctamente.");
-        }
+            return await FallaDeLaRespuestaAsync<T>(response, servicio, ct);
 
         var json = await response.Content.ReadAsStringAsync(ct);
         try
@@ -294,10 +327,35 @@ public sealed class FlowPasarela : IPasarelaDePagos
 
         var registerResult = await PostAsync<CustomerRegisterResponse>("customer/register", registerData, ct);
         if (!registerResult.Exito || registerResult.Valor is null)
+        {
+            // El cliente ya existe en Flow: se borra para no dejarlo huerfano (mejor esfuerzo).
+            await BorrarClienteDeFlowAsync(customerId);
             return Resultado.Falla<CobroIniciado>(registerResult.Codigo!, registerResult.Mensaje!);
+        }
 
         var urlParaPagar = $"{registerResult.Valor.Url}?token={registerResult.Valor.Token}";
         return Resultado.Ok(new CobroIniciado(customerId, urlParaPagar));
+    }
+
+    /// <summary>
+    /// Borra un cliente de Flow (customer/delete) sin que su fallo cambie lo que se devuelve:
+    /// si falla, solo se avisa en el log. Usa CancellationToken.None porque suele llamarse
+    /// justo cuando la peticion original fallo o fue cancelada.
+    /// </summary>
+    private async Task BorrarClienteDeFlowAsync(string customerId)
+    {
+        try
+        {
+            var borrado = await PostAsync<JsonElement>(
+                "customer/delete", new Dictionary<string, string> { ["customerId"] = customerId },
+                CancellationToken.None);
+            if (borrado.Exito) return;
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            // Mejor esfuerzo: cae al aviso de abajo.
+        }
+        _log.LogWarning("No se pudo borrar el cliente {CustomerId} de Flow tras fallar la inscripcion", customerId);
     }
 
     public async Task<Resultado<CobroResuelto>> CobrarAsync(

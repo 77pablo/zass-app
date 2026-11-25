@@ -75,6 +75,17 @@ public sealed class Planificador : BackgroundService
         new(Trabajos.CuentasSinVerificar, o => TimeSpan.FromMinutes(o.CuentasSinVerificarCadaMinutos),
             async (sp, ct) =>
                 (await sp.GetRequiredService<ServicioCuentasSinVerificar>().PurgarVencidasAsync(ct)).ToString()),
+
+        // Auditoría 22-nov-2026: borrar los archivos huérfanos (guardados, sin fila que los use).
+        // Margen y tope salen de OpcionesFondo; el margen no baja de una hora aunque se configure así.
+        new(Trabajos.ArchivosHuerfanos, o => TimeSpan.FromHours(Math.Max(1, o.BarridoDeArchivosCadaHoras)),
+            async (sp, ct) =>
+            {
+                var o = sp.GetRequiredService<IOptions<OpcionesFondo>>().Value;
+                return await sp.GetRequiredService<ServicioBarridoDeArchivos>().CorrerAsync(
+                    TimeSpan.FromHours(Math.Max(1, o.BarridoDeArchivosMargenHoras)),
+                    Math.Max(0, o.BarridoDeArchivosTopePorCorrida), ct);
+            }),
     };
 
     private readonly IServiceScopeFactory _ambitos;

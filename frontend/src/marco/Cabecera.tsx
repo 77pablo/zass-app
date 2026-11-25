@@ -57,6 +57,11 @@ export function Cabecera() {
             </NavLink>
           )}
           {estado === 'dentro' && esPrestador && (
+            <NavLink to="/planes" className="menu-enlace">
+              Mi plan<Icono nombre="chevron" />
+            </NavLink>
+          )}
+          {estado === 'dentro' && esPrestador && (
             <NavLink to="/mi-agenda" className="menu-enlace">
               Mi agenda<Icono nombre="chevron" />
             </NavLink>

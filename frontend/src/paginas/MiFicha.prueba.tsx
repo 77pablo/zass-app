@@ -1,10 +1,17 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { olvidarCsrf } from '../api/cliente'
 import { olvidarCaches } from '../api/useCargado'
 import { Contexto, type EstadoDeSesion, type Usuario } from '../sesion/contexto'
 import { MiFicha } from './MiFicha'
+
+const { reenviarVerificacion } = vi.hoisted(() => ({ reenviarVerificacion: vi.fn() }))
+vi.mock('../funciones/identidad/servicio', async (original) => ({
+  ...(await original<typeof import('../funciones/identidad/servicio')>()),
+  reenviarVerificacion,
+}))
 
 function json(cuerpo: unknown, estado = 200) {
   return new Response(JSON.stringify(cuerpo), { status: estado, headers: { 'content-type': 'application/json' }})
@@ -33,8 +40,12 @@ const VENCIDA = { estado: 'Vencida', vigente: false, enPrueba: false, diasRestan
 
 let perfil: Record<string, unknown>
 let alPedirSuscripcion: () => Response
+let recargarSesion = vi.fn(async () => {})
 
 beforeEach(() => {
+  reenviarVerificacion.mockReset()
+  reenviarVerificacion.mockResolvedValue(undefined)
+  recargarSesion = vi.fn(async () => {})
   perfil = PERFIL
   alPedirSuscripcion = () => json(suscripcionDe())
   olvidarCsrf()
@@ -52,12 +63,12 @@ beforeEach(() => {
   }))
 })
 
-function pintar(sesion: EstadoDeSesion = 'dentro', roles = ['buscador', 'prestador']) {
+function pintar(sesion: EstadoDeSesion = 'dentro', roles = ['buscador', 'prestador'], correoVerificado = true) {
   const usuario: Usuario | null = sesion === 'dentro'
-    ? { id: 'u', correo: 'a@b.cl', nombre: 'Ana', correoVerificado: true, roles } : null
+    ? { id: 'u', correo: 'a@b.cl', nombre: 'Ana', correoVerificado, roles } : null
   return render(
     <MemoryRouter initialEntries={['/mi-ficha']}>
-      <Contexto.Provider value={{ estado: sesion, usuario, recargar: async () => {}, salir: async () => {} }}>
+      <Contexto.Provider value={{ estado: sesion, usuario, recargar: recargarSesion, salir: async () => {} }}>
         <Routes>
           <Route path="/mi-ficha" element={<MiFicha />} />
           <Route path="/entrar" element={<p>pantalla de entrar</p>} />
@@ -192,5 +203,46 @@ describe('mi ficha (prestador)', () => {
     expect(screen.getByText(/Publicada: la ven/)).toBeInTheDocument()
     expect(screen.queryByText(/Suscripción/)).not.toBeInTheDocument()
     expect(screen.queryByText(/No pudimos cargar tu ficha/)).not.toBeInTheDocument()
+  })
+
+  it('publicada y en prueba: ofrece «Elegir mi plan» hacia /planes', async () => {
+    pintar()
+    await cargada()
+
+    expect(screen.getByRole('link', { name: 'Elegir mi plan' })).toHaveAttribute('href', '/planes')
+  })
+
+  it('publicada con un plan de pago vigente: no ofrece «Elegir mi plan»', async () => {
+    alPedirSuscripcion = () => json(suscripcionDe({ plan: 'ZASS! Mensual', estado: 'Activa', enPrueba: false }))
+    pintar()
+    await cargada()
+
+    expect(screen.queryByRole('link', { name: 'Elegir mi plan' })).toBeNull()
+  })
+
+  it('correo sin verificar: avisa antes de publicar, bloquea «Publicar», reenvia y recarga la sesion', async () => {
+    perfil = { ...PERFIL, estado: 'Borrador', publicadoEn: null }
+    pintar('dentro', ['buscador', 'prestador'], false)
+    await cargada()
+
+    expect(screen.getByRole('status')).toHaveTextContent('Antes de publicar, confirma tu correo con el enlace que te enviamos a a@b.cl.')
+    expect(screen.getByRole('button', { name: 'Publicar mi ficha' })).toBeDisabled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Reenviar el correo' }))
+    expect(reenviarVerificacion).toHaveBeenCalledWith('a@b.cl')
+    expect(await screen.findByText(/Listo, revisa tu bandeja/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ya lo confirmé' }))
+    expect(recargarSesion).toHaveBeenCalledTimes(1)
+  })
+
+  it('correo verificado: no hay aviso y «Publicar» queda habilitado', async () => {
+    perfil = { ...PERFIL, estado: 'Borrador', publicadoEn: null }
+    pintar()
+    await cargada()
+
+    expect(screen.queryByText(/confirma tu correo/)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Reenviar el correo' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Publicar mi ficha' })).toBeEnabled()
   })
 })

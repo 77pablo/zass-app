@@ -184,5 +184,10 @@ public class BorradoresAbandonadosPruebas
             Archivos.Remove(clave);
             return Task.FromResult(Resultado.Ok());
         }
+        public async IAsyncEnumerable<ArchivoListado> ListarAsync(string prefijo, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
     }
 }
