@@ -134,7 +134,8 @@ public sealed class FlowPasarela : IPasarelaDePagos
         if (mensaje.Length > 200) mensaje = mensaje[..200];
         // Sin saltos de linea: el mensaje viene de fuera y no debe poder falsificar lineas del log.
         mensaje = mensaje.ReplaceLineEndings(" ");
-        codigo = codigo.Length > 50 ? codigo[..50] : codigo.ReplaceLineEndings(" ");
+        if (codigo.Length > 50) codigo = codigo[..50];
+        codigo = codigo.ReplaceLineEndings(" ");
 
         _log.LogWarning("Flow respondio {Status} ({CodigoFlow}: {MensajeFlow}) al llamar a {Servicio}",
             response.StatusCode, codigo, mensaje, servicio);
@@ -328,7 +329,7 @@ public sealed class FlowPasarela : IPasarelaDePagos
         if (!registerResult.Exito || registerResult.Valor is null)
         {
             // El cliente ya existe en Flow: se borra para no dejarlo huerfano (mejor esfuerzo).
-            await BorrarClienteDeFlowAsync(customerId, ct);
+            await BorrarClienteDeFlowAsync(customerId);
             return Resultado.Falla<CobroIniciado>(registerResult.Codigo!, registerResult.Mensaje!);
         }
 
@@ -341,9 +342,8 @@ public sealed class FlowPasarela : IPasarelaDePagos
     /// si falla, solo se avisa en el log. Usa CancellationToken.None porque suele llamarse
     /// justo cuando la peticion original fallo o fue cancelada.
     /// </summary>
-    private async Task BorrarClienteDeFlowAsync(string customerId, CancellationToken ct)
+    private async Task BorrarClienteDeFlowAsync(string customerId)
     {
-        _ = ct;
         try
         {
             var borrado = await PostAsync<JsonElement>(
