@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Web;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Zass.Aplicacion.Puertos;
@@ -45,7 +46,7 @@ public class FlowPasarelaPruebas
         }
     }
 
-    private static FlowPasarela CrearPasarela(HandlerFalso handler)
+    private static FlowPasarela CrearPasarela(HandlerFalso handler, ILogger<FlowPasarela>? log = null)
     {
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri(UrlBasePrueba) };
         var opciones = Options.Create(new OpcionesZass
@@ -63,7 +64,7 @@ public class FlowPasarelaPruebas
             },
         });
 
-        return new FlowPasarela(httpClient, opciones, NullLogger<FlowPasarela>.Instance);
+        return new FlowPasarela(httpClient, opciones, log ?? NullLogger<FlowPasarela>.Instance);
     }
 
     /// <summary>
@@ -459,6 +460,120 @@ public class FlowPasarelaPruebas
         Assert.Equal(2, handler.Peticiones.Count);
         Assert.Equal("/api/customer/create", handler.Peticiones[0].RequestUri!.AbsolutePath);
         Assert.Equal("/api/customer/register", handler.Peticiones[1].RequestUri!.AbsolutePath);
+    }
+
+    /// <summary>Logger de prueba que guarda cada mensaje ya formateado.</summary>
+    private sealed class LoggerQueGuarda<T> : ILogger<T>
+    {
+        public List<string> Mensajes { get; } = new();
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter)
+            => Mensajes.Add($"{logLevel}: {formatter(state, exception)}");
+    }
+
+    private static HttpResponseMessage Json(HttpStatusCode codigo, string cuerpo) =>
+        new(codigo) { Content = new StringContent(cuerpo, Encoding.UTF8, "application/json") };
+
+    private const string Error7001 = "{\"code\":7001,\"message\":\"Commerce has not automatic charge contract\"}";
+
+    /// <summary>Responde create OK (customerId), register con 400 y delete segun se pida.</summary>
+    private static HandlerFalso HandlerDeInscripcionConRegisterRoto(
+        string customerId, HttpStatusCode respuestaDelDelete, List<string> cuerposDelDelete)
+    {
+        var handler = new HandlerFalso();
+        handler.Responder = req =>
+        {
+            switch (req.RequestUri!.AbsolutePath)
+            {
+                case "/api/customer/create":
+                    return Task.FromResult(Json(HttpStatusCode.OK, JsonSerializer.Serialize(new { customerId })));
+                case "/api/customer/register":
+                    return Task.FromResult(Json(HttpStatusCode.BadRequest, Error7001));
+                case "/api/customer/delete":
+                    cuerposDelDelete.Add(req.Content!.ReadAsStringAsync().Result);
+                    return Task.FromResult(Json(respuestaDelDelete, "{}"));
+                default:
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+            }
+        };
+        return handler;
+    }
+
+    private static SolicitudDeInscripcion SolicitudDeInscripcionPrueba() =>
+        new(IntentoDePagoId: Guid.NewGuid(), Descripcion: "ZASS! Fundador - inscripcion")
+        {
+            CorreoDelPagador = "prestador@zass.cl",
+        };
+
+    /// <summary>Si register falla, se borra el cliente creado (create, register, delete en orden).</summary>
+    [Fact]
+    public async Task IniciarInscripcionAsync_si_register_falla_borra_el_cliente_creado()
+    {
+        var cuerpos = new List<string>();
+        var handler = HandlerDeInscripcionConRegisterRoto("cust-777", HttpStatusCode.OK, cuerpos);
+        var pasarela = CrearPasarela(handler);
+
+        var resultado = await pasarela.IniciarInscripcionAsync(SolicitudDeInscripcionPrueba());
+
+        Assert.False(resultado.Exito);
+        Assert.Equal(3, handler.Peticiones.Count);
+        Assert.Equal("/api/customer/create", handler.Peticiones[0].RequestUri!.AbsolutePath);
+        Assert.Equal("/api/customer/register", handler.Peticiones[1].RequestUri!.AbsolutePath);
+        Assert.Equal("/api/customer/delete", handler.Peticiones[2].RequestUri!.AbsolutePath);
+        var form = HttpUtility.ParseQueryString(Assert.Single(cuerpos));
+        Assert.Equal("cust-777", form["customerId"]);
+    }
+
+    /// <summary>Si create falla no hay cliente que borrar: una sola peticion.</summary>
+    [Fact]
+    public async Task IniciarInscripcionAsync_si_create_falla_no_llama_a_delete()
+    {
+        var handler = new HandlerFalso();
+        handler.Responder = _ => Task.FromResult(Json(HttpStatusCode.BadRequest, Error7001));
+        var pasarela = CrearPasarela(handler);
+
+        var resultado = await pasarela.IniciarInscripcionAsync(SolicitudDeInscripcionPrueba());
+
+        Assert.False(resultado.Exito);
+        Assert.Single(handler.Peticiones);
+        Assert.Equal("/api/customer/create", handler.Peticiones[0].RequestUri!.AbsolutePath);
+    }
+
+    /// <summary>Si ademas delete falla, se devuelve la falla del register, sin excepcion.</summary>
+    [Fact]
+    public async Task IniciarInscripcionAsync_si_register_y_delete_fallan_devuelve_la_falla_del_register()
+    {
+        var log = new LoggerQueGuarda<FlowPasarela>();
+        var handler = HandlerDeInscripcionConRegisterRoto("cust-888", HttpStatusCode.InternalServerError, new List<string>());
+        var pasarela = CrearPasarela(handler, log);
+
+        var resultado = await pasarela.IniciarInscripcionAsync(SolicitudDeInscripcionPrueba());
+
+        Assert.False(resultado.Exito);
+        Assert.Equal(Fallas.ReglaDeNegocio, resultado.Codigo);
+        Assert.Equal("La pasarela de pagos no respondio correctamente.", resultado.Mensaje);
+        Assert.Equal(3, handler.Peticiones.Count);
+        Assert.Contains(log.Mensajes, m => m.Contains("No se pudo borrar el cliente cust-888"));
+    }
+
+    /// <summary>El log lleva codigo y mensaje de Flow, y nunca la apiKey.</summary>
+    [Fact]
+    public async Task Un_400_de_Flow_registra_codigo_y_mensaje_sin_la_apiKey()
+    {
+        var log = new LoggerQueGuarda<FlowPasarela>();
+        var handler = new HandlerFalso();
+        handler.Responder = _ => Task.FromResult(Json(HttpStatusCode.BadRequest, Error7001));
+        var pasarela = CrearPasarela(handler, log);
+
+        var resultado = await pasarela.IniciarInscripcionAsync(SolicitudDeInscripcionPrueba());
+
+        Assert.False(resultado.Exito);
+        var todo = string.Join(" | ", log.Mensajes);
+        Assert.Contains("7001", todo);
+        Assert.Contains("Commerce has not automatic charge contract", todo);
+        Assert.DoesNotContain(ApiKeyPrueba, todo);
     }
 
     // ========================================== P8: LeerConfirmacion de inscripcion
