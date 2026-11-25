@@ -1,6 +1,10 @@
 # ZASS! — estado del desarrollo
 
-**Última sesión:** 18 de noviembre de 2026: **la interfaz de la guía v3 terminada en `main`**, tres PR de interfaz en borrador (#106, #107 y el #98 arreglado) y la tanda 8 de la otra IA preparada sin lanzar. Ver **«Sesión del 18-nov-2026 — interfaz»** justo debajo.
+**Última sesión:** 25 de noviembre de 2026: **el cobro con Flow funciona en producción** (Cargo Automático activo, primer fundador inscrito), **Turnstile encendido y comprobado**, y #223/#233/#234/#235 fusionados. Ver **«Sesión del 25-nov-2026»** justo debajo.
+
+**Sesión anterior:** 20-nov (JQ-9). Entre el 20 y el 25-nov el estado se llevó en la memoria de Claude y en `zass-tareas/RETOMAR-IA-2.md`, no aquí.
+
+**Sesión anterior:** 18 de noviembre de 2026: **la interfaz de la guía v3 terminada en `main`**, tres PR de interfaz en borrador (#106, #107 y el #98 arreglado) y la tanda 8 de la otra IA preparada sin lanzar. Ver **«Sesión del 18-nov-2026 — interfaz»** justo debajo.
 
 **Sesión anterior:** 17 de noviembre de 2026: **17 PR fusionados y `d57550d` DESPLEGADO y comprobado en producción**. Hay un índice nuevo en Neon y una segunda IA trabajando con un plan escrito. Ver **«Sesión del 17-nov-2026»** justo debajo.
 
@@ -28,6 +32,30 @@ repositorio en GitHub).
 
 Este archivo existe para retomar sin reconstruir contexto. Dice **qué está hecho y
 comprobado**, **qué no**, y **el siguiente paso exacto**.
+
+---
+
+## Sesión del 25-nov-2026 — Flow cobrando, Turnstile encendido
+
+**Hecho y comprobado (desde fuera, en producción):**
+
+| Pieza | Cómo se comprobó |
+|---|---|
+| **Cargo Automático de Flow ACTIVO** | Pablo lo encendió en el panel (Medios de pago → fila 148 → Guardar → código por correo). `customer/register` ya devuelve `url`+`token` (antes `7001 Commerce has not automatic charge contract`) |
+| **Primer fundador real** | La cuenta de Pablo inscribió su tarjeta en /planes: cupo N° 1, quedan 49/50, mes gratis hasta el 25-dic. Flow/Transbank cargó **$50 de verificación (comercio «FLOW»)**; ZASS pidió $0 |
+| **Turnstile ENCENDIDO** | Widget «ZASS!» (zass.cl, www.zass.cl, Managed). Clave pública en `frontend/.env.production` (#235); secreto `Zass__Turnstile__Secreto` en Render. API-08: sin token → 400, token falso → 400 (`invalid-input-response`), token real del sitio → pasa (409 por correo repetido, no se creó nada) |
+| #233 JQ-17 (pantalla de 3 planes) y #234 (interruptor de páginas públicas, APAGADO) | Fusionados y el sitio desplegado; sin pase todo da 503 |
+| #223 (cupo solo por API-69 con captcha; la API no arranca en Production sin el secreto de Turnstile) | Fusionado (`37d9d45`) tras resolver conflictos con #233 en `Planes.tsx` (mutación: quitar el caso «pagar» hace caer 2 pruebas). Sin migraciones |
+
+**NO hecho / pendiente al cerrar:**
+
+1. **Render NO tiene #223 todavía** (`autoDeploy: false`). Pablo debe hacer *Manual Deploy → Deploy latest commit* y ver Live con `37d9d45` o más nuevo. Después, repetir la prueba del captcha (API-08 sin token → 400).
+2. **PR #236 abierto** (rama `p/planes-fundador-ya-inscrito`): el fundador ya inscrito ve «Ya tienes tu cupo» en vez de «Quiero mi cupo»/«Contratar» (defecto de #233 que vio Pablo), y el aviso del cargo de $50 antes de ir a Flow. 1092/1092, 3 mutaciones atrapadas. **Falta: CI verde → fusionar (squash, --admin) → desplegar el sitio con wrangler DESPUÉS de que la API con #223 esté Live** (el sitio de #236 lleva también la parte de pantalla de #223).
+3. **Los $50:** Pablo revisa su cartola; si en ~1 semana no se reversan, reclamar en el ticket de Flow #189608 y corregir el texto del aviso.
+4. **La suscripción de Pablo se queda** (decisión suya): ~18-dic sale el **primer cobro mensual real** ($5.990), 7 días antes del vencimiento (`DiasDeAviso {7,1}`). Vigilarlo: es la primera prueba del cobro recurrente en producción. Es venta real (IVA/boleta). Su perfil de prueba en Temuco debe ser real u ocultarse antes de abrir.
+5. Menores: la licencia de ImageSharp se imprime completa en el registro de compilación de Render (el `RUN test -n "$SIXLABORS..."` la expande); el registro dice `Ya existe una cuenta con ese correo` (revela cuentas: revisar si se quiere el aviso neutro como con el RUT).
+
+**Para abrir zass.cl al público falta (de Pablo):** abogado para los textos legales (#129), y decidir si se enciende `MANTENIMIENTO_PAGINAS_PUBLICAS` antes.
 
 ---
 

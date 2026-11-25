@@ -45,6 +45,18 @@ const CUPO_TOMADO = {
   siguiente: 'inscribir',
 }
 
+/** GET /api/mi/suscripcion de quien está en la prueba gratis y no tomó cupo. */
+const SUSCRIPCION_EN_PRUEBA = {
+  plan: 'Prueba', estado: 'Activa', vigente: true, enPrueba: true,
+  vigenteHasta: '2026-12-20T12:00:00Z', diasRestantes: 25, renovacionAutomatica: false,
+  esFundador: false, tarjetaInscrita: false,
+}
+/** Fundador con el cupo CONFIRMADO (tarjeta inscrita) y en su mes gratis. */
+const SUSCRIPCION_FUNDADOR = {
+  ...SUSCRIPCION_EN_PRUEBA, plan: 'ZASS! Fundador', vigenteHasta: '2026-12-25T12:00:00Z',
+  renovacionAutomatica: true, esFundador: true, tarjetaInscrita: true,
+}
+
 let cupos: number
 let fallaElCatalogo: boolean
 let llamadas: string[]
@@ -55,6 +67,7 @@ let planes: typeof PLANES
 let cotizados: { codigoPlan: string, codigoCupon?: string }[]
 let cobros: { codigoPlan: string, codigoCupon?: string, clave: string | null }[]
 let respuestaDelCobro: () => Response
+let respuestaDeSuscripcion: () => Response
 
 beforeEach(() => {
   cupos = 37
@@ -62,6 +75,8 @@ beforeEach(() => {
   llamadas = []
   claves = []
   respuestaDelCupo = () => json(CUPO_TOMADO)
+  // Por omisión, un prestador en su prueba de 30 días: todavía NO es fundador.
+  respuestaDeSuscripcion = () => json(SUSCRIPCION_EN_PRUEBA)
   planes = PLANES
   cotizados = []
   cobros = []
@@ -98,6 +113,7 @@ beforeEach(() => {
         : json({ planes, cuposFundadorDisponibles: cupos })
     }
     if (ruta.includes('/api/mi/suscripcion/fundador')) return respuestaDelCupo()
+    if (ruta.endsWith('/api/mi/suscripcion')) return respuestaDeSuscripcion()
     if (ruta.includes('/api/mi/cobros/cotizar')) {
       const cuerpo = JSON.parse(String(opciones?.body)) as { codigoPlan: string, codigoCupon?: string }
       cotizados.push(cuerpo)
@@ -532,5 +548,75 @@ describe('Planes', () => {
 
     await screen.findByText('ZASS! Profesional')
     expect(screen.queryByRole('textbox', { name: 'Código de descuento' })).toBeNull()
+  })
+
+  describe('25-nov: quien YA es fundador vuelve a /planes', () => {
+    it('no ve «Quiero mi cupo» ni «Contratar»: ve que el cupo ya es suyo y hasta cuándo es gratis', async () => {
+      respuestaDeSuscripcion = () => json(SUSCRIPCION_FUNDADOR)
+      pintar(sesion('dentro', ['prestador']))
+
+      expect(await screen.findByText('Ya tienes tu cupo de fundador.')).toBeInTheDocument()
+      expect(screen.getByText(/Tu mes gratis dura hasta el/)).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /quiero mi cupo/i })).toBeNull()
+      expect(screen.queryByRole('button', { name: /contratar/i })).toBeNull()
+      expect(screen.getAllByText('Ya tienes el plan fundador.')).toHaveLength(2)
+    })
+
+    it('pasado el mes gratis dice el precio que paga, no una fecha de prueba', async () => {
+      respuestaDeSuscripcion = () => json({ ...SUSCRIPCION_FUNDADOR, enPrueba: false })
+      pintar(sesion('dentro', ['prestador']))
+
+      expect(await screen.findByText(/Pagas \$5\.990 al mes, para siempre/)).toBeInTheDocument()
+      expect(screen.queryByText(/mes gratis dura/)).toBeNull()
+    })
+
+    it('con los 50 cupos tomados, al fundador no se le dice «Cerrado»: el suyo sigue', async () => {
+      cupos = 0
+      respuestaDeSuscripcion = () => json(SUSCRIPCION_FUNDADOR)
+      pintar(sesion('dentro', ['prestador']))
+
+      expect(await screen.findByText('Ya tienes tu cupo de fundador.')).toBeInTheDocument()
+      expect(screen.queryByText(/Cerrado: ya no quedan cupos/)).toBeNull()
+    })
+
+    it('un fundador VENCIDO no cuenta como fundador: se le vuelve a ofrecer el cupo', async () => {
+      respuestaDeSuscripcion = () => json({ ...SUSCRIPCION_FUNDADOR, vigente: false })
+      pintar(sesion('dentro', ['prestador']))
+
+      await waitFor(() => expect(llamadas.some((r) => r.endsWith('/api/mi/suscripcion'))).toBe(true))
+      expect(await screen.findByRole('button', { name: /quiero mi cupo/i })).toBeInTheDocument()
+      expect(screen.queryByText('Ya tienes tu cupo de fundador.')).toBeNull()
+    })
+
+    it('quien está en la prueba y NO es fundador sigue viendo «Quiero mi cupo» y «Contratar»', async () => {
+      pintar(sesion('dentro', ['prestador']))
+
+      expect(await screen.findByRole('button', { name: /quiero mi cupo/i })).toBeInTheDocument()
+      await waitFor(() => expect(llamadas.some((r) => r.endsWith('/api/mi/suscripcion'))).toBe(true))
+      expect(screen.getAllByRole('button', { name: /contratar/i })).toHaveLength(2)
+      expect(screen.queryByText('Ya tienes tu cupo de fundador.')).toBeNull()
+    })
+
+    it('si /api/mi/suscripcion falla, la pantalla queda como antes (ofrece el cupo)', async () => {
+      respuestaDeSuscripcion = () => json({ title: 'Error' }, 500)
+      pintar(sesion('dentro', ['prestador']))
+
+      expect(await screen.findByRole('button', { name: /quiero mi cupo/i })).toBeInTheDocument()
+    })
+
+    it('sin sesión no se pide la suscripción', async () => {
+      pintar()
+      await screen.findByText('ZASS! Profesional')
+      expect(llamadas.some((r) => r.endsWith('/api/mi/suscripcion'))).toBe(false)
+    })
+  })
+
+  it('25-nov: antes de ir a Flow se avisa del cargo de verificación de $50', async () => {
+    pintar(sesion('dentro', ['prestador']))
+    expect(await screen.findByText(/cargo de verificación de \$50 de «FLOW»/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /quiero mi cupo/i }))
+    await screen.findByRole('button', { name: /inscribir mi tarjeta/i })
+    expect(screen.getAllByText(/cargo de verificación de \$50/).length).toBeGreaterThanOrEqual(1)
   })
 })

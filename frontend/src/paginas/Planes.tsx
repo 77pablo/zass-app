@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ErrorApi } from '../api/cliente'
 import { fechaLarga } from '../funciones/perfil/estadoSuscripcion'
+import { miSuscripcion, type Suscripcion } from '../funciones/perfil/servicio'
 import { Icono } from '../marco/Icono'
 import { useMeta } from '../marco/useMeta'
 import { useTitulo } from '../marco/useTitulo'
@@ -80,6 +81,14 @@ const EQUIPO_PROXIMAMENTE = {
 
 /** Lo que se le ofrece a quien no puede tomar el cupo todavía. */
 type Puerta = 'puede' | 'sin-sesion' | 'sin-ficha'
+
+/**
+ * 25-nov-2026: al inscribir la tarjeta, Flow (vía Transbank) hace un cargo de $50 para comprobar
+ * que la tarjeta existe, y lo reversa. Se avisa ANTES de mandar a Flow: lo que molesta no son
+ * los $50, es la sorpresa.
+ */
+const AVISO_VERIFICACION =
+  'Al inscribir tu tarjeta, tu banco puede mostrar un cargo de verificación de $50 de «FLOW». No es un cobro de ZASS!: se reversa solo.'
 
 function puertaDe(estado: string, roles: string[] | undefined): Puerta {
   if (estado !== 'dentro') return 'sin-sesion'
@@ -177,6 +186,12 @@ export function Planes() {
   const [tomando, setTomando] = useState(false)
   const [errorAlTomar, setErrorAlTomar] = useState<string | null>(null)
   const [tomado, setTomado] = useState<CupoTomado | null>(null)
+  /**
+   * 25-nov-2026: `tomado` solo existe si el cupo se tomó en ESTA visita. Al volver a /planes,
+   * quien ya era fundador veía otra vez «Quiero mi cupo» y «Contratar». La suscripción actual
+   * dice si ya lo es (EsFundador solo es verdadero con el cupo confirmado, no reservado).
+   */
+  const [suscripcion, setSuscripcion] = useState<Suscripcion | null>(null)
   // N3: captcha de un solo uso para «Quiero mi cupo», y la inscripción de la tarjeta que
   // confirma el cupo reservado.
   const [tokenCaptcha, setTokenCaptcha] = useState<string | null>(null)
@@ -229,6 +244,25 @@ export function Planes() {
   useEffect(() => { void traer() }, [traer])
 
   const puerta = puertaDe(estado, usuario?.roles)
+
+  useEffect(() => {
+    if (puerta !== 'puede') return
+    let vigente = true
+    // Si falla, la pantalla queda como antes: ofrecer el cupo no rompe nada, la API decide.
+    void (async () => {
+      try {
+        const s = await miSuscripcion()
+        if (vigente) setSuscripcion(s)
+      } catch {
+        // Sin la suscripción se ofrece el cupo como siempre: la API decide al pedirlo.
+      }
+    })()
+    return () => { vigente = false }
+  }, [puerta])
+
+  /** Ya es fundador con el cupo confirmado y vigente: no se le ofrece tomarlo ni otro plan. */
+  const yaFundador = puerta === 'puede' && tomado === null
+    && suscripcion?.esFundador === true && suscripcion.vigente
   const quedan = catalogo?.cuposFundadorDisponibles ?? 0
   const cerrado = catalogo !== null && quedan <= 0
 
@@ -292,6 +326,9 @@ export function Planes() {
 
   /** La acción de una columna según quién mira (la misma puerta que ya usaba el cupo). */
   function accionDe(codigo: CodigoContratable) {
+    if (yaFundador) {
+      return <p className="plan-letra-chica">Ya tienes el plan fundador.</p>
+    }
     if (puerta === 'puede') {
       return (
         <button
@@ -433,7 +470,17 @@ export function Planes() {
             precioProfesional={profesional?.precioMensual ?? null}
             precioFundador={fundador.precioMensual}
           />
-          {cerrado && <p className="plan-cerrado">Cerrado: ya no quedan cupos.</p>}
+          {cerrado && !yaFundador && <p className="plan-cerrado">Cerrado: ya no quedan cupos.</p>}
+          {yaFundador && (
+            <div className="aviso aviso--atencion" role="status">
+              <p>
+                <strong>Ya tienes tu cupo de fundador.</strong>
+                {suscripcion?.enPrueba && suscripcion.vigenteHasta
+                  ? <> Tu mes gratis dura hasta el {fechaLarga(suscripcion.vigenteHasta) ?? 'fin del mes'}.</>
+                  : <> Pagas {pesos(fundador.precioMensual)} al mes, para siempre.</>}
+              </p>
+            </div>
+          )}
           {!cerrado && puerta === 'puede' && tomado !== null && tomado.reservadoHasta && tomado.siguiente === 'pagar' && (
             <div className="aviso aviso--atencion" role="status">
               <p>
@@ -460,6 +507,7 @@ export function Planes() {
                 {' '}Para que quede tuyo, inscribe tu tarjeta en Flow antes de esa hora. Hoy no
                 se te cobra nada: tu mes gratis empieza cuando la tarjeta queda inscrita.
               </p>
+              <p>{AVISO_VERIFICACION}</p>
               <p>Si no la inscribes a tiempo, el cupo vuelve a quedar libre para otra persona.</p>
               <button
                 type="button"
@@ -480,7 +528,7 @@ export function Planes() {
               </p>
             </div>
           )}
-          {!cerrado && puerta === 'puede' && tomado === null && (
+          {!cerrado && puerta === 'puede' && tomado === null && !yaFundador && (
             <>
               <Captcha accion="cupo_fundador" alResolver={setTokenCaptcha} reinicio={reinicioCaptcha} />
               <button
@@ -496,7 +544,7 @@ export function Planes() {
                 Te guardamos el cupo 30 minutos para que inscribas tu tarjeta en Flow. Hoy no se
                 te cobra nada: tu primer mes es gratis y empieza cuando la tarjeta queda
                 inscrita. Después, {pesos(fundador.precioMensual)} al mes mientras mantengas tu
-                suscripción.
+                suscripción. {AVISO_VERIFICACION}
               </p>
             </>
           )}
