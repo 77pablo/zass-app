@@ -20,6 +20,15 @@
  * Eso deja una cookie por 8 horas y quien la tenga ve el sitio completo. Sin la variable
  * puesta, el pase no existe y no hay forma de entrar: no hay puerta de atras por omision.
  *
+ * Y para cumplir con quien exige un sitio publico con precios y condiciones (Flow) SIN abrir
+ * todo, un interruptor aparte, APAGADO por omision:
+ *
+ *     MANTENIMIENTO_PAGINAS_PUBLICAS = "1"     (tambien vale true o si)
+ *
+ * Con el, y mientras el sitio siga en mantenimiento, el publico ve SOLO /planes, /terminos y
+ * /privacidad (con sus recursos estaticos y GET /api/planes). Todo lo demas sigue en 503.
+ * Sin la variable, el comportamiento es exactamente el de siempre.
+ *
  * Responde 503 y no 200 por una razon concreta: a Google un 503 le dice «vuelve despues»
  * y no indexa nada, mientras que un 200 con la palabra «mantenimiento» le dice que ESE es
  * el contenido del sitio, y eso es lo que queda guardado en el buscador durante semanas.
@@ -29,6 +38,7 @@ import { conCabecerasDeSeguridad } from './_comun/cabeceras.js'
 
 const VARIABLE_INTERRUPTOR = 'MANTENIMIENTO'
 const VARIABLE_PASE = 'MANTENIMIENTO_PASE'
+const VARIABLE_PAGINAS_PUBLICAS = 'MANTENIMIENTO_PAGINAS_PUBLICAS'
 const COOKIE_PASE = 'zass_pase'
 const HORAS_DE_PASE = 8
 const PARAMETRO_PASE = 'pase'
@@ -48,6 +58,50 @@ const TEXTOS = {
     + 'avisamos el día que abrimos.',
   correo: 'somoszaschile@gmail.com',
   pie: 'Conecta con un toque',
+}
+
+/** Paginas que el interruptor de paginas publicas deja ver (rutas exactas, con o sin «/» final). */
+const PAGINAS_PUBLICAS = new Set(['/planes', '/terminos', '/privacidad'])
+
+/**
+ * Archivos sueltos de la raiz de public/ que esas paginas necesitan. NO esta sw.js, a
+ * proposito: durante el mantenimiento no debe instalarse el service worker, porque se
+ * quedaria con copias de un sitio a medio abrir y seguiria sirviendolas despues.
+ */
+const ARCHIVOS_PUBLICOS = new Set([
+  '/favicon.svg',
+  '/apple-touch-icon.png',
+  '/manifest.webmanifest',
+  '/og-zass.png',
+  '/robots.txt',
+  '/icono-zass.svg',
+  '/icono-zass-192.png',
+  '/icono-zass-512.png',
+  '/icono-zass-maskable-512.png',
+  '/icono-zass-maskable.svg',
+])
+
+/** Solo si vale 1/true/si se abre la lista; sin la variable no cambia nada. */
+function paginasPublicasAbiertas(env) {
+  const valor = (env?.[VARIABLE_PAGINAS_PUBLICAS] ?? '').toString().trim().toLowerCase()
+  return valor === '1' || valor === 'true' || valor === 'si'
+}
+
+/**
+ * Peticion que el modo de paginas publicas deja pasar. Se mira el pathname TAL COMO VIENE:
+ * nada de decodificar, asi que un «%», un «..» o un «//» dejan la ruta fuera. Distingue
+ * mayusculas (Pages tambien).
+ */
+function esPublica(peticion) {
+  if (peticion.method !== 'GET' && peticion.method !== 'HEAD') return false
+  const { pathname } = new URL(peticion.url)
+  if (pathname.includes('%') || pathname.includes('..') || pathname.includes('//')) return false
+  if (pathname === '/api/planes') return true
+  if (pathname.startsWith('/api/')) return false
+  if (pathname.startsWith('/assets/') && pathname.length > '/assets/'.length) return true
+  if (ARCHIVOS_PUBLICOS.has(pathname)) return true
+  const sinBarra = pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname
+  return PAGINAS_PUBLICAS.has(sinBarra)
 }
 
 /** El sitio esta cerrado salvo que alguien lo haya abierto diciendo MANTENIMIENTO=0. */
@@ -275,6 +329,8 @@ async function decidir(contexto) {
 
     if (sonIguales(cookieDelPase(request.headers.get('cookie')), pase)) return next()
   }
+
+  if (paginasPublicasAbiertas(env) && esPublica(request)) return next()
 
   return respuestaDeMantenimiento(request)
 }
