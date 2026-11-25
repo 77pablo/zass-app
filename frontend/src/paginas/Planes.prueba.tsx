@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { olvidarCsrf } from '../api/cliente'
 import { Contexto, type EstadoDeSesion, type Usuario } from '../sesion/contexto'
@@ -20,14 +20,22 @@ function json(cuerpo: unknown, estado = 200) {
 
 const PLANES = [
   {
-    id: 2, codigo: 'mensual', nombre: 'ZASS! Mensual', descripcion: 'El plan de siempre.',
-    precioMensual: 7990, diasPrueba: 0, maxServicios: 10, maxTarjetas: 1,
-    permiteCredenciales: true,
+    id: 2, codigo: 'mensual', nombre: 'ZASS! Esencial', descripcion: 'El plan de siempre.',
+    precioMensual: 7990, diasPrueba: 0, maxServicios: 5, maxTarjetas: 1,
+    permiteCredenciales: true, maxFotosTrabajos: 0, permiteEstadisticas: false,
+    verificacionPrioritaria: false,
   },
   {
     id: 3, codigo: 'fundador', nombre: 'ZASS! Fundador', descripcion: 'Precio de lanzamiento.',
-    precioMensual: 5990, diasPrueba: 0, maxServicios: 10, maxTarjetas: 1,
-    permiteCredenciales: true,
+    precioMensual: 5990, diasPrueba: 0, maxServicios: 15, maxTarjetas: 3,
+    permiteCredenciales: true, maxFotosTrabajos: 12, permiteEstadisticas: true,
+    verificacionPrioritaria: true,
+  },
+  {
+    id: 4, codigo: 'profesional', nombre: 'ZASS! Profesional', descripcion: 'Para quien vive de su trabajo.',
+    precioMensual: 12990, diasPrueba: 0, maxServicios: 15, maxTarjetas: 3,
+    permiteCredenciales: true, maxFotosTrabajos: 12, permiteEstadisticas: true,
+    verificacionPrioritaria: true,
   },
 ]
 
@@ -41,7 +49,11 @@ let fallaElCatalogo: boolean
 let llamadas: string[]
 let claves: (string | null)[]
 let respuestaDelCupo: () => Response
-let respuestaDeCotizar: () => Response
+let respuestaDeCotizar: (codigoPlan: string) => Response
+let planes: typeof PLANES
+let cotizados: { codigoPlan: string, codigoCupon?: string }[]
+let cobros: { codigoPlan: string, codigoCupon?: string, clave: string | null }[]
+let respuestaDelCobro: () => Response
 
 beforeEach(() => {
   cupos = 37
@@ -49,8 +61,16 @@ beforeEach(() => {
   llamadas = []
   claves = []
   respuestaDelCupo = () => json(CUPO_TOMADO)
-  respuestaDeCotizar = () => json({
-    codigoPlan: 'mensual', nombrePlan: 'ZASS! Mensual', precioMensual: 7990,
+  planes = PLANES
+  cotizados = []
+  cobros = []
+  respuestaDelCobro = () => json({
+    id: 'c1', codigoPlan: 'profesional', precioMensual: 12990, descuento: 0, total: 12990,
+    cupon: null, estado: 'Pendiente', urlParaPagar: '/pago-simulado/c1', referenciaPasarela: null,
+    nueva: true,
+  })
+  respuestaDeCotizar = (codigoPlan) => json({
+    codigoPlan, nombrePlan: 'ZASS!', precioMensual: 7990,
     descuento: 2397, total: 5593, cupon: 'LANZAMIENTO30', porcentajeDescuento: 30,
     esElPrimerMesQueSePaga: true, detalle: 'con tu código',
   })
@@ -74,10 +94,19 @@ beforeEach(() => {
     if (ruta.includes('/api/planes')) {
       return fallaElCatalogo
         ? json({ title: 'Error', detail: 'La API no responde.' }, 500)
-        : json({ planes: PLANES, cuposFundadorDisponibles: cupos })
+        : json({ planes, cuposFundadorDisponibles: cupos })
     }
     if (ruta.includes('/api/mi/suscripcion/fundador')) return respuestaDelCupo()
-    if (ruta.includes('/api/mi/cobros/cotizar')) return respuestaDeCotizar()
+    if (ruta.includes('/api/mi/cobros/cotizar')) {
+      const cuerpo = JSON.parse(String(opciones?.body)) as { codigoPlan: string, codigoCupon?: string }
+      cotizados.push(cuerpo)
+      return respuestaDeCotizar(cuerpo.codigoPlan)
+    }
+    if (ruta.endsWith('/api/mi/cobros')) {
+      const cuerpo = JSON.parse(String(opciones?.body)) as { codigoPlan: string, codigoCupon?: string }
+      cobros.push({ ...cuerpo, clave: new Headers(opciones?.headers).get('Idempotency-Key') })
+      return respuestaDelCobro()
+    }
     if (ruta.includes('/api/mi/suscripcion/tarjeta')) {
       return json({
         id: 'i1', codigoPlan: 'fundador', montoBruto: 0, montoDescuento: 0, monto: 0,
@@ -97,25 +126,173 @@ function sesion(estado: EstadoDeSesion, roles: string[] = []) {
   return { estado, usuario, recargar: async () => {}, salir: async () => {} }
 }
 
+/** Muestra a qué ruta se navegó (la pantalla de pago simulada no existe en esta prueba). */
+function Ruta() {
+  return <p>RUTA:{useLocation().pathname}</p>
+}
+
 function pintar(valor = sesion('fuera')) {
   return render(
     <MemoryRouter>
       <Contexto.Provider value={valor}>
-        <Planes />
+        <Routes>
+          <Route path="/" element={<Planes />} />
+          <Route path="*" element={<Ruta />} />
+        </Routes>
       </Contexto.Provider>
     </MemoryRouter>,
   )
 }
 
 describe('Planes', () => {
-  it('muestra los dos planes con su precio y cuántos cupos quedan', async () => {
+  it('muestra los planes con su precio y cuántos cupos quedan', async () => {
     pintar()
 
-    expect(await screen.findByText('ZASS! Fundador')).toBeTruthy()
-    expect(screen.getByText('ZASS! Mensual')).toBeTruthy()
-    expect(screen.getByText('$5.990')).toBeTruthy()
-    expect(screen.getByText('$7.990')).toBeTruthy()
+    expect(await screen.findByText('ZASS! Profesional')).toBeTruthy()
+    expect(screen.getByText('ZASS! Esencial')).toBeTruthy()
+    expect(screen.getByText('$12.990', { selector: 'strong' })).toBeTruthy()
+    expect(screen.getByText('$7.990', { selector: 'strong' })).toBeTruthy()
     expect(screen.getByText('37')).toBeTruthy()
+  })
+
+  it('JQ-17: las tres columnas van Esencial, Profesional, Equipo; «El más elegido» solo en el Profesional', async () => {
+    pintar()
+    await screen.findByText('ZASS! Profesional')
+
+    const columnas = screen.getAllByRole('region')
+      .filter((r) => r.className.includes('plan-columna'))
+    expect(columnas.map((c) => c.getAttribute('aria-labelledby'))).toEqual([
+      'plan-mensual', 'plan-profesional', 'plan-equipo',
+    ])
+    const conEtiqueta = columnas.filter((c) => within(c).queryByText('El más elegido') !== null)
+    expect(conEtiqueta).toHaveLength(1)
+    expect(conEtiqueta[0].getAttribute('aria-labelledby')).toBe('plan-profesional')
+    // Las columnas se nombran por su título: son regiones de verdad para el lector de pantalla.
+    expect(screen.getByRole('region', { name: 'ZASS! Profesional' })).toBeTruthy()
+  })
+
+  it('JQ-17: las características salen de la API, no están escritas a mano', async () => {
+    pintar()
+    const esencial = await screen.findByRole('region', { name: 'ZASS! Esencial' })
+
+    // Tal como viene el mock, el Esencial NO tiene estadísticas: se marca como no incluida.
+    expect(within(esencial).getByText('Estadísticas de tu ficha').closest('li')?.textContent)
+      .toContain('No incluye')
+    expect(within(esencial).getByText('Hasta 5 servicios en tu ficha')).toBeTruthy()
+    expect(within(esencial).getByText('1 tarjeta NFC activa')).toBeTruthy()
+
+    // Si la API le da estadísticas al Esencial, la pantalla lo muestra sin tocar el código.
+    cleanup()
+    planes = PLANES.map((p) => p.codigo === 'mensual'
+      ? { ...p, permiteEstadisticas: true, maxFotosTrabajos: 4 }
+      : p)
+    pintar()
+    const esencial2 = await screen.findByRole('region', { name: 'ZASS! Esencial' })
+    expect(within(esencial2).getByText('Estadísticas de tu ficha').closest('li')?.textContent)
+      .toMatch(/^Incluye/)
+    expect(within(esencial2).getByText('Fotos de tus trabajos (hasta 4)')).toBeTruthy()
+
+    const profesional = screen.getByRole('region', { name: 'ZASS! Profesional' })
+    expect(within(profesional).getByText('3 tarjetas NFC activas')).toBeTruthy()
+    expect(within(profesional).getByText('Verificación prioritaria').closest('li')?.textContent)
+      .toMatch(/^Incluye/)
+  })
+
+  it('JQ-17: el Equipo dice «Próximamente» y no tiene botón de contratar', async () => {
+    pintar(sesion('dentro', ['prestador']))
+    const equipo = await screen.findByRole('region', { name: 'ZASS! Equipo' })
+
+    expect(within(equipo).getByText('Próximamente')).toBeTruthy()
+    expect(within(equipo).getByText('$24.990')).toBeTruthy()
+    expect(within(equipo).queryByRole('button')).toBeNull()
+    expect(within(equipo).queryByRole('link')).toBeNull()
+    // Los otros dos sí se pueden contratar.
+    expect(screen.getAllByRole('button', { name: 'Contratar' })).toHaveLength(2)
+  })
+
+  it('JQ-17: «Contratar» el Profesional inicia el cobro con su clave y va a la URL de pago', async () => {
+    pintar(sesion('dentro', ['prestador']))
+    const profesional = await screen.findByRole('region', { name: 'ZASS! Profesional' })
+
+    await userEvent.click(within(profesional).getByRole('button', { name: 'Contratar' }))
+
+    await waitFor(() => expect(cobros).toHaveLength(1))
+    expect(cobros[0].codigoPlan).toBe('profesional')
+    expect(cobros[0].clave).toMatch(/^clave-de-prueba-/)
+    expect(cobros[0].codigoCupon).toBeUndefined()
+    expect(await screen.findByText('RUTA:/pago-simulado/c1')).toBeTruthy()
+  })
+
+  it('JQ-17: el cupón se cotiza para el plan elegido (Profesional por defecto, Esencial al cambiar) y solo viaja a ese plan', async () => {
+    pintar(sesion('dentro', ['prestador']))
+    const campo = await screen.findByRole('textbox', { name: 'Código de descuento' })
+    expect((screen.getByRole('radio', { name: 'ZASS! Profesional' }) as HTMLInputElement).checked)
+      .toBe(true)
+
+    await userEvent.type(campo, 'LANZAMIENTO30')
+    await userEvent.click(screen.getByRole('button', { name: /aplicar/i }))
+    await screen.findByText('−$2.397')
+    expect(cotizados.map((c) => c.codigoPlan)).toEqual(['profesional'])
+
+    // Con la cotización del Profesional, el cupón NO viaja al Esencial...
+    await userEvent.click(within(screen.getByRole('region', { name: 'ZASS! Esencial' }))
+      .getByRole('button', { name: 'Contratar' }))
+    await waitFor(() => expect(cobros).toHaveLength(1))
+    expect(cobros[0].codigoPlan).toBe('mensual')
+    expect(cobros[0].codigoCupon).toBeUndefined()
+  })
+
+  it('JQ-17: el cupón cotizado viaja al contratar ese mismo plan', async () => {
+    pintar(sesion('dentro', ['prestador']))
+    await userEvent.type(
+      await screen.findByRole('textbox', { name: 'Código de descuento' }), 'LANZAMIENTO30')
+    await userEvent.click(screen.getByRole('button', { name: /aplicar/i }))
+    await screen.findByText('−$2.397')
+
+    await userEvent.click(within(screen.getByRole('region', { name: 'ZASS! Profesional' }))
+      .getByRole('button', { name: 'Contratar' }))
+    await waitFor(() => expect(cobros).toHaveLength(1))
+    expect(cobros[0].codigoPlan).toBe('profesional')
+    expect(cobros[0].codigoCupon).toBe('LANZAMIENTO30')
+  })
+
+  it('JQ-17: al cambiar de plan la cotización vieja se va y la nueva sale con el Esencial', async () => {
+    pintar(sesion('dentro', ['prestador']))
+    await userEvent.type(
+      await screen.findByRole('textbox', { name: 'Código de descuento' }), 'LANZAMIENTO30')
+    await userEvent.click(screen.getByRole('button', { name: /aplicar/i }))
+    await screen.findByText('−$2.397')
+
+    await userEvent.click(screen.getByRole('radio', { name: 'ZASS! Esencial' }))
+    expect(screen.queryByText('−$2.397')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: /aplicar/i }))
+    await screen.findByText('−$2.397')
+    expect(cotizados.map((c) => c.codigoPlan)).toEqual(['profesional', 'mensual'])
+  })
+
+  it('JQ-17: el aviso del fundador usa los precios de la API y los cupos que quedan', async () => {
+    pintar()
+    const aviso = await screen.findByText(/El plan de \$12\.990, a/)
+    expect(aviso.textContent).toContain('$5.990 para siempre')
+    expect(aviso.textContent).toContain('Quedan 37 de 50.')
+
+    // Con otros precios en la API, el aviso cambia: no están escritos a mano.
+    cleanup()
+    planes = PLANES.map((p) => p.codigo === 'profesional' ? { ...p, precioMensual: 14990 } : p)
+    pintar()
+    expect(await screen.findByText(/El plan de \$14\.990, a/)).toBeTruthy()
+
+    // Sin cupos, el aviso se reemplaza por el texto de cerrado.
+    cleanup()
+    cupos = 0
+    pintar()
+    expect(await screen.findByText(/ya están tomados/i)).toBeTruthy()
+    expect(screen.queryByText(/para siempre/)).toBeNull()
+  })
+
+  it('JQ-17: dice que ningún plan compra un mejor lugar en la búsqueda', async () => {
+    pintar()
+    expect(await screen.findByText('Ningún plan compra un mejor lugar en la búsqueda.')).toBeTruthy()
   })
 
   it('sin cupos el plan fundador aparece cerrado y SIN botón', async () => {
@@ -153,7 +330,7 @@ describe('Planes', () => {
     fallaElCatalogo = false
     await userEvent.click(boton)
 
-    expect(await screen.findByText('ZASS! Fundador')).toBeTruthy()
+    expect(await screen.findByText('ZASS! Profesional')).toBeTruthy()
   })
 
   it('N3: tomar el cupo lo RESERVA, dice hasta qué hora y pide inscribir la tarjeta', async () => {
@@ -326,7 +503,7 @@ describe('Planes', () => {
   it('a quien no tiene ficha no se le ofrece el cupón', async () => {
     pintar(sesion('dentro', ['buscador']))
 
-    await screen.findByText('ZASS! Fundador')
+    await screen.findByText('ZASS! Profesional')
     expect(screen.queryByRole('textbox', { name: 'Código de descuento' })).toBeNull()
   })
 })

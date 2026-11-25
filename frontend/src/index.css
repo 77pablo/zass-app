@@ -1411,3 +1411,44 @@ dl.cifras { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px
   list-style: none;
   font-variant-numeric: tabular-nums;
 }
+
+/* JQ-17 · /planes con tres columnas. El Profesional va al centro y destacado; en el celular va
+   primero (con `order`, sin duplicar el DOM). El destacado no depende solo del color: lleva
+   etiqueta, borde grueso, sombra y es más alto. */
+.planes-fundador {
+  display: grid; gap: 12px; margin-top: 24px; padding: 16px 20px;
+  background: var(--ambar-suave); border: 1px solid var(--ambar-hondo); border-radius: var(--radio-hoja);
+}
+.planes-fundador .planes-cupos { padding: 0; background: none; border-radius: 0; font-size: 1.0625rem; }
+.planes-fundador .planes-cupos--cerrado { color: var(--suave); }
+.planes-rejilla { grid-template-columns: 1fr; align-items: stretch; }
+.plan-columna {
+  display: flex; flex-direction: column; gap: 10px; padding: 20px; background: var(--blanco);
+  border: 1px solid var(--linea-fuerte); border-radius: var(--radio-hoja); box-shadow: var(--sombra-1);
+}
+.plan-columna .plan-incluye { flex: 1; }
+.plan-columna--profesional { order: 1; }
+.plan-columna--mensual { order: 2; }
+.plan-columna--equipo { order: 3; }
+.plan-columna--destacada { border: 2px solid var(--celeste); box-shadow: var(--sombra-2); }
+.plan-etiqueta {
+  align-self: flex-start; padding: 4px 12px; border-radius: 999px; font-size: 0.8125rem;
+  font-weight: 700; background: var(--pizarra); color: var(--blanco);
+}
+.plan-etiqueta--suave { background: var(--relleno); color: var(--suave); }
+.plan-columna--equipo { background: var(--gris-claro); }
+.plan-columna .plan-incluye { list-style: none; padding-left: 0; }
+.plan-item { display: flex; gap: 8px; align-items: flex-start; }
+.plan-item .icono { flex: none; width: 18px; height: 18px; margin-top: 2px; color: var(--esmeralda-texto); }
+.plan-item--no { color: var(--terciaria); text-decoration: line-through; }
+.plan-item--no .icono { color: var(--terciaria); }
+.planes-promesa { margin-top: 28px; font-weight: 600; text-align: center; }
+.cupon-plan { flex-basis: 100%; border: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.cupon-plan legend { font-size: 0.875rem; font-weight: 800; margin-bottom: 6px; }
+.cupon-plan label { flex-basis: auto; display: flex; gap: 8px; align-items: center; font-weight: 600; }
+.cupon-plan input { flex: none; min-height: 0; width: 20px; height: 20px; text-transform: none; }
+@media (min-width: 900px) {
+  .planes-rejilla { grid-template-columns: repeat(3, 1fr); align-items: stretch; padding-block: 12px; }
+  .plan-columna--mensual, .plan-columna--profesional, .plan-columna--equipo { order: 0; }
+  .plan-columna--destacada { margin-block: -12px; padding-block: 32px; }
+}

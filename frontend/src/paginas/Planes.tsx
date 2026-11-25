@@ -7,7 +7,7 @@ import { useMeta } from '../marco/useMeta'
 import { useTitulo } from '../marco/useTitulo'
 import {
   CUPOS_FUNDADOR_TOTALES, type CatalogoDePlanes, type Cotizacion, type CupoTomado, type Plan,
-  cotizar, inscribirTarjeta, pesos, planes as pedirPlanes, tomarCupoFundador,
+  cotizar, inscribirTarjeta, iniciarCobro, pesos, planes as pedirPlanes, tomarCupoFundador,
 } from '../funciones/planes/servicio'
 import { Captcha, captchaActivo } from '../componentes/Captcha'
 import { useSesion } from '../sesion/contexto'
@@ -28,7 +28,55 @@ function hora(iso: string): string {
     hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'America/Santiago',
   })
 }
-const CODIGO_MENSUAL = 'mensual'
+const CODIGO_ESENCIAL = 'mensual'
+const CODIGO_PROFESIONAL = 'profesional'
+const CODIGO_EQUIPO = 'equipo'
+type CodigoContratable = typeof CODIGO_ESENCIAL | typeof CODIGO_PROFESIONAL
+
+interface Caracteristica { texto: string, incluida: boolean }
+
+/**
+ * JQ-17. Lo que incluye un plan, LEÍDO de lo que manda la API: si mañana el Esencial gana las
+ * estadísticas, la pantalla lo muestra sin tocar nada aquí.
+ */
+function caracteristicasDe(plan: Plan): Caracteristica[] {
+  const tarjetas = plan.maxTarjetas === 1 ? '1 tarjeta NFC activa' : `${plan.maxTarjetas} tarjetas NFC activas`
+  return [
+    { texto: `Hasta ${plan.maxServicios} servicios en tu ficha`, incluida: true },
+    { texto: tarjetas, incluida: true },
+    { texto: 'Agenda en línea y reseñas', incluida: true },
+    { texto: 'Credenciales verificadas', incluida: plan.permiteCredenciales },
+    { texto: 'Estadísticas de tu ficha', incluida: plan.permiteEstadisticas },
+    {
+      texto: plan.maxFotosTrabajos > 0
+        ? `Fotos de tus trabajos (hasta ${plan.maxFotosTrabajos})`
+        : 'Fotos de tus trabajos',
+      incluida: plan.maxFotosTrabajos > 0,
+    },
+    { texto: 'Verificación prioritaria', incluida: plan.verificacionPrioritaria },
+  ]
+}
+
+/**
+ * El plan Equipo NO viene de la API: está inactivo (todavía no se puede contratar) y el catálogo
+ * solo devuelve los planes activos. Por eso va con datos FIJOS, solo para mostrarlo como
+ * «Próximamente». Cuando se active, este bloque se borra y sale de la API como los otros dos.
+ */
+const EQUIPO_PROXIMAMENTE = {
+  nombre: 'ZASS! Equipo',
+  descripcion: 'Para estudios, consultas y talleres con varios profesionales.',
+  precioMensual: 24990,
+  caracteristicas: [
+    { texto: 'Hasta 15 servicios por profesional', incluida: true },
+    { texto: 'Hasta 10 tarjetas NFC', incluida: true },
+    { texto: 'Hasta 5 profesionales con su propia ficha y agenda', incluida: true },
+    { texto: 'Agenda en línea y reseñas', incluida: true },
+    { texto: 'Credenciales verificadas', incluida: true },
+    { texto: 'Estadísticas de tu ficha', incluida: true },
+    { texto: 'Fotos de tus trabajos', incluida: true },
+    { texto: 'Verificación prioritaria', incluida: true },
+  ] satisfies Caracteristica[],
+}
 
 /** Lo que se le ofrece a quien no puede tomar el cupo todavía. */
 type Puerta = 'puede' | 'sin-sesion' | 'sin-ficha'
@@ -38,7 +86,9 @@ function puertaDe(estado: string, roles: string[] | undefined): Puerta {
   return roles?.includes('prestador') === true ? 'puede' : 'sin-ficha'
 }
 
-function Cupos({ quedan }: { quedan: number }) {
+function Cupos({
+  quedan, precioProfesional, precioFundador,
+}: { quedan: number, precioProfesional: number | null, precioFundador: number }) {
   if (quedan <= 0) {
     return (
       <p className="planes-cupos planes-cupos--cerrado" role="status">
@@ -49,38 +99,55 @@ function Cupos({ quedan }: { quedan: number }) {
   }
   return (
     <p className="planes-cupos" role="status">
-      Quedan <strong>{quedan}</strong> de {CUPOS_FUNDADOR_TOTALES} cupos de fundador
+      {precioProfesional !== null ? `El plan de ${pesos(precioProfesional)}, a` : 'El plan de lanzamiento, a'}
+      {' '}{pesos(precioFundador)} para siempre. Quedan <strong>{quedan}</strong> de {CUPOS_FUNDADOR_TOTALES}.
     </p>
   )
 }
 
-function TarjetaDePlan({
-  plan, destacado, cerrado, children,
+function ListaDeCaracteristicas({ items }: { items: Caracteristica[] }) {
+  return (
+    <ul className="plan-incluye">
+      {items.map((c) => (
+        <li key={c.texto} className={c.incluida ? 'plan-item' : 'plan-item plan-item--no'}>
+          <Icono nombre={c.incluida ? 'check' : 'cerrar'} />
+          <span className="solo-lector">{c.incluida ? 'Incluye: ' : 'No incluye: '}</span>
+          {c.texto}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** Una columna de la rejilla: `<section>` con su título, precio, lista y (si hay) acción. */
+function ColumnaDePlan({
+  codigo, nombre, descripcion, precio, items, destacada = false, proximamente = false, children,
 }: {
-  plan: Plan
-  destacado: boolean
-  cerrado: boolean
+  codigo: string
+  nombre: string
+  descripcion: string | null
+  precio: number
+  items: Caracteristica[]
+  destacada?: boolean
+  proximamente?: boolean
   children?: React.ReactNode
 }) {
+  const id = `plan-${codigo}`
   return (
-    <article
-      className={`plan-tarjeta${destacado ? ' plan-tarjeta--destacada' : ''}`}
-      aria-labelledby={`plan-${plan.codigo}`}
+    <section
+      className={`plan-columna plan-columna--${codigo}${destacada ? ' plan-columna--destacada' : ''}`}
+      aria-labelledby={id}
     >
-      <h2 id={`plan-${plan.codigo}`}>{plan.nombre}</h2>
+      {destacada && <p className="plan-etiqueta">El más elegido</p>}
+      {proximamente && <p className="plan-etiqueta plan-etiqueta--suave">Próximamente</p>}
+      <h2 id={id}>{nombre}</h2>
       <p className="plan-precio">
-        <strong>{pesos(plan.precioMensual)}</strong> al mes
+        <strong>{pesos(precio)}</strong> al mes
       </p>
-      {plan.descripcion !== null && <p className="plan-descripcion">{plan.descripcion}</p>}
-      <ul className="plan-incluye">
-        <li>Hasta {plan.maxServicios} servicios en tu ficha</li>
-        <li>Agenda de horas y reseñas</li>
-        {plan.permiteCredenciales && <li>Credenciales en tu ficha</li>}
-      </ul>
-      {cerrado
-        ? <p className="plan-cerrado">Cerrado: ya no quedan cupos.</p>
-        : children}
-    </article>
+      {descripcion !== null && <p className="plan-descripcion">{descripcion}</p>}
+      <ListaDeCaracteristicas items={items} />
+      {children}
+    </section>
   )
 }
 
@@ -102,6 +169,10 @@ export function Planes() {
   const [cotizacion, setCotizacion] = useState<Cotizacion | null>(null)
   const [errorDelCupon, setErrorDelCupon] = useState<string | null>(null)
   const [cotizando, setCotizando] = useState(false)
+  /** JQ-17: el plan que el cupón cotiza. Por defecto el Profesional, el que se destaca. */
+  const [planElegido, setPlanElegido] = useState<CodigoContratable>(CODIGO_PROFESIONAL)
+  const [contratando, setContratando] = useState<CodigoContratable | null>(null)
+  const [errorAlContratar, setErrorAlContratar] = useState<string | null>(null)
 
   const [tomando, setTomando] = useState(false)
   const [errorAlTomar, setErrorAlTomar] = useState<string | null>(null)
@@ -121,6 +192,11 @@ export function Planes() {
   const clave = useRef(crypto.randomUUID()).current
   /** CC-04 para la inscripción de la tarjeta (API-76): otra intención, otra clave. */
   const claveTarjeta = useRef(crypto.randomUUID()).current
+  /** CC-04 para «Contratar»: una clave por plan, generada al montar (y repetida en los reintentos). */
+  const clavesDeCobro = useRef<Record<CodigoContratable, string>>({
+    [CODIGO_ESENCIAL]: crypto.randomUUID(),
+    [CODIGO_PROFESIONAL]: crypto.randomUUID(),
+  }).current
 
   /**
    * Pide el catálogo. No toca `cargando` al empezar a propósito: así el efecto que la llama
@@ -153,9 +229,10 @@ export function Planes() {
   const quedan = catalogo?.cuposFundadorDisponibles ?? 0
   const cerrado = catalogo !== null && quedan <= 0
 
-  const { fundador, mensual } = useMemo(() => ({
+  const { fundador, esencial, profesional } = useMemo(() => ({
     fundador: catalogo?.planes.find((p) => p.codigo === CODIGO_FUNDADOR) ?? null,
-    mensual: catalogo?.planes.find((p) => p.codigo === CODIGO_MENSUAL) ?? null,
+    esencial: catalogo?.planes.find((p) => p.codigo === CODIGO_ESENCIAL) ?? null,
+    profesional: catalogo?.planes.find((p) => p.codigo === CODIGO_PROFESIONAL) ?? null,
   }), [catalogo])
 
   async function aplicarCupon(evento: React.FormEvent) {
@@ -166,7 +243,7 @@ export function Planes() {
     setCotizando(true)
     setErrorDelCupon(null)
     try {
-      setCotizacion(await cotizar(CODIGO_MENSUAL, codigo))
+      setCotizacion(await cotizar(planElegido, codigo))
     } catch (e) {
       setCotizacion(null)
       // El código NO se borra: quien se equivocó en una letra lo corrige, no lo reescribe.
@@ -176,6 +253,67 @@ export function Planes() {
     } finally {
       setCotizando(false)
     }
+  }
+
+  function elegirParaElCupon(codigo: CodigoContratable) {
+    if (codigo === planElegido) return
+    setPlanElegido(codigo)
+    // La cotización de otro plan ya no vale: se vuelve a pedir con «Aplicar».
+    setCotizacion(null)
+    setErrorDelCupon(null)
+  }
+
+  /** JQ-17: abre el pago del plan. El cupón viaja SOLO si la cotización vigente es de ese plan. */
+  async function contratar(codigo: CodigoContratable) {
+    if (contratando !== null) return
+    setContratando(codigo)
+    setErrorAlContratar(null)
+    const fallo = 'No pudimos abrir el pago. Vuelve a intentarlo.'
+    const cupon = cotizacion !== null && cotizacion.codigoPlan === codigo
+      ? cotizacion.cupon ?? undefined
+      : undefined
+    try {
+      const intento = await iniciarCobro(codigo, clavesDeCobro[codigo], cupon)
+      if (intento.urlParaPagar === null) {
+        setErrorAlContratar(fallo)
+        return
+      }
+      if (intento.urlParaPagar.startsWith('/')) navegar(intento.urlParaPagar)
+      else window.location.assign(intento.urlParaPagar)
+    } catch (e) {
+      setErrorAlContratar(e instanceof ErrorApi ? e.mensaje : fallo)
+    } finally {
+      setContratando(null)
+    }
+  }
+
+  /** La acción de una columna según quién mira (la misma puerta que ya usaba el cupo). */
+  function accionDe(codigo: CodigoContratable) {
+    if (puerta === 'puede') {
+      return (
+        <button
+          type="button"
+          // El ámbar es solo para la acción principal: la del plan que se destaca.
+          className={codigo === CODIGO_PROFESIONAL ? 'boton boton--amarillo boton--lleno' : 'boton boton--lleno'}
+          onClick={() => void contratar(codigo)}
+          disabled={contratando !== null}
+        >
+          {contratando === codigo ? 'Abriendo el pago…' : 'Contratar'}
+        </button>
+      )
+    }
+    if (puerta === 'sin-sesion') {
+      return (
+        <Link className="boton boton--lleno" to="/crear-cuenta?volver=/planes">
+          Quiero este plan
+        </Link>
+      )
+    }
+    return (
+      <Link className="boton boton--lleno" to="/ofrecer-servicios">
+        Quiero este plan
+      </Link>
+    )
   }
 
   async function tomarElCupo() {
@@ -258,94 +396,148 @@ export function Planes() {
           Quien busca no paga nunca, ni un peso. Pagas tú, por estar visible, y tu primer mes
           es gratis.
         </p>
-        <Cupos quedan={quedan} />
       </header>
 
-      <div className="planes-rejilla">
-        {fundador !== null && (
-          <TarjetaDePlan plan={fundador} destacado cerrado={cerrado}>
-            {puerta === 'puede' && tomado !== null && tomado.reservadoHasta && (
-              <div className="aviso aviso--atencion" role="status">
-                <p>
-                  <strong>Tu cupo N° {tomado.numero} está reservado hasta las {hora(tomado.reservadoHasta)}.</strong>
-                  {' '}Para que quede tuyo, inscribe tu tarjeta en Flow antes de esa hora. Hoy no
-                  se te cobra nada: tu mes gratis empieza cuando la tarjeta queda inscrita.
-                </p>
-                <p>Si no la inscribes a tiempo, el cupo vuelve a quedar libre para otra persona.</p>
-                <button
-                  type="button"
-                  className="boton boton--amarillo boton--lleno"
-                  onClick={() => void inscribirLaTarjeta()}
-                  disabled={abriendoTarjeta}
-                >
-                  <Icono nombre="flecha" />
-                  {abriendoTarjeta ? 'Abriendo Flow…' : 'Inscribir mi tarjeta'}
-                </button>
-              </div>
-            )}
-            {puerta === 'puede' && tomado !== null && !tomado.reservadoHasta && (
-              <div className="aviso aviso--atencion" role="status">
-                <p>
-                  <strong>El cupo N° {tomado.numero} ya es tuyo.</strong>
-                  {tomado.mesGratisHasta && <> Tu mes gratis dura hasta el {fechaLarga(tomado.mesGratisHasta) ?? 'fin del mes'}.</>}
-                </p>
-              </div>
-            )}
-            {puerta === 'puede' && tomado === null && (
-              <>
-                <Captcha accion="cupo_fundador" alResolver={setTokenCaptcha} reinicio={reinicioCaptcha} />
-                <button
-                  type="button"
-                  className="boton boton--amarillo boton--lleno"
-                  onClick={() => void tomarElCupo()}
-                  disabled={tomando}
-                >
-                  <Icono nombre="flecha" />
-                  {tomando ? 'Reservando tu cupo…' : 'Quiero mi cupo'}
-                </button>
-                <p className="plan-letra-chica">
-                  Te guardamos el cupo 30 minutos para que inscribas tu tarjeta en Flow. Hoy no se
-                  te cobra nada: tu primer mes es gratis y empieza cuando la tarjeta queda
-                  inscrita. Después, {pesos(fundador.precioMensual)} al mes mientras mantengas tu
-                  suscripción.
-                </p>
-              </>
-            )}
-            {puerta === 'sin-sesion' && (
-              <Link className="boton boton--amarillo boton--lleno" to="/crear-cuenta?volver=/planes">
-                Crear mi cuenta
+      {fundador !== null && (
+        <section className="planes-fundador" aria-labelledby="fundador-titulo">
+          <h2 id="fundador-titulo" className="solo-lector">Cupos de fundador</h2>
+          <Cupos
+            quedan={quedan}
+            precioProfesional={profesional?.precioMensual ?? null}
+            precioFundador={fundador.precioMensual}
+          />
+          {cerrado && <p className="plan-cerrado">Cerrado: ya no quedan cupos.</p>}
+          {!cerrado && puerta === 'puede' && tomado !== null && tomado.reservadoHasta && (
+            <div className="aviso aviso--atencion" role="status">
+              <p>
+                <strong>Tu cupo N° {tomado.numero} está reservado hasta las {hora(tomado.reservadoHasta)}.</strong>
+                {' '}Para que quede tuyo, inscribe tu tarjeta en Flow antes de esa hora. Hoy no
+                se te cobra nada: tu mes gratis empieza cuando la tarjeta queda inscrita.
+              </p>
+              <p>Si no la inscribes a tiempo, el cupo vuelve a quedar libre para otra persona.</p>
+              <button
+                type="button"
+                className="boton boton--amarillo boton--lleno"
+                onClick={() => void inscribirLaTarjeta()}
+                disabled={abriendoTarjeta}
+              >
+                <Icono nombre="flecha" />
+                {abriendoTarjeta ? 'Abriendo Flow…' : 'Inscribir mi tarjeta'}
+              </button>
+            </div>
+          )}
+          {!cerrado && puerta === 'puede' && tomado !== null && !tomado.reservadoHasta && (
+            <div className="aviso aviso--atencion" role="status">
+              <p>
+                <strong>El cupo N° {tomado.numero} ya es tuyo.</strong>
+                {tomado.mesGratisHasta && <> Tu mes gratis dura hasta el {fechaLarga(tomado.mesGratisHasta) ?? 'fin del mes'}.</>}
+              </p>
+            </div>
+          )}
+          {!cerrado && puerta === 'puede' && tomado === null && (
+            <>
+              <Captcha accion="cupo_fundador" alResolver={setTokenCaptcha} reinicio={reinicioCaptcha} />
+              <button
+                type="button"
+                className="boton boton--amarillo boton--lleno"
+                onClick={() => void tomarElCupo()}
+                disabled={tomando}
+              >
+                <Icono nombre="flecha" />
+                {tomando ? 'Reservando tu cupo…' : 'Quiero mi cupo'}
+              </button>
+              <p className="plan-letra-chica">
+                Te guardamos el cupo 30 minutos para que inscribas tu tarjeta en Flow. Hoy no se
+                te cobra nada: tu primer mes es gratis y empieza cuando la tarjeta queda
+                inscrita. Después, {pesos(fundador.precioMensual)} al mes mientras mantengas tu
+                suscripción.
+              </p>
+            </>
+          )}
+          {!cerrado && puerta === 'sin-sesion' && (
+            <Link className="boton boton--amarillo boton--lleno" to="/crear-cuenta?volver=/planes">
+              Crear mi cuenta
+            </Link>
+          )}
+          {!cerrado && puerta === 'sin-ficha' && (
+            <>
+              <Link className="boton boton--amarillo boton--lleno" to="/ofrecer-servicios">
+                Publicar mi ficha primero
               </Link>
-            )}
-            {puerta === 'sin-ficha' && (
-              <>
-                <Link className="boton boton--amarillo boton--lleno" to="/ofrecer-servicios">
-                  Publicar mi ficha primero
-                </Link>
-                <p className="plan-letra-chica">
-                  El cupo se asigna a tu perfil de prestador, así que primero hay que crearlo.
-                </p>
-              </>
-            )}
-            {errorAlTomar !== null && (
-              <p className="aviso aviso--error" role="alert">{errorAlTomar}</p>
-            )}
-          </TarjetaDePlan>
-        )}
+              <p className="plan-letra-chica">
+                El cupo se asigna a tu perfil de prestador, así que primero hay que crearlo.
+              </p>
+            </>
+          )}
+          {!cerrado && errorAlTomar !== null && (
+            <p className="aviso aviso--error" role="alert">{errorAlTomar}</p>
+          )}
+        </section>
+      )}
 
-        {mensual !== null && (
-          <TarjetaDePlan plan={mensual} destacado={false} cerrado={false}>
-            <p className="plan-letra-chica">
-              El plan de siempre. Tu primer mes también es gratis y lo puedes pausar cuando
-              quieras.
-            </p>
-          </TarjetaDePlan>
+      <div className="planes-rejilla">
+        {esencial !== null && (
+          <ColumnaDePlan
+            codigo={esencial.codigo}
+            nombre={esencial.nombre}
+            descripcion={esencial.descripcion}
+            precio={esencial.precioMensual}
+            items={caracteristicasDe(esencial)}
+          >
+            {accionDe(CODIGO_ESENCIAL)}
+          </ColumnaDePlan>
         )}
+        {profesional !== null && (
+          <ColumnaDePlan
+            codigo={profesional.codigo}
+            nombre={profesional.nombre}
+            descripcion={profesional.descripcion}
+            precio={profesional.precioMensual}
+            items={caracteristicasDe(profesional)}
+            destacada
+          >
+            {accionDe(CODIGO_PROFESIONAL)}
+          </ColumnaDePlan>
+        )}
+        <ColumnaDePlan
+          codigo={CODIGO_EQUIPO}
+          nombre={EQUIPO_PROXIMAMENTE.nombre}
+          descripcion={EQUIPO_PROXIMAMENTE.descripcion}
+          precio={EQUIPO_PROXIMAMENTE.precioMensual}
+          items={EQUIPO_PROXIMAMENTE.caracteristicas}
+          proximamente
+        />
       </div>
 
-      {puerta === 'puede' && mensual !== null && (
+      {errorAlContratar !== null && (
+        <p className="aviso aviso--error" role="alert">{errorAlContratar}</p>
+      )}
+
+      {puerta === 'puede' && (esencial !== null || profesional !== null) && (
         <section className="planes-cupon" aria-labelledby="cupon-titulo">
           <h2 id="cupon-titulo">¿Tienes un código de descuento?</h2>
           <form onSubmit={(e) => void aplicarCupon(e)}>
+            <fieldset className="cupon-plan">
+              <legend>¿Para qué plan?</legend>
+              {profesional !== null && (
+                <label>
+                  <input
+                    type="radio" name="plan-del-cupon" checked={planElegido === CODIGO_PROFESIONAL}
+                    onChange={() => elegirParaElCupon(CODIGO_PROFESIONAL)}
+                  />
+                  {profesional.nombre}
+                </label>
+              )}
+              {esencial !== null && (
+                <label>
+                  <input
+                    type="radio" name="plan-del-cupon" checked={planElegido === CODIGO_ESENCIAL}
+                    onChange={() => elegirParaElCupon(CODIGO_ESENCIAL)}
+                  />
+                  {esencial.nombre}
+                </label>
+              )}
+            </fieldset>
             <label htmlFor="cupon">Código de descuento</label>
             <input
               id="cupon"
@@ -377,6 +569,8 @@ export function Planes() {
           )}
         </section>
       )}
+
+      <p className="planes-promesa">Ningún plan compra un mejor lugar en la búsqueda.</p>
 
       <footer className="planes-pie">
         <p>
