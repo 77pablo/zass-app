@@ -123,4 +123,61 @@ describe('mantenimiento', () => {
 
     expect(respuesta.status).toBe(503)
   })
+  describe('MANTENIMIENTO_PAGINAS_PUBLICAS', () => {
+    const ABRIR = { MANTENIMIENTO_PAGINAS_PUBLICAS: '1' }
+    const pedirM = (url, metodo = 'GET', env = ABRIR) =>
+      pedir(new Request(url, { method: metodo, headers: { accept: 'text/html' } }), env)
+
+    it('sin la variable, /planes sigue en 503', async () => {
+      const { respuesta, siguiente } = await pedirM('https://zass.cl/planes', 'GET', {})
+      expect(respuesta.status).toBe(503)
+      expect(siguiente).not.toHaveBeenCalled()
+    })
+
+    it('con valores que no son 1/true/si no se abre nada', async () => {
+      for (const valor of ['', '0', 'no', 'false', 'x']) {
+        const { respuesta } = await pedirM('https://zass.cl/planes', 'GET', { MANTENIMIENTO_PAGINAS_PUBLICAS: valor })
+        expect(respuesta.status, valor).toBe(503)
+      }
+    })
+
+    it('con la variable pasan las paginas, los recursos y GET /api/planes', async () => {
+      for (const ruta of ['/planes', '/planes/', '/terminos', '/privacidad', '/assets/index-abc.js',
+        '/icono-zass-512.png', '/favicon.svg', '/manifest.webmanifest', '/robots.txt', '/api/planes']) {
+        const { respuesta, siguiente } = await pedirM(`https://zass.cl${ruta}`)
+        expect(respuesta.status, ruta).toBe(200)
+        expect(siguiente, ruta).toHaveBeenCalledTimes(1)
+      }
+      for (const valor of ['true', 'si', 'SI']) {
+        const { siguiente } = await pedirM('https://zass.cl/planes', 'GET', { MANTENIMIENTO_PAGINAS_PUBLICAS: valor })
+        expect(siguiente, valor).toHaveBeenCalledTimes(1)
+      }
+      const { siguiente } = await pedirM('https://zass.cl/planes', 'HEAD')
+      expect(siguiente).toHaveBeenCalledTimes(1)
+    })
+
+    it('con la variable todo lo demas sigue en 503', async () => {
+      const casos = [
+        ['GET', '/'], ['GET', '/buscar'], ['GET', '/planes/listo'], ['GET', '/PLANES'],
+        ['GET', '/api/yo'], ['GET', '/api/planes/x'], ['POST', '/api/planes'], ['POST', '/planes'],
+        ['GET', '/sw.js'], ['GET', '/planes/../interno'], ['GET', '/%70lanes'],
+        ['GET', '/assets/../sw.js'], ['GET', '//planes'], ['GET', '/assets/'], ['GET', '/terminos/x'],
+        ['GET', '/sin-conexion.html'],
+      ]
+      for (const [metodo, ruta] of casos) {
+        const { respuesta, siguiente } = await pedirM(`https://zass.cl${ruta}`, metodo)
+        expect(respuesta.status, `${metodo} ${ruta}`).toBe(503)
+        expect(siguiente, `${metodo} ${ruta}`).not.toHaveBeenCalled()
+      }
+    })
+
+    it('el pase sigue funcionando con la variable encendida', async () => {
+      const env = { ...ABRIR, MANTENIMIENTO_PASE: PASE }
+      const conCookie = await pedir(
+        peticion('https://zass.cl/buscar', { cabeceras: { cookie: `zass_pase=${PASE}` } }), env)
+      expect(conCookie.respuesta.status).toBe(200)
+      const conPase = await pedir(peticion(`https://zass.cl/?pase=${PASE}`), env)
+      expect(conPase.respuesta.status).toBe(302)
+    })
+  })
 })
