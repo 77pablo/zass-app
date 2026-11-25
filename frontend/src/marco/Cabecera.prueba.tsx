@@ -41,6 +41,32 @@ describe('Cabecera: Mis tarjetas', () => {
   })
 })
 
+describe('Cabecera: Mi plan', () => {
+  it('el prestador lo ve en la hoja «Más» y lleva a /planes', async () => {
+    pintar(['buscador', 'prestador'])
+    await userEvent.click(screen.getByRole('button', { name: 'Más' }))
+    expect(screen.getByRole('link', { name: /Mi plan/ })).toHaveAttribute('href', '/planes')
+  })
+
+  it('quien solo busca no lo ve', async () => {
+    pintar(['buscador'])
+    await userEvent.click(screen.getByRole('button', { name: 'Más' }))
+    expect(screen.queryByRole('link', { name: /Mi plan/ })).toBeNull()
+  })
+
+  it('el visitante (sin sesion) no lo ve', async () => {
+    render(
+      <MemoryRouter>
+        <Contexto.Provider value={{ estado: 'fuera', usuario: null, recargar: async () => {}, salir: async () => {} }}>
+          <ProveedorDeMenuMovil><Cabecera /><BarraInferior /></ProveedorDeMenuMovil>
+        </Contexto.Provider>
+      </MemoryRouter>,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Más' }))
+    expect(screen.queryByRole('link', { name: /Mi plan/ })).toBeNull()
+  })
+})
+
 describe('Cabecera: sin la marca arriba (estilo iPhone, 18-nov-2026)', () => {
   it('no muestra «ZASS!» ni el botón «Menú», pero el encabezado conserva el nombre del sitio', () => {
     pintar(['buscador'])
