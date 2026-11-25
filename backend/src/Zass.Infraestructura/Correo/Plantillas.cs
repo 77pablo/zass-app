@@ -92,7 +92,8 @@ public static class Plantillas
              or TipoNotificacion.RegistroConRutExistente
              or TipoNotificacion.CredencialVencida
              or TipoNotificacion.BorradorPorEliminarse
-             or TipoNotificacion.MfaActivado;
+             or TipoNotificacion.MfaActivado
+             or TipoNotificacion.RegistroConCorreoExistente;
 
     /// <summary>
     /// Los que llevan un secreto en la carga. Importa porque de esos el cuerpo se purga en
@@ -126,6 +127,9 @@ public static class Plantillas
                 ? BorradorPorEliminarse(nombre, credencial, borrarEl, EnlaceDelPanel(urlPublica)) : null,
         // No pide nada de la carga: los dos enlaces son fijos.
         TipoNotificacion.RegistroConRutExistente => RegistroConRutExistente(
+            nombre, EnlaceDeEntrada(urlPublica), EnlaceParaPedirContrasena(urlPublica)),
+        // No pide nada de la carga: los dos enlaces son fijos.
+        TipoNotificacion.RegistroConCorreoExistente => RegistroConCorreoExistente(
             nombre, EnlaceDeEntrada(urlPublica), EnlaceParaPedirContrasena(urlPublica)),
         // No pide nada de la carga: los dos enlaces son fijos.
         TipoNotificacion.MfaActivado => MfaActivado(
@@ -249,6 +253,35 @@ public static class Plantillas
             pie,
             otra, enlaceContrasena);
         return new("Alguien intentó crear otra cuenta con tu RUT en ZASS!", texto, html);
+    }
+
+    /// <summary>
+    /// 25-nov-2026 (Pablo): alguien intento registrarse con el correo de esta cuenta, ya verificada.
+    /// Va a ese mismo correo. Quien lo intento vio «revisa tu correo», igual que con un correo libre.
+    /// </summary>
+    public static CorreoRenderizado RegistroConCorreoExistente(string nombre, string enlaceEntrar, string enlaceContrasena)
+    {
+        const string parrafo =
+            "Alguien intentó crear una cuenta nueva en ZASS! con este correo. No la creamos: ya tienes "
+            + "una, y sigue igual. Si fuiste tú, no necesitas otra: entra con este correo.";
+        const string otra = "Si no recuerdas tu contraseña, puedes crear una nueva aquí:";
+        const string pie =
+            "Si no fuiste tú, puedes ignorar este mensaje: nadie entró a tu cuenta ni cambió nada.";
+        var texto =
+            $"Hola {nombre}:\n\n" +
+            $"{parrafo}\n\n" +
+            $"Para entrar:\n\n{enlaceEntrar}\n\n" +
+            $"{otra}\n\n{enlaceContrasena}\n\n" +
+            $"{pie}\n\n" +
+            "— El equipo de ZASS!";
+        var html = Marco(
+            "Ya tienes una cuenta con este correo",
+            $"Hola {H(nombre)}:",
+            parrafo,
+            "Entrar a mi cuenta", enlaceEntrar,
+            pie,
+            otra, enlaceContrasena);
+        return new("Alguien intentó crear una cuenta con tu correo en ZASS!", texto, html);
     }
 
     /// <summary>

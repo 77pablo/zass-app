@@ -308,22 +308,73 @@ public partial class ApiPruebas
         Assert.Equal(TipoNotificacion.CorreoVerificacion, Assert.Single(avisos).Tipo);
     }
 
+    private static async Task<int> AvisosDeCorreoAsync(string correoDuena, TipoNotificacion tipo)
+    {
+        using var ctx = ContextoDePrueba.Crear();
+        return await ctx.Notificaciones.CountAsync(n => n.Destinatario!.Correo == correoDuena && n.Tipo == tipo);
+    }
+
     /// <summary>
-    /// El correo repetido (no el RUT) queda como estaba: Pablo no lo decidio. Si el correo ya
-    /// existe, manda el mensaje de siempre, aunque el RUT tambien sea de alguien.
+    /// 25-nov-2026 (Pablo): el correo repetido responde IGUAL que un registro nuevo (mismo estado,
+    /// misma ubicacion, mismos campos), no crea otra cuenta y le escribe a la dueña de ese correo,
+    /// una vez por hora. Antes respondia 409 «Ya existe una cuenta con ese correo».
     /// </summary>
     [Fact]
-    public async Task El_correo_repetido_sigue_respondiendo_como_antes()
+    public async Task El_correo_repetido_responde_igual_que_un_registro_nuevo_y_avisa_a_su_duena()
     {
-        var rut = DatosDeRegistro.Rut();
-        var duena = await UnaDuenaDeRutAsync(rut);
+        var duena = await UnaDuenaDeRutAsync(DatosDeRegistro.Rut());
 
-        var r = await RegistrarConRutAsync(DatosDeRegistro.Rut(), duena);
+        var libre = await RegistrarConRutAsync(DatosDeRegistro.Rut(), NuevoCorreo());
+        var repetido = await RegistrarConRutAsync(DatosDeRegistro.Rut(), duena);
 
-        Assert.Equal(HttpStatusCode.Conflict, r.StatusCode);
-        var json = JsonDocument.Parse(await r.Content.ReadAsStringAsync()).RootElement;
-        Assert.Equal("Ya existe una cuenta con ese correo.", json.GetProperty("detail").GetString());
-        Assert.False(json.TryGetProperty("codigo", out _));
+        Assert.Equal(HttpStatusCode.Created, libre.StatusCode);
+        Assert.Equal(libre.StatusCode, repetido.StatusCode);
+        Assert.Equal(libre.Headers.Location, repetido.Headers.Location);
+        var jsonLibre = JsonDocument.Parse(await libre.Content.ReadAsStringAsync()).RootElement;
+        var json = JsonDocument.Parse(await repetido.Content.ReadAsStringAsync()).RootElement;
+        Assert.Equal(
+            jsonLibre.EnumerateObject().Select(p => p.Name).OrderBy(n => n),
+            json.EnumerateObject().Select(p => p.Name).OrderBy(n => n));
+
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            var cuenta = await ctx.Usuarios.SingleAsync(u => u.Correo == duena);   // sigue siendo una
+            Assert.NotEqual(cuenta.Id, json.GetProperty("usuarioId").GetGuid());
+        }
+        Assert.Equal(1, await AvisosDeCorreoAsync(duena, TipoNotificacion.RegistroConCorreoExistente));
         Assert.Equal(0, await AvisosDeRutAsync(duena));
+
+        // Dentro de la hora: la misma respuesta y ningun correo mas.
+        var otraVez = await RegistrarConRutAsync(DatosDeRegistro.Rut(), duena);
+        Assert.Equal(HttpStatusCode.Created, otraVez.StatusCode);
+        Assert.Equal(1, await AvisosDeCorreoAsync(duena, TipoNotificacion.RegistroConCorreoExistente));
+    }
+
+    /// <summary>
+    /// Correo repetido de una cuenta que no se confirmo: casi siempre es la misma persona que perdio
+    /// el enlace. Le llega uno NUEVO (pasada la espera entre reenvios) y el anterior deja de servir.
+    /// </summary>
+    [Fact]
+    public async Task El_correo_repetido_sin_confirmar_recibe_un_enlace_nuevo()
+    {
+        var correo = await UnaDuenaDeRutAsync(DatosDeRegistro.Rut(), verificada: false);
+        string? tokenViejo;
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            // Como si el enlace del registro hubiera salido hace 10 minutos (la espera es de 2).
+            var emitido = DateTime.UtcNow - TimeSpan.FromMinutes(10);
+            await ctx.Usuarios.Where(u => u.Correo == correo).ExecuteUpdateAsync(s => s
+                .SetProperty(u => u.TokenVerificacionExpiraEn, emitido + ServicioCuenta.VidaDelTokenDeVerificacion));
+            tokenViejo = await ctx.Usuarios.Where(u => u.Correo == correo).Select(u => u.TokenVerificacion).SingleAsync();
+        }
+
+        var r = await RegistrarConRutAsync(DatosDeRegistro.Rut(), correo);
+
+        Assert.Equal(HttpStatusCode.Created, r.StatusCode);
+        Assert.Equal(2, await AvisosDeCorreoAsync(correo, TipoNotificacion.CorreoVerificacion));
+        using var ctx2 = ContextoDePrueba.Crear();
+        Assert.Equal(1, await ctx2.Usuarios.CountAsync(u => u.Correo == correo));
+        Assert.NotEqual(tokenViejo,
+            await ctx2.Usuarios.Where(u => u.Correo == correo).Select(u => u.TokenVerificacion).SingleAsync());
     }
 }

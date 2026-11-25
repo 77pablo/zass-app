@@ -50,16 +50,90 @@ public class RegistroPruebas
         Assert.Equal("pablo@correo.cl", Assert.Single(_base.Usuarios).Correo);
     }
 
+    /// <summary>
+    /// 25-nov-2026 (Pablo): el correo repetido ya no se rechaza con «Ya existe una cuenta»: responde
+    /// como un registro nuevo, pero no crea otra cuenta (y vale aunque cambien las mayusculas).
+    /// </summary>
     [Fact]
-    public async Task Un_correo_ya_usado_se_rechaza_aunque_cambie_de_mayusculas()
+    public async Task Un_correo_ya_usado_no_crea_otra_cuenta_aunque_cambie_de_mayusculas()
     {
-        await _servicio.RegistrarAsync(Cmd(correo: "pablo@correo.cl"));
+        var primera = await _servicio.RegistrarAsync(Cmd(correo: "pablo@correo.cl"));
 
         var r = await _servicio.RegistrarAsync(Cmd(correo: "PABLO@CORREO.CL"));
 
-        Assert.False(r.Exito);
-        Assert.Equal(Fallas.Conflicto, r.Codigo);
+        Assert.True(r.Exito, r.Mensaje);
         Assert.Single(_base.Usuarios);
+        // Ni el id de la cuenta que ya existe, ni uno vacio: cualquiera de los dos lo delataria.
+        Assert.NotEqual(primera.Valor!.UsuarioId, r.Valor!.UsuarioId);
+        Assert.NotEqual(Guid.Empty, r.Valor.UsuarioId);
+        Assert.Equal("buscador", r.Valor.Rol);
+    }
+
+    [Fact]
+    public async Task Correo_repetido_y_verificado_avisa_a_su_duena_una_vez_por_hora()
+    {
+        await _servicio.RegistrarAsync(Cmd(correo: "pablo@correo.cl"));
+        var duena = Assert.Single(_base.Usuarios);
+        duena.CorreoVerificado = true;
+        duena.Estado = EstadoCuenta.Activa;
+        _cola.Encoladas.Clear();
+
+        await _servicio.RegistrarAsync(Cmd(correo: "pablo@correo.cl"));
+        await _servicio.RegistrarAsync(Cmd(correo: "pablo@correo.cl"));   // dentro de la hora
+
+        var aviso = Assert.Single(_cola.Encoladas);
+        Assert.Equal(TipoNotificacion.RegistroConCorreoExistente, aviso.Tipo);
+        Assert.Equal(duena.Id, aviso.DestinatarioId);
+        Assert.Equal("{}", aviso.Cuerpo);   // nada que guardar: ni token ni datos de quien lo intento
+
+        _reloj.Avanzar(ServicioRegistro.EsperaEntreAvisosDeRut);
+        await _servicio.RegistrarAsync(Cmd(correo: "pablo@correo.cl"));
+        Assert.Equal(2, _cola.Encoladas.Count);
+    }
+
+    [Fact]
+    public async Task Correo_repetido_sin_verificar_recibe_un_enlace_nuevo_y_el_viejo_deja_de_servir()
+    {
+        await _servicio.RegistrarAsync(Cmd(correo: "pablo@correo.cl"));
+        var duena = Assert.Single(_base.Usuarios);
+        var tokenViejo = duena.TokenVerificacion;
+
+        // Dentro de la espera entre reenvios no sale otro: el enlace vigente sigue sirviendo.
+        await _servicio.RegistrarAsync(Cmd(correo: "pablo@correo.cl"));
+        Assert.Single(_cola.Encoladas);
+        Assert.Equal(tokenViejo, duena.TokenVerificacion);
+
+        _reloj.Avanzar(ServicioCuenta.EsperaEntreReenvios);
+        var r = await _servicio.RegistrarAsync(Cmd(correo: "pablo@correo.cl"));
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Equal(2, _cola.Encoladas.Count);
+        var aviso = _cola.Encoladas.Last();
+        Assert.Equal(TipoNotificacion.CorreoVerificacion, aviso.Tipo);
+        Assert.Equal(duena.Id, aviso.DestinatarioId);
+        Assert.NotEqual(tokenViejo, duena.TokenVerificacion);
+        Assert.Equal(_secretos.HashToken(_secretos.Emitidos.Last()), duena.TokenVerificacion);
+        Assert.Contains(_secretos.Emitidos.Last(), aviso.Cuerpo);
+    }
+
+    /// <summary>
+    /// Si «contraseña filtrada» saliera solo con correos libres, el formulario volveria a decir quien
+    /// tiene cuenta. Sale igual con un correo que ya existe.
+    /// </summary>
+    [Fact]
+    public async Task La_contrasena_filtrada_se_rechaza_igual_con_un_correo_que_ya_tiene_cuenta()
+    {
+        await _servicio.RegistrarAsync(Cmd(correo: "pablo@correo.cl"));
+        var conFiltro = new ServicioRegistro(
+            new RepositorioUsuariosEnMemoria(_base), new RepositorioPerfilesEnMemoria(_base),
+            _base, _hash, _secretos, _reloj, _cola, _auditoria, new ContrasenasFiltradasFiltrada("password"));
+
+        var libre = await conFiltro.RegistrarAsync(Cmd(correo: "otra@correo.cl", contrasena: "password"));
+        var ocupado = await conFiltro.RegistrarAsync(Cmd(correo: "pablo@correo.cl", contrasena: "password"));
+
+        Assert.Equal(Fallas.Validacion, libre.Codigo);
+        Assert.Equal(libre.Codigo, ocupado.Codigo);
+        Assert.Equal(libre.Mensaje, ocupado.Mensaje);
     }
 
     [Fact]
