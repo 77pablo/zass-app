@@ -1,11 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- El mismo dibujo que icono-zass.svg (guia v3), para la pestaña del navegador. -->
-  <rect width="512" height="512" rx="112" fill="#00A6FF"/>
-  <!-- El conjunto (Z + sello) se centra: su caja va de 120 a 472, asi que se corre 40 y 44 px. -->
-  <g transform="translate(-40 -44)">
-    <path d="M120 128H352V184L200 328H352V384H120V328L272 184H120Z" fill="#111827"/>
-    <circle cx="372" cy="372" r="92" fill="#FFB800" stroke="#00A6FF" stroke-width="16"/>
-    <rect x="358" y="314" width="28" height="70" rx="14" fill="#111827"/>
-    <circle cx="372" cy="414" r="15" fill="#111827"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="ZASS!">
+  <!-- El mismo dibujo que icono-zass.svg, mas grande, para la pestaña del navegador. -->
+  <rect width="512" height="512" rx="96" fill="#FFFFFF"/>
+  <g transform="translate(256 256) scale(1.25) translate(-261 -256)" fill="#F6C81E" stroke="#F6C81E">
+    <path d="M110 121H181L169 297H122Z"/><ellipse cx="146" cy="359" rx="37" ry="35"/>
+    <g fill="none" stroke-width="32" stroke-linecap="round"><path d="M240 196A78 78 0 0 1 240 316"/><path d="M273 146A138 138 0 0 1 273 366"/><path d="M300 93A196 196 0 0 1 300 419"/></g>
   </g>
 </svg>

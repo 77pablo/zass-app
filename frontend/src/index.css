@@ -32,6 +32,8 @@
 
   /* Acento */
   --ambar: #ffb800;
+  /* El amarillo del logo (Pablo, 26-nov-2026): solo para el logo, nunca texto ni fondos. */
+  --logo: #f6c81e;
   --ambar-hondo: #f0ab00;
   --ambar-suave: #fff6dc;
 
