@@ -82,7 +82,18 @@ que entró desde el 22-nov (P-6, parte de código) y quitar el «Ya existe una c
 | Vigilancia | «Vigilar planificador» pasa de 2 h a **3 h**: lo que salta ya es solo lo que Flow no pudo resolver |
 | Pruebas | 9 de aplicación, 6 de Flow (HTTP falso), 1 contra PostgreSQL (la consulta), 1 de la tarea. **7 mutaciones, las 7 caen** |
 
-**Siguiente paso exacto:** fusionar el PR de la conciliación con CI verde → Manual Deploy de la API (sin migraciones) → en el registro de Render debe aparecer `conciliar-cobros: conciliacion: 0 revisados…` en la primera hora. Luego el PR del punto 2 (MFA).
+La conciliación quedó **fusionada** (#238, `078eb2b`), con el CI verde. Falta el Manual Deploy de la API.
+
+**Verificación en dos pasos (punto 2), PR aparte, ESPERA que Pablo apruebe los textos:**
+
+| Pieza | Detalle |
+|---|---|
+| «No fui yo» (API-85) | El correo de activación lleva un enlace de un solo uso, 7 días (`usuarios.mfa_revocacion_hash`/`_expira_en`, **migración `RevocarMfaDesdeElCorreo`**). Quita la verificación, cierra todas las sesiones, deja la contraseña vieja sin servir y devuelve el token para crear otra. La pantalla `/no-fui-yo` actúa con un **botón** (los antivirus del correo abren enlaces solos). Restablecer a secas sigue **sin** quitarla |
+| Administrador (API-86) | `/interno/quitar-verificacion` (rol administrador, CSRF): correo + motivo. Lo mismo que arriba, y a la dueña le llega un correo con el enlace para crear la contraseña. Nunca sobre la propia cuenta. Auditoría con el motivo |
+| Avisos | Desactivar y regenerar códigos ahora mandan correo (`MfaDesactivado`, `MfaCodigosRegenerados`); los dos con token (`MfaActivado`, `MfaQuitadoPorAdministrador`) se purgan al enviarse |
+| Pruebas | 13 de aplicación, 4 por HTTP, 4 de plantillas, 8 del sitio. **7 mutaciones, las 7 caen** |
+
+**Siguiente paso exacto:** Pablo hace Manual Deploy de la API (conciliación, sin migraciones) → aprueba los 4 textos del PR de MFA → se fusiona → **migración en producción** (flujo de Actions, la corre Pablo) → Manual Deploy → desplegar el sitio (trae `/no-fui-yo` y la sección del panel). Después, el punto 1 (bloqueo).
 
 ---
 

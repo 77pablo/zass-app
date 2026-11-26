@@ -5949,6 +5949,15 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasColumnType("character varying(64)")
                         .HasColumnName("mfa_desafio_hash");
 
+                    b.Property<DateTime?>("MfaRevocacionExpiraEn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("mfa_revocacion_expira_en");
+
+                    b.Property<string>("MfaRevocacionHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("mfa_revocacion_hash");
+
                     b.Property<byte[]>("MfaSecretoCifrado")
                         .HasColumnType("bytea")
                         .HasColumnName("mfa_secreto_cifrado");
@@ -6016,6 +6025,10 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.HasIndex("MfaDesafioHash")
                         .HasDatabaseName("i_x_usuarios_mfa_desafio_hash")
                         .HasFilter("mfa_desafio_hash IS NOT NULL");
+
+                    b.HasIndex("MfaRevocacionHash")
+                        .HasDatabaseName("i_x_usuarios_mfa_revocacion_hash")
+                        .HasFilter("mfa_revocacion_hash IS NOT NULL");
 
                     b.HasIndex("Rut")
                         .IsUnique()

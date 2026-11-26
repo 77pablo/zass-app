@@ -66,6 +66,7 @@ const SECCIONES: { seccion: SeccionInterna; a: string; titulo: string; bajada: s
   { seccion: 'administracion', a: '/interno/indicadores', titulo: T.SECCION_INDICADORES, bajada: T.SECCION_INDICADORES_BAJADA },
   { seccion: 'administracion', a: '/interno/tarjetas', titulo: T.SECCION_TARJETAS, bajada: T.SECCION_TARJETAS_BAJADA },
   { seccion: 'administracion', a: '/interno/auditoria', titulo: T.SECCION_AUDITORIA, bajada: T.SECCION_AUDITORIA_BAJADA },
+  { seccion: 'administracion', a: '/interno/quitar-verificacion', titulo: T.SECCION_QUITAR_MFA, bajada: T.SECCION_QUITAR_MFA_BAJADA },
 ]
 
 /** /interno: el índice, con solo las secciones que tu cuenta puede usar. Crece con JQ-14. */

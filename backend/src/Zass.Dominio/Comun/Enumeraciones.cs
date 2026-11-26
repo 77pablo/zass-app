@@ -72,7 +72,11 @@ public enum TipoNotificacion
     MfaActivado,
     // 25-nov-2026 (decision de Pablo): alguien intento registrarse con el correo de esta cuenta
     // (ya verificada). Va a ese mismo correo; quien lo escribio recibe la respuesta de siempre.
-    RegistroConCorreoExistente
+    RegistroConCorreoExistente,
+    // Revision de seguridad 25-nov-2026: la dueña se entera de todo cambio en su verificacion.
+    MfaDesactivado,
+    MfaCodigosRegenerados,
+    MfaQuitadoPorAdministrador
 }
 
 public enum CanalNotificacion { Correo, Push }
