@@ -143,6 +143,9 @@ public sealed class RepositorioUsuariosEnMemoria : IRepositorioUsuarios
     public Task<Usuario?> PorDesafioMfaAsync(string hashDesafio, CancellationToken ct = default) =>
         Task.FromResult(_base.Usuarios.FirstOrDefault(u => u.MfaDesafioHash == hashDesafio));
 
+    public Task<Usuario?> PorRevocacionMfaAsync(string hashRevocacion, CancellationToken ct = default) =>
+        Task.FromResult(_base.Usuarios.FirstOrDefault(u => u.MfaRevocacionHash == hashRevocacion));
+
     public Task<bool> GastarPasoTotpAsync(Guid usuarioId, long paso, CancellationToken ct = default)
     {
         var u = _base.Usuarios.FirstOrDefault(x => x.Id == usuarioId);

@@ -250,6 +250,26 @@ public sealed class ValidadorRegenerarCodigosMfa : AbstractValidator<RegenerarCo
     }
 }
 
+public sealed class ValidadorNoFuiYo : AbstractValidator<NoFuiYoCmd>
+{
+    public ValidadorNoFuiYo()
+    {
+        RuleFor(x => x.Token).NotEmpty().MaximumLength(200);
+    }
+}
+
+public sealed class ValidadorQuitarMfa : AbstractValidator<QuitarMfaCmd>
+{
+    public ValidadorQuitarMfa()
+    {
+        RuleFor(x => x.Correo).NotEmpty().WithMessage("Escribe el correo de la cuenta.")
+            .MaximumLength(254).EmailAddress().WithMessage("Ese correo no es válido.");
+        RuleFor(x => x.Motivo).NotEmpty().WithMessage("Escribe por qué se quita.")
+            .MinimumLength(10).WithMessage("Explica el motivo en al menos 10 caracteres.")
+            .MaximumLength(500);
+    }
+}
+
 public sealed class ValidadorDesactivarMfa : AbstractValidator<DesactivarMfaCmd>
 {
     public ValidadorDesactivarMfa()

@@ -410,6 +410,10 @@ public class CorreoUnidadPruebas
             TipoNotificacion.BorradorPorEliminarse,
             // ServicioRegistro, desde el 25-nov-2026: registro con un correo que ya tiene cuenta.
             TipoNotificacion.RegistroConCorreoExistente,
+            // ServicioMfa, desde el 25-nov-2026: los avisos de seguridad de la verificacion.
+            TipoNotificacion.MfaDesactivado,
+            TipoNotificacion.MfaCodigosRegenerados,
+            TipoNotificacion.MfaQuitadoPorAdministrador,
         };
         // Ya no queda ninguno pendiente a conciencia: PerfilPublicado era el ultimo y tiene
         // plantilla desde el 13-nov-2026. Si manana se encola un tipo nuevo sin plantilla, esta
@@ -419,6 +423,65 @@ public class CorreoUnidadPruebas
         var huecos = encolados.Except(pendientes).Where(t => !Plantillas.TienePlantilla(t)).ToArray();
 
         Assert.Empty(huecos);
+    }
+
+    // ------------------------------------------------------- verificacion en dos pasos (25-nov-2026)
+
+    /// <summary>
+    /// La activacion con token lleva el enlace «No fui yo» a la pantalla (no a la API: se actua con un
+    /// boton). Sin token —encolado antes, o ya purgada— sale el texto anterior. El token se purga.
+    /// </summary>
+    [Fact]
+    public void La_activacion_lleva_el_enlace_no_fui_yo_y_sin_token_sale_el_texto_anterior()
+    {
+        Assert.True(Plantillas.LlevaToken(TipoNotificacion.MfaActivado));
+
+        var con = Plantillas.Renderizar(TipoNotificacion.MfaActivado, "Ana", "https://zass.cl/", CargaDeAviso.ConToken("abc+/="))!;
+        Assert.Contains("https://zass.cl/no-fui-yo?token=abc%2B%2F%3D", con.Texto);
+        Assert.Contains("href=\"https://zass.cl/no-fui-yo?token=abc%2B%2F%3D\"", con.Html);
+        Assert.Contains("7 días", con.Texto);
+        Assert.DoesNotContain("/api/", con.Texto);
+
+        foreach (var carga in new[] { "", "{}", CargaDeAviso.Purgada })
+        {
+            var sin = Plantillas.Renderizar(TipoNotificacion.MfaActivado, "Ana", "https://zass.cl/", carga)!;
+            Assert.DoesNotContain("no-fui-yo", sin.Texto);
+            Assert.Contains("https://zass.cl/recuperar-contrasena", sin.Texto);
+        }
+    }
+
+    [Theory]
+    [InlineData(TipoNotificacion.MfaDesactivado, "Se desactivó la verificación en dos pasos en tu cuenta de ZASS!")]
+    [InlineData(TipoNotificacion.MfaCodigosRegenerados, "Se crearon códigos de respaldo nuevos para tu cuenta de ZASS!")]
+    public void Desactivar_y_regenerar_avisan_sin_secreto_con_el_enlace_para_cambiar_la_contrasena(TipoNotificacion tipo, string asunto)
+    {
+        Assert.True(Plantillas.TienePlantilla(tipo));
+        Assert.False(Plantillas.LlevaToken(tipo));
+
+        var r = Plantillas.Renderizar(tipo, "Luis <b>Pérez</b>", "https://zass.cl/", "{}")!;
+        Assert.Equal(asunto, r.Asunto);
+        Assert.Contains("https://zass.cl/recuperar-contrasena", r.Texto);
+        Assert.Contains("https://zass.cl/mi-cuenta/seguridad", r.Texto);
+        Assert.Contains("Si NO fuiste tú", r.Texto);
+        Assert.DoesNotContain("<b>", r.Html);
+    }
+
+    /// <summary>
+    /// El aviso del administrador lleva el enlace de recuperacion con su token; sin token (purgado) no
+    /// sale, porque el boton es lo unico que importa. Lleva token, asi que se purga tras enviarse.
+    /// </summary>
+    [Fact]
+    public void El_aviso_del_administrador_lleva_el_enlace_para_crear_la_contrasena()
+    {
+        Assert.True(Plantillas.TienePlantilla(TipoNotificacion.MfaQuitadoPorAdministrador));
+        Assert.True(Plantillas.LlevaToken(TipoNotificacion.MfaQuitadoPorAdministrador));
+
+        var r = Plantillas.Renderizar(TipoNotificacion.MfaQuitadoPorAdministrador, "Ana", "https://zass.cl/", CargaDeAviso.ConToken("t-123"))!;
+        Assert.Equal("Quitamos la verificación en dos pasos de tu cuenta de ZASS!", r.Asunto);
+        Assert.Contains("https://zass.cl/restablecer-contrasena?token=t-123", r.Texto);
+        Assert.Contains("https://zass.cl/recuperar-contrasena", r.Texto);
+
+        Assert.Null(Plantillas.Renderizar(TipoNotificacion.MfaQuitadoPorAdministrador, "Ana", "https://zass.cl/", CargaDeAviso.Purgada));
     }
 
     // ------------------------------------------------------- correo con cuenta (25-nov-2026)
