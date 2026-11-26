@@ -37,6 +37,27 @@ comprobado**, **qué no**, y **el siguiente paso exacto**.
 
 ---
 
+## Sesión del 26-nov-2026 (madrugada) — MFA en producción y logo nuevo
+
+**Dónde retomar («sigamos con zass»):** esta rama, `p/bloqueo-30-y-aviso` (punto 1 de la revisión de seguridad: el bloqueo sube a 30 intentos y se avisa por correo). Falta:
+1. Arreglar la prueba de integración `Mfa_los_fallos_del_segundo_paso_cuentan_para_el_mismo_bloqueo`, que probablemente sigue suponiendo 10 intentos.
+2. Correr las mutaciones.
+3. Abrir el PR con el texto del correo de bloqueo para que Pablo lo apruebe (regla 12).
+
+**Hecho y comprobado:**
+
+| Qué | Estado |
+|---|---|
+| #239 MFA («No fui yo», quitarla desde el panel, avisos) | Fusionado (`fdf9bfd`); textos aprobados por Pablo |
+| Migración `RevocarMfaDesdeElCorreo` en Neon | Aplicada desde Actions (run 45754286221); la comprobación contra el catálogo salió bien |
+| API en Render con #239 | Live; `POST /api/auth/mfa/no-fui-yo` responde 400 de validación (antes 404) |
+| Sitio con #239 | Desplegado en Cloudflare: Production, `main`, `fdf9bfd` |
+| #240 Logo nuevo (pedido de Pablo) | Logo «ZASS!)))» amarillo `#F6C81E` vectorizado; franja de mantenimiento en pizarra; ícono «!)))» en el favicon, los íconos de la app, la página sin conexión y `og-zass.png`. Token `--logo` en `index.css`. 1101/1101 y 2 mutaciones atrapadas. **Ver al retomar si quedó fusionado y desplegado.** |
+
+**Regla de Pablo (26-nov):** «el logo de zass es amarillo, eso no se cambia por nada». Si un fondo no deja leer el amarillo, se cambia el fondo, nunca el logo.
+
+**Nota:** el registro de compilación de Render imprime la `SIXLABORS_LICENSE_KEY` (la línea `RUN test -n ...` del Dockerfile). Es una licencia Community y no da acceso a nada, pero conviene que no salga en el registro.
+
 ## Sesión del 25-nov-2026 (noche) — copia probada, revisión de seguridad, registro sin delatar cuentas
 
 Pablo dejó a Claude trabajando solo con tres tareas: probar la copia (P-7), revisar la seguridad de lo
