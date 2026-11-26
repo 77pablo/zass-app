@@ -15,12 +15,11 @@ const RAIZ = resolve(import.meta.dirname, '..', '..')
 const publico = (nombre) => resolve(RAIZ, 'public', nombre)
 const texto = (ruta) => readFileSync(ruta, 'utf8')
 
-// Los colores de la guia v3 (18-nov-2026), los mismos de index.css.
-const CELESTE = '#00A6FF'
-const PIZARRA = '#111827'
-const AMBAR = '#FFB800'
-/** La marca anterior: no puede quedar en ningun icono. */
-const VIEJOS = ['#F6C81E', '#1A1A1A']
+// El amarillo del logo (Pablo, 26-nov-2026: «el logo de zass es amarillo, eso no se cambia por
+// nada»), el mismo --logo de index.css.
+const LOGO = '#F6C81E'
+/** Lo que no puede quedar en ningun icono: la tinta de la marca de antes y la Z celeste de la v3. */
+const VIEJOS = ['#1A1A1A', '#00A6FF', '#FFB800']
 /** El fondo del sitio con la guia v3: la pantalla de arranque tiene que coincidir. */
 const BLANCO = '#FFFFFF'
 
@@ -73,12 +72,11 @@ describe('manifiesto web (PWA instalable)', () => {
     }
   })
 
-  it('los iconos usan la guia v3 (celeste, pizarra y el «!» ambar) y nada de la marca anterior', () => {
+  it('los iconos son el logo amarillo sobre blanco, y nada de los iconos anteriores', () => {
     for (const fuente of ['icono-zass.svg', 'icono-zass-maskable.svg', 'favicon.svg']) {
       const svg = texto(publico(fuente)).toUpperCase()
-      expect(svg, fuente).toContain(CELESTE)
-      expect(svg, fuente).toContain(PIZARRA)
-      expect(svg, fuente).toContain(AMBAR)
+      expect(svg, fuente).toContain(LOGO)
+      expect(svg, fuente).toContain(BLANCO)
       for (const viejo of VIEJOS) expect(svg, `${fuente} todavia trae ${viejo}`).not.toContain(viejo)
     }
   })
@@ -91,9 +89,9 @@ describe('manifiesto web (PWA instalable)', () => {
   })
 
   // El maskable se recorta con cualquier forma: el dibujo tiene que caber en el circulo central
-  // del 80 %. Si alguien quita el `scale`, el sello queda fuera y se corta.
-  it('el maskable achica el dibujo para la zona segura', () => {
-    expect(texto(publico('icono-zass-maskable.svg'))).toMatch(/scale\(0\.7\d?\)/)
+  // del 80 %. Si alguien agranda el dibujo, la onda grande queda fuera y se corta.
+  it('el maskable no agranda el dibujo: cabe en la zona segura', () => {
+    expect(texto(publico('icono-zass-maskable.svg'))).toMatch(/scale\(0\.9\d?\)/)
   })
 })
 
