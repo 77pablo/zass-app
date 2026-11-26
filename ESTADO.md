@@ -1,6 +1,8 @@
 # ZASS! — estado del desarrollo
 
-**Última sesión:** 25 de noviembre de 2026: **el cobro con Flow funciona en producción** (Cargo Automático activo, primer fundador inscrito), **Turnstile encendido y comprobado**, y #223/#233/#234/#235 fusionados. Ver **«Sesión del 25-nov-2026»** justo debajo.
+**Última sesión:** 25 de noviembre de 2026 (noche): **copia de seguridad restaurada y comprobada (P-7)**, revisión de seguridad de lo entrado desde el 22-nov, y el registro ya no delata qué correos tienen cuenta. Ver **«Sesión del 25-nov-2026 (noche)»** justo debajo.
+
+**Sesión anterior:** 25-nov (tarde): el cobro con Flow funciona en producción y Turnstile encendido.
 
 **Sesión anterior:** 20-nov (JQ-9). Entre el 20 y el 25-nov el estado se llevó en la memoria de Claude y en `zass-tareas/RETOMAR-IA-2.md`, no aquí.
 
@@ -32,6 +34,37 @@ repositorio en GitHub).
 
 Este archivo existe para retomar sin reconstruir contexto. Dice **qué está hecho y
 comprobado**, **qué no**, y **el siguiente paso exacto**.
+
+---
+
+## Sesión del 25-nov-2026 (noche) — copia probada, revisión de seguridad, registro sin delatar cuentas
+
+Pablo dejó a Claude trabajando solo con tres tareas: probar la copia (P-7), revisar la seguridad de lo
+que entró desde el 22-nov (P-6, parte de código) y quitar el «Ya existe una cuenta con ese correo».
+
+**Hecho y comprobado:**
+
+| Pieza | Cómo se comprobó |
+|---|---|
+| **#236 fusionado** (`3078137`) | CI verde (backend, frontend, gitleaks). **El sitio NO se desplegó**: Pablo dijo que la interfaz la lleva Joaquín; en #210 quedó lo que su pantalla debe traer sí o sí. Mientras zass.cl siga en mantenimiento no urge, pero **antes de abrir hay que desplegar**: el sitio vivo no tiene el camino «pagar» que la API (#223) ya exige |
+| **P-7: la copia restaura** | Corrida manual de «Probar la restauracion de la copia» (`45699747997`) con la copia del 25-nov: llega a la última migración (`VerificacionEnDosPasos`), trae todas las tablas, índices y claves de su modelo, 5 planes, 50 cupos, R-1, usuarios y PostGIS con una distancia real. Ya corría cada lunes; la del 23-nov era anterior a migrar Neon (por eso tenía 3 planes) |
+| **Revisión de seguridad** (3 revisores, solo lectura; lo que se arregló lo verifiqué yo leyendo el código) | Pagos: **ninguna forma de obtener un plan sin pagar** (estado y monto salen de Flow con firma propia, cupo con `SKIP LOCKED`, captcha solo por API-69). Identidad: MFA, TOTP, códigos de respaldo y desafío bien hechos. Resto: sin IDOR en métricas ni indicadores, push con lista de hosts, SQL parametrizado, CI sin secretos en PR |
+| **Registro (API-08) sin delatar cuentas** | Correo con cuenta → **la misma respuesta que un registro nuevo** (201, mismos campos, id inventado). A ese correo: enlace de confirmación nuevo si no estaba verificada (espera de 2 min, la de CS-01 bis), o el aviso nuevo `RegistroConCorreoExistente` si lo estaba (uno por hora). La contraseña filtrada se mira **antes** que el correo. Pruebas: 5 unitarias, 2 de integración por HTTP, plantilla; **4 mutaciones, las 4 caen** |
+| **Inicio de sesión: el tiempo delataba correos** | Con un correo sin cuenta se hacían 2 Argon2id y con uno con cuenta 1. Ahora el hash de relleno se calcula una vez por hasher. Prueba que cuenta las llamadas al hasher; la mutación (código viejo) cae |
+| **Cobros automáticos atascados** | Si Flow cobra pero su respuesta se pierde, el intento queda Pendiente y solo se contaba como «para revisar»: **nadie se enteraba**. `vigilar-planificador.yml` tiene un paso nuevo que falla (y GitHub le avisa a Pablo) si hay cobros automáticos Pendientes hace más de 2 h. La SQL se probó en la base local; **el paso solo puede correr desde `main`** (usa el secreto): lanzarlo a mano tras fusionar |
+| Forma de clave de archivos | `$` → `\z` (aceptaba un `\n` final). Prueba + mutación |
+
+**Lo que la revisión encontró y NO se tocó (decisiones de Pablo):**
+
+1. **Bloqueo por intentos como arma**: con el correo de otra persona, 10 fallos la bloquean 15 min, y se puede repetir (2 IP bastan). Restablecer la contraseña desbloquea. Opciones: contar por cuenta+IP, o desbloquear con el enlace del correo.
+2. **MFA sin recuperación**: quien tenga la contraseña puede activar MFA con SU teléfono; restablecer la contraseña no lo quita y no hay forma de que un administrador lo quite. Desactivar MFA y regenerar códigos no avisan por correo (activar sí).
+3. **Cobro automático sin conciliación**: el aviso de arriba es el parche; lo completo es un paso diario que pregunte a Flow (`payment/getStatusByCommerceId`) por los Pendientes y los resuelva. Antes del primer cobro real (~18-dic) conviene tenerlo.
+4. **Cupón dos veces**: pagando dos intentos a propósito se puede llevar el descuento dos meses (~$2.000). Está documentado en el código como compromiso aceptado.
+5. **Límite de peticiones «A»**: 5 cada 15 min por IP, compartido por login, registro, MFA y recuperar. Verificar que `Zass__ProxiesDeConfianza` esté bien puesto en Render: si no, todos comparten un solo cupo.
+6. #226 (sello de seguridad, cookie que sigue viva 15 min tras cambiar la clave) **sigue abierto** y lo cubre.
+7. Menores: la comparación del pase de mantenimiento delata el largo (teórico); recuperar contraseña y reenviar verificación tardan distinto con y sin cuenta (más débil); la baja no borra `PerfilBuscador` ni la IP de la auditoría (explicarlo por escrito, Ley 21.719).
+
+**Siguiente paso exacto:** fusionar el PR de esta sesión cuando el CI esté verde → lanzar a mano «Vigilar planificador» desde Actions y ver el paso nuevo en verde → desplegar la API (Manual Deploy en Render; sin migraciones). Luego, decidir los puntos 1-3 de arriba.
 
 ---
 

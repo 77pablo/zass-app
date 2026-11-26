@@ -408,6 +408,8 @@ public class CorreoUnidadPruebas
             TipoNotificacion.CredencialVencida,
             // ServicioBorradoresAbandonados, desde JQ-16.
             TipoNotificacion.BorradorPorEliminarse,
+            // ServicioRegistro, desde el 25-nov-2026: registro con un correo que ya tiene cuenta.
+            TipoNotificacion.RegistroConCorreoExistente,
         };
         // Ya no queda ninguno pendiente a conciencia: PerfilPublicado era el ultimo y tiene
         // plantilla desde el 13-nov-2026. Si manana se encola un tipo nuevo sin plantilla, esta
@@ -417,6 +419,33 @@ public class CorreoUnidadPruebas
         var huecos = encolados.Except(pendientes).Where(t => !Plantillas.TienePlantilla(t)).ToArray();
 
         Assert.Empty(huecos);
+    }
+
+    // ------------------------------------------------------- correo con cuenta (25-nov-2026)
+
+    /// <summary>
+    /// El aviso a la dueña de un correo con el que alguien intento registrarse: entrar y crear una
+    /// contraseña nueva, ningun token, el nombre escapado y nunca en el asunto.
+    /// </summary>
+    [Fact]
+    public void El_aviso_de_correo_con_cuenta_lleva_entrar_y_recuperar_y_ningun_secreto()
+    {
+        Assert.True(Plantillas.TienePlantilla(TipoNotificacion.RegistroConCorreoExistente));
+        Assert.False(Plantillas.LlevaToken(TipoNotificacion.RegistroConCorreoExistente));
+
+        foreach (var carga in new[] { "", "{}", CargaDeAviso.Purgada })
+            Assert.NotNull(Plantillas.Renderizar(TipoNotificacion.RegistroConCorreoExistente, "Ana", "https://zass.cl/", carga));
+
+        var r = Plantillas.Renderizar(TipoNotificacion.RegistroConCorreoExistente, "Luis <b>Pérez</b>", "https://zass.cl/", "{}")!;
+        Assert.Equal("Alguien intentó crear una cuenta con tu correo en ZASS!", r.Asunto);
+        Assert.Contains("https://zass.cl/entrar", r.Texto);
+        Assert.Contains("https://zass.cl/recuperar-contrasena", r.Texto);
+        Assert.Contains("href=\"https://zass.cl/entrar\"", r.Html);
+        Assert.Contains("href=\"https://zass.cl/recuperar-contrasena\"", r.Html);
+        Assert.DoesNotContain("token", r.Texto, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Si no fuiste tú", r.Texto);
+        Assert.DoesNotContain("Luis", r.Asunto);
+        Assert.DoesNotContain("<b>", r.Html);
     }
 
     // ------------------------------------------------------- RUT con cuenta (21-nov-2026)

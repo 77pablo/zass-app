@@ -39,6 +39,19 @@ public class BarridoDeArchivosPruebas
 
     private Task<string> Barrer(int tope = 100) => _servicio.CorrerAsync(Margen, tope);
 
+    /// <summary>
+    /// Revisión del 25-nov-2026: con «$» la forma de clave aceptaba un salto de línea al final (en
+    /// .NET, «$» calza antes de un \n final). Con «\z», la clave termina donde termina el texto.
+    /// </summary>
+    [Fact]
+    public void La_forma_de_clave_no_acepta_un_salto_de_linea_al_final()
+    {
+        var clave = Foto();
+        Assert.True(TiposDeArchivo.EsClaveValida(clave));
+        Assert.False(TiposDeArchivo.EsClaveValida(clave + "\n"));
+        Assert.False(TiposDeArchivo.EsClaveValida(Documento() + "\n"));
+    }
+
     [Fact]
     public async Task Un_archivo_que_ninguna_fila_referencia_y_es_mas_viejo_que_el_margen_se_borra()
     {

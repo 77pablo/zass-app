@@ -144,15 +144,34 @@ public sealed class ServicioRegistro
             return Resultado.Falla<CuentaCreadaDto>(Fallas.NoAutorizado,
                 "Ese rol no se puede pedir al registrarse.");
 
+        // P19 (T49): rechazar contrasenas que aparecen en filtraciones conocidas (HIBP).
+        // 25-nov-2026: va ANTES de mirar el correo. Si fuera despues, «contraseña filtrada» solo
+        // saldria con correos SIN cuenta, y la respuesta volveria a decir quien tiene cuenta.
+        if (await _filtradas.EstaFiltradaAsync(cmd.Contrasena, ct))
+            return Resultado.Falla<CuentaCreadaDto>(Fallas.Validacion,
+                "Esa contraseña aparece en filtraciones de datos conocidas. Elige otra.");
+
         // RN-S1-01. Esta comprobacion es por cortesia: la que de verdad manda es el indice
         // unico de la base, porque dos registros a la vez pasarian los dos por aqui.
         //
         // Auditoria 22-nov-2026: si el correo lo retiene una cuenta que nunca se verifico y ya
         // paso su plazo de 72 h, se borra en el acto (si no tiene actividad) y el correo queda libre.
+        //
+        // 25-nov-2026 (Pablo): un correo con cuenta ya NO responde «Ya existe una cuenta con ese
+        // correo»: eso le decia a cualquiera quien esta en ZASS!. Responde EXACTAMENTE lo mismo que
+        // un registro nuevo («revisa tu correo»), y lo que cambia es el correo que sale, que solo
+        // lee la dueña de esa direccion: ver AvisarALaDuenaDelCorreoAsync.
         if (await _usuarios.ExisteCorreoAsync(correo, ct)
-            && !await LiberarSiCaducoAsync(await _usuarios.PorCorreoAsync(correo, ct), ip, ct))
-            return Resultado.Falla<CuentaCreadaDto>(Fallas.Conflicto,
-                "Ya existe una cuenta con ese correo.");
+            && await _usuarios.PorCorreoAsync(correo, ct) is { } duenaDelCorreo
+            && !await LiberarSiCaducoAsync(duenaDelCorreo, ip, ct))
+        {
+            // El registro nuevo calcula el hash (Argon2id, lo caro); este camino tambien, para que
+            // el tiempo de respuesta no lo delate. El resultado se descarta.
+            _ = _hash.Hash(cmd.Contrasena);
+            await AvisarALaDuenaDelCorreoAsync(duenaDelCorreo, ip, ct);
+            // Un id inventado: la interfaz no lo usa, y uno vacio o repetido delataria el caso.
+            return Resultado.Ok(new CuentaCreadaDto(Guid.NewGuid(), rol.Codigo));
+        }
 
         // Una persona o empresa, una cuenta. Igual que el correo: por cortesia, porque la que
         // manda es el indice unico parcial de la base.
@@ -176,11 +195,6 @@ public sealed class ServicioRegistro
         var tipo = string.Equals(cmd.Tipo, "empresa", StringComparison.OrdinalIgnoreCase)
             ? TipoCuenta.Empresa : TipoCuenta.Particular;
         var razonSocial = tipo == TipoCuenta.Empresa ? Recortar(cmd.RazonSocial) : null;
-
-        // P19 (T49): rechazar contrasenas que aparecen en filtraciones conocidas (HIBP).
-        if (await _filtradas.EstaFiltradaAsync(cmd.Contrasena, ct))
-            return Resultado.Falla<CuentaCreadaDto>(Fallas.Validacion,
-                "Esa contraseña aparece en filtraciones de datos conocidas. Elige otra.");
 
         var ahora = _reloj.Ahora;
         var token = _secretos.NuevoToken();
@@ -289,6 +303,74 @@ public sealed class ServicioRegistro
         _auditor.Registrar(Auditar.Entrada(
             "registro_con_rut_existente", "usuario", duena.Id, ahora,
             contexto: new { avisoEncolado = encolado }, ip: ip));
+        await _unidad.GuardarAsync(ct);
+    }
+
+    /// <summary>
+    /// 25-nov-2026 (Pablo): alguien se registro con un correo que ya tiene cuenta. Quien lo
+    /// escribio recibe la respuesta de siempre; el correo sale a ESA direccion, asi que solo lo lee
+    /// su dueña, y no le cuenta nada a quien no lo es.
+    ///
+    /// <para>
+    /// Cuenta sin verificar: lo mas probable es que sea la misma persona que perdio el enlace de
+    /// confirmacion (o se le vencio) y vuelve a registrarse. Se le manda un enlace NUEVO, con la
+    /// misma espera que el reenvio de CS-01 bis (<see cref="ServicioCuenta.EsperaEntreReenvios"/>).
+    /// Cuenta verificada: un aviso con los enlaces para entrar y para crear una contraseña nueva
+    /// (<see cref="TipoNotificacion.RegistroConCorreoExistente"/>), con la espera del aviso de RUT.
+    /// </para>
+    /// </summary>
+    private async Task AvisarALaDuenaDelCorreoAsync(Usuario duena, string? ip, CancellationToken ct)
+    {
+        if (duena.Estado is EstadoCuenta.Eliminada) return;
+        var ahora = _reloj.Ahora;
+        bool encolado;
+
+        if (!duena.CorreoVerificado)
+        {
+            var emitidoEn = duena.TokenVerificacionExpiraEn?.Subtract(VidaDelToken);
+            encolado = emitidoEn is null || ahora - emitidoEn >= ServicioCuenta.EsperaEntreReenvios;
+            if (encolado)
+            {
+                var token = _secretos.NuevoToken();
+                // El enlace anterior deja de servir: el bueno es el ultimo (igual que CS-01 bis).
+                duena.TokenVerificacion = _secretos.HashToken(token);
+                duena.TokenVerificacionExpiraEn = ahora.Add(VidaDelToken);
+                duena.ActualizadoEn = ahora;
+                _avisos.Encolar(new Notificacion
+                {
+                    DestinatarioId = duena.Id,
+                    Tipo = TipoNotificacion.CorreoVerificacion,
+                    Canal = CanalNotificacion.Correo,
+                    ClaveIdempotencia = $"verificacion:{duena.Id}:{ahora:yyyyMMddHHmmss}:{Guid.NewGuid():N}",
+                    Asunto = "Confirma tu correo en ZASS!",
+                    // El token va en una carga estructurada que el enviador purga tras el envio.
+                    Cuerpo = CargaDeAviso.ConToken(token),
+                    ProgramadaPara = ahora,
+                });
+            }
+        }
+        else
+        {
+            var ultimo = await _avisos.UltimoAsync(duena.Id, TipoNotificacion.RegistroConCorreoExistente, ct);
+            var recienAvisada = ultimo is not null && ahora - ultimo.ProgramadaPara < EsperaEntreAvisosDeRut;
+            // La clave cuelga del aviso anterior, como en el RUT: dos intentos a la vez encolan
+            // uno solo, y el otro recibe un falso, no un 500.
+            encolado = !recienAvisada && await _avisos.EncolarSiNoExisteAsync(new Notificacion
+            {
+                DestinatarioId = duena.Id,
+                Tipo = TipoNotificacion.RegistroConCorreoExistente,
+                Canal = CanalNotificacion.Correo,
+                ClaveIdempotencia = $"correo-con-cuenta:{duena.Id:N}:tras:{ultimo?.Id.ToString("N") ?? "ninguno"}",
+                Asunto = "Alguien intentó crear una cuenta con tu correo en ZASS!",
+                Cuerpo = "{}",
+                ProgramadaPara = ahora,
+            }, ct);
+        }
+
+        // Quien lo intento no tiene cuenta: no hay actor, queda la IP.
+        _auditor.Registrar(Auditar.Entrada(
+            "registro_con_correo_existente", "usuario", duena.Id, ahora,
+            contexto: new { verificada = duena.CorreoVerificado, avisoEncolado = encolado }, ip: ip));
         await _unidad.GuardarAsync(ct);
     }
 

@@ -77,7 +77,7 @@ public static partial class TiposDeArchivo
     /// Fotos: WebP, en su tamaño grande o en el chico (sufijo <see cref="SufijoChica"/>).
     /// Documentos: PDF, JPG o PNG. Nada más tiene forma de clave.
     /// </summary>
-    [GeneratedRegex("^(fotos/[0-9a-f]{32}(-96)?\\.webp|documentos/[0-9a-f]{32}\\.(pdf|jpg|png))$",
+    [GeneratedRegex("^(fotos/[0-9a-f]{32}(-96)?\\.webp|documentos/[0-9a-f]{32}\\.(pdf|jpg|png))\\z",
         RegexOptions.CultureInvariant)]
     private static partial Regex FormaDeClave();
 
