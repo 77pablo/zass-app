@@ -64,7 +64,25 @@ que entró desde el 22-nov (P-6, parte de código) y quitar el «Ya existe una c
 6. #226 (sello de seguridad, cookie que sigue viva 15 min tras cambiar la clave) **sigue abierto** y lo cubre.
 7. Menores: la comparación del pase de mantenimiento delata el largo (teórico); recuperar contraseña y reenviar verificación tardan distinto con y sin cuenta (más débil); la baja no borra `PerfilBuscador` ni la IP de la auditoría (explicarlo por escrito, Ley 21.719).
 
-**Siguiente paso exacto:** fusionar el PR de esta sesión cuando el CI esté verde → lanzar a mano «Vigilar planificador» desde Actions y ver el paso nuevo en verde → desplegar la API (Manual Deploy en Render; sin migraciones). Luego, decidir los puntos 1-3 de arriba.
+**Cerrado la misma noche:** Pablo aprobó el texto → **#237 fusionado** (`07a658c`), «Vigilar planificador» lanzado a mano desde main (paso nuevo en verde) y **API desplegada en Render** (comprobado: `/api/salud/lista` 200). En el registro de arranque sigue la advertencia de `Zass:SecretoDeOrigen` (P-11): se pone el día que se despliegue el sitio (DESPLIEGUE-API.md §4.1).
+
+**Decisiones de Pablo sobre los puntos 1-3** (recomendación aceptada, un PR cada uno, en este orden):
+- **3 · Conciliación de cobros** — hecha en esta misma sesión, ver abajo.
+- **2 · MFA**: NO quitarlo al restablecer la contraseña (con el correo bastaría para llevarse la cuenta). Botón «No fui yo» en el correo de activación (7 días: quita MFA, cierra sesiones, obliga a cambiar la clave) + que un administrador pueda quitarlo con auditoría + avisar por correo al desactivar y al regenerar códigos.
+- **1 · Bloqueo**: contar por cuenta+IP, tope por cuenta más alto (≈50/h entre todas las IP) y correo a la dueña al bloquearse. Restablecer ya desbloquea (`ServicioCuenta.cs`).
+- Los correos nuevos de 1 y 2 son textos visibles: se proponen y Pablo los aprueba antes de fusionar.
+
+**Conciliación de cobros automáticos (punto 3):**
+
+| Pieza | Detalle |
+|---|---|
+| Puerto | `IPasarelaDePagos.ConsultarCobroAsync(intentoId)`. Flow: `payment/getStatusByCommerceId` firmado, misma lectura que el aviso (`VeredictoDelPago`, compartida) y la respuesta tiene que hablar de la orden preguntada. 400/no contesta = falla («no se sabe»), nunca rechazo |
+| Servicio | `ServicioCobros.ConciliarCobrosAutomaticosAsync`: Pendientes con clave `cobro-automatico:` de más de **30 min**, tope **50** por corrida. Pagado → `ResolverAsync` (el mismo camino del aviso: monto, idempotencia, vigencia). Rechazado → Fallido + «actualiza tu tarjeta» si sigue en gracia, y el reintento diario de ES-1 vuelve a funcionar (antes el Pendiente lo bloqueaba para siempre). No sabe / sigue pendiente / otro monto / otra orden → queda Pendiente, sin reintento |
+| Planificador | Tarea nueva `conciliar-cobros`, **cada hora** (`Zass:Fondo:ConciliarCobrosCadaMinutos`, 60). Sin migración: la fila de `trabajos_de_fondo` nace sola |
+| Vigilancia | «Vigilar planificador» pasa de 2 h a **3 h**: lo que salta ya es solo lo que Flow no pudo resolver |
+| Pruebas | 9 de aplicación, 6 de Flow (HTTP falso), 1 contra PostgreSQL (la consulta), 1 de la tarea. **7 mutaciones, las 7 caen** |
+
+**Siguiente paso exacto:** fusionar el PR de la conciliación con CI verde → Manual Deploy de la API (sin migraciones) → en el registro de Render debe aparecer `conciliar-cobros: conciliacion: 0 revisados…` en la primera hora. Luego el PR del punto 2 (MFA).
 
 ---
 

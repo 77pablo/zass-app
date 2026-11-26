@@ -874,6 +874,74 @@ public sealed class ServicioCobros : IServicioCobros
         }
     }
 
+    // ------------------------------------------------------------- Conciliar
+
+    /// <summary>
+    /// Cuanto se espera antes de preguntarle a la pasarela por un cobro automatico Pendiente.
+    /// El cobro se resuelve en la misma llamada; si a la media hora sigue Pendiente, la
+    /// respuesta se perdio o la pasarela todavia no decide.
+    /// </summary>
+    public static readonly TimeSpan EsperaAntesDeConciliar = TimeSpan.FromMinutes(30);
+
+    /// <summary>Cuantos se consultan por corrida, para no colgarse de la pasarela si hay muchos.</summary>
+    public const int TopeDeConciliacionPorCorrida = 50;
+
+    public async Task<ResumenDeConciliacion> ConciliarCobrosAutomaticosAsync(CancellationToken ct = default)
+    {
+        var pendientes = await _repo.IntentosPendientesPorPrefijoAsync(
+            PrefijoCobroAutomatico, _reloj.Ahora - EsperaAntesDeConciliar,
+            TopeDeConciliacionPorCorrida, ct);
+
+        int pagados = 0, rechazados = 0, sinResolver = 0;
+        foreach (var intento in pendientes)
+        {
+            // Fuera de toda transaccion, como el cobro: una llamada de red con filas bloqueadas
+            // las deja bloqueadas lo que tarde la pasarela.
+            var consulta = await _pasarela.ConsultarCobroAsync(intento.Id, ct);
+
+            // No se sabe (no contesta, no la conoce) o todavia no decide: sigue Pendiente. Sin
+            // auditoria por corrida: seria una fila por hora por cobro sin decir nada nuevo.
+            if (!consulta.Exito || consulta.Valor is null || consulta.Valor.Pendiente
+                || consulta.Valor.IntentoDePagoId != intento.Id)
+            {
+                sinResolver++;
+                continue;
+            }
+
+            _auditor.Registrar(Auditar.Entrada(
+                "cobro_conciliado", "intentos_de_pago", intento.Id, _reloj.Ahora,
+                contexto: new { veredicto = consulta.Valor.Veredicto.ToString(), pasarela = _pasarela.Nombre }));
+
+            // El MISMO camino que el aviso y que el cobro automatico: monto, idempotencia y
+            // vigencia se deciden alli y en ningun otro sitio.
+            var resuelto = await ResolverAsync(consulta.Valor, ct);
+            if (!resuelto.Exito || resuelto.Valor is null || resuelto.Valor.Pendiente)
+            {
+                sinResolver++;
+                continue;
+            }
+
+            if (resuelto.Valor.Aprobado)
+            {
+                pagados++;
+                continue;
+            }
+
+            rechazados++;
+
+            // ES-1: el «actualiza tu tarjeta» que habria salido si el rechazo hubiera llegado a
+            // tiempo. Solo dentro de la gracia (antes de vencer), igual que en el cobro; la clave
+            // del aviso garantiza uno por periodo aunque ya hubiera salido.
+            var s = await _repo.PorIdAsync(intento.SuscripcionId, ct);
+            if (s is not null && _reloj.Ahora < s.VigenteHasta)
+                await _suscripciones.AvisarCobroRechazadoAsync(
+                    s.PerfilPrestadorId, s.Id, s.VigenteHasta, ct);
+        }
+
+        await _trabajo.GuardarAsync(ct);
+        return new ResumenDeConciliacion(pendientes.Count, pagados, rechazados, sinResolver);
+    }
+
     // ------------------------------------------------------------- Confirmar
 
     public async Task<Resultado<ConfirmacionDto>> ConfirmarAsync(

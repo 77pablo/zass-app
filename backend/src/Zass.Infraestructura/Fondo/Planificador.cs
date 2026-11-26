@@ -56,6 +56,13 @@ public sealed class Planificador : BackgroundService
                 return $"{cobros}; {diario}";
             }),
 
+        // Conciliacion 25-nov-2026: los cobros automaticos que quedaron Pendientes (la respuesta
+        // de la pasarela se perdio o dijo «pendiente»). Tarea aparte y cada hora, no dentro de la
+        // diaria: esperar un dia para saber si alguien pago es un dia sin su mes.
+        new(Trabajos.ConciliarCobros, o => TimeSpan.FromMinutes(Math.Max(5, o.ConciliarCobrosCadaMinutos)),
+            async (sp, ct) =>
+                (await sp.GetRequiredService<IServicioCobros>().ConciliarCobrosAutomaticosAsync(ct)).ToString()),
+
         new(Trabajos.Citas, o => TimeSpan.FromMinutes(o.CitasCadaMinutos),
             async (sp, ct) =>
                 (await sp.GetRequiredService<IServicioAgenda>().AvanzarPorElTiempoAsync(ct)).ToString()),

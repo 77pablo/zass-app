@@ -217,6 +217,15 @@ public sealed class PasarelaSimulada : IPasarelaDePagos
                 : "La pasarela simulada rechazó el cobro. No se cobró nada.")));
     }
 
+    /// <summary>
+    /// La simulada no guarda los cobros: resuelve cada uno en la misma llamada, asi que nunca
+    /// deja uno Pendiente que haya que conciliar. Si alguno lo esta, no se inventa el veredicto.
+    /// </summary>
+    public Task<Resultado<CobroResuelto>> ConsultarCobroAsync(
+        Guid intentoDePagoId, CancellationToken ct = default) =>
+        Task.FromResult(Resultado.Falla<CobroResuelto>(
+            Fallas.ReglaDeNegocio, "La pasarela simulada no guarda cobros que se puedan consultar."));
+
     public Task<Resultado<CobroResuelto>> LeerConfirmacionAsync(
         AvisoDePasarela aviso, CancellationToken ct = default)
     {

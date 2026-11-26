@@ -427,6 +427,14 @@ public interface IRepositorioSuscripciones
         string prefijo, CancellationToken ct = default);
 
     /// <summary>
+    /// Conciliacion (25-nov-2026): los intentos Pendientes cuya clave empieza por
+    /// <paramref name="prefijo"/> y que nacieron antes de <paramref name="creadosAntesDe"/>, los
+    /// mas viejos primero y a lo mas <paramref name="tope"/>.
+    /// </summary>
+    Task<IReadOnlyList<IntentoDePago>> IntentosPendientesPorPrefijoAsync(
+        string prefijo, DateTime creadosAntesDe, int tope, CancellationToken ct = default);
+
+    /// <summary>
     /// <c>SELECT ... FOR UPDATE</c> sobre la fila del intento, igual que
     /// <see cref="IRepositorioAgenda.TomarBloqueAsync"/>. La segunda confirmacion de la
     /// MISMA pasarela espera aqui y, cuando entra, lee el estado ya cambiado.
