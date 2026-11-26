@@ -875,4 +875,104 @@ public class FlowPasarelaPruebas
         Assert.Throws<OptionsValidationException>(
             () => FlowPasarela.UrlDeLaVuelta(null, "https://api.zass.cl/otra-cosa"));
     }
+
+    // ========================================== Conciliacion (25-nov-2026)
+
+    private static Func<HttpRequestMessage, Task<HttpResponseMessage>> EstadoPorOrden(
+        string commerceOrder, int status, decimal amount = 5990m) => req => Task.FromResult(
+        req.RequestUri!.AbsolutePath == "/api/payment/getStatusByCommerceId"
+            ? new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(new
+                {
+                    flowOrder = 99001, commerceOrder, status, amount, currency = "CLP",
+                }), Encoding.UTF8, "application/json"),
+            }
+            : new HttpResponseMessage(HttpStatusCode.NotFound));
+
+    /// <summary>
+    /// La conciliacion pregunta por NUESTRO numero de orden, por GET y firmado: commerceId es el
+    /// id del intento, y la «s» es la firma de apiKey+commerceId con la secretKey.
+    /// </summary>
+    [Fact]
+    public async Task ConsultarCobro_pregunta_por_commerceId_firmado_y_lee_el_pagado()
+    {
+        var handler = new HandlerFalso();
+        var pasarela = CrearPasarela(handler);
+        var intento = Guid.NewGuid();
+        handler.Responder = EstadoPorOrden(intento.ToString("D"), 2);
+
+        var resultado = await pasarela.ConsultarCobroAsync(intento);
+
+        Assert.True(resultado.Exito, resultado.Mensaje);
+        Assert.True(resultado.Valor!.Aprobado);
+        Assert.Equal(intento, resultado.Valor.IntentoDePagoId);
+        Assert.Equal(5990, resultado.Valor.MontoConfirmado);
+        Assert.Equal("99001", resultado.Valor.ReferenciaPasarela);
+
+        var peticion = Assert.Single(handler.Peticiones);
+        Assert.Equal(HttpMethod.Get, peticion.Method);
+        var query = HttpUtility.ParseQueryString(peticion.RequestUri!.Query);
+        Assert.Equal(intento.ToString("D"), query["commerceId"]);
+        Assert.Equal(ApiKeyPrueba, query["apiKey"]);
+        Assert.Equal(CalcularFirma(SecretKeyPrueba, new Dictionary<string, string>
+        {
+            ["apiKey"] = ApiKeyPrueba, ["commerceId"] = intento.ToString("D"),
+        }), query["s"]);
+    }
+
+    [Theory]
+    [InlineData(1, true, false)]
+    [InlineData(3, false, false)]
+    [InlineData(4, false, false)]
+    [InlineData(2, false, true)]
+    public async Task ConsultarCobro_lee_el_estado_con_la_misma_regla_que_el_aviso(int status, bool pendiente, bool aprobado)
+    {
+        var handler = new HandlerFalso();
+        var pasarela = CrearPasarela(handler);
+        var intento = Guid.NewGuid();
+        handler.Responder = EstadoPorOrden(intento.ToString("D"), status);
+
+        var resultado = await pasarela.ConsultarCobroAsync(intento);
+
+        Assert.True(resultado.Exito, resultado.Mensaje);
+        Assert.Equal(pendiente, resultado.Valor!.Pendiente);
+        Assert.Equal(aprobado, resultado.Valor.Aprobado);
+    }
+
+    /// <summary>Una respuesta que habla de otra orden no resuelve la que se pregunto.</summary>
+    [Fact]
+    public async Task ConsultarCobro_con_una_respuesta_sobre_otra_orden_falla()
+    {
+        var handler = new HandlerFalso();
+        var pasarela = CrearPasarela(handler);
+        handler.Responder = EstadoPorOrden(Guid.NewGuid().ToString("D"), 2);
+
+        var resultado = await pasarela.ConsultarCobroAsync(Guid.NewGuid());
+
+        Assert.False(resultado.Exito);
+    }
+
+    /// <summary>
+    /// Flow contesta 400 cuando no conoce la orden. Eso NO es «no se cobro»: es «no se sabe», y
+    /// el intento tiene que seguir Pendiente. Falla, nunca un rechazo.
+    /// </summary>
+    [Fact]
+    public async Task ConsultarCobro_con_un_400_de_Flow_falla_y_no_devuelve_un_rechazo()
+    {
+        var handler = new HandlerFalso
+        {
+            Responder = _ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadRequest)
+            {
+                Content = new StringContent("{\"code\":105,\"message\":\"No existe la orden\"}",
+                    Encoding.UTF8, "application/json"),
+            }),
+        };
+        var pasarela = CrearPasarela(handler);
+
+        var resultado = await pasarela.ConsultarCobroAsync(Guid.NewGuid());
+
+        Assert.False(resultado.Exito);
+        Assert.Null(resultado.Valor);
+    }
 }

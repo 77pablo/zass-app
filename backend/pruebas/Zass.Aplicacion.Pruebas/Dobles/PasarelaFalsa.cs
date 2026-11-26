@@ -139,4 +139,21 @@ public sealed class PasarelaFalsa : IPasarelaDePagos
 
         return Task.FromResult(Resultado.Ok(Veredicto));
     }
+
+    /// <summary>
+    /// Lo que contesta <see cref="ConsultarCobroAsync"/>, por intento. Sin fijar, la pasarela
+    /// «no sabe» (falla), que es lo que hacen las de verdad con una orden que no conocen.
+    /// </summary>
+    public Func<Guid, Resultado<CobroResuelto>>? Consulta { get; set; }
+
+    /// <summary>A que intentos se le pregunto, en orden.</summary>
+    public List<Guid> Consultados { get; } = new();
+
+    public Task<Resultado<CobroResuelto>> ConsultarCobroAsync(
+        Guid intentoDePagoId, CancellationToken ct = default)
+    {
+        Consultados.Add(intentoDePagoId);
+        return Task.FromResult(Consulta?.Invoke(intentoDePagoId)
+            ?? Resultado.Falla<CobroResuelto>(Fallas.ReglaDeNegocio, "La pasarela no conoce esa orden."));
+    }
 }

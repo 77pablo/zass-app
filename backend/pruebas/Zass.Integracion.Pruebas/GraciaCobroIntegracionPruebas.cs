@@ -202,6 +202,49 @@ public class GraciaCobroIntegracionPruebas : IDisposable
     }
 
     /// <summary>
+    /// Conciliacion (25-nov-2026), contra PostgreSQL: la consulta trae solo los cobros
+    /// AUTOMATICOS Pendientes y mas viejos que el corte, los mas viejos primero y con tope. Ni
+    /// los Fallidos, ni los recientes, ni un pago iniciado desde el navegador.
+    /// </summary>
+    [Fact]
+    public async Task Conciliacion_trae_solo_los_automaticos_pendientes_y_viejos_con_tope()
+    {
+        var (s, _) = await UnFundadorEnGraciaAsync();
+        var delPeriodo = ServicioCobros.ClaveDeCobroAutomatico(s.Id, s.VigenteHasta);
+        var corte = DateTime.UtcNow.AddMinutes(-30);
+
+        var viejo = Intento(s, delPeriodo, EstadoIntentoPago.Pendiente, corte.AddHours(-3));
+        var reintento = Intento(s, ServicioCobros.ClaveDeReintento(delPeriodo, new DateOnly(2026, 12, 17)),
+            EstadoIntentoPago.Pendiente, corte.AddHours(-2));
+        using (var ctx = ContextoDePrueba.Crear())
+        {
+            ctx.IntentosDePago.AddRange(
+                viejo, reintento,
+                // Reciente: todavia no se pregunta.
+                Intento(s, ServicioCobros.ClaveDeCobroAutomatico(s.Id, s.VigenteHasta.AddMonths(1)),
+                    EstadoIntentoPago.Pendiente, corte.AddMinutes(5)),
+                // Ya cerrado.
+                Intento(s, ServicioCobros.ClaveDeReintento(delPeriodo, new DateOnly(2026, 12, 18)),
+                    EstadoIntentoPago.Fallido, corte.AddHours(-1)),
+                // Pago desde el navegador: lo resuelve el aviso de Flow, no la conciliacion.
+                Intento(s, "navegador-" + Guid.NewGuid().ToString("N"), EstadoIntentoPago.Pendiente, corte.AddHours(-4)));
+            await ctx.SaveChangesAsync();
+        }
+
+        using var lectura = ContextoDePrueba.Crear();
+        var repo = new RepositorioSuscripcionesEfCore(lectura);
+
+        var todos = (await repo.IntentosPendientesPorPrefijoAsync("cobro-automatico:", corte, 50))
+            .Where(i => i.SuscripcionId == s.Id).Select(i => i.Id).ToList();
+        Assert.Equal(new[] { viejo.Id, reintento.Id }, todos);
+
+        // El tope corta por los mas viejos. (Puede haber pendientes de otras pruebas en la base
+        // compartida: con tope 1 sale el mas viejo de todos, que no tiene por que ser este.)
+        var uno = await repo.IntentosPendientesPorPrefijoAsync("cobro-automatico:", corte, 1);
+        Assert.Single(uno);
+    }
+
+    /// <summary>
     /// El correo «actualiza tu tarjeta», con la cola y la base de verdad: dos rechazos del
     /// mismo periodo (el cobro y el reintento de manana) dejan UNA fila en notificaciones, y
     /// el tipo nuevo cabe en su columna.

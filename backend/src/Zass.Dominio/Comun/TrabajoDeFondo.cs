@@ -65,4 +65,10 @@ public static class Trabajos
     /// ninguna fila que los referencie).
     /// </summary>
     public const string ArchivosHuerfanos = "archivos-huerfanos";
+
+    /// <summary>
+    /// Conciliacion 25-nov-2026: preguntarle a la pasarela por los cobros automaticos que
+    /// quedaron Pendientes y resolver los que ella ya sabe.
+    /// </summary>
+    public const string ConciliarCobros = "conciliar-cobros";
 }

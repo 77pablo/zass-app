@@ -445,12 +445,42 @@ public sealed class FlowPasarela : IPasarelaDePagos
         if (!resultado.Exito || resultado.Valor is null)
             return Resultado.Falla<CobroResuelto>(resultado.Codigo!, resultado.Mensaje!);
 
-        var response = resultado.Valor;
+        return VeredictoDelPago(resultado.Valor, esperado: null);
+    }
 
+    /// <summary>
+    /// Conciliacion (25-nov-2026): <c>payment/getStatusByCommerceId</c> con NUESTRO numero de
+    /// orden, firmado con nuestra clave igual que getStatus. Lo que conteste se lee con la misma
+    /// regla que el aviso (<see cref="VeredictoDelPago"/>), y ademas tiene que hablar de la orden
+    /// que se pregunto: una respuesta sobre otra orden no resuelve nada.
+    /// </summary>
+    public async Task<Resultado<CobroResuelto>> ConsultarCobroAsync(
+        Guid intentoDePagoId, CancellationToken ct = default)
+    {
+        var resultado = await GetAsync<PaymentGetStatusResponse>(
+            "payment/getStatusByCommerceId",
+            new Dictionary<string, string> { ["commerceId"] = intentoDePagoId.ToString("D") }, ct);
+        if (!resultado.Exito || resultado.Valor is null)
+            return Resultado.Falla<CobroResuelto>(resultado.Codigo!, resultado.Mensaje!);
+
+        return VeredictoDelPago(resultado.Valor, esperado: intentoDePagoId);
+    }
+
+    /// <summary>
+    /// Un PaymentStatus de Flow traducido a veredicto. Lo comparten el aviso (getStatus) y la
+    /// conciliacion (getStatusByCommerceId), que devuelven el mismo esquema: una sola lectura de
+    /// los campos de Flow, no dos que se separan con el tiempo.
+    /// </summary>
+    private static Resultado<CobroResuelto> VeredictoDelPago(PaymentGetStatusResponse response, Guid? esperado)
+    {
         if (!Guid.TryParse(response.CommerceOrder, out var intentoId))
             return Resultado.Falla<CobroResuelto>(
                 Fallas.Validacion,
                 $"El commerceOrder '{response.CommerceOrder}' no es un identificador valido.");
+
+        if (esperado is { } pedido && intentoId != pedido)
+            return Resultado.Falla<CobroResuelto>(
+                Fallas.Validacion, "Flow contesto sobre una orden distinta de la consultada.");
 
         var veredicto = VeredictoDe(response.Status);
         if (veredicto == VeredictoDelCobro.Pendiente)

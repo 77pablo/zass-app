@@ -110,4 +110,9 @@ public sealed class PasarelaSoloInscripcion : IPasarelaDePagos
 
         return Task.FromResult(Resultado.Falla<CobroResuelto>(Fallas.ReglaDeNegocio, NoCobra));
     }
+
+    /// <summary>Sin pasarela real no hay a quien preguntar: el intento sigue sin resolver.</summary>
+    public Task<Resultado<CobroResuelto>> ConsultarCobroAsync(
+        Guid intentoDePagoId, CancellationToken ct = default) =>
+        Task.FromResult(Resultado.Falla<CobroResuelto>(Fallas.ReglaDeNegocio, NoCobra));
 }
