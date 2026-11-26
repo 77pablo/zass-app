@@ -410,6 +410,8 @@ public class CorreoUnidadPruebas
             TipoNotificacion.BorradorPorEliminarse,
             // ServicioRegistro, desde el 25-nov-2026: registro con un correo que ya tiene cuenta.
             TipoNotificacion.RegistroConCorreoExistente,
+            // ServicioSesion/ServicioMfa, desde el 25-nov-2026: la cuenta se bloqueo por intentos.
+            TipoNotificacion.CuentaBloqueadaPorIntentos,
         };
         // Ya no queda ninguno pendiente a conciencia: PerfilPublicado era el ultimo y tiene
         // plantilla desde el 13-nov-2026. Si manana se encola un tipo nuevo sin plantilla, esta
@@ -419,6 +421,28 @@ public class CorreoUnidadPruebas
         var huecos = encolados.Except(pendientes).Where(t => !Plantillas.TienePlantilla(t)).ToArray();
 
         Assert.Empty(huecos);
+    }
+
+    // ------------------------------------------------------- cuenta bloqueada (25-nov-2026)
+
+    /// <summary>
+    /// El aviso de bloqueo dice cuantos intentos y cuantos minutos (de las constantes, que son las
+    /// que rigen), manda a crear una contraseña nueva (que desbloquea) y no lleva ningun secreto.
+    /// </summary>
+    [Fact]
+    public void El_aviso_de_cuenta_bloqueada_dice_cuanto_dura_y_manda_a_crear_una_contrasena()
+    {
+        Assert.True(Plantillas.TienePlantilla(TipoNotificacion.CuentaBloqueadaPorIntentos));
+        Assert.False(Plantillas.LlevaToken(TipoNotificacion.CuentaBloqueadaPorIntentos));
+
+        var r = Plantillas.Renderizar(TipoNotificacion.CuentaBloqueadaPorIntentos, "Luis <b>Pérez</b>", "https://zass.cl/", "{}")!;
+        Assert.Equal("Bloqueamos tu cuenta de ZASS! por intentos fallidos", r.Asunto);
+        Assert.Contains("Hubo 30 intentos", r.Texto);
+        Assert.Contains("por 15 minutos", r.Texto);
+        Assert.Contains("https://zass.cl/recuperar-contrasena", r.Texto);
+        Assert.Contains("href=\"https://zass.cl/recuperar-contrasena\"", r.Html);
+        Assert.DoesNotContain("token", r.Texto, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("<b>", r.Html);
     }
 
     // ------------------------------------------------------- correo con cuenta (25-nov-2026)

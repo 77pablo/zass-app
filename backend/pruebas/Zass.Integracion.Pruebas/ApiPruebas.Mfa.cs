@@ -203,7 +203,7 @@ public partial class ApiPruebas
 
     /// <summary>
     /// La contrasena correcta con MFA NO reinicia el contador (si lo hiciera, se podrian probar
-    /// codigos sin fin alternando con la contrasena). Diez codigos malos seguidos bloquean.
+    /// codigos sin fin alternando con la contrasena). Treinta codigos malos seguidos bloquean.
     /// </summary>
     [Fact]
     public async Task Mfa_la_contrasena_correcta_no_reinicia_el_contador_de_codigos_malos()

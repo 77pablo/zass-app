@@ -363,6 +363,7 @@ public sealed class ServicioMfa
             contexto: new { paso, bloqueada = usuario.EstaBloqueada(ahora) }, ip: ip));
 
         if (bloqueoAhora)
+        {
             _auditor.Registrar(Auditar.Entrada(
                 "cuenta_bloqueada_por_intentos", "usuario", usuario.Id, ahora,
                 contexto: new
@@ -371,6 +372,8 @@ public sealed class ServicioMfa
                     bloqueadaHasta = ahora.Add(ServicioSesion.DuracionDelBloqueo),
                 },
                 ip: ip));
+            await _avisos.EncolarSiNoExisteAsync(ServicioSesion.AvisoDeBloqueo(usuario.Id, ahora), ct);
+        }
 
         await _unidad.GuardarAsync(ct);
     }

@@ -38,6 +38,8 @@ public class AvisosPushPruebas
             TipoNotificacion.MfaActivado,
             // RegistroConCorreoExistente (25-nov): igual que el de RUT, trae el enlace para recuperar.
             TipoNotificacion.RegistroConCorreoExistente,
+            // CuentaBloqueadaPorIntentos (25-nov): aviso de seguridad, solo correo.
+            TipoNotificacion.CuentaBloqueadaPorIntentos,
         }, sinPush);
     }
 
