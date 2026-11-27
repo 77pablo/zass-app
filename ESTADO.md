@@ -37,6 +37,61 @@ comprobado**, **qué no**, y **el siguiente paso exacto**.
 
 ---
 
+## Sesión del 27-nov-2026 (madrugada, Claude solo) — tres PR en verde esperando a Pablo
+
+**Dónde retomar («sigamos con zass»):** nada a medias; todo subido. Tres PR con **CI verde**, ninguno fusionado:
+
+| PR | Qué | Qué falta (de Pablo) |
+|---|---|---|
+| **#241** bloqueo a 30 + correo | 5 mutaciones, las 5 caen. Tenía conflictos con #239 (tipos de aviso nuevos en los mismos archivos): fusionado `main`, ambos lados conservados; aplicación 1301, integración (correo/MFA/bloqueo) 248, todo verde | **Aprobar los 2 textos** (están completos en el cuerpo del PR) → fusionar → Manual Deploy API (sin migraciones). Va con el PR **#11 de `zass-documentacion`** (API-08/09/79/84/85/86, 105 endpoints, seguridad.md 10→30) |
+| **#226** sello de seguridad | Puesto al día con `main`. **Migración renombrada** a `20261127030000_SelloDeSeguridad` (con la fecha vieja quedaba antes de `RevocarMfaDesdeElCorreo`, ya en Neon); Designer rehecho desde el snapshot; `El_modelo_no_tiene_cambios_sin_migracion` verde. **Hueco cerrado**: «No fui yo» (API-85) y quitar MFA por admin (API-86) no renovaban el sello → la cookie del intruso vivía 15 min; ahora `DejarSinAccesoAjeno` lo renueva (2 pruebas + mutación) | Fusionar → **migración en Neon** (Actions) → Manual Deploy. Todos deben volver a entrar. Pregunta abierta en el PR: ¿el sello debe cortar también las cuentas **suspendidas**? (cambiaría el 403 del panel por 401; se probó y se revirtió) |
+| **#242** menores de la revisión | Licencia de ImageSharp ya no se nombra con `$` en los `RUN` del Dockerfile (`printenv`): el registro de Render la imprimía. Pase de mantenimiento: la comparación ya no corta por largo (4 casos + mutación; funciones 270/270) | Fusionar → desplegar sitio → en el próximo Manual Deploy **mirar que el registro de compilación ya no muestre la licencia** (el CI no construye la imagen; aquí no hay Docker). Decidir si se deja como está la diferencia de ms en API-14/71 (recomiendo dejarla) |
+
+**Comprobado sin tocar nada:** en Render, `Zass__ProxiesDeConfianza` coincide con los rangos de Cloudflare (15 IPv4 + 7 IPv6) + 10.0.0.0/8, y `Zass__SaltosDeProxy` = 5 (punto 5 de la revisión). La comprobación con datos (que la auditoría de Neon guarde IP reales) **no se hizo**: el clasificador de permisos bloqueó la consulta a producción.
+
+**No se tocó (decisión de Pablo):** #230 de dependabot sube `Microsoft.Extensions.Configuration` a 11.0.0 **también en `Zass.Infraestructura`** (producción, runtime 10): CI verde del 23-nov, pero no fusionar sin probarlo.
+
+**Entorno (para no perder tiempo):** SDK .NET 10 en `C:\Users\pdani\tools\dotnet10-completo`; Postgres con `pg_ctl -D datos-pg -l registros\postgres.log start`; en un worktree las pruebas de integración necesitan `ZASS_CADENA_PRUEBAS` (no encuentran `.clave-pg.txt`): usar una base propia (p. ej. `zass_pruebas_sello`) para no mezclar esquemas. Worktrees: `zass-trabajo/sello-seguridad`, `zass-trabajo/menores-revision`.
+
+## Sesión del 26-nov-2026 (noche) — bloqueo a 30: prueba arreglada y correo distinto si ya tenían la contraseña
+
+**Dónde retomar («sigamos con zass»):** esta rama, `p/bloqueo-30-y-aviso`, todo subido.
+
+| Qué | Estado |
+|---|---|
+| `Mfa_los_fallos_del_segundo_paso_cuentan_para_el_mismo_bloqueo` | Arreglada: suponía 5+5=10; ahora mitad y mitad sacado de `IntentosParaBloquear` |
+| **Hueco del texto** encontrado | Si el bloqueo llega en el segundo paso del login (`paso == "inicio_sesion"`), quien probaba **ya tenía la contraseña**, y el correo decía «Sin la contraseña correcta no puede entrar». Ahora sale una **variante** (carga `{"contrasenaCorrecta":"si"}`, asunto «Alguien usó tu contraseña de ZASS!: bloqueamos tu cuenta», pide cambiarla ya). Clave de idempotencia propia (`…:codigo`): llega aunque ese día ya saliera el aviso común. En el panel (alta, desactivar, cambiar contraseña) sigue el común, porque ahí el fallo puede ser la contraseña |
+| Comentarios «10 intentos» / «décimo» | Pasados a 30; el de `ServicioSesion` explica que el correo solo se encola (un INSERT) y no delata el intento que bloquea |
+| Pruebas de aplicación | **1286/1286 verdes** (incluye 1 nueva: el aviso «contraseña correcta» llega aunque ya saliera el común) |
+| Pruebas de integración | **1359/1360** (37 min). La única roja: `Sesenta_pidiendo_a_la_vez...cincuenta_cupos`, la conocida del `max_connections` local (en CI pasa; aquí no se tocó nada de cupos). Pasan la prueba MFA arreglada y las 2 de plantilla |
+
+**Siguiente paso exacto:**
+1. Levantar Postgres **con `pg_ctl` desacoplado**, no con `Start-Process … -Wait` sobre el .bat (se cuelga, y al matarlo muere Postgres): `herramientas\pgsql\bin\pg_ctl.exe -D datos-pg -l registros\postgres.log start`. El SDK de .NET 10 está en `C:\Users\pdani\tools\dotnet10-completo` (el del sistema es 8): poner `DOTNET_ROOT` y `PATH`.
+2. (Hecho: integración 1359/1360, ver arriba.) Confirmar en el CI del PR que la de 60 cupos pasa.
+3. (Hecho, 27-nov) **5 mutaciones, las 5 caen**: sin `paso == "inicio_sesion"`, sin `:codigo` en la clave, plantilla que ignora la marca, login que no encola (contra Postgres) y segundo paso que no encola.
+4. (Hecho: PR #241.) Abrir el PR con los **dos textos** para que Pablo los apruebe (regla 12): tabla antes/ahora (10→30, correo a la dueña, variante con contraseña correcta), los dos textos completos, sin migraciones; al fusionar, Manual Deploy de la API.
+
+## Sesión del 26-nov-2026 (madrugada) — MFA en producción y logo nuevo
+
+**Dónde retomar («sigamos con zass»):** esta rama, `p/bloqueo-30-y-aviso` (punto 1 de la revisión de seguridad: el bloqueo sube a 30 intentos y se avisa por correo). Falta:
+1. Arreglar la prueba de integración `Mfa_los_fallos_del_segundo_paso_cuentan_para_el_mismo_bloqueo`, que probablemente sigue suponiendo 10 intentos.
+2. Correr las mutaciones.
+3. Abrir el PR con el texto del correo de bloqueo para que Pablo lo apruebe (regla 12).
+
+**Hecho y comprobado:**
+
+| Qué | Estado |
+|---|---|
+| #239 MFA («No fui yo», quitarla desde el panel, avisos) | Fusionado (`fdf9bfd`); textos aprobados por Pablo |
+| Migración `RevocarMfaDesdeElCorreo` en Neon | Aplicada desde Actions (run 45754286221); la comprobación contra el catálogo salió bien |
+| API en Render con #239 | Live; `POST /api/auth/mfa/no-fui-yo` responde 400 de validación (antes 404) |
+| Sitio con #239 | Desplegado en Cloudflare: Production, `main`, `fdf9bfd` |
+| #240 Logo nuevo (pedido de Pablo) | Logo «ZASS!)))» amarillo `#F6C81E` vectorizado; franja de mantenimiento en pizarra; ícono «!)))» en el favicon, los íconos de la app, la página sin conexión y `og-zass.png`. Token `--logo` en `index.css`. 1101/1101 y 2 mutaciones atrapadas. **Ver al retomar si quedó fusionado y desplegado.** |
+
+**Regla de Pablo (26-nov):** «el logo de zass es amarillo, eso no se cambia por nada». Si un fondo no deja leer el amarillo, se cambia el fondo, nunca el logo.
+
+**Nota:** el registro de compilación de Render imprime la `SIXLABORS_LICENSE_KEY` (la línea `RUN test -n ...` del Dockerfile). Es una licencia Community y no da acceso a nada, pero conviene que no salga en el registro.
+
 ## Sesión del 25-nov-2026 (noche) — copia probada, revisión de seguridad, registro sin delatar cuentas
 
 Pablo dejó a Claude trabajando solo con tres tareas: probar la copia (P-7), revisar la seguridad de lo
@@ -81,6 +136,10 @@ que entró desde el 22-nov (P-6, parte de código) y quitar el «Ya existe una c
 | Planificador | Tarea nueva `conciliar-cobros`, **cada hora** (`Zass:Fondo:ConciliarCobrosCadaMinutos`, 60). Sin migración: la fila de `trabajos_de_fondo` nace sola |
 | Vigilancia | «Vigilar planificador» pasa de 2 h a **3 h**: lo que salta ya es solo lo que Flow no pudo resolver |
 | Pruebas | 9 de aplicación, 6 de Flow (HTTP falso), 1 contra PostgreSQL (la consulta), 1 de la tarea. **7 mutaciones, las 7 caen** |
+
+**Al cerrar (25-nov, ~23:45):** API desplegada con la conciliación (`078eb2b`); el registro de Render ya mostró `conciliar-cobros: conciliacion: 0 revisados…`. #239 (MFA) abierto, espera textos + migración. **Punto 1 (bloqueo)**: Pablo eligió subir a **30 fallos + correo a la dueña** (el límite por IP de 5/15 min ya existe, así que «por cuenta+IP» no agregaba nada). Hecho en la rama `p/bloqueo-30-y-aviso` (SIN PR): `IntentosParaBloquear = 30`, tipo `CuentaBloqueadaPorIntentos` (un correo por día como mucho, sin token, manda a crear contraseña nueva que desbloquea), en el login y en el segundo paso. Pruebas de aplicación verdes (1.285); de integración: 216 de 217 verdes, **falla `Mfa_los_fallos_del_segundo_paso_cuentan_para_el_mismo_bloqueo`** (seguramente asume 10 fallos; revisar primero). Faltan esa, las mutaciones y abrir el PR con el texto para que Pablo lo apruebe.
+
+**Siguiente paso exacto:** fusionar el PR de la conciliación con CI verde → Manual Deploy de la API (sin migraciones) → en el registro de Render debe aparecer `conciliar-cobros: conciliacion: 0 revisados…` en la primera hora. Luego el PR del punto 2 (MFA).
 
 La conciliación quedó **fusionada** (#238, `078eb2b`), con el CI verde. Falta el Manual Deploy de la API.
 

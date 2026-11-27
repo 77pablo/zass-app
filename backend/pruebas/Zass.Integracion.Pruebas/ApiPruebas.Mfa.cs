@@ -178,7 +178,7 @@ public partial class ApiPruebas
     }
 
     /// <summary>
-    /// Los fallos del segundo paso cuentan para el MISMO bloqueo de 10 intentos que la contrasena:
+    /// Los fallos del segundo paso cuentan para el MISMO bloqueo de 30 intentos que la contrasena:
     /// 5 contrasenas malas + 5 codigos malos bloquean, y bloqueada ni la contrasena ni un codigo
     /// bueno abren sesion.
     /// </summary>
@@ -187,9 +187,11 @@ public partial class ApiPruebas
     {
         var (correo, _) = await CuentaConMfaAsync();
 
-        await FallarAsync(correo, 5);
+        // Mitad con la contrasena, mitad con el codigo: juntos llegan justo al limite.
+        var mitad = ServicioSesion.IntentosParaBloquear / 2;
+        await FallarAsync(correo, mitad);
         var desafio = await DesafioDeAsync(await EntrarAsync(correo, ClaveBuena));
-        for (var i = 0; i < 5; i++)
+        for (var i = 0; i < ServicioSesion.IntentosParaBloquear - mitad; i++)
             Assert.Equal(HttpStatusCode.Unauthorized, (await SegundoPasoAsync(desafio, "ZZZZZ-ZZZZZ")).StatusCode);
 
         var usuario = await CuentaEnBaseAsync(correo);
@@ -203,7 +205,7 @@ public partial class ApiPruebas
 
     /// <summary>
     /// La contrasena correcta con MFA NO reinicia el contador (si lo hiciera, se podrian probar
-    /// codigos sin fin alternando con la contrasena). Diez codigos malos seguidos bloquean.
+    /// codigos sin fin alternando con la contrasena). Treinta codigos malos seguidos bloquean.
     /// </summary>
     [Fact]
     public async Task Mfa_la_contrasena_correcta_no_reinicia_el_contador_de_codigos_malos()

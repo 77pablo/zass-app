@@ -42,6 +42,8 @@ public class AvisosPushPruebas
             TipoNotificacion.MfaDesactivado,
             TipoNotificacion.MfaCodigosRegenerados,
             TipoNotificacion.MfaQuitadoPorAdministrador,
+            // CuentaBloqueadaPorIntentos (25-nov): aviso de seguridad, solo correo.
+            TipoNotificacion.CuentaBloqueadaPorIntentos,
         }, sinPush);
     }
 

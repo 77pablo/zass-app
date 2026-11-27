@@ -47,7 +47,8 @@ public static class PreferenciasAviso
         or TipoNotificacion.RegistroConRutExistente or TipoNotificacion.MfaActivado
         or TipoNotificacion.RegistroConCorreoExistente
         or TipoNotificacion.MfaDesactivado or TipoNotificacion.MfaCodigosRegenerados
-        or TipoNotificacion.MfaQuitadoPorAdministrador;
+        or TipoNotificacion.MfaQuitadoPorAdministrador
+        or TipoNotificacion.CuentaBloqueadaPorIntentos;
 
     /// <summary>
     /// Si un aviso de este tipo debe salir por este canal, segun la preferencia guardada (o null si

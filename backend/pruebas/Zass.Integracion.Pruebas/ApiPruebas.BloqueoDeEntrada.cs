@@ -7,7 +7,7 @@ namespace Zass.Integracion.Pruebas;
 
 /// <summary>
 /// Bloqueo de la cuenta tras intentos fallidos de entrar (API-09, decision de Pablo del
-/// 22-nov-2026): 10 fallos seguidos dejan la cuenta 15 minutos sin poder entrar. Antes solo
+/// 22-nov-2026; 30 desde el 25-nov): 30 fallos seguidos dejan la cuenta 15 minutos sin poder entrar. Antes solo
 /// habia limite por IP, y desde muchas IP se podian probar contrasenas sin freno.
 ///
 /// Lo que mas importa aqui es lo que NO se ve: bloqueada, la respuesta es identica a la de una
@@ -42,13 +42,13 @@ public partial class ApiPruebas
     }
 
     /// <summary>
-    /// Diez fallos bloquean. Bloqueada, la contrasena correcta NO entra, y su respuesta es
+    /// Treinta fallos bloquean. Bloqueada, la contrasena correcta NO entra, y su respuesta es
     /// la misma (codigo y cuerpo) que la de una contrasena mala antes del bloqueo, una mala
     /// durante el bloqueo y un correo que no existe. El bloqueo dura 15 minutos y deja UNA
     /// entrada de auditoria.
     /// </summary>
     [Fact]
-    public async Task Diez_fallos_bloquean_y_bloqueada_la_contrasena_correcta_no_entra_ni_se_distingue()
+    public async Task Treinta_fallos_bloquean_y_bloqueada_la_contrasena_correcta_no_entra_ni_se_distingue()
     {
         var correo = NuevoCorreo();
         await RegistrarAsync(correo);
@@ -73,21 +73,26 @@ public partial class ApiPruebas
 
         var usuario = await UsuarioAsync(correo);
         Assert.NotNull(usuario.BloqueadaHasta);
-        // 15 minutos contados desde el decimo fallo (que fue justo antes de la buena).
+        // 15 minutos contados desde el trigesimo fallo (que fue justo antes de la buena).
         var plazo = usuario.BloqueadaHasta!.Value - antesDeLaBuena;
         Assert.InRange(plazo, ServicioSesion.DuracionDelBloqueo - TimeSpan.FromMinutes(1),
             ServicioSesion.DuracionDelBloqueo);
         Assert.Equal(TimeSpan.FromMinutes(15), ServicioSesion.DuracionDelBloqueo);
-        Assert.Equal(10, ServicioSesion.IntentosParaBloquear);
+        Assert.Equal(30, ServicioSesion.IntentosParaBloquear);
         Assert.Equal(1, await BloqueosAuditadosAsync(usuario.Id));
+
+        // Y a la dueña le llega un correo (25-nov-2026): con la cola de verdad, la que inyecta la API.
+        using (var ctx = ContextoDePrueba.Crear())
+            Assert.Equal(1, await ctx.Notificaciones.CountAsync(n =>
+                n.DestinatarioId == usuario.Id && n.Tipo == Zass.Dominio.Comun.TipoNotificacion.CuentaBloqueadaPorIntentos));
 
         // Y tampoco hay sesion por la puerta de atras.
         Assert.Equal(HttpStatusCode.Unauthorized, (await _cliente.GetAsync("/api/mi/cuenta")).StatusCode);
     }
 
-    /// <summary>Nueve fallos no bloquean: el decimo es el que cuenta, no el noveno.</summary>
+    /// <summary>Veintinueve fallos no bloquean: el trigesimo es el que cuenta.</summary>
     [Fact]
-    public async Task Nueve_fallos_no_bloquean()
+    public async Task Veintinueve_fallos_no_bloquean()
     {
         var correo = NuevoCorreo();
         await RegistrarAsync(correo);
@@ -189,7 +194,7 @@ public partial class ApiPruebas
     }
 
     /// <summary>
-    /// Diez fallos SIMULTANEOS cuentan diez: el incremento es atomico en la base. Si cada
+    /// Treinta fallos SIMULTANEOS cuentan treinta: el incremento es atomico en la base. Si cada
     /// peticion leyera el contador y escribiera el suyo, varias leerian el mismo valor y el
     /// conteo se quedaria corto, y la contrasena correcta entraria. Y el bloqueo se audita una
     /// sola vez aunque lo disparen peticiones en paralelo.

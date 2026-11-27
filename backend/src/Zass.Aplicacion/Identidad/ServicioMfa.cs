@@ -28,7 +28,7 @@ public sealed record CodigosDeRespaldoDto(string[] Codigos);
 /// Lo que importa y no se ve:
 /// - un mismo codigo TOTP no sirve dos veces (el ultimo paso aceptado se guarda y se compara de
 ///   forma atomica), ni un codigo de respaldo tampoco (se borra al usarlo, en la misma sentencia);
-/// - los fallos del segundo paso cuentan para el MISMO bloqueo de 10 intentos / 15 minutos de la
+/// - los fallos del segundo paso cuentan para el MISMO bloqueo de 30 intentos / 15 minutos de la
 ///   contrasena (ServicioSesion), y entrar bien solo reinicia el contador tras el segundo paso;
 /// - la respuesta de un fallo es una sola, sea el desafio vencido, el codigo malo o la cuenta
 ///   bloqueada.
@@ -415,7 +415,7 @@ public sealed class ServicioMfa
     /// Confirma que quien pide una accion delicada (eliminar la cuenta, cambiar la contrasena) es
     /// el dueño: la contrasena y, si la cuenta tiene la verificacion en dos pasos activa, tambien
     /// un codigo (TOTP o de respaldo, que se gasta aqui mismo de forma atomica). Un fallo suma al
-    /// MISMO bloqueo de 10 intentos / 15 minutos del inicio de sesion, y con la cuenta bloqueada no
+    /// MISMO bloqueo de 30 intentos / 15 minutos del inicio de sesion, y con la cuenta bloqueada no
     /// se mira nada (ni se gasta un codigo). Devuelve falso en cualquier fallo: el que llama
     /// responde <see cref="FalloDeConfirmacion"/>, una sola respuesta.
     /// </summary>
@@ -485,6 +485,7 @@ public sealed class ServicioMfa
             contexto: new { paso, bloqueada = usuario.EstaBloqueada(ahora) }, ip: ip));
 
         if (bloqueoAhora)
+        {
             _auditor.Registrar(Auditar.Entrada(
                 "cuenta_bloqueada_por_intentos", "usuario", usuario.Id, ahora,
                 contexto: new
@@ -493,6 +494,11 @@ public sealed class ServicioMfa
                     bloqueadaHasta = ahora.Add(ServicioSesion.DuracionDelBloqueo),
                 },
                 ip: ip));
+            // Solo en el segundo paso del inicio de sesion la contraseña ya se comprobo buena.
+            // En el panel (alta, desactivar, cambiar contraseña...) el fallo puede ser la contraseña.
+            await _avisos.EncolarSiNoExisteAsync(
+                ServicioSesion.AvisoDeBloqueo(usuario.Id, ahora, conContrasenaCorrecta: paso == "inicio_sesion"), ct);
+        }
 
         await _unidad.GuardarAsync(ct);
     }

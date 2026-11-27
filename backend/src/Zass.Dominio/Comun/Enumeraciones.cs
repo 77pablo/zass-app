@@ -76,7 +76,9 @@ public enum TipoNotificacion
     // Revision de seguridad 25-nov-2026: la dueña se entera de todo cambio en su verificacion.
     MfaDesactivado,
     MfaCodigosRegenerados,
-    MfaQuitadoPorAdministrador
+    MfaQuitadoPorAdministrador,
+    // Revision de seguridad 25-nov-2026: la cuenta se bloqueo por intentos fallidos.
+    CuentaBloqueadaPorIntentos
 }
 
 public enum CanalNotificacion { Correo, Push }

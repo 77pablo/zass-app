@@ -414,6 +414,8 @@ public class CorreoUnidadPruebas
             TipoNotificacion.MfaDesactivado,
             TipoNotificacion.MfaCodigosRegenerados,
             TipoNotificacion.MfaQuitadoPorAdministrador,
+            // ServicioSesion/ServicioMfa, desde el 25-nov-2026: la cuenta se bloqueo por intentos.
+            TipoNotificacion.CuentaBloqueadaPorIntentos,
         };
         // Ya no queda ninguno pendiente a conciencia: PerfilPublicado era el ultimo y tiene
         // plantilla desde el 13-nov-2026. Si manana se encola un tipo nuevo sin plantilla, esta
@@ -423,6 +425,47 @@ public class CorreoUnidadPruebas
         var huecos = encolados.Except(pendientes).Where(t => !Plantillas.TienePlantilla(t)).ToArray();
 
         Assert.Empty(huecos);
+    }
+
+    // ------------------------------------------------------- cuenta bloqueada (25-nov-2026)
+
+    /// <summary>
+    /// El aviso de bloqueo dice cuantos intentos y cuantos minutos (de las constantes, que son las
+    /// que rigen), manda a crear una contraseña nueva (que desbloquea) y no lleva ningun secreto.
+    /// </summary>
+    [Fact]
+    public void El_aviso_de_cuenta_bloqueada_dice_cuanto_dura_y_manda_a_crear_una_contrasena()
+    {
+        Assert.True(Plantillas.TienePlantilla(TipoNotificacion.CuentaBloqueadaPorIntentos));
+        Assert.False(Plantillas.LlevaToken(TipoNotificacion.CuentaBloqueadaPorIntentos));
+
+        var r = Plantillas.Renderizar(TipoNotificacion.CuentaBloqueadaPorIntentos, "Luis <b>Pérez</b>", "https://zass.cl/", "{}")!;
+        Assert.Equal("Bloqueamos tu cuenta de ZASS! por intentos fallidos", r.Asunto);
+        Assert.Contains("Hubo 30 intentos", r.Texto);
+        Assert.Contains("por 15 minutos", r.Texto);
+        Assert.Contains("https://zass.cl/recuperar-contrasena", r.Texto);
+        Assert.Contains("href=\"https://zass.cl/recuperar-contrasena\"", r.Html);
+        Assert.DoesNotContain("token", r.Texto, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("<b>", r.Html);
+        // El comun SI puede tranquilizar: quien probaba no tenia la contraseña.
+        Assert.Contains("Sin la contraseña correcta no puede entrar", r.Texto);
+    }
+
+    /// <summary>
+    /// Bloqueada en el segundo paso: quien probaba ya tenia la contraseña. El correo dice eso y
+    /// pide cambiarla; nunca el «sin la contraseña no puede entrar» del aviso comun.
+    /// </summary>
+    [Fact]
+    public void El_aviso_de_bloqueo_con_la_contrasena_correcta_pide_cambiarla_y_no_tranquiliza()
+    {
+        var r = Plantillas.Renderizar(TipoNotificacion.CuentaBloqueadaPorIntentos, "Luis",
+            "https://zass.cl/", "{\"contrasenaCorrecta\":\"si\"}")!;
+        Assert.Equal("Alguien usó tu contraseña de ZASS!: bloqueamos tu cuenta", r.Asunto);
+        Assert.Contains("escribió bien la contraseña", r.Texto);
+        Assert.Contains("por 15 minutos", r.Texto);
+        Assert.Contains("crea una nueva ahora mismo", r.Texto);
+        Assert.Contains("href=\"https://zass.cl/recuperar-contrasena\"", r.Html);
+        Assert.DoesNotContain("Sin la contraseña correcta no puede entrar", r.Texto);
     }
 
     // ------------------------------------------------------- verificacion en dos pasos (25-nov-2026)

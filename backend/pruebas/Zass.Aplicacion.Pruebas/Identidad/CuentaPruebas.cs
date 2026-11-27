@@ -763,7 +763,7 @@ public class CuentaPruebas
     }
 
     [Fact]
-    public async Task Diez_fallos_en_la_baja_bloquean_la_cuenta_y_el_bloqueo_rige_aunque_todo_sea_correcto()
+    public async Task Los_fallos_en_la_baja_bloquean_la_cuenta_y_el_bloqueo_rige_aunque_todo_sea_correcto()
     {
         var (id, _) = await RegistrarAsync();
         var u = ConMfaActivo(id);

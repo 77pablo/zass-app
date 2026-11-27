@@ -36,8 +36,12 @@ public sealed record InicioDeSesion(SesionAbiertaDto? Sesion, DesafioMfaDto? Des
 /// </summary>
 public sealed class ServicioSesion
 {
-    /// <summary>Fallos seguidos que bloquean la cuenta (decision de Pablo, 22-nov-2026).</summary>
-    public const int IntentosParaBloquear = 10;
+    /// <summary>
+    /// Fallos seguidos que bloquean la cuenta. Eran 10 (decision de Pablo, 22-nov-2026); la revision
+    /// del 25-nov mostro que con el limite por IP (5 cada 15 min) bastaban 2 IP para bloquear una
+    /// cuenta ajena. Con 30 hacen falta 6 a la vez, y la dueña recibe un correo (Pablo, 25-nov-2026).
+    /// </summary>
+    public const int IntentosParaBloquear = 30;
 
     /// <summary>Cuanto dura el bloqueo, contado desde el fallo que lo disparo. Fijo.</summary>
     public static readonly TimeSpan DuracionDelBloqueo = TimeSpan.FromMinutes(15);
@@ -49,12 +53,41 @@ public sealed class ServicioSesion
     public static readonly TimeSpan VidaDelDesafioMfa = TimeSpan.FromMinutes(5);
 
     /// <summary>
+    /// Revision de seguridad 25-nov-2026: el correo a la dueña cuando su cuenta se bloquea por
+    /// intentos. Uno por dia como mucho (la clave lleva la fecha): quien prueba contraseñas puede
+    /// bloquearla cada 15 minutos, y un correo por bloqueo seria una forma de llenarle la bandeja.
+    /// No lleva token: el enlace manda a pedir una contraseña nueva, que tambien desbloquea.
+    ///
+    /// <paramref name="conContrasenaCorrecta"/>: el fallo que bloqueo fue el CODIGO del segundo
+    /// paso, despues de escribir bien la contraseña. Esa persona ya tiene la contraseña, y el
+    /// correo no puede decirle a la dueña que «sin la contraseña no puede entrar». Va con clave
+    /// propia: si ese dia ya salio el aviso comun, este igual tiene que llegar.
+    /// </summary>
+    public static Notificacion AvisoDeBloqueo(Guid usuarioId, DateTime ahora, bool conContrasenaCorrecta = false) => new()
+    {
+        DestinatarioId = usuarioId,
+        Tipo = TipoNotificacion.CuentaBloqueadaPorIntentos,
+        Canal = CanalNotificacion.Correo,
+        ClaveIdempotencia = $"cuenta-bloqueada:{usuarioId:N}:{ahora:yyyy-MM-dd}" + (conContrasenaCorrecta ? ":codigo" : ""),
+        Asunto = conContrasenaCorrecta
+            ? AsuntoDelBloqueoConContrasenaCorrecta
+            : "Bloqueamos tu cuenta de ZASS! por intentos fallidos",
+        Cuerpo = conContrasenaCorrecta ? "{\"contrasenaCorrecta\":\"si\"}" : "{}",
+        ProgramadaPara = ahora,
+    };
+
+    /// <summary>Asunto del aviso de bloqueo cuando el que fallo ya tenia la contraseña.</summary>
+    public const string AsuntoDelBloqueoConContrasenaCorrecta =
+        "Alguien usó tu contraseña de ZASS!: bloqueamos tu cuenta";
+
+    /// <summary>
     /// Un mensaje unico para "no existe la cuenta" y para "la contrasena no es esa".
     /// Distinguirlos regalaria un verificador de correos registrados (seguridad.md 5).
     /// </summary>
     private const string CredencialesInvalidas = "El correo o la contraseña no corresponden.";
 
     private readonly IRepositorioUsuarios _usuarios;
+    private readonly INotificaciones? _avisos;
     private readonly IRepositorioSesiones _sesiones;
     private readonly IUnidadDeTrabajo _unidad;
     private readonly IHashContrasenas _hash;
@@ -64,8 +97,10 @@ public sealed class ServicioSesion
 
     public ServicioSesion(
         IRepositorioUsuarios usuarios, IRepositorioSesiones sesiones, IUnidadDeTrabajo unidad,
-        IHashContrasenas hash, IGeneradorSecretos secretos, IRelojSistema reloj, IAuditor auditor)
+        IHashContrasenas hash, IGeneradorSecretos secretos, IRelojSistema reloj, IAuditor auditor,
+        INotificaciones? avisos = null)
     {
+        _avisos = avisos;
         _usuarios = usuarios;
         _sesiones = sesiones;
         _unidad = unidad;
@@ -163,9 +198,11 @@ public sealed class ServicioSesion
                 ip: ip));
 
             // Una entrada por bloqueo, para que el administrador vea los ataques (ver el
-            // filtro por accion en el panel de auditoria). No se manda correo al administrador
-            // aqui: tardaria lo bastante para que el decimo intento se distinga de los demas.
+            // filtro por accion en el panel de auditoria). El correo a la dueña (25-nov-2026) NO
+            // se envia aqui: solo se encola (un INSERT); lo manda el planificador despues. Enviarlo
+            // en linea tardaria lo bastante para que el intento que bloquea se distinga de los demas.
             if (bloqueoAhora)
+            {
                 _auditor.Registrar(Auditar.Entrada(
                     "cuenta_bloqueada_por_intentos", "usuario", usuario!.Id, ahora,
                     contexto: new
@@ -174,6 +211,9 @@ public sealed class ServicioSesion
                         bloqueadaHasta = ahora.Add(DuracionDelBloqueo),
                     },
                     ip: ip));
+                if (_avisos is not null)
+                    await _avisos.EncolarSiNoExisteAsync(AvisoDeBloqueo(usuario.Id, ahora), ct);
+            }
 
             await _unidad.GuardarAsync(ct);
             return Resultado.Falla<InicioDeSesion>(Fallas.NoAutorizado, CredencialesInvalidas);

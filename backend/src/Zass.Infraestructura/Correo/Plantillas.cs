@@ -103,7 +103,8 @@ public static class Plantillas
              or TipoNotificacion.RegistroConCorreoExistente
              or TipoNotificacion.MfaDesactivado
              or TipoNotificacion.MfaCodigosRegenerados
-             or TipoNotificacion.MfaQuitadoPorAdministrador;
+             or TipoNotificacion.MfaQuitadoPorAdministrador
+             or TipoNotificacion.CuentaBloqueadaPorIntentos;
 
     /// <summary>
     /// Los que llevan un secreto en la carga. Importa porque de esos el cuerpo se purga en
@@ -142,6 +143,11 @@ public static class Plantillas
         // No pide nada de la carga: los dos enlaces son fijos.
         TipoNotificacion.RegistroConCorreoExistente => RegistroConCorreoExistente(
             nombre, EnlaceDeEntrada(urlPublica), EnlaceParaPedirContrasena(urlPublica)),
+        // El enlace es fijo. Sin la marca en la carga sale el aviso comun (el que no da por
+        // sabida la contraseña): una carga rota no debe asustar sin motivo.
+        TipoNotificacion.CuentaBloqueadaPorIntentos => CuentaBloqueadaPorIntentos(
+            nombre, EnlaceParaPedirContrasena(urlPublica),
+            conContrasenaCorrecta: CargaDeAviso.LeerCampo(carga, "contrasenaCorrecta") == "si"),
         // Con el token (desde el 25-nov-2026) lleva el enlace «No fui yo». Sin el —los encolados
         // antes, o una carga ya purgada— sale el texto anterior, que manda a cambiar la contraseña.
         TipoNotificacion.MfaActivado => CargaDeAviso.LeerToken(carga) is { } tr
@@ -333,6 +339,66 @@ public static class Plantillas
             pie,
             otra, enlaceContrasena);
         return new("Se activó la verificación en dos pasos en tu cuenta de ZASS!", texto, html);
+    }
+
+    /// <summary>
+    /// Revision de seguridad 25-nov-2026: la cuenta se bloqueo por intentos fallidos. Crear una
+    /// contraseña nueva la desbloquea al tiro (RestablecerContrasenaAsync). Texto PROPUESTO,
+    /// pendiente de que Pablo lo apruebe.
+    /// </summary>
+    public static CorreoRenderizado CuentaBloqueadaPorIntentos(
+        string nombre, string enlaceContrasena, bool conContrasenaCorrecta = false)
+    {
+        var minutos = (int)Zass.Aplicacion.Identidad.ServicioSesion.DuracionDelBloqueo.TotalMinutes;
+        if (conContrasenaCorrecta)
+            return CuentaBloqueadaConContrasenaCorrecta(nombre, enlaceContrasena, minutos);
+        var parrafo =
+            $"Hubo {Zass.Aplicacion.Identidad.ServicioSesion.IntentosParaBloquear} intentos seguidos de entrar a tu "
+            + $"cuenta de ZASS! con una contraseña equivocada, así que la bloqueamos por {minutos} minutos para "
+            + "protegerla. Si fuiste tú y no recuerdas tu contraseña, crea una nueva: eso también la desbloquea al tiro.";
+        const string pie =
+            "Si no fuiste tú, alguien está probando contraseñas en tu cuenta. Sin la contraseña correcta no "
+            + "puede entrar; si la tuya es corta o la usas en otros sitios, cámbiala por una nueva.";
+        var texto =
+            $"Hola {nombre}:\n\n" +
+            $"{parrafo}\n\n{enlaceContrasena}\n\n" +
+            $"{pie}\n\n" +
+            "— El equipo de ZASS!";
+        var html = Marco(
+            "Bloqueamos tu cuenta por intentos fallidos",
+            $"Hola {H(nombre)}:",
+            parrafo,
+            "Crear una contraseña nueva", enlaceContrasena,
+            pie);
+        return new("Bloqueamos tu cuenta de ZASS! por intentos fallidos", texto, html);
+    }
+
+    /// <summary>
+    /// El bloqueo llego en el segundo paso del inicio de sesion: quien probaba escribio bien la
+    /// contraseña y fallo el codigo. Ya no es «alguien prueba contraseñas»: alguien TIENE la
+    /// contraseña. Lo urgente es cambiarla. Texto PROPUESTO, pendiente de que Pablo lo apruebe.
+    /// </summary>
+    private static CorreoRenderizado CuentaBloqueadaConContrasenaCorrecta(
+        string nombre, string enlaceContrasena, int minutos)
+    {
+        var parrafo =
+            "Alguien escribió bien la contraseña de tu cuenta de ZASS!, pero no el código de la "
+            + $"verificación en dos pasos. Después de varios intentos la bloqueamos por {minutos} minutos para protegerla.";
+        const string pie =
+            "Si no fuiste tú, otra persona conoce tu contraseña: crea una nueva ahora mismo y no la uses "
+            + "en ningún otro sitio. Sin el código de tu teléfono no pudo entrar.";
+        var texto =
+            $"Hola {nombre}:\n\n" +
+            $"{parrafo}\n\n{enlaceContrasena}\n\n" +
+            $"{pie}\n\n" +
+            "— El equipo de ZASS!";
+        var html = Marco(
+            "Alguien usó tu contraseña",
+            $"Hola {H(nombre)}:",
+            parrafo,
+            "Crear una contraseña nueva", enlaceContrasena,
+            pie);
+        return new(Zass.Aplicacion.Identidad.ServicioSesion.AsuntoDelBloqueoConContrasenaCorrecta, texto, html);
     }
 
     /// <summary>
