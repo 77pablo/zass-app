@@ -36,6 +36,12 @@ public class AvisosPushPruebas
             TipoNotificacion.RegistroConRutExistente,
             // BorradorPorEliminarse (JQ-16) SI va por push desde el 22-nov (decision de Pablo).
             TipoNotificacion.MfaActivado,
+            // RegistroConCorreoExistente (25-nov): igual que el de RUT, trae el enlace para recuperar.
+            TipoNotificacion.RegistroConCorreoExistente,
+            // Los tres avisos de seguridad de la verificacion (25-nov): solo correo, como el de activarla.
+            TipoNotificacion.MfaDesactivado,
+            TipoNotificacion.MfaCodigosRegenerados,
+            TipoNotificacion.MfaQuitadoPorAdministrador,
         }, sinPush);
     }
 

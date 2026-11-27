@@ -60,6 +60,12 @@ public class Usuario
     /// <summary>Hash del desafio del segundo paso del inicio de sesion (vive 5 minutos, un solo uso).</summary>
     public string? MfaDesafioHash { get; set; }
     public DateTime? MfaDesafioExpiraEn { get; set; }
+    /// <summary>
+    /// Revision de seguridad 25-nov-2026: hash del enlace «No fui yo» que va en el correo de
+    /// activacion. Vive 7 dias y sirve una sola vez; quitar la verificacion lo borra.
+    /// </summary>
+    public string? MfaRevocacionHash { get; set; }
+    public DateTime? MfaRevocacionExpiraEn { get; set; }
 
     // Sello de seguridad (decision de Pablo, 22-nov-2026). Va como claim en la cookie de acceso y la
     // API lo compara con este valor en CADA peticion. Cada vez que hay que cortar las sesiones
@@ -86,6 +92,8 @@ public class Usuario
         MfaCodigosRespaldo = null;
         MfaDesafioHash = null;
         MfaDesafioExpiraEn = null;
+        MfaRevocacionHash = null;
+        MfaRevocacionExpiraEn = null;
     }
 
     public DateTime CreadoEn { get; set; } = DateTime.UtcNow;

@@ -10,6 +10,11 @@ import type { MotivoDeReporte } from '../resenas/servicio'
  * en el frontend NO es la protección: es solo para no anunciar que existe.
  */
 
+/** API-86 (25-nov-2026): quitar la verificación en dos pasos de una cuenta, con su motivo. */
+export async function quitarVerificacion(correo: string, motivo: string): Promise<void> {
+  await enviar('/api/interno/cuentas/quitar-mfa', { correo, motivo })
+}
+
 export const ROL_VERIFICADOR = 'verificador'
 export const ROL_MODERADOR = 'moderador'
 export const ROL_ADMINISTRADOR = 'administrador'

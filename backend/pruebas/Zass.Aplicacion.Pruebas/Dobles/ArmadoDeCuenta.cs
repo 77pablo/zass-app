@@ -55,6 +55,12 @@ public sealed class AlmacenQueRecuerda(BaseEnMemoria baseEnMemoria) : IAlmacenDe
             ? Resultado.Falla(Fallas.AlmacenamientoNoDisponible, "no contesto")
             : Resultado.Ok());
     }
+
+    public async IAsyncEnumerable<ArchivoListado> ListarAsync(string prefijo, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await Task.CompletedTask;
+        yield break;
+    }
 }
 
 /// <summary>Un registro que guarda lo que se le escribe, para comprobar que un error quedo anotado.</summary>
@@ -75,7 +81,7 @@ public static class ArmadoDeCuenta
         BaseEnMemoria baseEnMemoria, IHashContrasenas hash, IGeneradorSecretos secretos, IRelojSistema reloj,
         INotificaciones cola, IAuditor auditoria, ServicioSesion sesiones, IContrasenasFiltradas filtradas,
         IAlmacenDeArchivos? almacen = null, ILogger<ServicioBorradoDeDatos>? registro = null,
-        ICifradoDeDatos? cifrado = null)
+        ICifradoMfa? cifrado = null)
     {
         var usuarios = new RepositorioUsuariosEnMemoria(baseEnMemoria);
         var perfiles = new RepositorioPerfilesEnMemoria(baseEnMemoria);

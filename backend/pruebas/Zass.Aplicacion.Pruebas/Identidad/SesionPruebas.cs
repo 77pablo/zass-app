@@ -249,4 +249,28 @@ public class SesionPruebas
         var vigentes = _base.Sesiones.Where(s => s.EstaVigente(_reloj.Ahora)).ToList();
         Assert.Equal(_secretos.HashToken(actual.TokenRefresco), Assert.Single(vigentes).HashToken);
     }
+
+    /// <summary>
+    /// Revision del 25-nov-2026: con un correo que no existe se hacian DOS Argon2id (Hash + Verifica)
+    /// y con uno que existe, uno. El doble de tiempo decia cuales correos estan libres. Ahora cuestan
+    /// lo mismo: se cuentan las llamadas al hasher de los dos caminos.
+    /// </summary>
+    [Fact]
+    public async Task Un_correo_sin_cuenta_cuesta_los_mismos_hashes_que_uno_con_cuenta()
+    {
+        SembrarUsuario();
+        // La primera vez se calcula el hash de relleno (una sola vez por hasher): no se cuenta.
+        await _servicio.IniciarAsync(new IniciarSesionCmd("nadie@correo.cl", "otra-clave-mala"));
+
+        var antes = _hash.LlamadasHash;
+        await _servicio.IniciarAsync(new IniciarSesionCmd("pablo@correo.cl", "otra-clave-mala"));
+        var conCuenta = _hash.LlamadasHash - antes;
+
+        antes = _hash.LlamadasHash;
+        await _servicio.IniciarAsync(new IniciarSesionCmd("nadie@correo.cl", "otra-clave-mala"));
+        var sinCuenta = _hash.LlamadasHash - antes;
+
+        Assert.Equal(1, conCuenta);
+        Assert.Equal(conCuenta, sinCuenta);
+    }
 }

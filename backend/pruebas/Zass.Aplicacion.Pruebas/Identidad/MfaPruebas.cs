@@ -2,6 +2,7 @@ using Zass.Aplicacion.Identidad;
 using Zass.Aplicacion.Pruebas.Dobles;
 using Zass.Dominio.Comun;
 using Zass.Dominio.Identidad;
+using Zass.Infraestructura.Seguridad;
 
 namespace Zass.Aplicacion.Pruebas.Identidad;
 
@@ -19,6 +20,8 @@ public class MfaPruebas
     private readonly CifradoDeJuguete _cifrado = new();
     private readonly ServicioSesion _sesion;
     private readonly ServicioMfa _mfa;
+    private readonly ServicioMfa _mfaReal; // con AES-GCM de verdad: lo de los datos asociados se prueba aqui
+    private readonly CifradoMfaAesGcm _cifradoReal = new(Enumerable.Range(1, 32).Select(i => (byte)i).ToArray());
     private readonly ColaEnMemoria _cola = new();
     private const string Clave = "contrasena-larga-1";
 
@@ -28,6 +31,7 @@ public class MfaPruebas
         _sesion = new ServicioSesion(usuarios, new RepositorioSesionesEnMemoria(_base),
             _base, _hash, _secretos, _reloj, _auditoria);
         _mfa = new ServicioMfa(usuarios, _base, _hash, _secretos, _cifrado, _reloj, _auditoria, _sesion, _cola);
+        _mfaReal = new ServicioMfa(usuarios, _base, _hash, _secretos, _cifradoReal, _reloj, _auditoria, _sesion, _cola);
     }
 
     [Theory]
@@ -63,9 +67,10 @@ public class MfaPruebas
         {
             Correo = "pablo@correo.cl", Nombre = "Pablo", HashContrasena = _hash.Hash(Clave),
             Estado = EstadoCuenta.Activa, CorreoVerificado = true,
-            MfaSecretoCifrado = _cifrado.Cifrar(SecretoRfc), MfaActivadoEn = _reloj.Ahora,
+            MfaActivadoEn = _reloj.Ahora,
             MfaCodigosRespaldo = Array.Empty<string>(),
         };
+        u.MfaSecretoCifrado = _cifrado.Cifrar(SecretoRfc, ServicioMfa.DatosAsociados(u.Id));
         _base.Usuarios.Add(u);
         return u;
     }
@@ -368,5 +373,75 @@ public class MfaPruebas
 
         Assert.False(r.Exito);
         Assert.Equal(antes, u.SelloSeguridad);
+    }
+
+    // ------------------------------------------- Secreto atado a la persona (datos asociados)
+
+    private Usuario Cuenta(string correo)
+    {
+        var u = new Usuario
+        {
+            Correo = correo, Nombre = correo, HashContrasena = _hash.Hash(Clave),
+            Estado = EstadoCuenta.Activa, CorreoVerificado = true, MfaCodigosRespaldo = Array.Empty<string>(),
+        };
+        _base.Usuarios.Add(u);
+        return u;
+    }
+
+    [Fact]
+    public async Task El_alta_y_el_segundo_paso_andan_con_el_secreto_atado_a_la_persona()
+    {
+        var u = Cuenta("ana@correo.cl");
+        var alta = await _mfaReal.IniciarAltaAsync(u.Id);
+        Assert.True(alta.Exito);
+        // Se guardo atado a su id: sin ese dato asociado NO se abre.
+        Assert.ThrowsAny<System.Security.Cryptography.CryptographicException>(
+            () => _cifradoReal.Descifrar(u.MfaSecretoPendienteCifrado!));
+        Assert.Equal(alta.Valor!.Secreto,
+            _cifradoReal.Descifrar(u.MfaSecretoPendienteCifrado!, ServicioMfa.DatosAsociados(u.Id)));
+
+        var codigo = Totp.Codigo(alta.Valor.Secreto, Totp.PasoDe(_reloj.Ahora));
+        Assert.True((await _mfaReal.ConfirmarAltaAsync(u.Id, new ConfirmarMfaCmd(Clave, codigo))).Exito);
+        Assert.True(u.MfaActivo);
+
+        _reloj.Avanzar(TimeSpan.FromMinutes(1));
+        var r = await _sesion.EntrarAsync(new IniciarSesionCmd(u.Correo, Clave));
+        var dos = await _mfaReal.SegundoPasoAsync(new SegundoPasoCmd(
+            r.Valor!.Desafio!.Desafio, Totp.Codigo(alta.Valor.Secreto, Totp.PasoDe(_reloj.Ahora))));
+        Assert.True(dos.Exito, dos.Mensaje);
+        Assert.Single(_base.Sesiones);
+    }
+
+    [Fact]
+    public async Task El_secreto_pendiente_copiado_a_otra_cuenta_no_deja_confirmar_el_alta()
+    {
+        var ana = Cuenta("ana@correo.cl");
+        var beto = Cuenta("beto@correo.cl");
+        var alta = await _mfaReal.IniciarAltaAsync(ana.Id);
+        beto.MfaSecretoPendienteCifrado = ana.MfaSecretoPendienteCifrado; // copia de la columna entre filas
+        var codigo = Totp.Codigo(alta.Valor!.Secreto, Totp.PasoDe(_reloj.Ahora));
+
+        await Assert.ThrowsAnyAsync<System.Security.Cryptography.CryptographicException>(
+            () => _mfaReal.ConfirmarAltaAsync(beto.Id, new ConfirmarMfaCmd(Clave, codigo)));
+
+        Assert.False(beto.MfaActivo);
+    }
+
+    [Fact]
+    public async Task El_secreto_activo_copiado_a_otra_cuenta_no_deja_pasar_el_segundo_paso()
+    {
+        var ana = Cuenta("ana@correo.cl");
+        var beto = Cuenta("beto@correo.cl");
+        ana.MfaSecretoCifrado = _cifradoReal.Cifrar(SecretoRfc, ServicioMfa.DatosAsociados(ana.Id));
+        ana.MfaActivadoEn = _reloj.Ahora;
+        beto.MfaSecretoCifrado = ana.MfaSecretoCifrado; // copia de la columna entre filas
+        beto.MfaActivadoEn = _reloj.Ahora;
+
+        var r = await _sesion.EntrarAsync(new IniciarSesionCmd(beto.Correo, Clave));
+        var codigo = Totp.Codigo(SecretoRfc, Totp.PasoDe(_reloj.Ahora));
+
+        await Assert.ThrowsAnyAsync<System.Security.Cryptography.CryptographicException>(
+            () => _mfaReal.SegundoPasoAsync(new SegundoPasoCmd(r.Valor!.Desafio!.Desafio, codigo)));
+        Assert.Empty(_base.Sesiones);
     }
 }

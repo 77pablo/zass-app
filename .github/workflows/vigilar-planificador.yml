@@ -68,3 +68,25 @@ jobs:
           # Todo OK
           echo "OK: Ultima corrida: $ULTIMA_CORRIDA (hace $DIFERENCIA_HORAS horas), corridas: $CORRIDAS, resumen: $RESUMEN"
           echo "OK: Ultima corrida: $ULTIMA_CORRIDA (hace $DIFERENCIA_HORAS horas), corridas: $CORRIDAS, resumen: $RESUMEN" >> "$GITHUB_STEP_SUMMARY"
+      # 25-nov-2026 (revision de seguridad): si Flow cobra la tarjeta pero su respuesta se pierde
+      # (timeout, 5xx) o llega «pendiente», el cobro automatico queda Pendiente y el trabajo diario
+      # solo lo cuenta como «para revisar» en su resumen: nadie se enteraba. No se reintenta a
+      # ciegas (seria cobrar dos veces), asi que lo tiene que mirar una persona: este paso falla y
+      # GitHub le avisa a Pablo. Desde la conciliacion (tarea «conciliar-cobros», cada hora, a los
+      # que tienen mas de 30 min) la API le pregunta a Flow y resuelve sola los que Flow ya sabe:
+      # lo que llega aqui es lo que Flow no conoce o no decide. Se revisa en el panel de Flow (orden
+      # de comercio = id del intento) y se resuelve a mano. Tres horas: la conciliacion alcanza a
+      # pasar al menos una vez (30 min de espera + hasta 1 h entre corridas) con margen.
+      - name: Cobros automaticos sin resolver
+        env:
+          NEON_URL_COPIAS: ${{ secrets.NEON_URL_COPIAS }}
+        run: |
+          set -euo pipefail
+          PENDIENTES=$(docker run --rm -e NEON_URL_COPIAS postgres:18 \
+            sh -c 'psql -X -A -t -v ON_ERROR_STOP=1 "$NEON_URL_COPIAS" -c "SELECT count(*) FROM intentos_de_pago WHERE estado = '"'"'Pendiente'"'"' AND clave_idempotencia LIKE '"'"'cobro-automatico:%'"'"' AND creado_en < now() - interval '"'"'3 hours'"'"';"')
+          if [ "$PENDIENTES" != "0" ]; then
+            echo "::error::$PENDIENTES cobro(s) automatico(s) siguen Pendientes hace mas de 3 horas: revisar en Flow si se cobraron"
+            echo "ERROR: $PENDIENTES cobro(s) automatico(s) Pendientes hace mas de 3 horas (revisar en Flow)" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "OK: ningun cobro automatico atascado" >> "$GITHUB_STEP_SUMMARY"

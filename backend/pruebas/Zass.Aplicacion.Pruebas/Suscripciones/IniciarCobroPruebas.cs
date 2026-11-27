@@ -183,15 +183,63 @@ public class IniciarCobroPruebas
     // ------------------------------------------------------- El cupo fundador
 
     [Fact]
-    public async Task El_plan_fundador_RESERVA_el_cupo_al_iniciar_y_la_reserva_dura_30_minutos()
+    public async Task El_plan_fundador_sin_cupo_propio_falla_y_NO_reserva_nada()
     {
+        // 22-nov-2026: API-68 no lleva captcha, asi que ya no es una puerta para tomar cupos.
         var perfil = UnPrestadorConSuscripcion();
 
-        await _cobros.IniciarAsync(new IniciarCobroCmd(perfil.Id, "fundador", null, "k1"));
+        var r = await _cobros.IniciarAsync(new IniciarCobroCmd(perfil.Id, "fundador", null, "k1"));
 
+        Assert.False(r.Exito);
+        Assert.Equal(Fallas.Conflicto, r.Codigo);
+        Assert.Contains("Primero toma tu cupo de fundador", r.Mensaje!);
+        Assert.DoesNotContain(_base.CuposFundador, c => c.PerfilPrestadorId == perfil.Id);
+        Assert.Equal(50, await _suscripciones.CuposFundadorDisponiblesAsync());
+        Assert.Empty(_base.IntentosDePago);
+    }
+
+    [Fact]
+    public async Task El_plan_fundador_con_reserva_vigente_crea_el_intento_y_NO_renueva_la_reserva()
+    {
+        var perfil = UnPrestadorConSuscripcion();
+        await _suscripciones.TomarCupoFundadorAsync(perfil.Id);
+        _reloj.Avanzar(TimeSpan.FromMinutes(10));
+
+        var r = await _cobros.IniciarAsync(new IniciarCobroCmd(perfil.Id, "fundador", null, "k1"));
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.Single(_base.IntentosDePago);
         var cupo = _base.CuposFundador.Single(c => c.PerfilPrestadorId == perfil.Id);
-        Assert.Equal(Ahora.AddMinutes(30), cupo.ReservadoHasta);   // 30 (N3), escrito a mano
-        Assert.Equal(49, await _suscripciones.CuposFundadorDisponiblesAsync());
+        Assert.Equal(Ahora.AddMinutes(30), cupo.ReservadoHasta);   // el plazo de API-69, sin estirar
+    }
+
+    [Fact]
+    public async Task El_plan_fundador_con_la_reserva_vencida_falla()
+    {
+        var perfil = UnPrestadorConSuscripcion();
+        await _suscripciones.TomarCupoFundadorAsync(perfil.Id);
+        _reloj.Avanzar(TimeSpan.FromMinutes(31));
+
+        var r = await _cobros.IniciarAsync(new IniciarCobroCmd(perfil.Id, "fundador", null, "k1"));
+
+        Assert.False(r.Exito);
+        Assert.Equal(Fallas.Conflicto, r.Codigo);
+        Assert.Contains("vuelve a tomarlo", r.Mensaje!);
+        Assert.Empty(_base.IntentosDePago);
+    }
+
+    [Fact]
+    public async Task El_plan_fundador_con_el_cupo_ya_confirmado_puede_pagar()
+    {
+        var perfil = UnPrestadorConSuscripcion();
+        await _suscripciones.TomarCupoFundadorAsync(perfil.Id);
+        var cupo = _base.CuposFundador.Single(c => c.PerfilPrestadorId == perfil.Id);
+        cupo.ReservadoHasta = null;     // confirmado
+        _reloj.Avanzar(TimeSpan.FromDays(2));
+
+        var r = await _cobros.IniciarAsync(new IniciarCobroCmd(perfil.Id, "fundador", null, "k1"));
+
+        Assert.True(r.Exito, r.Mensaje);
     }
 
     [Fact]
@@ -223,6 +271,7 @@ public class IniciarCobroPruebas
     public async Task Reintentar_el_fundador_con_la_misma_clave_no_toma_un_segundo_cupo()
     {
         var perfil = UnPrestadorConSuscripcion();
+        await _suscripciones.TomarCupoFundadorAsync(perfil.Id);
 
         await _cobros.IniciarAsync(new IniciarCobroCmd(perfil.Id, "fundador", null, "k1"));
         await _cobros.IniciarAsync(new IniciarCobroCmd(perfil.Id, "fundador", null, "k1"));

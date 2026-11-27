@@ -117,6 +117,26 @@ public interface IPasarelaDePagos
     /// </summary>
     Task<Resultado<CobroResuelto>> LeerConfirmacionAsync(
         AvisoDePasarela aviso, CancellationToken ct = default);
+
+    /// <summary>
+    /// Conciliacion (25-nov-2026): le pregunta a la pasarela como termino un cobro que
+    /// NOSOTROS iniciamos, buscandolo por nuestro numero de orden (el id del intento).
+    ///
+    /// <para>
+    /// Es la salida de un cobro automatico que quedo Pendiente porque la respuesta de
+    /// <see cref="CobrarAsync"/> se perdio o porque la pasarela contesto «pendiente de pago».
+    /// Devuelve el mismo <see cref="CobroResuelto"/> que el aviso, para terminar en el mismo
+    /// sitio que todos los demas caminos.
+    /// </para>
+    ///
+    /// <para>
+    /// Falla cuando no se puede saber: la pasarela no contesta, o no conoce esa orden. Las dos
+    /// cosas se tratan igual —el intento sigue Pendiente y lo mira una persona— porque «no la
+    /// encuentro» no prueba que no se cobro, y reintentar a ciegas es como se cobra dos veces.
+    /// </para>
+    /// </summary>
+    Task<Resultado<CobroResuelto>> ConsultarCobroAsync(
+        Guid intentoDePagoId, CancellationToken ct = default);
 }
 
 /// <summary>

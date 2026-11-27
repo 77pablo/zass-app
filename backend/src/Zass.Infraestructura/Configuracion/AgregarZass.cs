@@ -216,6 +216,26 @@ public sealed class ValidadorOpcionesPagos : IValidateOptions<OpcionesZass>
 
 public static class RegistroDeServicios
 {
+    /// <summary>Clave del secreto del MFA (Base64, 32 bytes). Opcional: sin ella se usa la de direcciones.</summary>
+    public const string ClaveMfaConfiguracion = "Zass:Mfa:ClaveSecreto";
+
+    private static byte[] ClaveDeMfa(string base64)
+    {
+        byte[] clave;
+        try { clave = Convert.FromBase64String(base64); }
+        catch (FormatException)
+        {
+            throw new OptionsValidationException(
+                OpcionesZass.Seccion, typeof(OpcionesZass),
+                new[] { $"{ClaveMfaConfiguracion} no es Base64 válido." });
+        }
+        if (clave.Length != 32)
+            throw new OptionsValidationException(
+                OpcionesZass.Seccion, typeof(OpcionesZass),
+                new[] { $"{ClaveMfaConfiguracion} tiene {clave.Length} bytes y necesita 32." });
+        return clave;
+    }
+
     /// <summary>
     /// Que pasarela de pagos usar. Vive aqui y no en OpcionesZass porque no es un secreto
     /// ni algo sin lo que la aplicacion no pueda arrancar: tiene un valor por omision.
@@ -256,6 +276,18 @@ public static class RegistroDeServicios
         servicios.AddSingleton<IGeneradorSecretos, GeneradorSecretos>();
         servicios.AddSingleton<ICifradoDeDatos>(sp => new CifradoAesGcm(
             sp.GetRequiredService<IOptions<OpcionesZass>>().Value.ClaveDirecciones()));
+
+        // El secreto TOTP del MFA tiene clave PROPIA (Zass:Mfa:ClaveSecreto, 32 bytes en Base64).
+        // Si no esta configurada se usa la de direcciones (reserva): asi no se rompe nada ni se
+        // obliga a poner una variable nueva de golpe. Con clave propia, filtrar una de las dos
+        // claves no abre lo cifrado con la otra.
+        servicios.AddSingleton<ICifradoMfa>(sp =>
+        {
+            var propia = sp.GetRequiredService<IConfiguration>()[ClaveMfaConfiguracion];
+            return new CifradoMfaAesGcm(string.IsNullOrWhiteSpace(propia)
+                ? sp.GetRequiredService<IOptions<OpcionesZass>>().Value.ClaveDirecciones()
+                : ClaveDeMfa(propia));
+        });
 
         // IContrasenasFiltradas: adaptador HIBP con HttpClient de 3s, o nulo segun opcion.
         // Se resuelve al final para leer la opcion ya vinculada.
@@ -347,6 +379,9 @@ public static class RegistroDeServicios
         servicios.AddSingleton<IProcesadorDeImagenes, ProcesadorDeImagenesImageSharp>();
         servicios.AddSingleton<IAlmacenDeArchivos>(sp => ElegirAlmacen(sp));
         servicios.AddScoped<ServicioFotoDePerfil>();
+        // Auditoria 22-nov-2026: el barrido de huerfanos lo corre el planificador.
+        servicios.AddScoped<IRepositorioClavesDeArchivos, RepositorioClavesDeArchivosEfCore>();
+        servicios.AddScoped<ServicioBarridoDeArchivos>();
         servicios.AddScoped<IServicioFotosDeTrabajo, ServicioFotosDeTrabajo>();
 
         // --- MOD-03 Catalogo ---

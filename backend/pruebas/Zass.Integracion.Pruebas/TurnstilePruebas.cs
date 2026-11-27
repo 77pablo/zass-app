@@ -189,6 +189,61 @@ public class TurnstilePruebas
         Assert.Empty(Turnstile.Problemas(con, esProductivo: true));
     }
 
+    // 22-nov-2026: en Production, sin el secreto la API no arranca (antes el captcha quedaba
+    // apagado en silencio). Fuera de Production todo sigue como antes.
+
+    [Fact]
+    public void En_Production_sin_el_secreto_la_validacion_de_arranque_lanza_y_nombra_la_variable_sin_valores()
+    {
+        var sinSecreto = new ConfigurationBuilder().Build();
+
+        var problemas = Turnstile.Problemas(sinSecreto, esProductivo: true, exigirSecreto: true).ToList();
+
+        var problema = Assert.Single(problemas);
+        Assert.Contains("Zass__Turnstile__Secreto", problema);
+        Assert.Contains(Turnstile.ClaveSecreto, problema);
+
+        // Y por la via real del arranque: Exigir lanza con esa variable en el mensaje.
+        var error = Assert.Throws<InvalidOperationException>(
+            () => ValidacionDeArranque.Exigir(ConfiguracionBuena(), esProductivo: true, exigirSecretoCaptcha: true));
+        Assert.Contains("Zass__Turnstile__Secreto", error.Message);
+    }
+
+    [Fact]
+    public void En_Production_con_el_secreto_no_hay_problema_de_captcha()
+    {
+        var con = new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?> { [Turnstile.ClaveSecreto] = SecretoReal }).Build();
+
+        Assert.Empty(Turnstile.Problemas(con, esProductivo: true, exigirSecreto: true));
+        ValidacionDeArranque.Exigir(ConfiguracionBuena(SecretoReal), esProductivo: true, exigirSecretoCaptcha: true);
+    }
+
+    [Theory]
+    [InlineData(false, false)]   // Development
+    [InlineData(true, false)]    // Staging: es "productivo" para la base, pero no es Production
+    public void Fuera_de_Production_sin_el_secreto_no_hay_problema_y_solo_se_advierte(
+        bool esProductivo, bool exigirSecreto)
+    {
+        var sinSecreto = new ConfigurationBuilder().Build();
+
+        Assert.Empty(Turnstile.Problemas(sinSecreto, esProductivo, exigirSecreto));
+        ValidacionDeArranque.Exigir(ConfiguracionBuena(), esProductivo, exigirSecreto);
+        Assert.Equal(esProductivo, Turnstile.Advertencia(sinSecreto, esProductivo) is not null);
+    }
+
+    private static IConfiguration ConfiguracionBuena(string? secretoTurnstile = null)
+    {
+        var d = new Dictionary<string, string?>
+        {
+            ["Zass:CadenaConexion"] = "Host=h;Database=d;Username=u;Password=p;SSL Mode=Require",
+            ["Zass:ClaveDireccionesBase64"] =
+                Convert.ToBase64String(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray()),
+        };
+        if (secretoTurnstile is not null) d[Turnstile.ClaveSecreto] = secretoTurnstile;
+        return new ConfigurationBuilder().AddInMemoryCollection(d).Build();
+    }
+
     // ------------------------------------------------------------ En la API
 
     private static WebApplicationFactory<Program> ApiConCaptcha(SiteverifyFalso falso, string? secreto = SecretoReal) =>

@@ -167,3 +167,11 @@ export async function pedirRecuperacion(correo: string): Promise<void> {
 export async function restablecerContrasena(token: string, contrasenaNueva: string): Promise<void> {
   await enviar('/api/auth/contrasena/restablecer', { token, contrasenaNueva })
 }
+
+/**
+ * API-85 «No fui yo» (25-nov-2026): con el token del correo de activación, quita la verificación
+ * en dos pasos que puso otra persona y devuelve el token para crear la contraseña nueva.
+ */
+export async function noFuiYo(token: string): Promise<{ tokenRestablecer: string }> {
+  return enviar<{ tokenRestablecer: string }>('/api/auth/mfa/no-fui-yo', { token })
+}

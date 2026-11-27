@@ -13,8 +13,8 @@ using Zass.Infraestructura.Datos;
 namespace Zass.Infraestructura.Datos.Migraciones
 {
     [DbContext(typeof(ZassDbContext))]
-    [Migration("20261122120000_SelloDeSeguridad")]
-    partial class SelloDeSeguridad
+    [Migration("20261126015646_RevocarMfaDesdeElCorreo")]
+    partial class RevocarMfaDesdeElCorreo
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -5952,6 +5952,15 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasColumnType("character varying(64)")
                         .HasColumnName("mfa_desafio_hash");
 
+                    b.Property<DateTime?>("MfaRevocacionExpiraEn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("mfa_revocacion_expira_en");
+
+                    b.Property<string>("MfaRevocacionHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("mfa_revocacion_hash");
+
                     b.Property<byte[]>("MfaSecretoCifrado")
                         .HasColumnType("bytea")
                         .HasColumnName("mfa_secreto_cifrado");
@@ -5979,14 +5988,6 @@ namespace Zass.Infraestructura.Datos.Migraciones
                         .HasMaxLength(12)
                         .HasColumnType("character varying(12)")
                         .HasColumnName("rut");
-
-                    b.Property<string>("SelloSeguridad")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasDefaultValue("00000000000000000000000000000000")
-                        .HasColumnName("sello_seguridad");
 
                     b.Property<string>("Telefono")
                         .HasMaxLength(20)
@@ -6027,6 +6028,10 @@ namespace Zass.Infraestructura.Datos.Migraciones
                     b.HasIndex("MfaDesafioHash")
                         .HasDatabaseName("i_x_usuarios_mfa_desafio_hash")
                         .HasFilter("mfa_desafio_hash IS NOT NULL");
+
+                    b.HasIndex("MfaRevocacionHash")
+                        .HasDatabaseName("i_x_usuarios_mfa_revocacion_hash")
+                        .HasFilter("mfa_revocacion_hash IS NOT NULL");
 
                     b.HasIndex("Rut")
                         .IsUnique()

@@ -616,6 +616,9 @@ internal sealed class PasarelaFalsa : IPasarelaDePagos
 
     public Task<Resultado<CobroResuelto>> LeerConfirmacionAsync(AvisoDePasarela aviso, CancellationToken ct = default)
         => Task.FromResult(Resultado.Ok(new CobroResuelto(Guid.Empty, null, false, null, "rechazada por prueba")));
+
+    public Task<Resultado<CobroResuelto>> ConsultarCobroAsync(Guid intentoDePagoId, CancellationToken ct = default)
+        => Task.FromResult(Resultado.Falla<CobroResuelto>(Fallas.ReglaDeNegocio, "no consultable en esta prueba"));
 }
 
 /// <summary>
@@ -637,6 +640,9 @@ internal sealed class PasarelaAprobadora : IPasarelaDePagos
 
     public Task<Resultado<CobroResuelto>> LeerConfirmacionAsync(AvisoDePasarela aviso, CancellationToken ct = default)
         => Task.FromResult(Resultado.Ok(new CobroResuelto(Guid.Empty, null, true, null, "aprobada por prueba")));
+
+    public Task<Resultado<CobroResuelto>> ConsultarCobroAsync(Guid intentoDePagoId, CancellationToken ct = default)
+        => Task.FromResult(Resultado.Falla<CobroResuelto>(Fallas.ReglaDeNegocio, "no consultable en esta prueba"));
 }
 
 /// <summary>
@@ -673,4 +679,7 @@ internal sealed class PasarelaPendienteLuegoAprobada : IPasarelaDePagos
             MontoConfirmado: int.TryParse(aviso.Campo("monto"), out var m) ? m : null,
             MotivoFallo: null)));
     }
+
+    public Task<Resultado<CobroResuelto>> ConsultarCobroAsync(Guid intentoDePagoId, CancellationToken ct = default)
+        => Task.FromResult(Resultado.Falla<CobroResuelto>(Fallas.ReglaDeNegocio, "no consultable en esta prueba"));
 }

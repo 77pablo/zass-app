@@ -1,6 +1,12 @@
 # ZASS! — estado del desarrollo
 
-**Última sesión:** 18 de noviembre de 2026: **la interfaz de la guía v3 terminada en `main`**, tres PR de interfaz en borrador (#106, #107 y el #98 arreglado) y la tanda 8 de la otra IA preparada sin lanzar. Ver **«Sesión del 18-nov-2026 — interfaz»** justo debajo.
+**Última sesión:** 25 de noviembre de 2026 (noche): **copia de seguridad restaurada y comprobada (P-7)**, revisión de seguridad de lo entrado desde el 22-nov, y el registro ya no delata qué correos tienen cuenta. Ver **«Sesión del 25-nov-2026 (noche)»** justo debajo.
+
+**Sesión anterior:** 25-nov (tarde): el cobro con Flow funciona en producción y Turnstile encendido.
+
+**Sesión anterior:** 20-nov (JQ-9). Entre el 20 y el 25-nov el estado se llevó en la memoria de Claude y en `zass-tareas/RETOMAR-IA-2.md`, no aquí.
+
+**Sesión anterior:** 18 de noviembre de 2026: **la interfaz de la guía v3 terminada en `main`**, tres PR de interfaz en borrador (#106, #107 y el #98 arreglado) y la tanda 8 de la otra IA preparada sin lanzar. Ver **«Sesión del 18-nov-2026 — interfaz»** justo debajo.
 
 **Sesión anterior:** 17 de noviembre de 2026: **17 PR fusionados y `d57550d` DESPLEGADO y comprobado en producción**. Hay un índice nuevo en Neon y una segunda IA trabajando con un plan escrito. Ver **«Sesión del 17-nov-2026»** justo debajo.
 
@@ -28,6 +34,90 @@ repositorio en GitHub).
 
 Este archivo existe para retomar sin reconstruir contexto. Dice **qué está hecho y
 comprobado**, **qué no**, y **el siguiente paso exacto**.
+
+---
+
+## Sesión del 25-nov-2026 (noche) — copia probada, revisión de seguridad, registro sin delatar cuentas
+
+Pablo dejó a Claude trabajando solo con tres tareas: probar la copia (P-7), revisar la seguridad de lo
+que entró desde el 22-nov (P-6, parte de código) y quitar el «Ya existe una cuenta con ese correo».
+
+**Hecho y comprobado:**
+
+| Pieza | Cómo se comprobó |
+|---|---|
+| **#236 fusionado** (`3078137`) | CI verde (backend, frontend, gitleaks). **El sitio NO se desplegó**: Pablo dijo que la interfaz la lleva Joaquín; en #210 quedó lo que su pantalla debe traer sí o sí. Mientras zass.cl siga en mantenimiento no urge, pero **antes de abrir hay que desplegar**: el sitio vivo no tiene el camino «pagar» que la API (#223) ya exige |
+| **P-7: la copia restaura** | Corrida manual de «Probar la restauracion de la copia» (`45699747997`) con la copia del 25-nov: llega a la última migración (`VerificacionEnDosPasos`), trae todas las tablas, índices y claves de su modelo, 5 planes, 50 cupos, R-1, usuarios y PostGIS con una distancia real. Ya corría cada lunes; la del 23-nov era anterior a migrar Neon (por eso tenía 3 planes) |
+| **Revisión de seguridad** (3 revisores, solo lectura; lo que se arregló lo verifiqué yo leyendo el código) | Pagos: **ninguna forma de obtener un plan sin pagar** (estado y monto salen de Flow con firma propia, cupo con `SKIP LOCKED`, captcha solo por API-69). Identidad: MFA, TOTP, códigos de respaldo y desafío bien hechos. Resto: sin IDOR en métricas ni indicadores, push con lista de hosts, SQL parametrizado, CI sin secretos en PR |
+| **Registro (API-08) sin delatar cuentas** | Correo con cuenta → **la misma respuesta que un registro nuevo** (201, mismos campos, id inventado). A ese correo: enlace de confirmación nuevo si no estaba verificada (espera de 2 min, la de CS-01 bis), o el aviso nuevo `RegistroConCorreoExistente` si lo estaba (uno por hora). La contraseña filtrada se mira **antes** que el correo. Pruebas: 5 unitarias, 2 de integración por HTTP, plantilla; **4 mutaciones, las 4 caen** |
+| **Inicio de sesión: el tiempo delataba correos** | Con un correo sin cuenta se hacían 2 Argon2id y con uno con cuenta 1. Ahora el hash de relleno se calcula una vez por hasher. Prueba que cuenta las llamadas al hasher; la mutación (código viejo) cae |
+| **Cobros automáticos atascados** | Si Flow cobra pero su respuesta se pierde, el intento queda Pendiente y solo se contaba como «para revisar»: **nadie se enteraba**. `vigilar-planificador.yml` tiene un paso nuevo que falla (y GitHub le avisa a Pablo) si hay cobros automáticos Pendientes hace más de 2 h. La SQL se probó en la base local; **el paso solo puede correr desde `main`** (usa el secreto): lanzarlo a mano tras fusionar |
+| Forma de clave de archivos | `$` → `\z` (aceptaba un `\n` final). Prueba + mutación |
+
+**Lo que la revisión encontró y NO se tocó (decisiones de Pablo):**
+
+1. **Bloqueo por intentos como arma**: con el correo de otra persona, 10 fallos la bloquean 15 min, y se puede repetir (2 IP bastan). Restablecer la contraseña desbloquea. Opciones: contar por cuenta+IP, o desbloquear con el enlace del correo.
+2. **MFA sin recuperación**: quien tenga la contraseña puede activar MFA con SU teléfono; restablecer la contraseña no lo quita y no hay forma de que un administrador lo quite. Desactivar MFA y regenerar códigos no avisan por correo (activar sí).
+3. **Cobro automático sin conciliación**: el aviso de arriba es el parche; lo completo es un paso diario que pregunte a Flow (`payment/getStatusByCommerceId`) por los Pendientes y los resuelva. Antes del primer cobro real (~18-dic) conviene tenerlo.
+4. **Cupón dos veces**: pagando dos intentos a propósito se puede llevar el descuento dos meses (~$2.000). Está documentado en el código como compromiso aceptado.
+5. **Límite de peticiones «A»**: 5 cada 15 min por IP, compartido por login, registro, MFA y recuperar. Verificar que `Zass__ProxiesDeConfianza` esté bien puesto en Render: si no, todos comparten un solo cupo.
+6. #226 (sello de seguridad, cookie que sigue viva 15 min tras cambiar la clave) **sigue abierto** y lo cubre.
+7. Menores: la comparación del pase de mantenimiento delata el largo (teórico); recuperar contraseña y reenviar verificación tardan distinto con y sin cuenta (más débil); la baja no borra `PerfilBuscador` ni la IP de la auditoría (explicarlo por escrito, Ley 21.719).
+
+**Cerrado la misma noche:** Pablo aprobó el texto → **#237 fusionado** (`07a658c`), «Vigilar planificador» lanzado a mano desde main (paso nuevo en verde) y **API desplegada en Render** (comprobado: `/api/salud/lista` 200). En el registro de arranque sigue la advertencia de `Zass:SecretoDeOrigen` (P-11): se pone el día que se despliegue el sitio (DESPLIEGUE-API.md §4.1).
+
+**Decisiones de Pablo sobre los puntos 1-3** (recomendación aceptada, un PR cada uno, en este orden):
+- **3 · Conciliación de cobros** — hecha en esta misma sesión, ver abajo.
+- **2 · MFA**: NO quitarlo al restablecer la contraseña (con el correo bastaría para llevarse la cuenta). Botón «No fui yo» en el correo de activación (7 días: quita MFA, cierra sesiones, obliga a cambiar la clave) + que un administrador pueda quitarlo con auditoría + avisar por correo al desactivar y al regenerar códigos.
+- **1 · Bloqueo**: contar por cuenta+IP, tope por cuenta más alto (≈50/h entre todas las IP) y correo a la dueña al bloquearse. Restablecer ya desbloquea (`ServicioCuenta.cs`).
+- Los correos nuevos de 1 y 2 son textos visibles: se proponen y Pablo los aprueba antes de fusionar.
+
+**Conciliación de cobros automáticos (punto 3):**
+
+| Pieza | Detalle |
+|---|---|
+| Puerto | `IPasarelaDePagos.ConsultarCobroAsync(intentoId)`. Flow: `payment/getStatusByCommerceId` firmado, misma lectura que el aviso (`VeredictoDelPago`, compartida) y la respuesta tiene que hablar de la orden preguntada. 400/no contesta = falla («no se sabe»), nunca rechazo |
+| Servicio | `ServicioCobros.ConciliarCobrosAutomaticosAsync`: Pendientes con clave `cobro-automatico:` de más de **30 min**, tope **50** por corrida. Pagado → `ResolverAsync` (el mismo camino del aviso: monto, idempotencia, vigencia). Rechazado → Fallido + «actualiza tu tarjeta» si sigue en gracia, y el reintento diario de ES-1 vuelve a funcionar (antes el Pendiente lo bloqueaba para siempre). No sabe / sigue pendiente / otro monto / otra orden → queda Pendiente, sin reintento |
+| Planificador | Tarea nueva `conciliar-cobros`, **cada hora** (`Zass:Fondo:ConciliarCobrosCadaMinutos`, 60). Sin migración: la fila de `trabajos_de_fondo` nace sola |
+| Vigilancia | «Vigilar planificador» pasa de 2 h a **3 h**: lo que salta ya es solo lo que Flow no pudo resolver |
+| Pruebas | 9 de aplicación, 6 de Flow (HTTP falso), 1 contra PostgreSQL (la consulta), 1 de la tarea. **7 mutaciones, las 7 caen** |
+
+La conciliación quedó **fusionada** (#238, `078eb2b`), con el CI verde. Falta el Manual Deploy de la API.
+
+**Verificación en dos pasos (punto 2), PR aparte, ESPERA que Pablo apruebe los textos:**
+
+| Pieza | Detalle |
+|---|---|
+| «No fui yo» (API-85) | El correo de activación lleva un enlace de un solo uso, 7 días (`usuarios.mfa_revocacion_hash`/`_expira_en`, **migración `RevocarMfaDesdeElCorreo`**). Quita la verificación, cierra todas las sesiones, deja la contraseña vieja sin servir y devuelve el token para crear otra. La pantalla `/no-fui-yo` actúa con un **botón** (los antivirus del correo abren enlaces solos). Restablecer a secas sigue **sin** quitarla |
+| Administrador (API-86) | `/interno/quitar-verificacion` (rol administrador, CSRF): correo + motivo. Lo mismo que arriba, y a la dueña le llega un correo con el enlace para crear la contraseña. Nunca sobre la propia cuenta. Auditoría con el motivo |
+| Avisos | Desactivar y regenerar códigos ahora mandan correo (`MfaDesactivado`, `MfaCodigosRegenerados`); los dos con token (`MfaActivado`, `MfaQuitadoPorAdministrador`) se purgan al enviarse |
+| Pruebas | 13 de aplicación, 4 por HTTP, 4 de plantillas, 8 del sitio. **7 mutaciones, las 7 caen** |
+
+**Siguiente paso exacto:** Pablo hace Manual Deploy de la API (conciliación, sin migraciones) → aprueba los 4 textos del PR de MFA → se fusiona → **migración en producción** (flujo de Actions, la corre Pablo) → Manual Deploy → desplegar el sitio (trae `/no-fui-yo` y la sección del panel). Después, el punto 1 (bloqueo).
+
+---
+
+## Sesión del 25-nov-2026 — Flow cobrando, Turnstile encendido
+
+**Hecho y comprobado (desde fuera, en producción):**
+
+| Pieza | Cómo se comprobó |
+|---|---|
+| **Cargo Automático de Flow ACTIVO** | Pablo lo encendió en el panel (Medios de pago → fila 148 → Guardar → código por correo). `customer/register` ya devuelve `url`+`token` (antes `7001 Commerce has not automatic charge contract`) |
+| **Primer fundador real** | La cuenta de Pablo inscribió su tarjeta en /planes: cupo N° 1, quedan 49/50, mes gratis hasta el 25-dic. Flow/Transbank cargó **$50 de verificación (comercio «FLOW»)**; ZASS pidió $0 |
+| **Turnstile ENCENDIDO** | Widget «ZASS!» (zass.cl, www.zass.cl, Managed). Clave pública en `frontend/.env.production` (#235); secreto `Zass__Turnstile__Secreto` en Render. API-08: sin token → 400, token falso → 400 (`invalid-input-response`), token real del sitio → pasa (409 por correo repetido, no se creó nada) |
+| #233 JQ-17 (pantalla de 3 planes) y #234 (interruptor de páginas públicas, APAGADO) | Fusionados y el sitio desplegado; sin pase todo da 503 |
+| #223 (cupo solo por API-69 con captcha; la API no arranca en Production sin el secreto de Turnstile) | Fusionado (`37d9d45`) tras resolver conflictos con #233 en `Planes.tsx` (mutación: quitar el caso «pagar» hace caer 2 pruebas). Sin migraciones |
+
+**NO hecho / pendiente al cerrar:**
+
+1. **Render NO tiene #223 todavía** (`autoDeploy: false`). Pablo debe hacer *Manual Deploy → Deploy latest commit* y ver Live con `37d9d45` o más nuevo. Después, repetir la prueba del captcha (API-08 sin token → 400).
+2. **PR #236 abierto** (rama `p/planes-fundador-ya-inscrito`): el fundador ya inscrito ve «Ya tienes tu cupo» en vez de «Quiero mi cupo»/«Contratar» (defecto de #233 que vio Pablo), y el aviso del cargo de $50 antes de ir a Flow. 1092/1092, 3 mutaciones atrapadas. **Falta: CI verde → fusionar (squash, --admin) → desplegar el sitio con wrangler DESPUÉS de que la API con #223 esté Live** (el sitio de #236 lleva también la parte de pantalla de #223).
+3. **Los $50:** Pablo revisa su cartola; si en ~1 semana no se reversan, reclamar en el ticket de Flow #189608 y corregir el texto del aviso.
+4. **La suscripción de Pablo se queda** (decisión suya): ~18-dic sale el **primer cobro mensual real** ($5.990), 7 días antes del vencimiento (`DiasDeAviso {7,1}`). Vigilarlo: es la primera prueba del cobro recurrente en producción. Es venta real (IVA/boleta). Su perfil de prueba en Temuco debe ser real u ocultarse antes de abrir.
+5. Menores: la licencia de ImageSharp se imprime completa en el registro de compilación de Render (el `RUN test -n "$SIXLABORS..."` la expande); el registro dice `Ya existe una cuenta con ese correo` (revela cuentas: revisar si se quiere el aviso neutro como con el RUT).
+
+**Para abrir zass.cl al público falta (de Pablo):** abogado para los textos legales (#129), y decidir si se enciende `MANTENIMIENTO_PAGINAS_PUBLICAS` antes.
 
 ---
 

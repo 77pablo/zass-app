@@ -61,6 +61,7 @@ public class ContenedorPruebas
     [InlineData(typeof(IHashContrasenas))]
     [InlineData(typeof(IGeneradorSecretos))]
     [InlineData(typeof(ICifradoDeDatos))]
+    [InlineData(typeof(ICifradoMfa))]
     public void El_contenedor_resuelve_cada_pieza_de_MOD_01(Type servicio)
     {
         using var proveedor = Construir();

@@ -44,6 +44,24 @@ public interface ICifradoDeDatos
 {
     byte[] Cifrar(string texto);
     string Descifrar(byte[] datos);
+
+    /// <summary>
+    /// Igual que <see cref="Cifrar(string)"/>, pero el dato queda ATADO a <paramref name="datosAsociados"/>
+    /// (AAD de AES-GCM): no se cifran ni se guardan, pero hay que darlos iguales para descifrar. Sirve
+    /// para que un dato cifrado de una fila no se pueda copiar a la fila de otra persona.
+    /// </summary>
+    byte[] Cifrar(string texto, ReadOnlySpan<byte> datosAsociados);
+
+    /// <summary>Falla si <paramref name="datosAsociados"/> no son los mismos con que se cifró.</summary>
+    string Descifrar(byte[] datos, ReadOnlySpan<byte> datosAsociados);
+}
+
+/// <summary>
+/// El cifrado del secreto de la verificación en dos pasos. Es una interfaz propia para poder darle
+/// una clave distinta de la de direcciones sin tocar cómo se cifran las direcciones.
+/// </summary>
+public interface ICifradoMfa : ICifradoDeDatos
+{
 }
 
 /// <summary>El buzon de avisos (TBL-27). Encolar no envia: el envio es trabajo de fondo.</summary>
@@ -217,6 +235,9 @@ public interface IRepositorioUsuarios
 
     /// <summary>La cuenta cuyo desafio de segundo paso tiene ese hash, o nulo.</summary>
     Task<Usuario?> PorDesafioMfaAsync(string hashDesafio, CancellationToken ct = default);
+
+    /// <summary>«No fui yo» (25-nov-2026): la cuenta cuyo enlace del correo de activacion tiene ese hash.</summary>
+    Task<Usuario?> PorRevocacionMfaAsync(string hashRevocacion, CancellationToken ct = default);
 
     /// <summary>
     /// Anota <paramref name="paso"/> como el ultimo paso TOTP aceptado, SOLO si es posterior al
@@ -416,6 +437,14 @@ public interface IRepositorioSuscripciones
     /// </summary>
     Task<IReadOnlyList<IntentoDePago>> IntentosPorPrefijoDeClaveAsync(
         string prefijo, CancellationToken ct = default);
+
+    /// <summary>
+    /// Conciliacion (25-nov-2026): los intentos Pendientes cuya clave empieza por
+    /// <paramref name="prefijo"/> y que nacieron antes de <paramref name="creadosAntesDe"/>, los
+    /// mas viejos primero y a lo mas <paramref name="tope"/>.
+    /// </summary>
+    Task<IReadOnlyList<IntentoDePago>> IntentosPendientesPorPrefijoAsync(
+        string prefijo, DateTime creadosAntesDe, int tope, CancellationToken ct = default);
 
     /// <summary>
     /// <c>SELECT ... FOR UPDATE</c> sobre la fila del intento, igual que

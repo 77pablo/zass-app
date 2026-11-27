@@ -192,6 +192,16 @@ public sealed class RepositorioSuscripcionesEfCore : IRepositorioSuscripciones
             .OrderBy(i => i.CreadoEn)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<IntentoDePago>> IntentosPendientesPorPrefijoAsync(
+        string prefijo, DateTime creadosAntesDe, int tope, CancellationToken ct = default) =>
+        await _ctx.IntentosDePago
+            .Where(i => i.Estado == EstadoIntentoPago.Pendiente
+                        && i.CreadoEn < creadosAntesDe
+                        && i.ClaveIdempotencia.StartsWith(prefijo))
+            .OrderBy(i => i.CreadoEn)
+            .Take(tope)
+            .ToListAsync(ct);
+
     /// <summary>
     /// <c>SELECT ... FOR UPDATE</c> sobre la fila, igual que TomarBloqueAsync en MOD-06.
     /// Dos confirmaciones del mismo cobro llegando a la vez se ponen en fila aqui, y la

@@ -69,7 +69,14 @@ public enum TipoNotificacion
     BorradorPorEliminarse,
     // 22-nov-2026 (decision de Pablo): se activo la verificacion en dos pasos en esta cuenta. Si no
     // fue la dueña, alguien con su contraseña puso SU telefono. Solo por correo, y no se apaga.
-    MfaActivado
+    MfaActivado,
+    // 25-nov-2026 (decision de Pablo): alguien intento registrarse con el correo de esta cuenta
+    // (ya verificada). Va a ese mismo correo; quien lo escribio recibe la respuesta de siempre.
+    RegistroConCorreoExistente,
+    // Revision de seguridad 25-nov-2026: la dueña se entera de todo cambio en su verificacion.
+    MfaDesactivado,
+    MfaCodigosRegenerados,
+    MfaQuitadoPorAdministrador
 }
 
 public enum CanalNotificacion { Correo, Push }

@@ -96,6 +96,17 @@ public sealed class ServicioSesion
     /// deja un desafio de 5 minutos y el contador de intentos fallidos NO vuelve a cero (si
     /// volviera, quien tiene la contrasena podria alternar contrasena y 9 codigos sin fin).
     /// </summary>
+    /// <summary>
+    /// El hash contra el que se verifica cuando la cuenta no existe. Uno por instancia de hasher (en
+    /// la aplicacion es un singleton), calculado la primera vez: asi ese camino hace un solo
+    /// Argon2id, igual que el de una cuenta que existe.
+    /// </summary>
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<IHashContrasenas, string>
+        HashesDeRelleno = new();
+
+    private static string HashDeRelleno(IHashContrasenas hash) =>
+        HashesDeRelleno.GetValue(hash, h => h.Hash("sin-cuenta"));
+
     public async Task<Resultado<InicioDeSesion>> EntrarAsync(
         IniciarSesionCmd cmd, string? ip = null, string? agente = null, CancellationToken ct = default)
     {
@@ -108,8 +119,12 @@ public sealed class ServicioSesion
         // en que momento la cuenta quedo bloqueada.
         var contrasenaCorrecta = usuario is not null
             && _hash.Verifica(cmd.Contrasena, usuario.HashContrasena);
+        //
+        // Revision del 25-nov-2026: antes se hacia Hash + Verifica (DOS Argon2id) con la cuenta que
+        // no existe y uno solo con la que existe; el doble de tiempo delataba los correos libres. El
+        // hash de relleno se calcula una vez por hasher y se reusa: aqui va UN Verifica, como arriba.
         if (usuario is null)
-            _hash.Verifica(cmd.Contrasena, _hash.Hash("sin-cuenta"));
+            _hash.Verifica(cmd.Contrasena, HashDeRelleno(_hash));
 
         // Bloqueo por intentos (decision de Pablo, 22-nov-2026). Bloqueada, NO entra aunque la
         // contrasena sea la buena, y responde exactamente lo mismo que una contrasena mala.

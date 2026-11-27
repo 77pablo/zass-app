@@ -2552,6 +2552,7 @@ public partial class ApiPruebas : IAsyncLifetime
             "API-78",
             "API-79", "API-80", "API-81", "API-82", "API-83",   // MFA (22-nov-2026)
             "API-84",   // regenerar los codigos de respaldo (22-nov-2026)
+            "API-85", "API-86",   // «No fui yo» y quitar la verificacion desde el panel (25-nov-2026)
 
             // ES-3 (21-nov-2026): registrar este navegador para push, darlo de baja y la clave VAPID.
             "API-45",

@@ -12,6 +12,10 @@ export interface Plan {
   maxServicios: number
   maxTarjetas: number
   permiteCredenciales: boolean
+  /** Cuántas fotos de trabajos admite la ficha (0 = ninguna). */
+  maxFotosTrabajos: number
+  permiteEstadisticas: boolean
+  verificacionPrioritaria: boolean
 }
 
 /** API-66. Público: el catálogo y cuántos cupos de fundador quedan. */
@@ -84,6 +88,12 @@ export interface CupoTomado {
   mesGratisHasta: string | null
   tarjetaInscrita: boolean
   reservadoHasta?: string | null
+  /**
+   * El paso que sigue (22-nov-2026). `inscribir`: la tarjeta, con mes gratis (API-76). `pagar`: el
+   * plan fundador, SIN mes gratis (API-68), para quien ya pagó otro plan o ya fue fundador y perdió
+   * el cupo. Si el servidor no lo manda, se entiende `inscribir`.
+   */
+  siguiente?: 'inscribir' | 'pagar'
 }
 
 /**

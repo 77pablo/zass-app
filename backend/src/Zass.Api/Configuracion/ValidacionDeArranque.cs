@@ -12,7 +12,8 @@ namespace Zass.Api.Configuracion;
 /// </summary>
 public static class ValidacionDeArranque
 {
-    public static IReadOnlyList<string> Validar(IConfiguration configuracion, bool esProductivo)
+    public static IReadOnlyList<string> Validar(
+        IConfiguration configuracion, bool esProductivo, bool exigirSecretoCaptcha = false)
     {
         var problemas = new List<string>();
 
@@ -64,6 +65,22 @@ public static class ValidacionDeArranque
             }
         }
 
+        // --- Clave del secreto del MFA: opcional (sin ella se usa la de direcciones); si esta, 32 bytes ---
+        var claveMfa = configuracion["Zass:Mfa:ClaveSecreto"];
+        if (!string.IsNullOrWhiteSpace(claveMfa))
+        {
+            try
+            {
+                var bytes = Convert.FromBase64String(claveMfa);
+                if (bytes.Length != 32)
+                    problemas.Add($"Zass:Mfa:ClaveSecreto tiene {bytes.Length} bytes y necesita 32.");
+            }
+            catch (FormatException)
+            {
+                problemas.Add("Zass:Mfa:ClaveSecreto no es Base64 válido.");
+            }
+        }
+
         // --- HTTPS ---
         // Por omisión es true. Apagarlo en producción deja salir las cookies de sesión sin la
         // marca Secure; solo se permite apagarlo en desarrollo, y explícitamente.
@@ -90,17 +107,17 @@ public static class ValidacionDeArranque
         // (SecretoDeOrigen.Advertencia): exigirlo tumbaría la API antes de que Cloudflare lo mande.
         problemas.AddRange(SecretoDeOrigen.Problemas(configuracion));
 
-        // --- Captcha Turnstile (N3) --- sin secreto se advierte; con una clave de prueba en
-        // producción, no arranca (dejaría pasar a cualquiera).
-        problemas.AddRange(Turnstile.Problemas(configuracion, esProductivo));
+        // --- Captcha Turnstile (N3) --- sin secreto se advierte (y en Production, solo en Production,
+        // no arranca); con una clave de prueba en producción, tampoco (dejaría pasar a cualquiera).
+        problemas.AddRange(Turnstile.Problemas(configuracion, esProductivo, exigirSecretoCaptcha));
 
         return problemas;
     }
 
     /// <summary>Lanza con TODOS los problemas juntos: arreglarlos de a uno es una tarde perdida.</summary>
-    public static void Exigir(IConfiguration configuracion, bool esProductivo)
+    public static void Exigir(IConfiguration configuracion, bool esProductivo, bool exigirSecretoCaptcha = false)
     {
-        var problemas = Validar(configuracion, esProductivo);
+        var problemas = Validar(configuracion, esProductivo, exigirSecretoCaptcha);
         if (problemas.Count == 0) return;
 
         throw new InvalidOperationException(

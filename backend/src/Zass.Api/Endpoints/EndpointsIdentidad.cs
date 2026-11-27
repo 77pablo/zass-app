@@ -42,7 +42,33 @@ public static class EndpointsIdentidad
         MapearAutenticacion(app.MapGroup("/api/auth"));
         MapearMiCuenta(app.MapGroup("/api/mi"));
         MapearPublico(app.MapGroup("/api"));
+        MapearInternoSeguridad(app.MapGroup("/api/interno"));
         return app;
+    }
+
+    // --------------------------------------------------- Panel interno: seguridad de cuentas
+
+    /// <summary>
+    /// Revision de seguridad 25-nov-2026. Solo administradores, con CSRF y tasa sensible.
+    /// </summary>
+    private static void MapearInternoSeguridad(RouteGroupBuilder grupo)
+    {
+        grupo.RequireAuthorization(Politicas.Administrador);
+        grupo.AddEndpointFilter<FiltroCsrf>();
+
+        // API-86 - Quita la verificacion en dos pasos de una cuenta (por correo), con motivo.
+        grupo.MapPost("/cuentas/quitar-mfa", async (
+                QuitarMfaCmd cmd, ServicioMfa servicio, HttpContext http, ClaimsPrincipal quien) =>
+            {
+                var administradorId = quien.UsuarioId();
+                return administradorId is null
+                    ? Results.Unauthorized()
+                    : Respuestas.DeResultado(await servicio.QuitarPorAdministradorAsync(
+                        administradorId.Value, cmd, Ip(http)));
+            })
+            .ConValidacion<QuitarMfaCmd>()
+            .RequireRateLimiting(Tasa.Sensible)
+            .WithName("API-86");
     }
 
     // --------------------------------------------------- 2 - Identidad y sesion
@@ -181,6 +207,17 @@ public static class EndpointsIdentidad
             })
             .RequireRateLimiting(Tasa.General)
             .WithName("CSRF");
+
+        // API-85 - «No fui yo» (25-nov-2026): el enlace del correo de activacion quita la verificacion,
+        // cierra las sesiones y devuelve el token para crear la contraseña nueva. Sin sesion: quien lo
+        // usa no puede entrar. POST desde un boton, nunca al abrir el enlace: los antivirus del correo
+        // abren los enlaces solos.
+        grupo.MapPost("/mfa/no-fui-yo", async (
+                NoFuiYoCmd cmd, ServicioMfa servicio, HttpContext http) =>
+                Respuestas.DeResultado(await servicio.NoFuiYoAsync(cmd.Token, Ip(http))))
+            .ConValidacion<NoFuiYoCmd>()
+            .RequireRateLimiting(Tasa.Autenticacion)
+            .WithName("API-85");
 
         // API-15 - Cambia la contrasena y revoca sesiones (CS-02).
         grupo.MapPost("/contrasena/restablecer", async (

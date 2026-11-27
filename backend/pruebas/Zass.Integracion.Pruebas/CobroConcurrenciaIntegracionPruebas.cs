@@ -91,6 +91,10 @@ public class CobroConcurrenciaIntegracionPruebas : IDisposable
         public Task<Resultado<CobroResuelto>> LeerConfirmacionAsync(
             AvisoDePasarela a, CancellationToken ct = default) =>
             Task.FromResult(Resultado.Ok(_veredicto));
+
+        public Task<Resultado<CobroResuelto>> ConsultarCobroAsync(
+            Guid intentoDePagoId, CancellationToken ct = default) =>
+            Task.FromResult(Resultado.Ok(_veredicto with { IntentoDePagoId = intentoDePagoId }));
     }
 
     /// <summary>

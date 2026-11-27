@@ -15,6 +15,7 @@ import { Icono } from '../marco/Icono'
 import { Monograma } from '../marco/Monograma'
 import { capitalizar, duracion, pesos } from '../marco/texto'
 import { useTitulo } from '../marco/useTitulo'
+import { reenviarVerificacion } from '../funciones/identidad/servicio'
 import { useSesion } from '../sesion/contexto'
 import { EditorDeZonas } from './EditorDeZonas'
 import { TarjetaDelFundador, debePedirTarjeta, estaEnGracia } from './TarjetaDelFundador'
@@ -45,7 +46,7 @@ function mensajeDe(e: unknown, porDefecto: string): string {
 export function MiFicha() {
   // Pantalla del panel: fuera del indice de Google, igual que `robots.txt` (defensa doble).
   useMeta({ noindex: true })
-  const { estado, usuario } = useSesion()
+  const { estado, usuario, recargar: recargarSesion } = useSesion()
   const catalogo = useCatalogo()
   useTitulo('Mi ficha')
 
@@ -55,6 +56,8 @@ export function MiFicha() {
   const [editando, setEditando] = useState<Seccion | null>(null)
   const [avisoAccion, setAvisoAccion] = useState<string | null>(null)
   const [trabajando, setTrabajando] = useState(false)
+  const [reenviando, setReenviando] = useState(false)
+  const [avisoCorreo, setAvisoCorreo] = useState<string | null>(null)
 
   const esPrestador = usuario?.roles.includes('prestador') ?? false
 
@@ -146,6 +149,25 @@ export function MiFicha() {
     }
   }
 
+  // Tarea N2 (25-nov): avisar ANTES de publicar, no despues del error del servidor.
+  const correoSinVerificar = usuario !== null && !usuario.correoVerificado
+  // Sin suscripcion de pago vigente (prueba, sin suscripcion o vencida) hay que poder elegir plan.
+  const puedeElegirPlan = publicada && (suscripcion === null || suscripcion.enPrueba || !suscripcion.vigente)
+
+  async function reenviarCorreo() {
+    if (!usuario) return
+    setReenviando(true)
+    setAvisoCorreo(null)
+    try {
+      await reenviarVerificacion(usuario.correo)
+      setAvisoCorreo('Listo, revisa tu bandeja (y la carpeta de spam).')
+    } catch (e) {
+      setAvisoCorreo(mensajeDe(e, 'No pudimos reenviar el correo.'))
+    } finally {
+      setReenviando(false)
+    }
+  }
+
   const alGuardar = () => { setEditando(null); recargar() }
 
   return (
@@ -175,17 +197,28 @@ export function MiFicha() {
         <div className="mi-acciones">
           <button
             type="button" className={publicada ? 'boton' : 'boton boton--tinta'}
-            disabled={trabajando || (!publicada && falta.length > 0)}
+            disabled={trabajando || (!publicada && (falta.length > 0 || correoSinVerificar))}
             onClick={() => void cambiarPublicacion()}
           >
             {trabajando ? 'Un momento…' : publicada ? 'Pausar mi ficha' : 'Publicar mi ficha'}
           </button>
           {publicada && (
-            <Link className="enlace" to={`/prestadores/${perfil.slug}`}>Ver como la ve el público</Link>
+            <Link className="enlace" to={`/prestadores/${perfil.slug}`}>Ver cómo la ve el público</Link>
           )}
+          {puedeElegirPlan && <Link className="enlace" to="/planes">Elegir mi plan</Link>}
         </div>
       </header>
 
+      {correoSinVerificar && (
+        <p className="aviso-linea" role="status">
+          Antes de publicar, confirma tu correo con el enlace que te enviamos a {usuario.correo}.{' '}
+          <button type="button" className="boton boton--chico" disabled={reenviando} onClick={() => void reenviarCorreo()}>
+            Reenviar el correo
+          </button>{' '}
+          <button type="button" className="boton boton--chico" onClick={() => void recargarSesion()}>Ya lo confirmé</button>
+          {avisoCorreo && <> {avisoCorreo}</>}
+        </p>
+      )}
       {avisoAccion && <p className="aviso-linea" role="alert">{avisoAccion}</p>}
       {estadoSusc?.alerta && <p className="aviso-linea" role="status">{estadoSusc.texto}</p>}
       {suscripcion !== null && (debePedirTarjeta(suscripcion) || estaEnGracia(suscripcion)) && (

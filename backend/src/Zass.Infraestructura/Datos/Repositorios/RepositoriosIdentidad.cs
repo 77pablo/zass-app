@@ -117,6 +117,9 @@ public sealed class RepositorioUsuariosEfCore : IRepositorioUsuarios
     public Task<Usuario?> PorDesafioMfaAsync(string hashDesafio, CancellationToken ct = default) =>
         ConRoles().FirstOrDefaultAsync(u => u.MfaDesafioHash == hashDesafio, ct);
 
+    public Task<Usuario?> PorRevocacionMfaAsync(string hashRevocacion, CancellationToken ct = default) =>
+        ConRoles().FirstOrDefaultAsync(u => u.MfaRevocacionHash == hashRevocacion, ct);
+
     // Las tres siguientes son UNA sentencia cada una: la condicion y el cambio van juntos, y dos
     // peticiones simultaneas con el mismo codigo no pueden ganar las dos (solo una fila cambia).
     public async Task<bool> GastarPasoTotpAsync(Guid usuarioId, long paso, CancellationToken ct = default) =>

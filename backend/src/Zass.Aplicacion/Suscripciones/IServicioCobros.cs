@@ -92,6 +92,15 @@ public interface IServicioCobros
     /// </para>
     /// </summary>
     Task<ResumenDeCobros> CobrarVencimientosAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Conciliacion (25-nov-2026). Le pregunta a la pasarela por cada cobro automatico que
+    /// sigue Pendiente pasada la espera, y resuelve los que ella ya sabe por el MISMO camino
+    /// que el aviso: pagado extiende el mes, rechazado deja el intento Fallido (y entonces el
+    /// reintento diario de ES-1 puede seguir). Lo que la pasarela no sabe, o no encuentra, se
+    /// queda Pendiente: no se reintenta solo, y lo vigila «Vigilar planificador».
+    /// </summary>
+    Task<ResumenDeConciliacion> ConciliarCobrosAutomaticosAsync(CancellationToken ct = default);
 }
 
 /// <summary>
@@ -109,6 +118,14 @@ public interface IServicioCobros
 /// Ni cobradas ni rechazadas: la pasarela no contesto, o el monto que confirmo no coincide.
 /// Las tiene que mirar una persona.
 /// </param>
+/// <summary>Lo que hizo una corrida de la conciliacion. Solo numeros: lo lee trabajos_de_fondo.</summary>
+public sealed record ResumenDeConciliacion(int Revisados, int Pagados, int Rechazados, int SinResolver)
+{
+    public override string ToString() =>
+        $"conciliacion: {Revisados} revisados, {Pagados} pagados, {Rechazados} rechazados, "
+        + $"{SinResolver} sin resolver";
+}
+
 public sealed record ResumenDeCobros(
     int Cobradas, int Rechazadas, int SinMedioDePago, int YaIntentadas, int ParaRevisar)
 {

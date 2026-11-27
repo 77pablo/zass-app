@@ -37,6 +37,13 @@ public sealed class OpcionesFondo
     public int CuentasSinVerificarCadaMinutos { get; set; } = 60;
 
     /// <summary>
+    /// Cada cuánto se concilian los cobros automáticos Pendientes con la pasarela (25-nov-2026).
+    /// Cada hora: con la espera de 30 min, uno que se puede resolver queda resuelto antes de las
+    /// 3 h que mira «Vigilar planificador».
+    /// </summary>
+    public int ConciliarCobrosCadaMinutos { get; set; } = 60;
+
+    /// <summary>
     /// Cuánto se reserva el trabajo quien lo toma. Tiene que superar de sobra lo que tarda:
     /// si vence a mitad, otra réplica lo retomaría en paralelo. Vencer y avisar son dos
     /// consultas y unos cuantos INSERT, así que diez minutos es holgado.
@@ -48,4 +55,16 @@ public sealed class OpcionesFondo
     /// por algo pasajero conviene reintentar hoy, no mañana.
     /// </summary>
     public int EsperaTrasFalloMinutos { get; set; } = 30;
+
+    /// <summary>Cada cuántas horas corre el barrido de archivos huérfanos (auditoría 22-nov-2026).</summary>
+    public int BarridoDeArchivosCadaHoras { get; set; } = 24;
+
+    /// <summary>
+    /// Cuánto tiene que tener un archivo sin fila para contarse como huérfano. Cubre la ventana de
+    /// una subida a medio camino entre guardar el archivo y escribir la fila: nunca menos de una hora.
+    /// </summary>
+    public int BarridoDeArchivosMargenHoras { get; set; } = 24;
+
+    /// <summary>Lo máximo que una corrida intenta borrar. Si lo alcanza, lo registra y corta.</summary>
+    public int BarridoDeArchivosTopePorCorrida { get; set; } = 500;
 }

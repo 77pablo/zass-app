@@ -673,7 +673,7 @@ public class CuentaPruebas
     private Usuario ConMfaActivo(Guid id)
     {
         var u = _base.Usuarios.Single(x => x.Id == id);
-        u.MfaSecretoCifrado = _cifrado.Cifrar(SecretoRfc);
+        u.MfaSecretoCifrado = _cifrado.Cifrar(SecretoRfc, ServicioMfa.DatosAsociados(u.Id));
         u.MfaActivadoEn = _reloj.Ahora;
         u.MfaCodigosRespaldo = Array.Empty<string>();
         return u;

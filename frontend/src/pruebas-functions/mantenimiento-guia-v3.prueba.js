@@ -90,7 +90,7 @@ describe('mantenimiento: la guia v3', () => {
     ['--pizarra', '--blanco'], // titulo
     ['--suave', '--blanco'], // cuerpo
     ['--pizarra', '--gris'], // recuadro de prestadores
-    ['--pizarra', '--celeste'], // la franja con la marca
+    ['--blanco', '--pizarra'], // la franja con el logo
     ['--pizarra', '--ambar'], // el boton del correo y el «!»
     ['--pizarra', '--ambar-hondo'], // el boton al pasar el mouse
     ['--blanco', '--pizarra'], // el pie
@@ -108,12 +108,23 @@ describe('mantenimiento: la guia v3', () => {
     expect(html).not.toMatch(/url\(\s*['"]?\//)
   })
 
-  it('el icono es el de la marca (#100): la misma Z y el sello ambar', async () => {
+  // Pablo, 26-nov-2026: «el logo de zass es amarillo, eso no se cambia por nada».
+  it('el logo es el amarillo de la marca, sobre la franja pizarra, y tiene nombre', async () => {
     const html = await paginaHtml()
-    const svg = readFileSync(resolve(FRONTEND, 'public', 'icono-zass.svg'), 'utf8')
-    const zDelArchivo = svg.match(/<path d="([^"]+)" fill="#111827"/)[1]
-    expect(html).toContain(`<path d="${zDelArchivo}" fill="#111827"/>`)
-    expect(html).toMatch(/<circle cx="372" cy="372" r="92" fill="#FFB800"/)
+    expect(html).toMatch(/<svg class="logo"[^>]*role="img"[^>]*aria-label="ZASS!"/)
+    expect(html).toMatch(/fill="#F6C81E" fill-rule="evenodd"/)
+    expect(tokensDeLaPagina(html)['--logo']).toBe('#f6c81e')
+    expect(estilo(html)).toMatch(/\.franja\s*\{[^}]*background:\s*var\(--pizarra\)/)
+    // El amarillo sobre pizarra se ve; sobre el celeste de antes no (1,6:1).
+    const t = tokensDeLaPagina(html)
+    expect(contraste(t['--logo'], t['--pizarra'])).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('el icono de la pestaña es el mismo dibujo que public/favicon.svg', async () => {
+    const html = await paginaHtml()
+    const favicon = decodeURIComponent(html.match(/<link rel="icon" type="image\/svg\+xml" href="data:image\/svg\+xml,([^"]+)"/)[1])
+    const delArchivo = readFileSync(resolve(FRONTEND, 'public', 'favicon.svg'), 'utf8')
+    for (const trazo of delArchivo.matchAll(/<path d="([^"]+)"/g)) expect(favicon).toContain(trazo[1])
   })
 
   it('se puede hacer zoom en el celular', async () => {

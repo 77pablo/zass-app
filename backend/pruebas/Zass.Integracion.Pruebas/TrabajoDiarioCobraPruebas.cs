@@ -54,6 +54,28 @@ public class TrabajoDiarioCobraPruebas
         Assert.Contains("vencidas", resumen);
     }
 
+    /// <summary>
+    /// Conciliacion (25-nov-2026): tiene su propia tarea, cada hora, y llama a conciliar y a
+    /// nada mas (el diario no corre aqui: cobrar y vencer siguen siendo una vez al dia).
+    /// </summary>
+    [Fact]
+    public async Task La_tarea_de_conciliar_concilia_cada_hora_y_no_toca_el_diario()
+    {
+        var llamadas = new List<string>();
+        var servicios = new ServiceCollection();
+        servicios.AddSingleton<IServicioCobros>(new CobrosEspia(llamadas));
+        servicios.AddSingleton<IServicioSuscripciones>(new SuscripcionesEspia(llamadas));
+        using var proveedor = servicios.BuildServiceProvider();
+
+        var tarea = Planificador.Tareas.Single(t => t.Nombre == Trabajos.ConciliarCobros);
+        var resumen = await tarea.Correr(proveedor, CancellationToken.None);
+
+        Assert.Equal(new[] { "conciliar" }, llamadas.ToArray());
+        Assert.Equal("conciliacion: 2 revisados, 1 pagados, 1 rechazados, 0 sin resolver", resumen);
+        Assert.Equal(TimeSpan.FromMinutes(60), tarea.Cada(new OpcionesFondo()));
+        Assert.Equal("conciliar-cobros", Trabajos.ConciliarCobros);
+    }
+
     private sealed class CobrosEspia : IServicioCobros
     {
         private readonly List<string> _llamadas;
@@ -66,6 +88,12 @@ public class TrabajoDiarioCobraPruebas
             Corridas++;
             _llamadas.Add("cobrar");
             return Task.FromResult(new ResumenDeCobros(1, 0, 0, 0, 0));
+        }
+
+        public Task<ResumenDeConciliacion> ConciliarCobrosAutomaticosAsync(CancellationToken ct = default)
+        {
+            _llamadas.Add("conciliar");
+            return Task.FromResult(new ResumenDeConciliacion(2, 1, 1, 0));
         }
 
         public Task<Resultado<CotizacionDto>> CotizarAsync(
@@ -171,6 +199,10 @@ public class TrabajoDiarioCobraPruebas
 
         public Task<Resultado<short>> ReservarCupoFundadorAsync(
             Guid perfilPrestadorId, TimeSpan? duracion = null, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<bool> ElCupoTieneMesGratisAsync(
+            Guid perfilPrestadorId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
         public Task<Resultado<CupoTomadoDto>> TomarCupoFundadorAsync(
