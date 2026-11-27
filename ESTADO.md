@@ -52,7 +52,7 @@ comprobado**, **qué no**, y **el siguiente paso exacto**.
 **Siguiente paso exacto:**
 1. Levantar Postgres **con `pg_ctl` desacoplado**, no con `Start-Process … -Wait` sobre el .bat (se cuelga, y al matarlo muere Postgres): `herramientas\pgsql\bin\pg_ctl.exe -D datos-pg -l registros\postgres.log start`. El SDK de .NET 10 está en `C:\Users\pdani\tools\dotnet10-completo` (el del sistema es 8): poner `DOTNET_ROOT` y `PATH`.
 2. (Hecho: integración 1359/1360, ver arriba.) Confirmar en el CI del PR que la de 60 cupos pasa.
-3. Mutaciones: quitar el `paso == "inicio_sesion"` (debe caer la de aplicación), quitar `:codigo` de la clave (debe caer «llega aunque ya saliera el común»), quitar el encolado en `ServicioSesion` (debe caer la de integración de 30 fallos).
+3. (Hecho, 27-nov) **5 mutaciones, las 5 caen**: sin `paso == "inicio_sesion"`, sin `:codigo` en la clave, plantilla que ignora la marca, login que no encola (contra Postgres) y segundo paso que no encola.
 4. Abrir el PR con los **dos textos** para que Pablo los apruebe (regla 12): tabla antes/ahora (10→30, correo a la dueña, variante con contraseña correcta), los dos textos completos, sin migraciones; al fusionar, Manual Deploy de la API.
 
 ## Sesión del 26-nov-2026 (madrugada) — MFA en producción y logo nuevo
