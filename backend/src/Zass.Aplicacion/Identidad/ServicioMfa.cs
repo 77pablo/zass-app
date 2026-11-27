@@ -212,6 +212,9 @@ public sealed class ServicioMfa
             ProgramadaPara = ahora,
         });
 
+        // Corta tambien las cookies de acceso ya emitidas (sello de seguridad), la de este aparato
+        // incluida: quien toca el MFA vuelve a entrar.
+        usuario.RenovarSelloSeguridad();
         await _unidad.GuardarAsync(ct);
         await _sesion.RevocarTodasAsync(usuario.Id, sesionActual, ct);
         return Resultado.Ok(new CodigosDeRespaldoDto(codigos));
@@ -255,6 +258,9 @@ public sealed class ServicioMfa
         Avisar(usuario, TipoNotificacion.MfaCodigosRegenerados, "mfa-codigos",
             "Se crearon códigos de respaldo nuevos para tu cuenta de ZASS!", "{}", ahora);
 
+        // Corta tambien las cookies de acceso ya emitidas (sello de seguridad), la de este aparato
+        // incluida: quien toca el MFA vuelve a entrar.
+        usuario.RenovarSelloSeguridad();
         await _unidad.GuardarAsync(ct);
         await _sesion.RevocarTodasAsync(usuario.Id, sesionActual, ct);
         return Resultado.Ok(new CodigosDeRespaldoDto(codigos));
@@ -293,6 +299,9 @@ public sealed class ServicioMfa
         Avisar(usuario, TipoNotificacion.MfaDesactivado, "mfa-desactivado",
             "Se desactivó la verificación en dos pasos en tu cuenta de ZASS!", "{}", ahora);
 
+        // Corta tambien las cookies de acceso ya emitidas (sello de seguridad), la de este aparato
+        // incluida: quien toca el MFA vuelve a entrar.
+        usuario.RenovarSelloSeguridad();
         await _unidad.GuardarAsync(ct);
         await _sesion.RevocarTodasAsync(usuario.Id, sesionActual, ct);
         return Resultado.Ok();
@@ -382,6 +391,9 @@ public sealed class ServicioMfa
     {
         usuario.QuitarMfa();
         usuario.HashContrasena = _hash.Hash(_secretos.NuevoToken());
+        // La cookie de acceso de quien tomo la cuenta (15 min) muere aqui mismo, no al vencer:
+        // revocar los refrescos (RevocarTodasAsync) no la alcanza.
+        usuario.RenovarSelloSeguridad();
         usuario.IntentosFallidos = 0;
         usuario.BloqueadaHasta = null;
         var token = _secretos.NuevoToken();

@@ -13,7 +13,9 @@ public sealed record SesionAbiertaDto(
     string TokenRefresco,
     DateTime ExpiraEn,
     string[] Roles,
-    bool CorreoVerificado);
+    bool CorreoVerificado,
+    // El sello de seguridad de la cuenta al abrir la sesion: viaja como claim en la cookie de acceso.
+    string SelloSeguridad);
 
 /// <summary>
 /// Lo que deja la contrasena correcta en una cuenta con MFA: no una sesion, sino un desafio de
@@ -236,9 +238,17 @@ public sealed class ServicioSesion
     /// API-12 y CS-03. Revoca de verdad, no espera a que expiren. Tambien lo usa
     /// RN-S1-04 tras cambiar la contrasena, perdonando la sesion que la cambio.
     /// </summary>
+    ///
+    /// <paramref name="cortarAcceso"/>: ademas renueva el sello de seguridad de la cuenta, de modo
+    /// que las cookies de acceso ya emitidas (15 min) dejan de servir al instante. Lo pide API-12.
+    /// Los otros llamadores renuevan el sello ellos mismos, junto con el cambio que motiva el corte.
+    /// </summary>
     public async Task<Resultado> RevocarTodasAsync(
-        Guid usuarioId, string? exceptoToken = null, CancellationToken ct = default)
+        Guid usuarioId, string? exceptoToken = null, CancellationToken ct = default, bool cortarAcceso = false)
     {
+        if (cortarAcceso && await _usuarios.PorIdAsync(usuarioId, ct) is { } cuenta)
+            cuenta.RenovarSelloSeguridad();
+
         var perdonado = exceptoToken is null ? null : _secretos.HashToken(exceptoToken);
         var vigentes = await _sesiones.VigentesDeUsuarioAsync(usuarioId, _reloj.Ahora, ct);
 
@@ -275,7 +285,7 @@ public sealed class ServicioSesion
             .Select(r => r.Rol!.Codigo)
             .ToArray();
 
-        return new SesionAbiertaDto(usuario.Id, token, expira, roles, usuario.CorreoVerificado);
+        return new SesionAbiertaDto(usuario.Id, token, expira, roles, usuario.CorreoVerificado, usuario.SelloSeguridad);
     }
 
     private static string Motivo(Usuario? usuario, bool contrasenaCorrecta, bool bloqueada) => usuario switch

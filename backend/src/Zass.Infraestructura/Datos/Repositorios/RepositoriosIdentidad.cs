@@ -45,6 +45,12 @@ public sealed class RepositorioUsuariosEfCore : IRepositorioUsuarios
     private IQueryable<Usuario> ConRoles() =>
         _ctx.Usuarios.Include(u => u.Roles).ThenInclude(r => r.Rol);
 
+    public Task<SelloDeCuenta?> SelloDeAsync(Guid id, CancellationToken ct = default) =>
+        _ctx.Usuarios.AsNoTracking()
+            .Where(u => u.Id == id)
+            .Select(u => new SelloDeCuenta(u.SelloSeguridad, u.Estado))
+            .FirstOrDefaultAsync(ct);
+
     public Task<Usuario?> PorIdAsync(Guid id, CancellationToken ct = default) =>
         ConRoles().FirstOrDefaultAsync(u => u.Id == id, ct);
 

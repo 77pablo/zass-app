@@ -304,6 +304,77 @@ public class MfaPruebas
         Assert.Null(otra.RevocadaEn);
     }
 
+    // ------------------------------------------------ sello de seguridad (22-nov-2026)
+
+    [Fact]
+    public async Task Activar_renueva_el_sello_de_seguridad()
+    {
+        var u = ConMfa();
+        u.QuitarMfa();
+        var antes = u.SelloSeguridad;
+        var alta = await _mfa.IniciarAltaAsync(u.Id);
+        var codigo = Totp.Codigo(alta.Valor!.Secreto, Totp.PasoDe(_reloj.Ahora));
+
+        var r = await _mfa.ConfirmarAltaAsync(u.Id, new ConfirmarMfaCmd(Clave, codigo));
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.NotEqual(antes, u.SelloSeguridad);
+    }
+
+    [Fact]
+    public async Task Desactivar_renueva_el_sello_de_seguridad()
+    {
+        var u = ConMfa();
+        var antes = u.SelloSeguridad;
+
+        var r = await _mfa.DesactivarAsync(u.Id,
+            new DesactivarMfaCmd(Clave, Totp.Codigo(SecretoRfc, Totp.PasoDe(_reloj.Ahora))));
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.NotEqual(antes, u.SelloSeguridad);
+    }
+
+    [Fact]
+    public async Task Regenerar_renueva_el_sello_de_seguridad()
+    {
+        var u = ConMfa();
+        var antes = u.SelloSeguridad;
+
+        var r = await _mfa.RegenerarCodigosAsync(u.Id,
+            new RegenerarCodigosMfaCmd(Clave, Totp.Codigo(SecretoRfc, Totp.PasoDe(_reloj.Ahora))));
+
+        Assert.True(r.Exito, r.Mensaje);
+        Assert.NotEqual(antes, u.SelloSeguridad);
+    }
+
+    [Fact]
+    public async Task Una_accion_de_mfa_que_falla_no_renueva_el_sello()
+    {
+        var u = ConMfa();
+        var antes = u.SelloSeguridad;
+
+        var desactivar = await _mfa.DesactivarAsync(u.Id, new DesactivarMfaCmd("otra-contrasena-9", "000000"));
+        var regenerar = await _mfa.RegenerarCodigosAsync(u.Id, new RegenerarCodigosMfaCmd("otra-contrasena-9", "000000"));
+
+        Assert.False(desactivar.Exito);
+        Assert.False(regenerar.Exito);
+        Assert.Equal(antes, u.SelloSeguridad);
+    }
+
+    [Fact]
+    public async Task Un_alta_que_falla_no_renueva_el_sello()
+    {
+        var u = ConMfa();
+        u.QuitarMfa();
+        await _mfa.IniciarAltaAsync(u.Id);
+        var antes = u.SelloSeguridad;
+
+        var r = await _mfa.ConfirmarAltaAsync(u.Id, new ConfirmarMfaCmd(Clave, "000000"));
+
+        Assert.False(r.Exito);
+        Assert.Equal(antes, u.SelloSeguridad);
+    }
+
     // ------------------------------------------- Secreto atado a la persona (datos asociados)
 
     private Usuario Cuenta(string correo)

@@ -92,6 +92,11 @@ public partial class ApiPruebas
         Assert.DoesNotContain(secreto, System.Text.Encoding.ASCII.GetString(usuario.MfaSecretoCifrado!));
         Assert.Equal(1, await AuditadasAsync(usuario.Id, "mfa_activado"));
 
+        // Activar el MFA corta tambien la cookie de acceso de este aparato (sello de seguridad): hay
+        // que entrar de nuevo, ahora con el segundo paso.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _cliente.GetAsync("/api/mi/mfa")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await MfaDePrueba.EntrarAsync(_cliente, correo, ClaveBuena)).StatusCode);
+
         var estado = (await _cliente.GetFromJsonAsync<JsonElement>("/api/mi/mfa"));
         Assert.True(estado.GetProperty("activo").GetBoolean());
         Assert.Equal(10, estado.GetProperty("codigosDeRespaldoRestantes").GetInt32());
@@ -243,6 +248,8 @@ public partial class ApiPruebas
         Assert.Equal(HttpStatusCode.OK,
             (await PostConCsrfAsync("/api/mi/mfa/confirmar", new { contrasena = ClaveBuena, codigo = CodigoTotp(secreto) })).StatusCode);
 
+        // Activar el MFA renueva el sello: la cookie de antes ya no sirve y se entra de nuevo.
+        Assert.Equal(HttpStatusCode.OK, (await MfaDePrueba.EntrarAsync(_cliente, correo, ClaveBuena)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await _cliente.GetAsync("/api/interno/credenciales/cola")).StatusCode);
     }
 

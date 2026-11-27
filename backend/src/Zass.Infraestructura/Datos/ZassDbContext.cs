@@ -162,6 +162,10 @@ public class ZassDbContext : DbContext
             // «No fui yo» (25-nov-2026): el enlace del correo se busca por su hash.
             e.Property(x => x.MfaRevocacionHash).HasMaxLength(64);
             e.HasIndex(x => x.MfaRevocacionHash).HasFilter("mfa_revocacion_hash IS NOT NULL");
+            // Sello de seguridad (22-nov-2026): GUID «N» de 32 caracteres. El valor por defecto de la
+            // columna solo cubre las filas que ya existian; las nuevas lo traen desde el dominio.
+            e.Property(x => x.SelloSeguridad).HasMaxLength(32)
+                .HasDefaultValue("00000000000000000000000000000000");
         });
 
         b.Entity<Rol>(e =>

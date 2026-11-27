@@ -85,6 +85,11 @@ public sealed class RepositorioUsuariosEnMemoria : IRepositorioUsuarios
 
     private static string Normalizar(string correo) => correo.Trim().ToLowerInvariant();
 
+    public Task<SelloDeCuenta?> SelloDeAsync(Guid id, CancellationToken ct = default) =>
+        Task.FromResult(_base.Usuarios.FirstOrDefault(u => u.Id == id) is { } u
+            ? new SelloDeCuenta(u.SelloSeguridad, u.Estado)
+            : null);
+
     public Task<Usuario?> PorIdAsync(Guid id, CancellationToken ct = default) =>
         Task.FromResult(_base.Usuarios.FirstOrDefault(u => u.Id == id));
 

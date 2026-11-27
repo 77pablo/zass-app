@@ -67,6 +67,17 @@ public class Usuario
     public string? MfaRevocacionHash { get; set; }
     public DateTime? MfaRevocacionExpiraEn { get; set; }
 
+    // Sello de seguridad (decision de Pablo, 22-nov-2026). Va como claim en la cookie de acceso y la
+    // API lo compara con este valor en CADA peticion. Cada vez que hay que cortar las sesiones
+    // (cambiar la contrasena, tocar el MFA, eliminar la cuenta, cerrar todas las sesiones) cambia, y
+    // las cookies de acceso emitidas antes dejan de servir al instante, sin esperar sus 15 minutos.
+    public string SelloSeguridad { get; set; } = NuevoSello();
+
+    /// <summary>Un valor nuevo e impredecible: corta de inmediato las cookies de acceso ya emitidas.</summary>
+    public void RenovarSelloSeguridad() => SelloSeguridad = NuevoSello();
+
+    private static string NuevoSello() => Guid.NewGuid().ToString("N");
+
     public bool MfaActivo => MfaActivadoEn is not null && MfaSecretoCifrado is not null;
 
     /// <summary>Si la cuenta tiene algun rol del panel interno, que obliga a usar MFA.</summary>

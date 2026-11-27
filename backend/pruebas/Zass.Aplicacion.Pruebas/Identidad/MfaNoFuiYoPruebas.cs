@@ -98,6 +98,7 @@ public class MfaNoFuiYoPruebas
         var token = await ElIntrusoActivaLaVerificacion(u);
         var delIntruso = SesionDe(u, _secretos.HashToken("sesion-del-intruso"), _reloj.Ahora);
         _base.Sesiones.Add(delIntruso);
+        var selloDelIntruso = u.SelloSeguridad;
 
         var r = await _mfa.NoFuiYoAsync(token, "203.0.113.9");
 
@@ -105,6 +106,8 @@ public class MfaNoFuiYoPruebas
         Assert.False(u.MfaActivo);
         Assert.Null(u.MfaRevocacionHash);
         Assert.NotNull(delIntruso.RevocadaEn);
+        // Y su cookie de acceso (15 min) muere al instante: el sello cambio.
+        Assert.NotEqual(selloDelIntruso, u.SelloSeguridad);
         Assert.Contains(_auditoria.Registros, a => a.Accion == "mfa_quitado_no_fui_yo" && a.EntidadId == u.Id);
 
         // El intruso ya no entra con la contraseña que conocia.
@@ -228,6 +231,7 @@ public class MfaNoFuiYoPruebas
         var delIntruso = SesionDe(u, _secretos.HashToken("sesion-del-intruso"), _reloj.Ahora);
         _base.Sesiones.Add(delIntruso);
         var admin = UnaCuenta("admin@zass.cl");
+        var selloDelIntruso = u.SelloSeguridad;
 
         var r = await _mfa.QuitarPorAdministradorAsync(admin.Id,
             new QuitarMfaCmd("  ROSA@correo.cl ", "Escribió a soporte: otra persona activó la verificación."), "198.51.100.4");
@@ -235,6 +239,7 @@ public class MfaNoFuiYoPruebas
         Assert.True(r.Exito, r.Mensaje);
         Assert.False(u.MfaActivo);
         Assert.NotNull(delIntruso.RevocadaEn);
+        Assert.NotEqual(selloDelIntruso, u.SelloSeguridad);
         Assert.False((await _sesion.EntrarAsync(new IniciarSesionCmd("rosa@correo.cl", ClaveDelIntruso))).Exito);
 
         var auditado = Assert.Single(_auditoria.Registros, a => a.Accion == "mfa_quitado_por_administrador");
