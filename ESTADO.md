@@ -37,6 +37,22 @@ comprobado**, **qué no**, y **el siguiente paso exacto**.
 
 ---
 
+## Sesión del 27-nov-2026 (madrugada, Claude solo) — tres PR en verde esperando a Pablo
+
+**Dónde retomar («sigamos con zass»):** nada a medias; todo subido. Tres PR con **CI verde**, ninguno fusionado:
+
+| PR | Qué | Qué falta (de Pablo) |
+|---|---|---|
+| **#241** bloqueo a 30 + correo | 5 mutaciones, las 5 caen. Tenía conflictos con #239 (tipos de aviso nuevos en los mismos archivos): fusionado `main`, ambos lados conservados; aplicación 1301, integración (correo/MFA/bloqueo) 248, todo verde | **Aprobar los 2 textos** (están completos en el cuerpo del PR) → fusionar → Manual Deploy API (sin migraciones). Va con el PR **#11 de `zass-documentacion`** (API-08/09/79/84/85/86, 105 endpoints, seguridad.md 10→30) |
+| **#226** sello de seguridad | Puesto al día con `main`. **Migración renombrada** a `20261127030000_SelloDeSeguridad` (con la fecha vieja quedaba antes de `RevocarMfaDesdeElCorreo`, ya en Neon); Designer rehecho desde el snapshot; `El_modelo_no_tiene_cambios_sin_migracion` verde. **Hueco cerrado**: «No fui yo» (API-85) y quitar MFA por admin (API-86) no renovaban el sello → la cookie del intruso vivía 15 min; ahora `DejarSinAccesoAjeno` lo renueva (2 pruebas + mutación) | Fusionar → **migración en Neon** (Actions) → Manual Deploy. Todos deben volver a entrar. Pregunta abierta en el PR: ¿el sello debe cortar también las cuentas **suspendidas**? (cambiaría el 403 del panel por 401; se probó y se revirtió) |
+| **#242** menores de la revisión | Licencia de ImageSharp ya no se nombra con `$` en los `RUN` del Dockerfile (`printenv`): el registro de Render la imprimía. Pase de mantenimiento: la comparación ya no corta por largo (4 casos + mutación; funciones 270/270) | Fusionar → desplegar sitio → en el próximo Manual Deploy **mirar que el registro de compilación ya no muestre la licencia** (el CI no construye la imagen; aquí no hay Docker). Decidir si se deja como está la diferencia de ms en API-14/71 (recomiendo dejarla) |
+
+**Comprobado sin tocar nada:** en Render, `Zass__ProxiesDeConfianza` coincide con los rangos de Cloudflare (15 IPv4 + 7 IPv6) + 10.0.0.0/8, y `Zass__SaltosDeProxy` = 5 (punto 5 de la revisión). La comprobación con datos (que la auditoría de Neon guarde IP reales) **no se hizo**: el clasificador de permisos bloqueó la consulta a producción.
+
+**No se tocó (decisión de Pablo):** #230 de dependabot sube `Microsoft.Extensions.Configuration` a 11.0.0 **también en `Zass.Infraestructura`** (producción, runtime 10): CI verde del 23-nov, pero no fusionar sin probarlo.
+
+**Entorno (para no perder tiempo):** SDK .NET 10 en `C:\Users\pdani\tools\dotnet10-completo`; Postgres con `pg_ctl -D datos-pg -l registros\postgres.log start`; en un worktree las pruebas de integración necesitan `ZASS_CADENA_PRUEBAS` (no encuentran `.clave-pg.txt`): usar una base propia (p. ej. `zass_pruebas_sello`) para no mezclar esquemas. Worktrees: `zass-trabajo/sello-seguridad`, `zass-trabajo/menores-revision`.
+
 ## Sesión del 26-nov-2026 (noche) — bloqueo a 30: prueba arreglada y correo distinto si ya tenían la contraseña
 
 **Dónde retomar («sigamos con zass»):** esta rama, `p/bloqueo-30-y-aviso`, todo subido.
@@ -53,7 +69,7 @@ comprobado**, **qué no**, y **el siguiente paso exacto**.
 1. Levantar Postgres **con `pg_ctl` desacoplado**, no con `Start-Process … -Wait` sobre el .bat (se cuelga, y al matarlo muere Postgres): `herramientas\pgsql\bin\pg_ctl.exe -D datos-pg -l registros\postgres.log start`. El SDK de .NET 10 está en `C:\Users\pdani\tools\dotnet10-completo` (el del sistema es 8): poner `DOTNET_ROOT` y `PATH`.
 2. (Hecho: integración 1359/1360, ver arriba.) Confirmar en el CI del PR que la de 60 cupos pasa.
 3. (Hecho, 27-nov) **5 mutaciones, las 5 caen**: sin `paso == "inicio_sesion"`, sin `:codigo` en la clave, plantilla que ignora la marca, login que no encola (contra Postgres) y segundo paso que no encola.
-4. Abrir el PR con los **dos textos** para que Pablo los apruebe (regla 12): tabla antes/ahora (10→30, correo a la dueña, variante con contraseña correcta), los dos textos completos, sin migraciones; al fusionar, Manual Deploy de la API.
+4. (Hecho: PR #241.) Abrir el PR con los **dos textos** para que Pablo los apruebe (regla 12): tabla antes/ahora (10→30, correo a la dueña, variante con contraseña correcta), los dos textos completos, sin migraciones; al fusionar, Manual Deploy de la API.
 
 ## Sesión del 26-nov-2026 (madrugada) — MFA en producción y logo nuevo
 
