@@ -47,11 +47,11 @@ comprobado**, **qué no**, y **el siguiente paso exacto**.
 | **Hueco del texto** encontrado | Si el bloqueo llega en el segundo paso del login (`paso == "inicio_sesion"`), quien probaba **ya tenía la contraseña**, y el correo decía «Sin la contraseña correcta no puede entrar». Ahora sale una **variante** (carga `{"contrasenaCorrecta":"si"}`, asunto «Alguien usó tu contraseña de ZASS!: bloqueamos tu cuenta», pide cambiarla ya). Clave de idempotencia propia (`…:codigo`): llega aunque ese día ya saliera el aviso común. En el panel (alta, desactivar, cambiar contraseña) sigue el común, porque ahí el fallo puede ser la contraseña |
 | Comentarios «10 intentos» / «décimo» | Pasados a 30; el de `ServicioSesion` explica que el correo solo se encola (un INSERT) y no delata el intento que bloquea |
 | Pruebas de aplicación | **1286/1286 verdes** (incluye 1 nueva: el aviso «contraseña correcta» llega aunque ya saliera el común) |
-| Pruebas de integración | Ver «Al cerrar» abajo. Incluye 1 nueva de plantilla (la variante no tranquiliza) |
+| Pruebas de integración | **1359/1360** (37 min). La única roja: `Sesenta_pidiendo_a_la_vez...cincuenta_cupos`, la conocida del `max_connections` local (en CI pasa; aquí no se tocó nada de cupos). Pasan la prueba MFA arreglada y las 2 de plantilla |
 
 **Siguiente paso exacto:**
 1. Levantar Postgres **con `pg_ctl` desacoplado**, no con `Start-Process … -Wait` sobre el .bat (se cuelga, y al matarlo muere Postgres): `herramientas\pgsql\bin\pg_ctl.exe -D datos-pg -l registros\postgres.log start`. El SDK de .NET 10 está en `C:\Users\pdani\tools\dotnet10-completo` (el del sistema es 8): poner `DOTNET_ROOT` y `PATH`.
-2. Correr `Zass.Integracion.Pruebas` entera si al cerrar no quedó vista en verde.
+2. (Hecho: integración 1359/1360, ver arriba.) Confirmar en el CI del PR que la de 60 cupos pasa.
 3. Mutaciones: quitar el `paso == "inicio_sesion"` (debe caer la de aplicación), quitar `:codigo` de la clave (debe caer «llega aunque ya saliera el común»), quitar el encolado en `ServicioSesion` (debe caer la de integración de 30 fallos).
 4. Abrir el PR con los **dos textos** para que Pablo los apruebe (regla 12): tabla antes/ahora (10→30, correo a la dueña, variante con contraseña correcta), los dos textos completos, sin migraciones; al fusionar, Manual Deploy de la API.
 
