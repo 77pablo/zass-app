@@ -105,6 +105,23 @@ describe('mantenimiento', () => {
     expect(respuesta.status).toBe(503)
   })
 
+  // La comparacion recorre siempre el largo del pase (25-nov-2026): estos son los bordes que
+  // una comparacion asi puede romper. Que no delate el largo por el tiempo NO lo prueba esto.
+  it.each([
+    ['un pedazo del principio del pase', PASE.slice(0, 10)],
+    ['el pase con algo mas al final', `${PASE}x`],
+    ['el pase sin su ultima letra', PASE.slice(0, -1)],
+    ['el pase con la ultima letra cambiada', `${PASE.slice(0, -1)}4`],
+  ])('%s no abre nada, ni por parametro ni por cookie', async (_caso, intento) => {
+    const porParametro = await pedir(
+      peticion(`https://zass.cl/?pase=${encodeURIComponent(intento)}`), { MANTENIMIENTO_PASE: PASE })
+    expect(porParametro.respuesta.status).toBe(503)
+
+    const porCookie = await pedir(
+      peticion('https://zass.cl/', { cabeceras: { cookie: `zass_pase=${intento}` } }), { MANTENIMIENTO_PASE: PASE })
+    expect(porCookie.respuesta.status).toBe(503)
+  })
+
   it('SIN pase configurado, una cookie inventada no sirve de nada', async () => {
     const { respuesta, siguiente } = await pedir(
       peticion('https://zass.cl/', { cabeceras: { cookie: 'zass_pase=cualquier-cosa' } }),
