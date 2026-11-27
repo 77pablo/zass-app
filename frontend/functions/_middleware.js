@@ -114,12 +114,18 @@ function enMantenimiento(env) {
  * Comparacion que no delata el largo ni los caracteres acertados por el tiempo que tarda.
  * Es un pase, no una contrasena, pero comparar secretos con === es una costumbre que no
  * conviene tener.
+ *
+ * `secreto` va SEGUNDO: el recorrido dura siempre su largo, sea cual sea lo que mande el
+ * visitante. Antes se cortaba al ver largos distintos, y eso si delataba el largo del pase
+ * (revision de seguridad del 25-nov-2026). La diferencia de largos entra en el resultado.
  */
-function sonIguales(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string') return false
-  if (a.length !== b.length) return false
-  let diferencia = 0
-  for (let i = 0; i < a.length; i += 1) diferencia |= a.charCodeAt(i) ^ b.charCodeAt(i)
+function sonIguales(pedido, secreto) {
+  if (typeof pedido !== 'string' || typeof secreto !== 'string') return false
+  let diferencia = pedido.length ^ secreto.length
+  for (let i = 0; i < secreto.length; i += 1) {
+    const delPedido = i < pedido.length ? pedido.charCodeAt(i) : 0
+    diferencia |= delPedido ^ secreto.charCodeAt(i)
+  }
   return diferencia === 0
 }
 

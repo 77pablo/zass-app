@@ -31,11 +31,16 @@ COPY src/ src/
 # trae la licencia. Solo vive en esta etapa: la imagen final no la lleva.
 #
 # Fuera de Render: docker build --build-arg SIXLABORS_LICENSE_KEY="$(cat sixlabors.lic)" ...
+#
+# La licencia se lee con printenv y NUNCA se nombra con signo de pesos en un RUN: el registro de
+# compilación de Render imprime cada RUN con las variables ya reemplazadas, y así salía la
+# licencia completa (revisión de seguridad del 25-nov-2026). printenv lee la misma variable
+# del ARG sin que el texto del RUN tenga nada que reemplazar.
 ARG SIXLABORS_LICENSE_KEY
-RUN test -n "$SIXLABORS_LICENSE_KEY" \
+RUN printenv SIXLABORS_LICENSE_KEY | grep -q . \
     || { echo "Falta SIXLABORS_LICENSE_KEY: sin la licencia de ImageSharp no se puede compilar en Release." >&2; exit 1; }
-RUN SixLaborsLicenseKey="$SIXLABORS_LICENSE_KEY" \
-    dotnet publish src/Zass.Api/Zass.Api.csproj -c Release --no-restore -o /publicado /p:UseAppHost=false
+RUN export SixLaborsLicenseKey="$(printenv SIXLABORS_LICENSE_KEY)" \
+    && dotnet publish src/Zass.Api/Zass.Api.csproj -c Release --no-restore -o /publicado /p:UseAppHost=false
 
 # ---------- Etapa 2: ejecutar ----------
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
