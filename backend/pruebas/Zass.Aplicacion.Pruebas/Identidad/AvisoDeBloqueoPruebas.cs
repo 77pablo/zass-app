@@ -1,4 +1,5 @@
 using Zass.Aplicacion.Identidad;
+using Zass.Aplicacion.Puertos;
 using Zass.Aplicacion.Pruebas.Dobles;
 using Zass.Dominio.Comun;
 using Zass.Dominio.Identidad;
@@ -71,6 +72,8 @@ public class AvisoDeBloqueoPruebas
         var aviso = Assert.Single(_cola.Encoladas, n => n.Tipo == TipoNotificacion.CuentaBloqueadaPorIntentos);
         Assert.Equal(u.Id, aviso.DestinatarioId);
         Assert.Equal(CanalNotificacion.Correo, aviso.Canal);
+        // Fallos de contraseña: el aviso comun, que no da por sabida la contraseña.
+        Assert.Equal("{}", aviso.Cuerpo);
     }
 
     /// <summary>
@@ -108,7 +111,36 @@ public class AvisoDeBloqueoPruebas
         }
 
         Assert.True(u.EstaBloqueada(_reloj.Ahora));
+        var aviso = Assert.Single(_cola.Encoladas, n => n.Tipo == TipoNotificacion.CuentaBloqueadaPorIntentos);
+        // Bloqueada en el segundo paso: quien probaba YA tenia la contraseña. El correo lo dice.
+        Assert.Equal("si", CargaDeAviso.LeerCampo(aviso.Cuerpo, "contrasenaCorrecta"));
+        Assert.Equal(ServicioSesion.AsuntoDelBloqueoConContrasenaCorrecta, aviso.Asunto);
+    }
+
+    /// <summary>
+    /// Si ese dia ya salio el aviso comun (bloqueo por contraseñas), el de «alguien tiene tu
+    /// contraseña» igual tiene que llegar: es otra noticia, y peor.
+    /// </summary>
+    [Fact]
+    public async Task El_aviso_de_contrasena_correcta_llega_aunque_ese_dia_ya_saliera_el_comun()
+    {
+        var u = UnaCuenta();
+        _reloj.Avanzar(TimeSpan.FromHours(1) - TimeSpan.FromTicks(_reloj.Ahora.TimeOfDay.Ticks)); // 01:00 UTC
+        var alta = await _mfa.IniciarAltaAsync(u.Id);
+        Assert.True((await _mfa.ConfirmarAltaAsync(u.Id,
+            new ConfirmarMfaCmd(Clave, Totp.Codigo(alta.Valor!.Secreto, Totp.PasoDe(_reloj.Ahora))))).Exito);
+
+        await Fallar(30);
         Assert.Equal(1, AvisosDeBloqueo());
+        _reloj.Avanzar(ServicioSesion.DuracionDelBloqueo);
+
+        for (var i = 0; i < ServicioSesion.IntentosParaBloquear; i++)
+        {
+            var desafio = (await _sesion.EntrarAsync(new IniciarSesionCmd("rosa@correo.cl", Clave))).Valor!.Desafio!;
+            Assert.False((await _mfa.SegundoPasoAsync(new SegundoPasoCmd(desafio.Desafio, "ZZZZZ-ZZZZZ"))).Exito);
+        }
+
+        Assert.Equal(2, AvisosDeBloqueo());
     }
 
     [Fact]

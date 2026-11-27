@@ -57,17 +57,28 @@ public sealed class ServicioSesion
     /// intentos. Uno por dia como mucho (la clave lleva la fecha): quien prueba contraseñas puede
     /// bloquearla cada 15 minutos, y un correo por bloqueo seria una forma de llenarle la bandeja.
     /// No lleva token: el enlace manda a pedir una contraseña nueva, que tambien desbloquea.
+    ///
+    /// <paramref name="conContrasenaCorrecta"/>: el fallo que bloqueo fue el CODIGO del segundo
+    /// paso, despues de escribir bien la contraseña. Esa persona ya tiene la contraseña, y el
+    /// correo no puede decirle a la dueña que «sin la contraseña no puede entrar». Va con clave
+    /// propia: si ese dia ya salio el aviso comun, este igual tiene que llegar.
     /// </summary>
-    public static Notificacion AvisoDeBloqueo(Guid usuarioId, DateTime ahora) => new()
+    public static Notificacion AvisoDeBloqueo(Guid usuarioId, DateTime ahora, bool conContrasenaCorrecta = false) => new()
     {
         DestinatarioId = usuarioId,
         Tipo = TipoNotificacion.CuentaBloqueadaPorIntentos,
         Canal = CanalNotificacion.Correo,
-        ClaveIdempotencia = $"cuenta-bloqueada:{usuarioId:N}:{ahora:yyyy-MM-dd}",
-        Asunto = "Bloqueamos tu cuenta de ZASS! por intentos fallidos",
-        Cuerpo = "{}",
+        ClaveIdempotencia = $"cuenta-bloqueada:{usuarioId:N}:{ahora:yyyy-MM-dd}" + (conContrasenaCorrecta ? ":codigo" : ""),
+        Asunto = conContrasenaCorrecta
+            ? AsuntoDelBloqueoConContrasenaCorrecta
+            : "Bloqueamos tu cuenta de ZASS! por intentos fallidos",
+        Cuerpo = conContrasenaCorrecta ? "{\"contrasenaCorrecta\":\"si\"}" : "{}",
         ProgramadaPara = ahora,
     };
+
+    /// <summary>Asunto del aviso de bloqueo cuando el que fallo ya tenia la contraseña.</summary>
+    public const string AsuntoDelBloqueoConContrasenaCorrecta =
+        "Alguien usó tu contraseña de ZASS!: bloqueamos tu cuenta";
 
     /// <summary>
     /// Un mensaje unico para "no existe la cuenta" y para "la contrasena no es esa".
@@ -187,8 +198,9 @@ public sealed class ServicioSesion
                 ip: ip));
 
             // Una entrada por bloqueo, para que el administrador vea los ataques (ver el
-            // filtro por accion en el panel de auditoria). No se manda correo al administrador
-            // aqui: tardaria lo bastante para que el decimo intento se distinga de los demas.
+            // filtro por accion en el panel de auditoria). El correo a la dueña (25-nov-2026) NO
+            // se envia aqui: solo se encola (un INSERT); lo manda el planificador despues. Enviarlo
+            // en linea tardaria lo bastante para que el intento que bloquea se distinga de los demas.
             if (bloqueoAhora)
             {
                 _auditor.Registrar(Auditar.Entrada(

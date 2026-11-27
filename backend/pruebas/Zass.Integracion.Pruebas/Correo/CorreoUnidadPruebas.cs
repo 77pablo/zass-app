@@ -443,6 +443,25 @@ public class CorreoUnidadPruebas
         Assert.Contains("href=\"https://zass.cl/recuperar-contrasena\"", r.Html);
         Assert.DoesNotContain("token", r.Texto, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("<b>", r.Html);
+        // El comun SI puede tranquilizar: quien probaba no tenia la contraseña.
+        Assert.Contains("Sin la contraseña correcta no puede entrar", r.Texto);
+    }
+
+    /// <summary>
+    /// Bloqueada en el segundo paso: quien probaba ya tenia la contraseña. El correo dice eso y
+    /// pide cambiarla; nunca el «sin la contraseña no puede entrar» del aviso comun.
+    /// </summary>
+    [Fact]
+    public void El_aviso_de_bloqueo_con_la_contrasena_correcta_pide_cambiarla_y_no_tranquiliza()
+    {
+        var r = Plantillas.Renderizar(TipoNotificacion.CuentaBloqueadaPorIntentos, "Luis",
+            "https://zass.cl/", "{\"contrasenaCorrecta\":\"si\"}")!;
+        Assert.Equal("Alguien usó tu contraseña de ZASS!: bloqueamos tu cuenta", r.Asunto);
+        Assert.Contains("escribió bien la contraseña", r.Texto);
+        Assert.Contains("por 15 minutos", r.Texto);
+        Assert.Contains("crea una nueva ahora mismo", r.Texto);
+        Assert.Contains("href=\"https://zass.cl/recuperar-contrasena\"", r.Html);
+        Assert.DoesNotContain("Sin la contraseña correcta no puede entrar", r.Texto);
     }
 
     // ------------------------------------------------------- correo con cuenta (25-nov-2026)
