@@ -144,6 +144,19 @@ export const SIN_DATOS_AUN = 'Sin datos todavía'
 
 export const SECCION_TARJETAS = 'Emitir tarjetas'
 export const SECCION_TARJETAS_BAJADA = 'Crea una tarjeta nueva con su código de activación.'
+export const SECCION_QUITAR_MFA = 'Quitar la verificación en dos pasos'
+export const SECCION_QUITAR_MFA_BAJADA = 'Para quien perdió su teléfono o a quien otra persona se la activó.'
+export const INTRO_QUITAR_MFA =
+  'Úsalo solo después de confirmar que quien escribe es la dueña de la cuenta. Se cierran todas sus '
+  + 'sesiones, su contraseña deja de servir y le llega un correo para crear otra. Queda en la auditoría con el motivo.'
+export const ETIQUETA_CORREO_CUENTA = 'Correo de la cuenta'
+export const ETIQUETA_MOTIVO_QUITAR = 'Motivo'
+export const AYUDA_MOTIVO = 'Cómo confirmaste que es la dueña. Al menos 10 caracteres.'
+export const BOTON_QUITAR_MFA = 'Quitar la verificación'
+export const QUITANDO_MFA = 'Quitando…'
+export const confirmarQuitarMfa = (correo: string) =>
+  `¿Quitar la verificación en dos pasos de ${correo}? Su contraseña dejará de servir.`
+export const MFA_QUITADA = 'Listo. Le llegará un correo para crear una contraseña nueva.'
 export const SECCION_AUDITORIA = 'Auditoría'
 export const SECCION_AUDITORIA_BAJADA = 'Busca el rastro de lo que pasó con un registro o con una persona.'
 

@@ -29,6 +29,13 @@ public static class Plantillas
     public static string EnlaceDeRecuperacion(string urlPublica, string token) =>
         $"{urlPublica.TrimEnd('/')}/restablecer-contrasena?token={Uri.EscapeDataString(token)}";
 
+    /// <summary>
+    /// «No fui yo» (25-nov-2026): la pantalla que, con un BOTON, quita la verificacion que activo otra
+    /// persona. No actua al abrirse: los antivirus del correo abren los enlaces solos.
+    /// </summary>
+    public static string EnlaceNoFuiYo(string urlPublica, string token) =>
+        $"{urlPublica.TrimEnd('/')}/no-fui-yo?token={Uri.EscapeDataString(token)}";
+
     /// <summary>La pantalla para entrar con correo y contraseña.</summary>
     public static string EnlaceDeEntrada(string urlPublica) => $"{urlPublica.TrimEnd('/')}/entrar";
 
@@ -94,6 +101,9 @@ public static class Plantillas
              or TipoNotificacion.BorradorPorEliminarse
              or TipoNotificacion.MfaActivado
              or TipoNotificacion.RegistroConCorreoExistente
+             or TipoNotificacion.MfaDesactivado
+             or TipoNotificacion.MfaCodigosRegenerados
+             or TipoNotificacion.MfaQuitadoPorAdministrador
              or TipoNotificacion.CuentaBloqueadaPorIntentos;
 
     /// <summary>
@@ -101,7 +111,8 @@ public static class Plantillas
     /// cuanto el correo sale, y porque sin token no hay nada que enviar.
     /// </summary>
     public static bool LlevaToken(TipoNotificacion tipo) =>
-        tipo is TipoNotificacion.CorreoVerificacion or TipoNotificacion.RecuperarContrasena;
+        tipo is TipoNotificacion.CorreoVerificacion or TipoNotificacion.RecuperarContrasena
+            or TipoNotificacion.MfaActivado or TipoNotificacion.MfaQuitadoPorAdministrador;
 
     /// <summary>
     /// Null si el tipo no tiene plantilla, o si su carga no trae lo que la plantilla necesita
@@ -137,9 +148,19 @@ public static class Plantillas
         TipoNotificacion.CuentaBloqueadaPorIntentos => CuentaBloqueadaPorIntentos(
             nombre, EnlaceParaPedirContrasena(urlPublica),
             conContrasenaCorrecta: CargaDeAviso.LeerCampo(carga, "contrasenaCorrecta") == "si"),
-        // No pide nada de la carga: los dos enlaces son fijos.
-        TipoNotificacion.MfaActivado => MfaActivado(
+        // Con el token (desde el 25-nov-2026) lleva el enlace «No fui yo». Sin el —los encolados
+        // antes, o una carga ya purgada— sale el texto anterior, que manda a cambiar la contraseña.
+        TipoNotificacion.MfaActivado => CargaDeAviso.LeerToken(carga) is { } tr
+            ? MfaActivadoConNoFuiYo(nombre, EnlaceDeSeguridad(urlPublica), EnlaceNoFuiYo(urlPublica, tr))
+            : MfaActivado(nombre, EnlaceDeSeguridad(urlPublica), EnlaceParaPedirContrasena(urlPublica)),
+        TipoNotificacion.MfaDesactivado => MfaDesactivado(
             nombre, EnlaceDeSeguridad(urlPublica), EnlaceParaPedirContrasena(urlPublica)),
+        TipoNotificacion.MfaCodigosRegenerados => MfaCodigosRegenerados(
+            nombre, EnlaceDeSeguridad(urlPublica), EnlaceParaPedirContrasena(urlPublica)),
+        // Sin token no hay a donde mandar a crear la contraseña: el de recuperacion es lo que importa.
+        TipoNotificacion.MfaQuitadoPorAdministrador => CargaDeAviso.LeerToken(carga) is { } tq
+            ? MfaQuitadoPorAdministrador(nombre, EnlaceDeRecuperacion(urlPublica, tq), EnlaceParaPedirContrasena(urlPublica))
+            : null,
         // Sin nombre de credencial en la carga sale igual, con «una de tus credenciales».
         TipoNotificacion.CredencialVencida => CredencialVencida(
             nombre, CargaDeAviso.LeerCampo(carga, "credencial"), EnlaceDelPanel(urlPublica)),
@@ -378,6 +399,119 @@ public static class Plantillas
             "Crear una contraseña nueva", enlaceContrasena,
             pie);
         return new(Zass.Aplicacion.Identidad.ServicioSesion.AsuntoDelBloqueoConContrasenaCorrecta, texto, html);
+    }
+
+    /// <summary>
+    /// Revision de seguridad 25-nov-2026: el aviso de activacion con el enlace «No fui yo». Texto
+    /// PROPUESTO, pendiente de que Pablo lo apruebe.
+    /// </summary>
+    public static CorreoRenderizado MfaActivadoConNoFuiYo(string nombre, string enlaceSeguridad, string enlaceNoFuiYo)
+    {
+        const string parrafo =
+            "Se activó la verificación en dos pasos en tu cuenta de ZASS!: desde ahora, para entrar, "
+            + "además de la contraseña se pide un código de la app de tu teléfono. Si fuiste tú, no "
+            + "tienes que hacer nada más.";
+        const string otra =
+            "Si NO fuiste tú, alguien conoce tu contraseña. Con este enlace quitamos la verificación "
+            + "que puso, cerramos todas las sesiones abiertas y te pedimos crear una contraseña nueva. "
+            + "Sirve una sola vez y durante 7 días:";
+        const string pie = "Puedes revisar la seguridad de tu cuenta en «Mi cuenta → Seguridad».";
+        var texto =
+            $"Hola {nombre}:\n\n" +
+            $"{parrafo}\n\n" +
+            $"{otra}\n\n{enlaceNoFuiYo}\n\n" +
+            $"{pie}\n\n{enlaceSeguridad}\n\n" +
+            "— El equipo de ZASS!";
+        var html = Marco(
+            "Se activó la verificación en dos pasos",
+            $"Hola {H(nombre)}:",
+            parrafo,
+            "Revisar la seguridad de mi cuenta", enlaceSeguridad,
+            pie,
+            otra, enlaceNoFuiYo);
+        return new("Se activó la verificación en dos pasos en tu cuenta de ZASS!", texto, html);
+    }
+
+    /// <summary>Revision de seguridad 25-nov-2026. Texto PROPUESTO, pendiente de que Pablo lo apruebe.</summary>
+    public static CorreoRenderizado MfaDesactivado(string nombre, string enlaceSeguridad, string enlaceContrasena)
+    {
+        const string parrafo =
+            "Se desactivó la verificación en dos pasos en tu cuenta de ZASS!: desde ahora, para entrar "
+            + "basta con la contraseña. Si fuiste tú, no tienes que hacer nada más.";
+        const string otra =
+            "Si NO fuiste tú, alguien tiene tu contraseña y un código de tu teléfono. Crea una contraseña "
+            + "nueva ahora mismo aquí y vuelve a activar la verificación:";
+        const string pie = "Puedes activarla de nuevo en «Mi cuenta → Seguridad».";
+        var texto =
+            $"Hola {nombre}:\n\n" +
+            $"{parrafo}\n\n" +
+            $"{otra}\n\n{enlaceContrasena}\n\n" +
+            $"{pie}\n\n{enlaceSeguridad}\n\n" +
+            "— El equipo de ZASS!";
+        var html = Marco(
+            "Se desactivó la verificación en dos pasos",
+            $"Hola {H(nombre)}:",
+            parrafo,
+            "Revisar la seguridad de mi cuenta", enlaceSeguridad,
+            pie,
+            otra, enlaceContrasena);
+        return new("Se desactivó la verificación en dos pasos en tu cuenta de ZASS!", texto, html);
+    }
+
+    /// <summary>Revision de seguridad 25-nov-2026. Texto PROPUESTO, pendiente de que Pablo lo apruebe.</summary>
+    public static CorreoRenderizado MfaCodigosRegenerados(string nombre, string enlaceSeguridad, string enlaceContrasena)
+    {
+        const string parrafo =
+            "Se crearon diez códigos de respaldo nuevos para la verificación en dos pasos de tu cuenta "
+            + "de ZASS!. Los anteriores ya no sirven. Si fuiste tú, guárdalos en un lugar seguro y no "
+            + "tienes que hacer nada más.";
+        const string otra =
+            "Si NO fuiste tú, alguien tiene tu contraseña y un código de tu teléfono. Crea una contraseña "
+            + "nueva ahora mismo aquí:";
+        const string pie = "Puedes revisar la seguridad de tu cuenta en «Mi cuenta → Seguridad».";
+        var texto =
+            $"Hola {nombre}:\n\n" +
+            $"{parrafo}\n\n" +
+            $"{otra}\n\n{enlaceContrasena}\n\n" +
+            $"{pie}\n\n{enlaceSeguridad}\n\n" +
+            "— El equipo de ZASS!";
+        var html = Marco(
+            "Códigos de respaldo nuevos",
+            $"Hola {H(nombre)}:",
+            parrafo,
+            "Revisar la seguridad de mi cuenta", enlaceSeguridad,
+            pie,
+            otra, enlaceContrasena);
+        return new("Se crearon códigos de respaldo nuevos para tu cuenta de ZASS!", texto, html);
+    }
+
+    /// <summary>
+    /// Revision de seguridad 25-nov-2026: un administrador quito la verificacion. El boton lleva el
+    /// enlace de recuperacion (vive 1 h); si vence, el otro enlace pide uno nuevo. Texto PROPUESTO,
+    /// pendiente de que Pablo lo apruebe.
+    /// </summary>
+    public static CorreoRenderizado MfaQuitadoPorAdministrador(string nombre, string enlaceRecuperacion, string enlacePedirOtro)
+    {
+        const string parrafo =
+            "El equipo de ZASS! quitó la verificación en dos pasos de tu cuenta y cerró todas las "
+            + "sesiones abiertas. Por seguridad, tu contraseña anterior ya no sirve: crea una nueva para "
+            + "volver a entrar. Este botón sirve durante una hora.";
+        const string otra = "Si el botón ya venció, pide un enlace nuevo aquí:";
+        const string pie = "Si tú no pediste esto, respóndenos este correo de inmediato.";
+        var texto =
+            $"Hola {nombre}:\n\n" +
+            $"{parrafo}\n\n{enlaceRecuperacion}\n\n" +
+            $"{otra}\n\n{enlacePedirOtro}\n\n" +
+            $"{pie}\n\n" +
+            "— El equipo de ZASS!";
+        var html = Marco(
+            "Quitamos la verificación en dos pasos",
+            $"Hola {H(nombre)}:",
+            parrafo,
+            "Crear una contraseña nueva", enlaceRecuperacion,
+            pie,
+            otra, enlacePedirOtro);
+        return new("Quitamos la verificación en dos pasos de tu cuenta de ZASS!", texto, html);
     }
 
     /// <summary>

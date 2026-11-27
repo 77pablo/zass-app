@@ -10,6 +10,11 @@ public sealed record SegundoPasoCmd(string Desafio, string Codigo);
 public sealed record ConfirmarMfaCmd(string Contrasena, string Codigo);
 public sealed record DesactivarMfaCmd(string Contrasena, string Codigo);
 public sealed record RegenerarCodigosMfaCmd(string Contrasena, string Codigo);
+public sealed record NoFuiYoCmd(string Token);
+public sealed record QuitarMfaCmd(string Correo, string Motivo);
+
+/// <summary>El token para crear la contraseña nueva: la pantalla lleva a la persona a restablecerla.</summary>
+public sealed record NoFuiYoDto(string TokenRestablecer);
 
 public sealed record EstadoMfaDto(bool Activo, DateTime? ActivadoEn, int CodigosDeRespaldoRestantes, bool Obligatorio);
 public sealed record AltaMfaDto(string Secreto, string UriOtpauth);
@@ -183,6 +188,12 @@ public sealed class ServicioMfa
         usuario.MfaDesafioExpiraEn = null;
         usuario.ActualizadoEn = ahora;
 
+        // «No fui yo» (revision de seguridad 25-nov-2026): el correo de activacion lleva un enlace de
+        // un solo uso, valido 7 dias, para que la dueña quite la verificacion que puso otra persona.
+        var revocacion = _secretos.NuevoToken();
+        usuario.MfaRevocacionHash = _secretos.HashToken(revocacion);
+        usuario.MfaRevocacionExpiraEn = ahora.Add(VidaDelEnlaceNoFuiYo);
+
         _auditor.Registrar(Auditar.Entrada(
             "mfa_activado", "usuario", usuario.Id, ahora, actorId: usuario.Id, ip: ip));
 
@@ -196,7 +207,8 @@ public sealed class ServicioMfa
             Canal = CanalNotificacion.Correo,
             ClaveIdempotencia = $"mfa-activado:{usuario.Id:N}:{ahora.Ticks}",
             Asunto = "Se activó la verificación en dos pasos en tu cuenta de ZASS!",
-            Cuerpo = "{}",
+            // El token va en la carga que el enviador purga en cuanto el correo sale.
+            Cuerpo = CargaDeAviso.ConToken(revocacion),
             ProgramadaPara = ahora,
         });
 
@@ -240,6 +252,8 @@ public sealed class ServicioMfa
         _auditor.Registrar(Auditar.Entrada(
             "mfa_codigos_regenerados", "usuario", usuario.Id, ahora, actorId: usuario.Id,
             contexto: new { con = aceptado == CodigoAceptado.Totp ? "totp" : "respaldo" }, ip: ip));
+        Avisar(usuario, TipoNotificacion.MfaCodigosRegenerados, "mfa-codigos",
+            "Se crearon códigos de respaldo nuevos para tu cuenta de ZASS!", "{}", ahora);
 
         await _unidad.GuardarAsync(ct);
         await _sesion.RevocarTodasAsync(usuario.Id, sesionActual, ct);
@@ -276,11 +290,119 @@ public sealed class ServicioMfa
         _auditor.Registrar(Auditar.Entrada(
             "mfa_desactivado", "usuario", usuario.Id, ahora, actorId: usuario.Id,
             contexto: new { con = aceptado == CodigoAceptado.Totp ? "totp" : "respaldo" }, ip: ip));
+        Avisar(usuario, TipoNotificacion.MfaDesactivado, "mfa-desactivado",
+            "Se desactivó la verificación en dos pasos en tu cuenta de ZASS!", "{}", ahora);
 
         await _unidad.GuardarAsync(ct);
         await _sesion.RevocarTodasAsync(usuario.Id, sesionActual, ct);
         return Resultado.Ok();
     }
+
+    // ------------------------------------------------------------ «No fui yo» y administrador
+
+    /// <summary>Cuanto sirve el enlace «No fui yo» del correo de activacion.</summary>
+    public static readonly TimeSpan VidaDelEnlaceNoFuiYo = TimeSpan.FromDays(7);
+
+    public const string FalloNoFuiYo =
+        "Este enlace ya no sirve: se usó, venció o la verificación ya no está activa. Si crees que "
+        + "alguien entró a tu cuenta, crea una contraseña nueva desde «¿Olvidaste tu contraseña?».";
+
+    /// <summary>
+    /// Revision de seguridad 25-nov-2026. Quien tenia la contraseña podia activar la verificacion con
+    /// SU telefono y dejar fuera a la dueña: restablecer la contraseña no la quitaba. El correo de
+    /// activacion trae un enlace de un solo uso (7 dias) que la quita, cierra todas las sesiones y deja
+    /// la contraseña vieja SIN servir (la conoce quien la activo), y devuelve un token para crear otra.
+    ///
+    /// <para>
+    /// NO se quita la verificacion al restablecer la contraseña a secas: entonces bastaria el correo
+    /// para llevarse la cuenta y la verificacion no protegeria nada. Aqui tambien basta el correo, pero
+    /// solo durante 7 dias tras una activacion de la que el correo mismo avisa.
+    /// </para>
+    /// </summary>
+    public async Task<Resultado<NoFuiYoDto>> NoFuiYoAsync(
+        string token, string? ip = null, CancellationToken ct = default)
+    {
+        var ahora = _reloj.Ahora;
+        var usuario = string.IsNullOrWhiteSpace(token)
+            ? null
+            : await _usuarios.PorRevocacionMfaAsync(_secretos.HashToken(token), ct);
+        if (usuario is null || !usuario.MfaActivo || usuario.Estado == EstadoCuenta.Eliminada
+            || usuario.MfaRevocacionExpiraEn is not { } vence || vence <= ahora)
+            return Resultado.Falla<NoFuiYoDto>(Fallas.NoEncontrado, FalloNoFuiYo);
+
+        var tokenRestablecer = DejarSinAccesoAjeno(usuario, ahora);
+        _auditor.Registrar(Auditar.Entrada(
+            "mfa_quitado_no_fui_yo", "usuario", usuario.Id, ahora, actorId: usuario.Id, ip: ip));
+
+        await _unidad.GuardarAsync(ct);
+        await _sesion.RevocarTodasAsync(usuario.Id, null, ct);
+        return Resultado.Ok(new NoFuiYoDto(tokenRestablecer));
+    }
+
+    /// <summary>
+    /// Revision de seguridad 25-nov-2026: un administrador quita la verificacion de una cuenta (la
+    /// persona escribio a soporte porque otro la activo, o perdio el telefono y los codigos). Queda en
+    /// la auditoria con su motivo, la contraseña vieja deja de servir y a la dueña le llega un correo
+    /// con el enlace para crear otra. Nunca sobre la propia cuenta: un administrador con la sesion
+    /// robada no puede sacarse la verificacion que le exige su rol.
+    /// </summary>
+    public async Task<Resultado> QuitarPorAdministradorAsync(
+        Guid administradorId, QuitarMfaCmd cmd, string? ip = null, CancellationToken ct = default)
+    {
+        var usuario = await _usuarios.PorCorreoAsync(Texto.NormalizarCorreo(cmd.Correo), ct);
+        if (usuario is null || usuario.Estado == EstadoCuenta.Eliminada)
+            return Resultado.Falla(Fallas.NoEncontrado, "No hay una cuenta con ese correo.");
+        if (usuario.Id == administradorId)
+            return Resultado.Falla(Fallas.ReglaDeNegocio,
+                "No puedes quitar la verificación de tu propia cuenta: pídeselo a otro administrador.");
+        if (!usuario.MfaActivo)
+            return Resultado.Falla(Fallas.ReglaDeNegocio,
+                "Esa cuenta no tiene la verificación en dos pasos activa.");
+
+        var ahora = _reloj.Ahora;
+        var tokenRestablecer = DejarSinAccesoAjeno(usuario, ahora);
+        _auditor.Registrar(Auditar.Entrada(
+            "mfa_quitado_por_administrador", "usuario", usuario.Id, ahora, actorId: administradorId,
+            contexto: new { motivo = cmd.Motivo.Trim() }, ip: ip));
+        Avisar(usuario, TipoNotificacion.MfaQuitadoPorAdministrador, "mfa-quitado-admin",
+            "Quitamos la verificación en dos pasos de tu cuenta de ZASS!",
+            CargaDeAviso.ConToken(tokenRestablecer), ahora);
+
+        await _unidad.GuardarAsync(ct);
+        await _sesion.RevocarTodasAsync(usuario.Id, null, ct);
+        return Resultado.Ok();
+    }
+
+    /// <summary>
+    /// Lo comun a «No fui yo» y al administrador: fuera la verificacion, fuera la contraseña que
+    /// conoce la otra persona (queda una al azar que nadie sabe) y un token de recuperacion nuevo,
+    /// con la vida de siempre, para que la dueña elija otra. Devuelve ese token en claro.
+    /// </summary>
+    private string DejarSinAccesoAjeno(Usuario usuario, DateTime ahora)
+    {
+        usuario.QuitarMfa();
+        usuario.HashContrasena = _hash.Hash(_secretos.NuevoToken());
+        usuario.IntentosFallidos = 0;
+        usuario.BloqueadaHasta = null;
+        var token = _secretos.NuevoToken();
+        usuario.TokenRecuperacion = _secretos.HashToken(token);
+        usuario.TokenRecuperacionExpiraEn = ahora.Add(ServicioCuenta.VidaDelTokenDeRecuperacion);
+        usuario.ActualizadoEn = ahora;
+        return token;
+    }
+
+    /// <summary>Un correo de seguridad a la dueña, en la misma transaccion que el cambio que avisa.</summary>
+    private void Avisar(Usuario usuario, TipoNotificacion tipo, string clave, string asunto, string cuerpo, DateTime ahora) =>
+        _avisos.Encolar(new Notificacion
+        {
+            DestinatarioId = usuario.Id,
+            Tipo = tipo,
+            Canal = CanalNotificacion.Correo,
+            ClaveIdempotencia = $"{clave}:{usuario.Id:N}:{ahora.Ticks}",
+            Asunto = asunto,
+            Cuerpo = cuerpo,
+            ProgramadaPara = ahora,
+        });
 
     // ------------------------------------------------------------ Confirmar una accion de la cuenta
 

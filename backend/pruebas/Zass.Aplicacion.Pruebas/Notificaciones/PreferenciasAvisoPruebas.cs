@@ -30,6 +30,9 @@ public class PreferenciasAvisoPruebas
     [InlineData(TipoNotificacion.RegistroConRutExistente)]
     [InlineData(TipoNotificacion.MfaActivado)]
     [InlineData(TipoNotificacion.RegistroConCorreoExistente)]
+    [InlineData(TipoNotificacion.MfaDesactivado)]
+    [InlineData(TipoNotificacion.MfaCodigosRegenerados)]
+    [InlineData(TipoNotificacion.MfaQuitadoPorAdministrador)]
     [InlineData(TipoNotificacion.CuentaBloqueadaPorIntentos)]
     public void Los_avisos_con_token_no_se_configuran(TipoNotificacion tipo) =>
         Assert.False(PreferenciasAviso.Configurable(tipo));
@@ -44,6 +47,8 @@ public class PreferenciasAvisoPruebas
             TipoNotificacion.SuscripcionPorVencer, TipoNotificacion.SuscripcionVencida, TipoNotificacion.CobroRechazado,
             TipoNotificacion.RegistroConRutExistente, TipoNotificacion.MfaActivado,
             TipoNotificacion.RegistroConCorreoExistente,
+            TipoNotificacion.MfaDesactivado, TipoNotificacion.MfaCodigosRegenerados,
+            TipoNotificacion.MfaQuitadoPorAdministrador,
             TipoNotificacion.CuentaBloqueadaPorIntentos,
         }.OrderBy(t => t), fijos);
     }

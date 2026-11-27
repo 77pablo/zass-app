@@ -227,6 +227,9 @@ public interface IRepositorioUsuarios
     /// <summary>La cuenta cuyo desafio de segundo paso tiene ese hash, o nulo.</summary>
     Task<Usuario?> PorDesafioMfaAsync(string hashDesafio, CancellationToken ct = default);
 
+    /// <summary>«No fui yo» (25-nov-2026): la cuenta cuyo enlace del correo de activacion tiene ese hash.</summary>
+    Task<Usuario?> PorRevocacionMfaAsync(string hashRevocacion, CancellationToken ct = default);
+
     /// <summary>
     /// Anota <paramref name="paso"/> como el ultimo paso TOTP aceptado, SOLO si es posterior al
     /// anterior. Devuelve falso si ese codigo (o uno mas nuevo) ya se uso: asi un codigo

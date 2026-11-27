@@ -32,6 +32,8 @@ import { Planes, PlanesListo } from './paginas/Planes'
 import { ResenasDelPrestador } from './paginas/ResenasDelPrestador'
 import { Terminos } from './paginas/Terminos'
 import { RecuperarContrasena, RestablecerContrasena, VerificarCorreo } from './paginas/Recuperacion'
+import { NoFuiYo } from './paginas/NoFuiYo'
+import { QuitarVerificacion } from './paginas/QuitarVerificacion'
 import { AvisoDeTarjeta, TarjetaEnMayusculas } from './paginas/AvisoDeTarjeta'
 import { ActivarTarjeta } from './paginas/ActivarTarjeta'
 import { MiSeguridad } from './paginas/MiSeguridad'
@@ -80,6 +82,8 @@ export function App() {
         <Route path="verificar-correo" element={<VerificarCorreo />} />
         <Route path="recuperar-contrasena" element={<RecuperarContrasena />} />
         <Route path="restablecer-contrasena" element={<RestablecerContrasena />} />
+        {/* API-85 (25-nov-2026): el enlace «No fui yo» del correo de activación de la verificación. */}
+        <Route path="no-fui-yo" element={<NoFuiYo />} />
         <Route path="tarjeta/no-valida" element={<AvisoDeTarjeta aviso="no-valida" />} />
         <Route path="tarjeta/no-disponible" element={<AvisoDeTarjeta aviso="no-disponible" />} />
         <Route path="tarjeta/sin-activar" element={<AvisoDeTarjeta aviso="sin-activar" />} />
@@ -95,6 +99,7 @@ export function App() {
           <Route path="indicadores" element={<SoloSeccion seccion="administracion"><Indicadores /></SoloSeccion>} />
           <Route path="tarjetas" element={<SoloSeccion seccion="administracion"><EmitirTarjetas /></SoloSeccion>} />
           <Route path="auditoria" element={<SoloSeccion seccion="administracion"><Auditoria /></SoloSeccion>} />
+          <Route path="quitar-verificacion" element={<SoloSeccion seccion="administracion"><QuitarVerificacion /></SoloSeccion>} />
           <Route path="*" element={<NoEncontrada />} />
         </Route>
         <Route path="*" element={<NoEncontrada />} />

@@ -73,6 +73,10 @@ public enum TipoNotificacion
     // 25-nov-2026 (decision de Pablo): alguien intento registrarse con el correo de esta cuenta
     // (ya verificada). Va a ese mismo correo; quien lo escribio recibe la respuesta de siempre.
     RegistroConCorreoExistente,
+    // Revision de seguridad 25-nov-2026: la dueña se entera de todo cambio en su verificacion.
+    MfaDesactivado,
+    MfaCodigosRegenerados,
+    MfaQuitadoPorAdministrador,
     // Revision de seguridad 25-nov-2026: la cuenta se bloqueo por intentos fallidos.
     CuentaBloqueadaPorIntentos
 }
